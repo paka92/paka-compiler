@@ -325,11 +325,12 @@ or merged during review. Ids with a letter were added during review.
 
 ### M2-08 · L3 · Implement Int, Float, Bool and String operations from the approved table
 
+- status: done
 - needs: M2-03
 - flags: none
 - done when: Every row of the approved table has a hand-written vector (operation, inputs, expected result or named trap) in a data file read by a runner that does not depend on the back end; all pass in the interpreter; a test fails if a row has none. Paka Int and Float are their own Rust types exposing only the table's operations; a lint or test fails on raw arithmetic or f64 maths methods in the compiler crate; float rows are compared bit for bit.
 - why this level: Many exact edge cases: overflow, NaN, float printing, string units; errors are easy to miss.
-- note: Follows docs/decisions/M2-03.md; the M1 lex cases it lists as no longer holding are deleted in a commit before the code that breaks them.
+- note: Follows docs/decisions/M2-03.md; the M1 lex cases it lists as no longer holding are deleted in a commit before the code that breaks them. Merged: the operations live in the runtime crate (`paka-rt/src/ops`), which the compiler also links, so every back end runs the same routines. The vectors are tests/vectors/ops.vec; a back end runs them through one function from operation name and inputs to result or trap. M2-16 covers the checker-only rows.
 
 ### M2-08b · L3 · Add the approved maths functions without f64 methods
 
