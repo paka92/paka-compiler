@@ -371,10 +371,12 @@ or merged during review. Ids with a letter were added during review.
 
 ### M2-12 · L5 · Decide the one error-handling mechanism
 
+- status: done
 - needs: M2-09, M2-06
 - flags: decision, owner
 - done when: Owner approves one mechanism with alternatives, the line between trap and error, and samples for failure and absence.
 - why this level: Language-shaping and hard to undo; it touches every signature that can fail.
+- note: Decided: the full record, with the typing rules, the trap-or-return table and the samples, is docs/decisions/M2-12.md.
 
 ### M2-13 · L3 · Resolve names across a program
 
@@ -389,6 +391,7 @@ or merged during review. Ids with a letter were added during review.
 - flags: decision, owner
 - done when: Owner approves a full list with signatures and exact results that covers every approved experiment task class. Pool and shared-data types and operations are taken from M2-10 unchanged.
 - why this level: Sets the vocabulary models must learn; names and ordering rules cannot change after the experiment.
+- note: Follows docs/decisions/M2-12.md for Option, Result, `?` and unreachable().
 
 ### M2-15 · L5 · Decide headless apps: first message, effects, grants, ending, effect failure, standard input and handler traps
 
@@ -396,6 +399,7 @@ or merged during review. Ids with a letter were added during review.
 - flags: decision, owner
 - done when: Owner approves the app form, the effect list, refusal and failure behaviour, standard input, rollback visibility, sequencing and concurrency rulings, and wc rewritten under the rules; each provisional M1-06 start, end and missing-grant rule is named as kept or changed, with the new expected output and status of each affected M1 case stated in the decision.
 - why this level: Fixes the program model and permission boundary; settles or defers sequential notation and concurrency.
+- note: Follows docs/decisions/M2-12.md for Option, Result, `?` and unreachable().
 
 ### M2-16 · L3 · Check signatures and type definitions into one signature table
 
@@ -411,7 +415,7 @@ or merged during review. Ids with a letter were added during review.
 - flags: none
 - done when: Parser tests with hand-written trees pass for every new form in the two decisions, including their error cases.
 - why this level: Telling generic brackets from comparison operators is a known parser trap; a mistake mis-parses silently.
-- note: Follows docs/decisions/M2-02.md: the newline, comment and nesting rules of its sections 1.5 to 1.7, the grammar of section 2 and the codes of section 5. Follows docs/decisions/M2-09.md: the interface hash covers every named type a signature reaches, and no app state may hold a function type. Follows docs/decisions/M2-06.md for traps, holes and examples.
+- note: Follows docs/decisions/M2-02.md: the newline, comment and nesting rules of its sections 1.5 to 1.7, the grammar of section 2 and the codes of section 5. Follows docs/decisions/M2-09.md: the interface hash covers every named type a signature reaches, and no app state may hold a function type. Follows docs/decisions/M2-06.md for traps, holes and examples. Follows docs/decisions/M2-12.md for Option, Result, `?` and unreachable().
 
 ### M2-18 · L4 · Write the language reference from the approved decisions, within 8,000 tokens
 
@@ -434,7 +438,7 @@ or merged during review. Ids with a letter were added during review.
 - flags: none
 - done when: Tests pass: missing variants are listed with a fix, a hole takes its expected type, example bodies follow the decision.
 - why this level: Exhaustiveness and expected-type holes are known techniques with easy-to-miss cases.
-- note: Follows docs/decisions/M2-02.md: the newline, comment and nesting rules of its sections 1.5 to 1.7, the grammar of section 2 and the codes of section 5. Follows docs/decisions/M2-06.md for traps, holes and examples.
+- note: Follows docs/decisions/M2-02.md: the newline, comment and nesting rules of its sections 1.5 to 1.7, the grammar of section 2 and the codes of section 5. Follows docs/decisions/M2-06.md for traps, holes and examples. Follows docs/decisions/M2-12.md for Option, Result, `?` and unreachable(). Names the code for a `_` arm on an enum subject, which M2-02 leaves unnamed.
 
 ### M2-21 · L4 · Enforce copies, inout exclusivity and borrow rules in the checker
 
@@ -450,7 +454,7 @@ or merged during review. Ids with a letter were added during review.
 - flags: none
 - done when: Decision samples pass; a test shows a generic body's result never depends on any caller.
 - why this level: Bodies must be checked against declared bounds only; a leak silently breaks pillar 4.
-- note: Follows docs/decisions/M2-09.md: the interface hash covers every named type a signature reaches, and no app state may hold a function type.
+- note: Follows docs/decisions/M2-09.md: the interface hash covers every named type a signature reaches, and no app state may hold a function type. Follows docs/decisions/M2-12.md for Option, Result, `?` and unreachable().
 
 ### M2-23 · L4 · Define the core form for the whole headless language
 
@@ -458,7 +462,7 @@ or merged during review. Ids with a letter were added during review.
 - flags: none
 - done when: Core types and a written rule per node are merged, including the app, message and effect-list forms; examples/light.paka lowers to it and still passes on both back ends.
 - why this level: Contract for every future back end; evaluation order and trap points must be explicit.
-- note: M1's native comparison keeps running only the M1 run group; conformance cases are interpreter-only until M4-40. Follows docs/decisions/M2-06.md for traps, holes and examples.
+- note: M1's native comparison keeps running only the M1 run group; conformance cases are interpreter-only until M4-40. Follows docs/decisions/M2-06.md for traps, holes and examples. Follows docs/decisions/M2-12.md for Option, Result, `?` and unreachable().
 
 ### M2-25 · L3 · Lower checked programs to the core form
 
@@ -509,6 +513,7 @@ or merged during review. Ids with a letter were added during review.
 - flags: none
 - done when: Golden tests from the decision samples pass; an unhandled failure is rejected with a suggested fix.
 - why this level: Spans checker, lowering and interpreter; known desugaring with easy-to-miss paths.
+- note: Follows docs/decisions/M2-12.md for Option, Result, `?` and unreachable().
 
 ### M2-32 · L2 · Parse and check app definitions
 

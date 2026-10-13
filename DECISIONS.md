@@ -1511,6 +1511,7 @@ fn job_of(m: Mode) -> Int {
 - Trap kinds: None added. unreachable() reuses assert, as M2-06 asked.
 - Helpers: Whether there are built-ins that give a default for None or turn None into an Err is M2-14's; each is one table row and none changes the mechanism. Without the second one every Option met inside a Result function costs a four-line match, so M2-14 should weigh it.
 - Layout of the new forms: As M4-47 asks: Result<Int, String> with one space after the comma; expr? with no space before the ?; unreachable() like any call; a match on an Option or Result has one arm per line. The samples on this page are in that layout.
+- Changed in the final record: All five picks stand and no diagnostic code is added. Added: an if or match used as a value with no expected type takes the type of its first branch that carries its own type, and that type flows into the other branches; `?` on an Option inside a function returning Result is refused (write `ok_or(opt, text)?`); Some, None, Ok and Err are signature rows of the built-in table; unreachable-code also fires after unreachable(); inout writes made before a `?` stay made. The full record is docs/decisions/M2-12.md.
 
 ### M2-12 · what this changes in TASKS.md
 
