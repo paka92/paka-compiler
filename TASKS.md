@@ -363,11 +363,12 @@ or merged during review. Ids with a letter were added during review.
 
 ### M2-11 · L3 · Parse all definitions, statements, expressions, patterns and holes
 
+- status: done
 - needs: M2-02, M2-03, M2-04, M2-05, M2-06, M2-07
 - flags: none
 - done when: Parser tests with hand-written trees pass; one broken definition gives an error with its offending text and leaves the others parsed.
 - why this level: Recursive descent with recovery per definition and helpful messages; details are easy to get wrong.
-- note: Follows docs/decisions/M2-02.md: the newline, comment and nesting rules of its sections 1.5 to 1.7, the grammar of section 2 and the codes of section 5. Follows docs/decisions/M2-03.md; the M1 lex cases it lists as no longer holding are deleted in a commit before the code that breaks them. Follows docs/decisions/M2-06.md for traps, holes and examples.
+- note: Follows docs/decisions/M2-02.md: the newline, comment and nesting rules of its sections 1.5 to 1.7, the grammar of section 2 and the codes of section 5. Follows docs/decisions/M2-03.md; the M1 lex cases it lists as no longer holding are deleted in a commit before the code that breaks them. Follows docs/decisions/M2-06.md for traps, holes and examples. Done. Nesting is counted with and without brackets and every chain stops at 1,000 links. The check code `unsupported-form` marks forms the parser accepts and the checker does not handle yet; each checker task removes its forms from it, and the code goes when none is left.
 
 ### M2-12 · L5 · Decide the one error-handling mechanism
 
