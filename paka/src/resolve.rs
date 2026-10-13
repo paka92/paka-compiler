@@ -7,6 +7,7 @@ use crate::ast::{
     Arm, ArmBody, Block, Def, Entry, Expr, ExprKind, Field, Name, Pat, PatKind, Pos, Program, Stmt,
     StmtKind, StrPart, Type,
 };
+use crate::builtins::{self, Kind};
 use crate::diagnostic::Diagnostic;
 use std::collections::BTreeMap;
 
@@ -21,7 +22,7 @@ pub enum Binding {
     Def(usize),
     /// A variant: its enum's index in `Program::defs`, then its index in the enum.
     Variant(usize, usize),
-    /// A name of `BUILTINS`.
+    /// A name of the built-in table.
     Builtin(&'static str),
 }
 
@@ -49,41 +50,6 @@ impl Resolved {
     }
 }
 
-/// What a name in the pool is: where a use may name it.
-#[derive(Clone, Copy, Debug, PartialEq)]
-pub enum Kind {
-    Type,
-    Variant,
-    Fn,
-    Grant,
-    /// An `example` or an `app`: it holds a name but is never used by name.
-    Other,
-}
-
-/// The built-in names: M2-14 section 1.1 (types, constructors), section 1.2 (63 functions) and
-/// M2-15 section 1.3 (effects, grants).
-pub const BUILTINS: [(Kind, &str); 4] = [
-    (
-        Kind::Type,
-        "Int Float Bool String List Map Option Result Effect",
-    ),
-    (
-        Kind::Variant,
-        "Some None Ok Err Print ReadFile WriteFile Exit ExitWith",
-    ),
-    (Kind::Grant, "Console ReadFiles WriteFiles"),
-    (
-        Kind::Fn,
-        "min max abs to_float to_int sqrt floor ceil trunc round fixed
-         wrap_add wrap_sub wrap_mul bit_and bit_or bit_xor bit_not shift_left shift_right
-         len is_empty contains find parse_int parse_float code_at from_code
-         split chars lines words join repeat pad_left pad_right
-         trim trim_start trim_end starts_with ends_with replace upper lower
-         append extend pop insert remove_at swap reverse sort sort_by list_of
-         get has remove keys values unwrap_or ok_or assert unreachable",
-    ),
-];
-
 const VALUES: &[Kind] = &[Kind::Fn, Kind::Variant];
 const TYPES: &[Kind] = &[Kind::Type];
 const VARIANTS: &[Kind] = &[Kind::Variant];
@@ -92,15 +58,6 @@ const GRANTS: &[Kind] = &[Kind::Grant];
 /// Selects the pool entries of the given kinds.
 fn of(kinds: &'static [Kind]) -> impl Fn(Kind, Binding) -> bool {
     move |kind, _| kinds.contains(&kind)
-}
-
-/// How many type arguments a type takes; a type of the program takes none.
-fn arity(type_name: &str) -> usize {
-    match type_name {
-        "Map" | "Result" => 2,
-        "List" | "Option" | "Effect" => 1,
-        _ => 0,
-    }
 }
 
 /// Declaration errors come first, as `Err`; then each definition is resolved on its own.
@@ -131,10 +88,9 @@ pub fn resolve<'a>(path: &'a str, program: &'a Program<'a>) -> Res<Resolved> {
 }
 
 fn builtins<'a>() -> BTreeMap<&'a str, (Kind, Binding)> {
-    let rows = BUILTINS.iter().flat_map(|&(kind, words)| {
-        words
-            .split_whitespace()
-            .map(move |word| (word, (kind, Binding::Builtin(word))))
+    let rows = builtins::ROWS.iter().map(|&(kind, row)| {
+        let name = builtins::name(row);
+        (name, (kind, Binding::Builtin(name)))
     });
     rows.collect()
 }
@@ -362,7 +318,7 @@ impl<'a> Resolver<'a> {
         match t {
             Type::Name { name, args } => {
                 self.ty_name(name.text, name.at)?;
-                let want = arity(name.text);
+                let want = builtins::arity(name.text);
                 if args.len() != want {
                     let s = if want == 1 { "" } else { "s" };
                     let message = format!("{} takes {want} type argument{s}", name.text);

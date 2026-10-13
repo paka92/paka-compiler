@@ -299,10 +299,9 @@ fn every_built_in_name_is_taken() {
     let spec = spec_builtins();
     let mut all = BTreeSet::new();
     for (kind, words) in &spec {
-        let table: Vec<_> = (BUILTINS.iter().filter(|b| b.0 == *kind))
-            .flat_map(|b| b.1.split_whitespace())
-            .collect();
-        let (mut table, mut words) = (table, words.clone());
+        let rows = builtins::ROWS.iter().filter(|b| b.0 == *kind);
+        let table: BTreeSet<_> = rows.map(|b| builtins::name(b.1)).collect();
+        let (mut table, mut words) = (Vec::from_iter(table), words.clone());
         table.sort_unstable();
         words.sort_unstable();
         assert_eq!(table, words, "{kind:?}");

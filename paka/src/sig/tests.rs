@@ -741,7 +741,7 @@ fn a_state_that_is_a_bad_definition_adds_no_second_error() {
     let lines = app(&["type Later { m: Map<Float, fn()> }"], "Later");
     let lines: Vec<&str> = lines.iter().map(String::as_str).collect();
     let shown = shown(&program(&lines));
-    assert!(shown[2].contains("error[type-mismatch]"), "{shown:?}");
+    assert!(shown[1].contains("error[type-mismatch]"), "{shown:?}");
     assert_eq!(
         shown.last().unwrap(),
         "app wc { state: Later, update: update }"

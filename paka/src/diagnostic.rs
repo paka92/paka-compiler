@@ -34,6 +34,8 @@ const KINDS: &[(&str, bool, bool)] = &[
     ("bad-start", false, false),
     ("unknown-grant", false, true),
     ("duplicate-grant", false, false),
+    // The second milestone's codes; the spec lists them once it covers that milestone.
+    ("no-finite-value", false, false),
 ];
 
 fn declared(code: &str) -> &'static (&'static str, bool, bool) {
