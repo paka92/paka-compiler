@@ -207,12 +207,15 @@ pub unsafe extern "C" fn paka_rt1_run(
     run(name, update, start, grants)
 }
 
-/// Test only: an effect holding exactly these words, decodable or not.
+/// Test only: an effect holding these words. They must make a value the decoder refuses, or one
+/// that reads nothing through its pointer.
 #[cfg(test)]
 pub(crate) const fn effect_of_words(words: [u64; 3]) -> Effect {
-    // SAFETY: three words are the size of an `Effect`, and every word is valid in each of its
-    // fields.
-    unsafe { std::mem::transmute(words) }
+    Effect {
+        tag: words[0],
+        ptr: ptr::without_provenance(words[1] as usize),
+        len: words[2],
+    }
 }
 
 #[cfg(test)]

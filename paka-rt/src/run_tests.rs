@@ -19,6 +19,8 @@ macro_rules! fake {
     };
 }
 
+const WIDE: u64 = 0xfedc_ba98_7654_3210;
+
 const LIGHT: Effect = Effect::print(b"let there be light");
 
 fake!(light, 0, [LIGHT, Effect::EXIT]);
@@ -45,6 +47,7 @@ fake!(
     ]
 );
 fake!(exit_at_7, 7, [Effect::EXIT]);
+fake!(exit_at_wide, WIDE, [Effect::EXIT]);
 fake!(unknown_tag, 0, [LIGHT, effect_of_words([2, 0, 0])]);
 fake!(bad_print, 0, [effect_of_words([0, 0, 18])]);
 fake!(bad_exit, 0, [effect_of_words([1, 8, 0])]);
@@ -52,6 +55,10 @@ fake!(exit_then_bad, 0, [Effect::EXIT, effect_of_words([2, 0, 0])]);
 
 extern "C" fn status_1(_msg: u64, out: &mut List) -> i32 {
     *out = List::new(&[Effect::EXIT]);
+    1
+}
+
+extern "C" fn status_1_stores_nothing(_msg: u64, _out: &mut List) -> i32 {
     1
 }
 
@@ -166,6 +173,15 @@ fn the_start_message_is_passed_unchanged() {
 }
 
 #[test]
+fn the_whole_start_message_is_passed() {
+    assert_eq!(go_with(Some(b"light"), Some(exit_at_wide), WIDE, 0).2, 0);
+    assert_eq!(
+        go_with(Some(b"light"), Some(exit_at_wide), WIDE >> 32, 0).2,
+        4
+    );
+}
+
+#[test]
 fn a_print_without_console_is_refused_and_writes_nothing() {
     let want = "light: effect Print refused: grant Console is missing\n";
     assert_eq!(go(print_twice, 0), ("".into(), want.into(), 3));
@@ -217,6 +233,25 @@ fn grants_other_than_bit_0_are_refused_before_anything_runs() {
     for grants in [2, 3, 1 << 63, u64::MAX] {
         assert_eq!(go(light, grants), ("".into(), internal("bad grants"), 4));
     }
+}
+
+#[test]
+fn bad_grants_are_refused_before_a_null_update() {
+    let got = go_with(Some(b"light"), None, 0, 2);
+    assert_eq!(got, ("".into(), internal("bad grants"), 4));
+}
+
+#[test]
+fn bad_grants_are_refused_before_update_is_called() {
+    for update in [status_1, status_1_stores_nothing, stores_nothing] {
+        assert_eq!(go(update, 2), ("".into(), internal("bad grants"), 4));
+    }
+}
+
+#[test]
+fn the_status_is_tested_before_the_list_header_is_read() {
+    let reason = internal("update returned a non-zero status");
+    assert_eq!(go(status_1_stores_nothing, 1), ("".into(), reason, 4));
 }
 
 #[test]

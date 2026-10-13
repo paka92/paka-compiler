@@ -6,10 +6,12 @@
 #[allow(unsafe_code)]
 pub mod abi;
 
-use abi::List;
-use abi::{Str, Update};
+use abi::{List, Str, Update};
 use std::io::{self, ErrorKind, Write};
 use std::panic::{AssertUnwindSafe, catch_unwind};
+
+/// The status of a stop that is the program's doing (ABI section 7).
+const STOPPED: i32 = 3;
 
 /// The status of an internal error (ABI section 7).
 pub const INTERNAL_ERROR: i32 = 4;
@@ -79,7 +81,7 @@ impl Stop {
     fn status(&self) -> i32 {
         match self {
             Stop::Internal(_) => INTERNAL_ERROR,
-            _ => 3,
+            _ => STOPPED,
         }
     }
 
@@ -102,7 +104,7 @@ pub fn run(name: Str, update: Option<Update>, start: u64, grants: u64) -> i32 {
 
 /// The run loop of ABI section 5, on any sinks. `name` is the decoded app name, `None` when it
 /// was refused.
-pub fn run_with(
+pub(crate) fn run_with(
     out: &mut dyn Write,
     err: &mut dyn Write,
     name: Option<&[u8]>,
@@ -147,6 +149,7 @@ fn perform(
 
 /// The text and a line feed in one buffer, one write, then a flush.
 fn print(out: &mut dyn Write, text: &[u8]) -> Result<(), Stop> {
+    // The reservation covers the line feed, so the push cannot reallocate.
     let mut line = buffer(text.len() + 1)?;
     line.extend_from_slice(text);
     line.push(b'\n');
