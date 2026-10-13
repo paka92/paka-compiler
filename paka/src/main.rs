@@ -3,6 +3,7 @@ mod check;
 mod diagnostic;
 mod interp;
 mod lexer;
+mod llvm;
 mod lower;
 mod parser;
 
