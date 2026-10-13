@@ -400,7 +400,7 @@ $ echo $?
 ### M1-14 · what this changes in TASKS.md
 
 - M1-06: Its code list needs one code for 'clang or the linker failed' beside 'missing clang', since a stale runtime library is reported under it; its exact standard-error lines and its rule for a program that stops without Exit are copied into the ABI document.
-- M1-16: Decodes three shapes made only of 8-byte words (string, effect, list header), refuses the cases the document lists, needs no allocator, and holds both the exported entry and the one safe wrapper that sets the broken-pipe signal to ignore.
+- M1-16: Decodes three shapes made only of 8-byte words (string, effect, list header), refuses the cases the document lists, takes no allocator through the interface, and holds both the exported entry and the one safe wrapper that sets the broken-pipe signal to ignore.
 - M1-17: Its entry paka_rt1_run takes five plain arguments and is exported from M1-16's module, as its done-when says; the loop catches panics and returns 4, treats a non-zero status from update as an internal error, and prints the spec's lines; its fake update is an ordinary extern "C" function.
 - M1-18: Emits internal functions named p_ plus the Paka name, stores the result as one whole record with no getelementptr, and writes no datalayout line.
 - M1-19: Uses the document's link command with rustc's listed system libraries and never passes an LTO flag; a stale library shows up as the linker's undefined-reference error, reported as one diagnostic under the spec's code for a failed clang run, with status 1.
@@ -510,7 +510,7 @@ example initials_ascii {
 - Functions passed as values: No class needs a function that captures surrounding variables. Named functions and variant names as values are already needed by the wc sample (then: Loaded, line 248). Whether closures exist is M2-09's ruling.
 - Wrapping arithmetic and bit operations (hashes, checksums, random-number generators): Out as a task class; 64-bit hash tasks would tilt against TypeScript for a reason outside the bet. M2-03 still fixes the wrapping spelling, as its done-when and line 106 demand; no task depends on it.
 - Standard input: No class needs it. Input arrives as files named in the arguments, as in the wc sample, so there is one way in. M2-15 still rules on standard input and may rule 'none in M2'.
-- Malformed input and missing files: In. A class may demand an error message and a non-zero exit status. The mechanism is M2-12's and M2-15's.
+- Malformed input and missing files: Every counted task defines at least one error condition with an exact message and the fixed error status; missing-file errors are tested in the file-tools class and the file practice task only. The mechanism is M2-12's and M2-15's.
 - Text patterns (regular expressions): Out. No built-in pattern matcher; text is parsed by hand. A matcher would be permanent vocabulary and permanent back-end work.
 - Clock, random numbers, network, environment variables, directory listing, foreign code: Out. They break same-input-same-output tests across three languages, and each would add a grant.
 - Concurrency: Out. Every task is single-threaded; the paper leaves concurrency open (line 356) and M2-15 records it as deferred.
@@ -522,6 +522,8 @@ example initials_ascii {
 - Tuples, sorting, splitting, joining and similar helpers: Assumed needed by the kept classes. Whether tuples exist is M2-02's and M2-03's; helper names and signatures are M2-14's.
 - Task difficulty and the counted list: Left to M3-04. M2-01 fixes classes only; each class must admit tasks hard enough that Rust and TypeScript fail some (line 382).
 - The paper's wc and counter samples: Stay expressible under every pick, as part 6 of the M2 exit check requires.
+- Records and data transformation: Not a class of its own; covered by text processing and the reports class.
+- Full record: docs/decisions/M2-01.md holds the seven classes with their types, effects, data shapes and example tasks, what is out, and the fairness risks the M3 report must state.
 
 ## M2-02 · Decide bindings, control flow, return, argument labels, discarded results and names
 
@@ -680,15 +682,18 @@ fn count_words(text: String) -> Int {
 - Assignment: `=`, `+=` and the like are statements, not expressions, and work only on `var` locals and `inout` parameters and their fields (lines 207-208). No `++` or `--`, no chained assignment. The exact operator list belongs to M2-03.
 - Local declarations: Every `let` and `var` has an initial value. Its type is inferred inside the body (line 140); writing it (`let n: Int = 0`) is optional. Parameters cannot be reassigned unless they are `inout`.
 - Functions with no result: No `->` means the function returns nothing (line 263); its last statement must not leave a value, and a bare `return` leaves early. Code after `return`, `break` or `continue` in the same block is an error, as is `break` or `continue` outside a loop.
-- Unused names: An unused local or parameter is a warning, not an error, so it never costs an edit. A `var` that is never reassigned is accepted without a message. `_` ignores a field in a pattern.
+- Unused names: An unused local or parameter is a warning, not an error, so it never costs an edit. A `var` that is never reassigned is accepted without a message. `_` ignores a field in a pattern. The warning is printed by `paka check` only, and only when there is no error; `paka run` and `paka build` print none.
 - One pool of names: All definitions in a program share one pool; with case enforced, Upper and lower names cannot clash. A duplicate definition is an error naming both places. Fields, labels, variant fields and the keys inside `app { }` belong to their owner and clash with nothing, so `update: update` (line 231) stays legal. All definitions are top level, order has no meaning, and a definition may be used before it appears.
 - Identifiers and keywords: ASCII letters, digits and underscore. Only the first letter's case is enforced; the reference recommends snake_case and CamelCase. Keywords are reserved everywhere, including ones kept for later milestones (view, migrate). `_` alone is the discard target and the wildcard.
 - Label details: The mark is `;` between bare and labelled parameters in these samples; the written grammar fixes the spelling. Bare parameters come first, labels are written in declared order. No default values for function parameters yet (adding them later breaks nothing); type fields keep theirs (line 201). Variant fields follow the function rule, so `Start(path)` builds and matches by position. Records are built with braces and field names (`Counter {}`, line 213). Trailing blocks such as `Col(gap: 8) { }` wait for M5-01.
 - Comment details: `//` only, no block comments. A comment after the last definition of a file belongs to that definition. Comments never change meaning. Whether comment text enters a definition's hashes (lines 284-286) is left to M4-11.
-- Which files make one program: The single file given to the command (as in M1), or every `.paka` file directly in the directory given. File boundaries and order carry no meaning (line 71). Packages stay undecided (line 358 and the M2 notes in TASKS.md).
+- Which files make one program: The single file given to the command (as in M1), or every `.paka` file directly in the directory given. File boundaries and order carry no meaning (line 71). Packages stay undecided (line 358 and the M2 notes in TASKS.md). Declarations are read in file-name byte order, then source order.
 - M1-06 rules kept or changed: Under the picks the light program parses and means the same, so no M1 run case changes; only the six planned reject cases stop holding (comment, hole, example, match, integer literal, labelled argument). Picking 'Always return' or 'Always with the enum' would change the light program itself. M1-06 is not written yet, so the line-by-line kept-or-changed list is made against it when it lands (M2-02 needs M1-06).
 - Corrections to the proposals: The paper keeper cited lines 139 and 150; the text it meant is at lines 136/140 (local checking) and 147 (when two agents conflict). The engineer wrote that labels can only be added later by rewriting every call; under 'Bare unless marked labelled' adding them later breaks no user code.
 - Left to other decisions: `&` at inout call sites and the overlap rule (M2-05); operators, string interpolation and wrapping arithmetic (M2-03); holes and example bodies (M2-06); function values and whether labels are part of a function type (M2-09); error-handling forms (M2-12); the built-in names table (M2-14); start, end and missing-grant rules (M2-15); canonical layout (M4-47).
+- Label mark: The `;` in a parameter list (bare before it, labelled after it) is final, no longer provisional.
+- Nesting limit: At most 64 open brackets: `(`, `[`, `{`, a type's `<` and an interpolation `{` each count; operator and `else if` chains do not. The 65th opener is the error `nesting-too-deep`.
+- Full record: docs/decisions/M2-02.md holds every rule with samples, the grammar, the exact newline rule, the kept-or-changed table for the M1-06 rules, the M1 cases that stop holding and the new diagnostic codes.
 
 ## M2-03 · Decide the primitive types and the exact meaning of every operation
 

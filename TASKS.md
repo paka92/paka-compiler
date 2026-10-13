@@ -96,12 +96,14 @@ or merged during review. Ids with a letter were added during review.
 - Not in M1, and rejected rather than ignored: comments, formatter, holes, examples, match, integers, labelled arguments, more than one file, the derived database.
 - `gh` is available to the caller for pull requests.
 - A stage moves `tests/cases-pending/<stage>/` to `tests/cases/<stage>/` with git mv; `git diff -M --name-status origin/development...HEAD -- tests/cases tests/cases-pending` must show only R100 lines.
+- Milestone 1 is complete on `development`: all its tasks are merged and the exit check passes.
 - Can start first: M1-01, M1-06.
 - The owner is needed in: M1-02, M1-06, M1-14, M1-15.
 - Downloads: M1-02, M1-15.
 
 ### M1-01 · L2 · Create the Rust workspace with pinned toolchain, checked profiles and lint bans
 
+- status: done
 - needs: nothing
 - flags: none
 - done when: On a clean checkout, `cargo build --release --locked --offline`, `cargo clippy --locked --offline --all-targets -- -D warnings` and `cargo fmt --check` pass (fmt takes no such flags); Cargo.lock is committed; the pull request log shows a planted HashMap, HashSet, f64::sin and f64::powf each failing clippy; Cargo.toml shows `overflow-checks = true` for release.
@@ -110,6 +112,7 @@ or merged during review. Ids with a letter were added during review.
 
 ### M1-02 · L1 · Add CI that builds, tests and lints every pull request
 
+- status: done
 - needs: M1-01
 - flags: download, owner
 - done when: The owner sees the `ci` job green on this task's pull request and its log shows the four commands; the owner sees a planted failing pull request go red.
@@ -118,6 +121,7 @@ or merged during review. Ids with a letter were added during review.
 
 ### M1-03 · L2 · Add the paka command skeleton and the diagnostic format
 
+- status: done
 - needs: M1-01, M1-06
 - flags: none
 - done when: cargo test passes hand-written expected lines; an integration test shows bad arguments exit 2 with usage and a missing file exits 1 with one line.
@@ -126,6 +130,7 @@ or merged during review. Ids with a letter were added during review.
 
 ### M1-06 · L4 · Write the M1 subset spec: grammar, start, end and grant rules, hand-written cases
 
+- status: done
 - needs: nothing
 - flags: decision, owner
 - done when: Owner approves the spec: tokens, grammar, name and type rules; Print and Exit meanings, including standard output, standard error and status when a write fails or the pipe is closed; provisional start (initial state or none, first message), end and missing-grant rules; the list of diagnostic codes, unreadable file and missing clang included; and case files with expected results under `tests/cases-pending/<stage>/<name>/` for the stages lex, parse, check and run. A case folder holds the source, the expected stdout and the expected status, or for a reject its path, line, column and code; the path is the file name inside the case folder. `run/light_no_console` fixes the exact output and status of light.paka without Console. There is a reject case for each of: comment, hole, example, match, integer literal, labelled argument. The pull request adds `examples/light.paka`. The spec fixes the status when standard output cannot be written: /dev/full, and a pipe whose read end is closed. An accept case may also hold the expected standard error; without that file standard error must be empty.
@@ -134,6 +139,7 @@ or merged during review. Ids with a letter were added during review.
 
 ### M1-07 · L2 · Write the lexer for the spec's token list
 
+- status: done
 - needs: M1-03, M1-06
 - flags: none
 - done when: Unit tests compare examples/light.paka and each lexical reject in the spec against hand-written token lists and diagnostics; `paka run` on a lexical reject prints the spec's diagnostic and exits with the spec's status.
@@ -141,6 +147,7 @@ or merged during review. Ids with a letter were added during review.
 
 ### M1-08 · L2 · Add the case runner that checks programs against hand-written expectations
 
+- status: done
 - needs: M1-07
 - flags: none
 - done when: cargo test runs every case folder under tests/cases/<stage>/; the spec's lexical reject cases pass; the lex group is moved with git mv, R100 lines only, and `tests/cases-pending/lex` no longer exists; runner self-tests report failure for each of: a wrong stdout byte, a missing final newline, a wrong status, a wrong line, column or code, a case folder with no expectation file. The runner also compares standard error of an accept case byte for byte, and its self-tests report failure for a wrong standard-error byte and for a case folder without a source file.
@@ -149,6 +156,7 @@ or merged during review. Ids with a letter were added during review.
 
 ### M1-09 · L3 · Write the parser for the spec's grammar
 
+- status: done
 - needs: M1-08
 - flags: none
 - done when: examples/light.paka parses to a hand-built tree in a unit test; every syntax reject case in the spec passes in the case runner. Its group is moved with git mv, R100 lines only, and `tests/cases-pending/parse` no longer exists.
@@ -156,6 +164,7 @@ or merged during review. Ids with a letter were added during review.
 
 ### M1-10 · L3 · Resolve names and type-check the subset, with the built-in names table
 
+- status: done
 - needs: M1-09
 - flags: none
 - done when: light.paka resolves and checks in unit tests; every name, type and app reject case in the spec passes in the case runner. Its group is moved with git mv, R100 lines only, and `tests/cases-pending/check` no longer exists.
@@ -163,6 +172,7 @@ or merged during review. Ids with a letter were added during review.
 
 ### M1-12 · L2 · Define the core form for the subset and lower into it
 
+- status: done
 - needs: M1-10
 - flags: none
 - done when: A unit test lowers light.paka and compares the result with a core program built by hand.
@@ -170,6 +180,7 @@ or merged during review. Ids with a letter were added during review.
 
 ### M1-13 · L2 · Write the reference interpreter and paka run for the subset
 
+- status: done
 - needs: M1-12
 - flags: none
 - done when: `paka run` passes every runnable case in the spec and both light.paka grant variants, against the spec's hand-written expectations. Its group is moved with git mv, R100 lines only, and `tests/cases-pending/run` no longer exists. A run with standard output on /dev/full, and a run whose standard output is a pipe with its read end already closed, each give the spec's status.
@@ -178,6 +189,7 @@ or merged during review. Ids with a letter were added during review.
 
 ### M1-14 · L4 · Decide how compiled code and the runtime share data and calls
 
+- status: done
 - needs: M1-06
 - flags: decision, owner, native-only
 - done when: Owner approves the document; its IR is committed as `docs/abi/light.ll`; `clang -c docs/abi/light.ll -o /dev/null` gives empty stderr; the pull request log shows the stand-in runtime's source, the link command and the printed line; the IR contains none of nsw, nuw, inbounds, noalias, fast, nnan, ninf, nsz, arcp, contract, afn, reassoc.
@@ -186,6 +198,7 @@ or merged during review. Ids with a letter were added during review.
 
 ### M1-15 · L2 · Install clang 21 on the CI runner
 
+- status: done
 - needs: M1-02
 - flags: download, native-only, owner
 - done when: The CI log shows clang --version reporting 21.x and the workflow still passes.
@@ -194,14 +207,16 @@ or merged during review. Ids with a letter were added during review.
 
 ### M1-16 · L4 · Create paka-rt with the ABI types and effect-list decoding
 
+- status: done
 - needs: M1-01, M1-14
 - flags: unsafe, native-only
 - done when: Tests decode each ABI value built by hand as raw bytes; Cargo.lock is updated; the crate denies unsafe outside one module; paka-rt's lib.rs denies `clippy::undocumented_unsafe_blocks`, so the M1-01 clippy command fails on an unsafe block without a safety comment.
 - why this level: Unsafe reads of memory laid out by compiled code; no Miri here, so mistakes stay silent.
-- note: No allocator unless the approved ABI needs heap memory. Edition 2024 needs `#[unsafe(no_mangle)]`, so every exported function lives in the one unsafe module. Per the M1-14 decision: it decodes three shapes made only of 8-byte words (string, effect, list header), refuses the cases the ABI document lists, needs no allocator, and holds the exported entry and the one safe wrapper that sets the broken-pipe signal to ignored.
+- note: No allocator unless the approved ABI needs heap memory. Edition 2024 needs `#[unsafe(no_mangle)]`, so every exported function lives in the one unsafe module. Per the M1-14 decision: it decodes three shapes made only of 8-byte words (string, effect, list header), refuses the cases the ABI document lists, takes no allocator through the interface, and holds the exported entry and the one safe wrapper that sets the broken-pipe signal to ignored.
 
 ### M1-17 · L3 · Add the paka-rt run loop: first message, grants, Print, Exit
 
+- status: done
 - needs: M1-16, M1-06, M1-13
 - flags: native-only, unsafe
 - done when: Unit tests drive the loop with a fake update function and a captured output, matching the expected stdout and status of every case under tests/cases/run; the entry that the ABI document's IR calls is exported from M1-16's module under the document's name.
@@ -210,6 +225,7 @@ or merged during review. Ids with a letter were added during review.
 
 ### M1-18 · L2 · Write the LLVM IR text emitter for the core form
 
+- status: done
 - needs: M1-12, M1-14, M1-15, M1-13
 - flags: native-only
 - done when: `clang -c -x ir - -o /dev/null` accepts every runnable case's IR with empty stderr; a test finds none of the words nsw, nuw, inbounds, noalias, fast, nnan, ninf, nsz, arcp, contract, afn, reassoc; string bytes are hex-escaped. The test fails if it finds no runnable case.
@@ -218,6 +234,7 @@ or merged during review. Ids with a letter were added during review.
 
 ### M1-19 · L3 · Add paka build: run clang on the IR and link paka-rt
 
+- status: done
 - needs: M1-17, M1-18
 - flags: native-only
 - done when: From a clean target, `cargo test --locked --offline` and `cargo test --release --locked --offline` each alone build paka-rt, then build the ABI document's IR and light.paka into executables; both print the line and exit 0; a missing clang gives one diagnostic and status 1.
@@ -226,6 +243,7 @@ or merged during review. Ids with a letter were added during review.
 
 ### M1-20 · L2 · Run every runnable case natively and compare with the interpreter
 
+- status: done
 - needs: M1-13, M1-19
 - flags: native-only
 - done when: cargo test runs each runnable case both ways; stdout and status match the hand-written expectation, and stdout, stderr and status match each other; a comparer self-test rejects a planted mismatch; death by signal counts as a mismatch; the /dev/full run and the closed-pipe run each give the same status both ways.
@@ -240,23 +258,27 @@ or merged during review. Ids with a letter were added during review.
 - Tasks that build undecided designs (M2-17, 22, 29, 30, 31, 34, 35, 36, 37) are graded for the likely outcome. Re-grade them once M2-09, M2-10, M2-12 and M2-15 are approved.
 - No native work: the M1 emitter is only kept compiling and refuses every other core node. One exception: paka-rt's run loop follows M2-15 in M2-36 and M2-37.
 - Packages and dependencies between programs are not decided in any milestone.
-- M1 cases that stop holding: the six M1-06 reject cases (comment, hole, example, match, integer literal, labelled argument) and any M1 case M2-02 lists under a changed rule. The pull request whose code first makes such a case fail deletes it in a commit before the code, cites the decision, and changes nothing else under tests/cases. M2-07 and M2-11 hit this first. M2-38 to M2-42 cover the construct from then on.
+- M1 cases that stop holding: the 27 cases listed in section 4 of docs/decisions/M2-02.md, and the cases it lists there under M2-03 and M2-15. The pull request whose code first makes such a case fail deletes it in a commit before the code, cites the decision, and changes nothing else under tests/cases. M2-07 and M2-11 hit this first. M2-38 to M2-42 cover the construct from then on.
 - Can start first: M2-01, M2-02, M2-04.
 - The owner is needed in: M2-01, M2-02, M2-03, M2-05, M2-06, M2-09, M2-10, M2-12, M2-14, M2-15, M2-41b.
 
 ### M2-01 · L5 · Decide which kinds of experiment tasks the headless language must cover
 
+- status: done
 - needs: nothing
 - flags: decision, owner
 - done when: Owner approves a written list of task classes, each naming the types, effects and data shapes it needs, including whether graphs are in.
 - why this level: Sets the language's scope and the fairness of the stop-or-go experiment; cannot be redone after measuring.
+- note: Decided: the full record is docs/decisions/M2-01.md.
 
 ### M2-02 · L5 · Decide bindings, control flow, return, argument labels, discarded results and names
 
+- status: done
 - needs: M1-06
 - flags: decision, owner
 - done when: Owner approves a proposal with alternatives and a grammar for every statement and definition form, with accepted and rejected samples. It also fixes comment syntax and which definition a comment belongs to, and lists each M1-06 token, grammar, name and type rule as kept or changed; the start, end and missing-grant rules are left to M2-15. It fixes the name rules: shadowing, unqualified variant names, two enums sharing a variant name, and which files make one program. For each changed rule it lists the M1 cases under tests/cases that stop holding.
 - why this level: Shapes every program a model writes; one spelling per construct cannot change after the experiment.
+- note: Decided: the full record, with the grammar, the exact newline rule and the new diagnostic codes, is docs/decisions/M2-02.md. Nesting is limited to 64 open brackets; the 65th opener is the error `nesting-too-deep`.
 
 ### M2-03 · L5 · Decide the primitive types and the exact meaning of every operation
 
@@ -267,11 +289,12 @@ or merged during review. Ids with a letter were added during review.
 
 ### M2-04 · L2 · Give every error one shape, printed as text or JSON
 
+- status: done
 - needs: nothing
 - flags: none
 - done when: paka check on a file with a seeded error prints the hand-written expected text and JSON, with offending text and fix fields. Each error kind declares whether it carries expected and found types and whether it carries a suggested fix.
 - why this level: The fields are given by paper section 6; one module, routine formatting.
-- note: Fields: stable kind id, definition name, message, file and offsets, offending text, expected type, found type, optional fix (replacement text for a span). The first line of the text form is M1's `path:line:col: error[code]: message`. The pull request gives one worked sample as text and the same error as JSON with exact key names; positions are byte offsets plus 1-based line and column.
+- note: Fields: stable kind id, definition name, message, file and offsets, offending text, expected type, found type, optional fix (replacement text for a span). The first line of the text form is M1's `path:line:col: error[code]: message`. The pull request gives one worked sample as text and the same error as JSON with exact key names; positions are byte offsets plus 1-based line and column. Merged: `paka check <file> [--json]` prints the one-line form plus one line per field, or one JSON object; `paka run` and `paka build` still print the one line. M2-18 writes the command and the field names into the reference.
 
 ### M2-05 · L5 · Decide ownership: copies, inout exclusivity, borrows, recursive types, changing items in place
 
@@ -322,7 +345,7 @@ or merged during review. Ids with a letter were added during review.
 - flags: decision, owner
 - done when: Owner approves the types, their operations, the stale-handle rule and iteration order, with samples for a tree and a graph.
 - why this level: Fixes the memory model for graph data; programs will depend on it everywhere.
-- note: If M2-01 rules graphs out, the pool part is dropped: M2-10 covers shared data with a tree sample only, and the owner records pools as not decided.
+- note: M2-01 put graphs in by list index and pools are not built: the pool part is dropped, shared data is covered with a tree sample only, and pools are recorded as not decided.
 
 ### M2-11 · L3 · Parse all definitions, statements, expressions, patterns and holes
 
@@ -330,6 +353,7 @@ or merged during review. Ids with a letter were added during review.
 - flags: none
 - done when: Parser tests with hand-written trees pass; one broken definition gives an error with its offending text and leaves the others parsed.
 - why this level: Recursive descent with recovery per definition and helpful messages; details are easy to get wrong.
+- note: Follows docs/decisions/M2-02.md: the newline, comment and nesting rules of its sections 1.5 to 1.7, the grammar of section 2 and the codes of section 5.
 
 ### M2-12 · L5 · Decide the one error-handling mechanism
 
@@ -372,6 +396,7 @@ or merged during review. Ids with a letter were added during review.
 - flags: none
 - done when: Parser tests with hand-written trees pass for every new form in the two decisions, including their error cases.
 - why this level: Telling generic brackets from comparison operators is a known parser trap; a mistake mis-parses silently.
+- note: Follows docs/decisions/M2-02.md: the newline, comment and nesting rules of its sections 1.5 to 1.7, the grammar of section 2 and the codes of section 5.
 
 ### M2-18 · L4 · Write the language reference from the approved decisions, within 8,000 tokens
 
@@ -394,6 +419,7 @@ or merged during review. Ids with a letter were added during review.
 - flags: none
 - done when: Tests pass: missing variants are listed with a fix, a hole takes its expected type, example bodies follow the decision.
 - why this level: Exhaustiveness and expected-type holes are known techniques with easy-to-miss cases.
+- note: Follows docs/decisions/M2-02.md: the newline, comment and nesting rules of its sections 1.5 to 1.7, the grammar of section 2 and the codes of section 5.
 
 ### M2-21 · L4 · Enforce copies, inout exclusivity and borrow rules in the checker
 
@@ -493,7 +519,7 @@ or merged during review. Ids with a letter were added during review.
 - flags: none
 - done when: Decision samples pass as golden tests, including the stale-handle trap, reuse after removal and fixed iteration order.
 - why this level: Generation-checked handles and in-place node change must match the ownership rule.
-- note: If M2-01 rules graphs out, the pool part is dropped: M2-10 covers shared data with a tree sample only, and the owner records pools as not decided.
+- note: M2-01 put graphs in by list index and pools are not built: the pool part is dropped, shared data is covered with a tree sample only, and pools are recorded as not decided.
 
 ### M2-36 · L3 · Run a headless app: first message, message loop, exit
 
@@ -541,7 +567,7 @@ or merged during review. Ids with a letter were added during review.
 - flags: none
 - done when: Expected results merged before any run, written without access to a built paka; every decision point in scope has a case.
 - why this level: The accept and reject boundary is subtle; a wrong expectation silently blesses a wrong rule.
-- note: The caller runs this agent with no paka binary and no way to build one (no cargo, or a checkout holding only the reference, the decision records and the tests folder); the agent must not build or run paka; the cases land in a not-yet-required list. M2-41b runs them. If M2-01 rules graphs out, the pool part is dropped: M2-10 covers shared data with a tree sample only, and the owner records pools as not decided.
+- note: The caller runs this agent with no paka binary and no way to build one (no cargo, or a checkout holding only the reference, the decision records and the tests folder); the agent must not build or run paka; the cases land in a not-yet-required list. M2-41b runs them. M2-01 put graphs in by list index and pools are not built: the pool part is dropped, shared data is covered with a tree sample only, and pools are recorded as not decided.
 
 ### M2-41 · L3 · Write conformance tests for apps, effects, grants, traps, examples and holes
 
@@ -678,7 +704,7 @@ or merged during review. Ids with a letter were added during review.
 
 - needs: M3-04, M3-06
 - flags: repeat
-- done when: Task loader accepts the batch; each expected result has written hand working; a second-agent review finds no behaviour a statement leaves to the language.
+- done when: Task loader accepts the batch; each expected result has written hand working; a second-agent review finds no behaviour a statement leaves to the language. Each statement defines at least one error condition with an exact message and the one error status.
 - why this level: A vague statement or one wrong hand-derived answer silently corrupts every run of that task.
 - note: One task per batch; M3-04's list fixes how many (six for 30 tasks).
 
@@ -753,7 +779,7 @@ or merged during review. Ids with a letter were added during review.
 
 - needs: M3-10, M3-21
 - flags: none
-- done when: One command rebuilds the report's three metrics per language and per task from the merged raw logs and rulings; every protocol deviation is listed. The report lists every difference between the `protocol` and `run` tags. The report command prints the `protocol` commit's date and the earliest model-call time across dry-run, calibration and counted logs, and fails if the tag is not older.
+- done when: One command rebuilds the report's three metrics per language, per task and per M2-01 class from the merged raw logs and rulings; every protocol deviation is listed. The report lists every difference between the `protocol` and `run` tags. The report command prints the `protocol` commit's date and the earliest model-call time across dry-run, calibration and counted logs, and fails if the tag is not older. The report lists what the verdict does not measure: pools, float ties, Unicode, user generics, closures, standard input, GUI, speed and overflow.
 - why this level: Runs an existing tool on fixed data; only care needed is listing every deviation.
 
 ### M3-23 · L5 · Write the go / no-go analysis for the owner's decision
