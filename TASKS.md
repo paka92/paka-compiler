@@ -128,7 +128,7 @@ or merged during review. Ids with a letter were added during review.
 
 - needs: nothing
 - flags: decision, owner
-- done when: Owner approves the spec: tokens, grammar, name and type rules; Print and Exit meanings, including standard output, standard error and status when a write fails or the pipe is closed; provisional start (initial state or none, first message), end and missing-grant rules; the list of diagnostic codes, unreadable file and missing clang included; and case files with expected results under `tests/cases-pending/<stage>/<name>/` for the stages lex, parse, check and run. A case folder holds the source, the expected stdout and the expected status, or for a reject its path, line, column and code; the path is the file name inside the case folder. `run/light_no_console` fixes the exact output and status of light.paka without Console. There is a reject case for each of: comment, hole, example, match, integer literal, labelled argument. The pull request adds `examples/light.paka`. The spec fixes the status when standard output cannot be written: /dev/full, and a pipe whose read end is closed.
+- done when: Owner approves the spec: tokens, grammar, name and type rules; Print and Exit meanings, including standard output, standard error and status when a write fails or the pipe is closed; provisional start (initial state or none, first message), end and missing-grant rules; the list of diagnostic codes, unreadable file and missing clang included; and case files with expected results under `tests/cases-pending/<stage>/<name>/` for the stages lex, parse, check and run. A case folder holds the source, the expected stdout and the expected status, or for a reject its path, line, column and code; the path is the file name inside the case folder. `run/light_no_console` fixes the exact output and status of light.paka without Console. There is a reject case for each of: comment, hole, example, match, integer literal, labelled argument. The pull request adds `examples/light.paka`. The spec fixes the status when standard output cannot be written: /dev/full, and a pipe whose read end is closed. An accept case may also hold the expected standard error; without that file standard error must be empty.
 - why this level: Must be exact enough to build from while settling nothing the paper leaves open beyond this program.
 - note: light.paka is a headless app that answers its first message with Print of `let there be light` and then Exit, with grants [Console]. On both back ends it writes that line and a newline to standard output and exits 0. The subset is exactly what this program needs. The start, end and grant rules are provisional and follow GENESIS 3.5 (the runtime performs only the effects the grants allow) and section 4 (the runtime sends the first message), narrowed for M1: the first message has no payload, command-line arguments are not delivered, enum variants carry no payload. M2-15 makes the lasting ruling. A reject case fixes path, line, column and code, not the message wording. Exit statuses 1 and 2 are taken by the tool.
 
@@ -143,7 +143,7 @@ or merged during review. Ids with a letter were added during review.
 
 - needs: M1-07
 - flags: none
-- done when: cargo test runs every case folder under tests/cases/<stage>/; the spec's lexical reject cases pass; the lex group is moved with git mv, R100 lines only, and `tests/cases-pending/lex` no longer exists; runner self-tests report failure for each of: a wrong stdout byte, a missing final newline, a wrong status, a wrong line, column or code, a case folder with no expectation file.
+- done when: cargo test runs every case folder under tests/cases/<stage>/; the spec's lexical reject cases pass; the lex group is moved with git mv, R100 lines only, and `tests/cases-pending/lex` no longer exists; runner self-tests report failure for each of: a wrong stdout byte, a missing final newline, a wrong status, a wrong line, column or code, a case folder with no expectation file. The runner also compares standard error of an accept case byte for byte, and its self-tests report failure for a wrong standard-error byte and for a case folder without a source file.
 - why this level: A golden-file runner: walk case folders in sorted order, run paka, compare; no update mode allowed.
 - note: The runner starts `paka run <file>` with the case folder as working directory. No mode that rewrites expectations.
 
@@ -174,6 +174,7 @@ or merged during review. Ids with a letter were added during review.
 - flags: none
 - done when: `paka run` passes every runnable case in the spec and both light.paka grant variants, against the spec's hand-written expectations. Its group is moved with git mv, R100 lines only, and `tests/cases-pending/run` no longer exists. A run with standard output on /dev/full, and a run whose standard output is a pipe with its read end already closed, each give the spec's status.
 - why this level: For this subset it evaluates one function that returns a list of constants; the rules come from the spec.
+- note: The interpreter flushes after every Print and prints the spec's standard-error lines exactly; M1-20 compares standard error.
 
 ### M1-14 · L4 · Decide how compiled code and the runtime share data and calls
 
@@ -197,7 +198,7 @@ or merged during review. Ids with a letter were added during review.
 - flags: unsafe, native-only
 - done when: Tests decode each ABI value built by hand as raw bytes; Cargo.lock is updated; the crate denies unsafe outside one module; paka-rt's lib.rs denies `clippy::undocumented_unsafe_blocks`, so the M1-01 clippy command fails on an unsafe block without a safety comment.
 - why this level: Unsafe reads of memory laid out by compiled code; no Miri here, so mistakes stay silent.
-- note: No allocator unless the approved ABI needs heap memory. Edition 2024 needs `#[unsafe(no_mangle)]`, so every exported function lives in the one unsafe module.
+- note: No allocator unless the approved ABI needs heap memory. Edition 2024 needs `#[unsafe(no_mangle)]`, so every exported function lives in the one unsafe module. Per the M1-14 decision: it decodes three shapes made only of 8-byte words (string, effect, list header), refuses the cases the ABI document lists, needs no allocator, and holds the exported entry and the one safe wrapper that sets the broken-pipe signal to ignored.
 
 ### M1-17 · L3 · Add the paka-rt run loop: first message, grants, Print, Exit
 
@@ -205,7 +206,7 @@ or merged during review. Ids with a letter were added during review.
 - flags: native-only, unsafe
 - done when: Unit tests drive the loop with a fake update function and a captured output, matching the expected stdout and status of every case under tests/cases/run; the entry that the ABI document's IR calls is exported from M1-16's module under the document's name.
 - why this level: Calls compiled code across the ABI and enforces grants; a missed grant check is silent.
-- note: Stays level 3 only while its unsafe is the export attribute on that entry and the one call into compiled code; all decoding of the returned data stays in M1-16's module. The loop follows the runtime rules of the ABI document approved in M1-14.
+- note: Stays level 3 only while its unsafe is the export attribute on that entry and the one call into compiled code; all decoding of the returned data stays in M1-16's module. The loop follows the runtime rules of the ABI document approved in M1-14. Per the M1-14 decision: the entry `paka_rt1_run` takes five plain arguments; the loop catches panics and returns 4, treats a non-zero status from update as an internal error and prints the spec's lines; the fake update is an ordinary `extern "C"` function.
 
 ### M1-18 · L2 · Write the LLVM IR text emitter for the core form
 
@@ -213,6 +214,7 @@ or merged during review. Ids with a letter were added during review.
 - flags: native-only
 - done when: `clang -c -x ir - -o /dev/null` accepts every runnable case's IR with empty stderr; a test finds none of the words nsw, nuw, inbounds, noalias, fast, nnan, ninf, nsz, arcp, contract, afn, reassoc; string bytes are hex-escaped. The test fails if it finds no runnable case.
 - why this level: For this subset the emitter is a text template fixed by the ABI document's own IR.
+- note: Per the M1-14 decision: internal functions are named `p_` plus the Paka name, the result is stored as one whole record with no getelementptr, and no datalayout line is written.
 
 ### M1-19 · L3 · Add paka build: run clang on the IR and link paka-rt
 
@@ -220,7 +222,7 @@ or merged during review. Ids with a letter were added during review.
 - flags: native-only
 - done when: From a clean target, `cargo test --locked --offline` and `cargo test --release --locked --offline` each alone build paka-rt, then build the ABI document's IR and light.paka into executables; both print the line and exit 0; a missing clang gives one diagnostic and status 1.
 - why this level: First contact between emitted IR, clang and the runtime; layout mismatches show up here and need cross-module debugging.
-- note: The test helper runs `cargo build -p paka-rt --locked --offline` in the same profile before any native test. `paka build` finds libpaka_rt.a next to its own executable and clang on PATH; clang runs at -O2. Command: `paka build <file> -o <output>`.
+- note: The test helper runs `cargo build -p paka-rt --locked --offline` in the same profile before any native test. `paka build` finds libpaka_rt.a next to its own executable and clang on PATH; clang runs at -O2. Command: `paka build <file> -o <output>`. Per the M1-14 decision: uses the ABI document's link command with the system libraries it lists and never passes an LTO flag; a stale runtime library shows up as the linker's undefined-reference error and is reported as one diagnostic under the spec's code for a failed clang run, status 1.
 
 ### M1-20 · L2 · Run every runnable case natively and compare with the interpreter
 
@@ -228,6 +230,7 @@ or merged during review. Ids with a letter were added during review.
 - flags: native-only
 - done when: cargo test runs each runnable case both ways; stdout and status match the hand-written expectation, and stdout, stderr and status match each other; a comparer self-test rejects a planted mismatch; death by signal counts as a mismatch; the /dev/full run and the closed-pipe run each give the same status both ways.
 - why this level: The M1-08 runner called twice plus a comparison.
+- note: Status 4 never appears in an expectation, so an internal error is always a mismatch.
 
 ## M2 — The headless language, complete, in the interpreter
 
