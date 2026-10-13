@@ -1362,6 +1362,7 @@ fn link(g: inout Graph, a: Int, b: Int) {
 - Cycles: Values cannot form cycles: there are no references, only owned values and Int positions. A cycle in a graph is a cycle of positions.
 - Cost of copies: Left to M4-33 (skip a copy at a last use) and to M6 measurements. The language makes no promise about copy cost beyond M2-05's: a read-only argument is passed without copying.
 - The names Shared, Pool and Handle: Not reserved. A user may name a type Pool or Handle, which are ordinary names in tasks; a reservation would cost counted edits before the go/no-go for a feature that does not exist. If a built-in takes one of the names later, the few programs that use it are renamed mechanically; names can be reserved at any later point.
+- Changed in the final record: Nothing: both picks stand. The record adds the tree and graph samples spelled out, the refused spellings, the accepted cost and what evidence reopens the question.
 
 ### M2-10 · what this changes in TASKS.md
 

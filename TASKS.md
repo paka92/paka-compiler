@@ -78,13 +78,13 @@ or merged during review. Ids with a letter were added during review.
 | Milestone | Tasks | L1 | L2 | L3 | L4 | L5 | Owner decisions |
 |---|---|---|---|---|---|---|---|
 | M1 Let there be light | 17 | 1 | 9 | 4 | 3 | 0 | 2 |
-| M2 The headless language, complete, in the interpreter | 47 | 0 | 7 | 22 | 8 | 10 | 10 |
+| M2 The headless language, complete, in the interpreter | 46 | 0 | 7 | 21 | 8 | 10 | 10 |
 | M3 The experiment: go or stop | 22 | 0 | 6 | 5 | 6 | 5 | 6 |
-| M4 Dev mode for headless programs | 52 | 0 | 8 | 18 | 26 | 0 | 7 |
+| M4 Dev mode for headless programs | 51 | 0 | 8 | 18 | 25 | 0 | 7 |
 | M5 Live GUI on Linux | 43 | 0 | 3 | 20 | 13 | 7 | 9 |
-| M6 Release mode | 36 | 1 | 7 | 10 | 16 | 2 | 3 |
+| M6 Release mode | 34 | 1 | 7 | 10 | 14 | 2 | 3 |
 | M7 Evidence and gates | 16 | 1 | 4 | 3 | 6 | 2 | 3 |
-| **Total** | **233** | 3 | 44 | 82 | 78 | 26 | 40 |
+| **Total** | **229** | 3 | 44 | 81 | 75 | 26 | 40 |
 
 ## M1 — Let there be light
 
@@ -354,11 +354,12 @@ or merged during review. Ids with a letter were added during review.
 
 ### M2-10 · L5 · Decide shared immutable data and pools with handles
 
+- status: done
 - needs: M2-01, M2-05, M2-09
 - flags: decision, owner
 - done when: Owner approves the types, their operations, the stale-handle rule and iteration order, with samples for a tree and a graph.
 - why this level: Fixes the memory model for graph data; programs will depend on it everywhere.
-- note: M2-01 put graphs in by list index and pools are not built: the pool part is dropped, shared data is covered with a tree sample only, and pools are recorded as not decided.
+- note: M2-01 put graphs in by list index and pools are not built: the pool part is dropped, shared data is covered with a tree sample only, and pools are recorded as not decided. Decided: nothing is built; the record with the tree and graph samples is docs/decisions/M2-10.md.
 
 ### M2-11 · L3 · Parse all definitions, statements, expressions, patterns and holes
 
@@ -521,7 +522,7 @@ or merged during review. Ids with a letter were added during review.
 
 - needs: M2-14, M2-31, M2-34
 - flags: none
-- done when: Every function in the approved list outside M2-34 and M2-35 has hand-written golden tests (String functions for normal, empty and non-ASCII input); all pass; a test fails if an entry of the built-in table has no golden test.
+- done when: Every function in the approved list outside M2-34 has hand-written golden tests (String functions for normal, empty and non-ASCII input); all pass; a test fails if an entry of the built-in table has no golden test.
 - why this level: Each function is small with a clear spec; routine code.
 
 ### M2-34 · L3 · Implement the built-in collection types and their functions
@@ -530,14 +531,6 @@ or merged during review. Ids with a letter were added during review.
 - flags: none
 - done when: Every collection function in the approved list has hand-written golden tests, including bounds traps and iteration order; all pass.
 - why this level: Generic signatures, function arguments and in-place change meet here; several modules.
-
-### M2-35 · L3 · Implement shared immutable data and pools with handles
-
-- needs: M2-10, M2-21, M2-29
-- flags: none
-- done when: Decision samples pass as golden tests, including the stale-handle trap, reuse after removal and fixed iteration order.
-- why this level: Generation-checked handles and in-place node change must match the ownership rule.
-- note: M2-01 put graphs in by list index and pools are not built: the pool part is dropped, shared data is covered with a tree sample only, and pools are recorded as not decided.
 
 ### M2-36 · L3 · Run a headless app: first message, message loop, exit
 
@@ -581,11 +574,11 @@ or merged during review. Ids with a letter were added during review.
 
 ### M2-40 · L4 · Write conformance tests for ownership, shared data and pools
 
-- needs: M2-18, M2-21, M2-35
+- needs: M2-18, M2-21
 - flags: none
 - done when: Expected results merged before any run, written without access to a built paka; every decision point in scope has a case.
 - why this level: The accept and reject boundary is subtle; a wrong expectation silently blesses a wrong rule.
-- note: The caller runs this agent with no paka binary and no way to build one (no cargo, or a checkout holding only the reference, the decision records and the tests folder); the agent must not build or run paka; the cases land in a not-yet-required list. M2-41b runs them. M2-01 put graphs in by list index and pools are not built: the pool part is dropped, shared data is covered with a tree sample only, and pools are recorded as not decided. Follows docs/decisions/M2-05.md, including its two tightened call rules.
+- note: The caller runs this agent with no paka binary and no way to build one (no cargo, or a checkout holding only the reference, the decision records and the tests folder); the agent must not build or run paka; the cases land in a not-yet-required list. M2-41b runs them. M2-01 put graphs in by list index and pools are not built: the pool part is dropped, shared data is covered with a tree sample only, and pools are recorded as not decided. Follows docs/decisions/M2-05.md, including its two tightened call rules. Follows docs/decisions/M2-10.md: runs its tree and graph samples and one case showing a value used twice in a tree is two independent copies. M2-35 is dropped.
 
 ### M2-41 · L3 · Write conformance tests for apps, effects, grants, traps, examples and holes
 
@@ -1068,13 +1061,6 @@ or merged during review. Ids with a letter were added during review.
 - done when: Fixtures for inout fields, list items and slices match the interpreter; the ledger shows no allocation for a borrow.
 - why this level: Borrowed parts must point into the caller's value without copying; writes through inout must land exactly.
 
-### M4-35 · L4 · Emit shared values and pools with handles
-
-- needs: M4-33
-- flags: unsafe, native-only
-- done when: Fixtures match the interpreter with a clean ledger; using a handle after its node is removed traps.
-- why this level: Unsafe reference counts and handle generations; a miss is a silent use after free.
-
 ### M4-36 · L4 · Drive compiled headless apps: first message, effects, console and file grants
 
 - needs: M4-33, M4-34, M4-37b
@@ -1143,10 +1129,11 @@ or merged during review. Ids with a letter were added during review.
 
 ### M4-42 · L4 · Sort dev-mode differences into one fix task per root cause, then see them closed
 
-- needs: M4-28, M4-29, M4-30, M4-34, M4-35, M4-38, M4-40, M4-31b, M4-37b, M4-38b
+- needs: M4-28, M4-29, M4-30, M4-34, M4-38, M4-40, M4-31b, M4-37b, M4-38b
 - flags: native-only, open-ended
 - done when: Every differing or unsupported case in M4-40's report is assigned to a fix task; the caller adds one level-4 task per root cause (done when its tests leave the differ and unsupported lists and a regression test is added); with all merged, the differential command reports zero differ and zero unsupported with a clean ledger.
 - why this level: Root causes span checker, code generator and runtime; the remaining divergences are the subtle ones.
+- note: M4-35 is dropped by docs/decisions/M2-10.md.
 
 ### M4-43 · L4 · Compare dev mode with the interpreter after random edit sequences
 
@@ -1616,20 +1603,6 @@ or merged during review. Ids with a letter were added during review.
 - done when: M2's collection conformance cases agree in all three modes.
 - why this level: Same unsafe container as dev mode with inline fast paths; a layout or order mismatch is silent.
 
-### M6-12 · L4 · Lower shared values with inline reference-count updates
-
-- needs: M6-10, M6-11
-- flags: unsafe, native-only
-- done when: Shared-data conformance group matches the interpreter; M4-25's ledger is clean at exit; freeing happens only in the runtime slow path.
-- why this level: A missed or extra count update is a silent leak or use after free.
-
-### M6-13 · L4 · Lower pools and handles with inline stale-handle checks
-
-- needs: M6-10, M6-11
-- flags: unsafe, native-only
-- done when: Pool conformance group matches the interpreter, including stale-handle traps after a slot is reused; M4-25's ledger is clean at exit.
-- why this level: A wrong generation check lets a stale handle read live data without any trap.
-
 ### M6-14 · L4 · Specialize generic definitions per concrete type in release builds
 
 - needs: M6-11
@@ -1639,7 +1612,7 @@ or merged during review. Ids with a letter were added during review.
 
 ### M6-15 · L3 · Lower the remaining constructs: function values, error handling, effect values
 
-- needs: M6-11, M6-12
+- needs: M6-11
 - flags: native-only
 - done when: Their conformance groups leave the skip file and match the interpreter.
 - why this level: Several small lowerings with known techniques; their forms were fixed in milestone 2.
@@ -1692,10 +1665,11 @@ or merged during review. Ids with a letter were added during review.
 
 ### M6-21 · L4 · Extend the program generator to reach release-only risks
 
-- needs: M6-08, M6-11b, M6-13, M6-14, M6-15, M6-16, M6-19, M6-20, M4-21
+- needs: M6-08, M6-11b, M6-14, M6-15, M6-16, M6-19, M6-20, M4-21
 - flags: native-only
 - done when: With a fixed seed the fuzzer finds each of ten hand-planted release back-end bugs within ten minutes; the bug list is in the pull request. The ten bugs include at least one each of: a folded float operation, a wrongly removed bounds check, a wrongly removed overflow check, a missed stack check after inlining, a wrong reference-count update, a wrong stale-handle check, a wrong generic instance. The generator's coverage report shows every core-form node kind compiled by release, none rejected, except that a generated program with a hole must be refused by `paka build`.
 - why this level: Programs must pass ownership and exclusivity checks yet still reach rare traps and optimizer paths.
+- note: No reference counts or handles exist (docs/decisions/M2-10.md): the two planted bugs of those kinds are replaced or the count lowered by the owner.
 
 ### M6-22 · L4 · Build the hard test suite for the inout overlap check
 
@@ -1766,17 +1740,18 @@ or merged during review. Ids with a letter were added during review.
 
 ### M6-29 · L3 · Write the pointer-heavy benchmarks in Paka, Rust and C++
 
-- needs: M6-02, M6-11b, M6-12, M6-13, M6-14, M6-15, M6-27
+- needs: M6-02, M6-11b, M6-14, M6-15, M6-27
 - flags: native-only
 - done when: Every agreed parser and graph program exists in three languages and the runner reports matching checksums.
 - why this level: Larger programs whose data structures must stay comparable across three ownership models.
 
 ### M6-30 · L3 · Add measurement-only builds that each omit one check family
 
-- needs: M6-02, M6-12, M6-13, M6-19
+- needs: M6-02, M6-19
 - flags: native-only
 - done when: Only a compiler built with the `measure` feature accepts the switch; the normal compiler rejects it; such binaries print a warning banner. For each family named in M6-02 (bounds checks, reference-count updates, handle checks) a hand-written fixture built with the switch has none of that family's checks in its optimized IR; without the switch, IR for the conformance suite is byte-identical to the normal compiler's.
 - why this level: Threads a switch through several lowerings without changing normal output.
+- note: Measures bounds checks and copies in place of reference-count updates and handle checks (docs/decisions/M2-10.md).
 
 ### M6-31 · L3 · Measure handler state-copy cost and dev-mode slowdown on a visual app
 
