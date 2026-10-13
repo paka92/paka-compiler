@@ -5,6 +5,9 @@ version = 4
 [[package]]
 name = "paka"
 version = "0.0.0"
+dependencies = [
+ "paka-rt",
+]
 
 [[package]]
 name = "paka-rt"

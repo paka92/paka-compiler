@@ -6,6 +6,8 @@ Rules that hold from the first commit:
 - No `HashMap` or `HashSet`: their iteration order is random. Use `BTreeMap` and `BTreeSet`.
 - No `f32` or `f64` method whose precision is not deterministic (`sin`, `powf`, `exp`, `ln` and the
   rest of the list in `clippy.toml`). Clippy rejects them.
+- `f64` maths lives in `paka-rt/src/ops` alone: clippy rejects float arithmetic and the `f64`
+  methods elsewhere, and a test fails on any other file that names `f64` or `f32`.
 - Overflow checks stay on in dev and release.
 - `unsafe` is forbidden in the `paka` crate. Only one module of `paka-rt` may use it.
 - Expected outputs are written by hand and committed before the code that produces them.
