@@ -1,7 +1,7 @@
 //! The run loop, driven by fake update functions and captured sinks. Nothing here is unsafe.
 
+use super::{Stop, buffer, run_with, stop};
 use crate::abi::{Effect, List, Update, effect_of_words};
-use crate::{Stop, buffer, run_with, stop};
 use std::io::{self, ErrorKind, Write};
 use std::{fs, path::Path};
 

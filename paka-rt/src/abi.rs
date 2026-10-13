@@ -14,6 +14,7 @@ use std::{ptr, slice};
 const MAX_BYTES: u64 = i64::MAX.unsigned_abs();
 /// The longest list: the most effects that fit in `MAX_BYTES`.
 const MAX_EFFECTS: u64 = 384_307_168_202_282_325;
+const EFFECT_BYTES: u64 = 24;
 
 const PRINT: u64 = 0;
 const EXIT: u64 = 1;
@@ -23,9 +24,23 @@ const SIG_IGN: usize = 1;
 
 const _: () = assert!(size_of::<usize>() == 8);
 const _: () = assert!(size_of::<Str>() == 16 && align_of::<Str>() == 8);
-const _: () = assert!(size_of::<Effect>() == 24 && align_of::<Effect>() == 8);
+const _: () = assert!(size_of::<Effect>() as u64 == EFFECT_BYTES && align_of::<Effect>() == 8);
 const _: () = assert!(size_of::<List>() == 16 && align_of::<List>() == 8);
-const _: () = assert!(MAX_EFFECTS == MAX_BYTES / 24);
+const _: () = assert!(MAX_EFFECTS == MAX_BYTES / EFFECT_BYTES);
+
+/// `count` as a slice length, when `count` items of `size` bytes at `addr` may become one slice:
+/// `addr` is not 0, the items take at most 2^63 - 1 bytes, and `addr` plus those bytes is at
+/// most 2^64 - 1. So a range whose last byte is at the last address is refused too.
+fn span(addr: usize, count: u64, size: u64) -> Option<usize> {
+    let bytes = count
+        .checked_mul(size)
+        .filter(|&bytes| bytes <= MAX_BYTES)?;
+    addr.checked_add(usize::try_from(bytes).ok()?)?;
+    if addr == 0 {
+        return None;
+    }
+    usize::try_from(count).ok()
+}
 
 /// The function named by `update:` (ABI section 3).
 pub type Update = extern "C" fn(msg: u64, out: &mut List) -> i32;
@@ -61,21 +76,17 @@ impl Str {
         Str { ptr, len }
     }
 
-    /// The string's bytes, or `None` when the string is refused: a null pointer with a length
-    /// other than 0, a length above 2^63 - 1, or bytes that would run past the last address.
+    /// The string's bytes, or `None` when the string is refused. With a length other than 0 that
+    /// is: a null pointer, a length above 2^63 - 1, or pointer + length above 2^64 - 1.
     pub fn bytes(&self) -> Option<&'static [u8]> {
         if self.len == 0 {
             return Some(&[]);
         }
-        if self.ptr.is_null() || self.len > MAX_BYTES {
-            return None;
-        }
-        let len = usize::try_from(self.len).ok()?;
-        self.ptr.addr().checked_add(len)?;
+        let len = span(self.ptr.addr(), self.len, 1)?;
         // SAFETY: `from_raw_parts` asks for a non-null pointer, aligned for `u8` (any pointer
         // is), at most `isize::MAX` bytes that do not wrap around the address space, and `len`
-        // readable, initialized bytes that nothing writes or frees during `'static`. The first
-        // four are checked above. The last cannot be checked: it is the module invariant, owed
+        // readable, initialized bytes that nothing writes or frees during `'static`. `span`
+        // checked the first four. The last cannot be checked: it is the module invariant, owed
         // by whoever made this value.
         Some(unsafe { slice::from_raw_parts(self.ptr, len) })
     }
@@ -139,8 +150,8 @@ impl List {
     }
 
     /// The list's effects, not yet decoded. Nothing is read through the pointer here. Refused:
-    /// a pointer off an 8-byte boundary, a null pointer with a count other than 0, a count above
-    /// `MAX_EFFECTS`, or effects that would run past the last address.
+    /// a pointer off an 8-byte boundary, whatever the count; and with a count other than 0, a
+    /// null pointer, a count above `MAX_EFFECTS`, or pointer + 24 x count above 2^64 - 1.
     pub fn effects(&self) -> Result<&'static [Effect], Refused> {
         self.slice().ok_or(Refused::EffectList)
     }
@@ -152,16 +163,12 @@ impl List {
         if self.count == 0 {
             return Some(&[]);
         }
-        if self.ptr.is_null() || self.count > MAX_EFFECTS {
-            return None;
-        }
-        let count = usize::try_from(self.count).ok()?;
-        let bytes = count.checked_mul(size_of::<Effect>())?;
-        self.ptr.addr().checked_add(bytes)?;
+        let count = span(self.ptr.addr(), self.count, EFFECT_BYTES)?;
         // SAFETY: `from_raw_parts` asks for a non-null pointer aligned for `Effect`, at most
         // `isize::MAX` bytes that do not wrap around the address space, and `count` readable,
-        // initialized effects that nothing writes or frees during `'static`. The first four are
-        // checked above, and any three initialized words are a valid `Effect`. That the memory
+        // initialized effects that nothing writes or frees during `'static`. The alignment
+        // is checked above and `span` checked the other three, and any three initialized words
+        // are a valid `Effect`. That the memory
         // is there cannot be checked: it is the module invariant, owed by whoever made this
         // value.
         Some(unsafe { slice::from_raw_parts(self.ptr, count) })
@@ -186,10 +193,15 @@ pub fn ignore_sigpipe() {
 ///
 /// # Safety
 ///
-/// `name` and `name_len` are a string as ABI section 2 defines it. `update` is null or a function
-/// that keeps ABI section 3: it writes one list through `out`, keeps no pointer and does not
-/// unwind. Every list it stores, and every effect in it, is as section 2 defines it: each pointer
-/// is null or points at constants that stay readable for the stated size while the process lives.
+/// `name` and `name_len` are a string as ABI section 2 defines it.
+///
+/// `update` is null or a function that keeps ABI section 3 for every message word and however
+/// often it is called: `Update` is a safe type, so safe code may call it with anything. It writes
+/// at most the 16 bytes of `out`, reads nothing through it, keeps no pointer and does not unwind.
+///
+/// Every list `update` stores is as section 2 defines it: all `count` effects are readable, and
+/// each effect's pointer is null or points at its `len` bytes, unwritten and unfreed for the
+/// life of the process.
 // SAFETY: no other symbol of a Paka executable has this name: compiled functions are prefixed
 // `p_` (ABI section 11).
 #[unsafe(no_mangle)]
@@ -222,13 +234,13 @@ pub(crate) const fn effect_of_words(words: [u64; 3]) -> Effect {
 mod tests {
     use super::*;
     use crate::INTERNAL_ERROR;
+    use std::io::{self, ErrorKind, Write};
     use std::mem::transmute;
 
     /// One 8-byte ABI word. It is a pointer type so that a word holding an address keeps the
     /// right to read through it; a word holding a number is made by `n`.
     type Word = *const u8;
 
-    const SIG_DFL: usize = 0;
     const TEXT: &[u8] = b"let there be light";
     const ODD: u64 = 0x1001;
     const WILD: u64 = 0xdead_beef_0000;
@@ -243,22 +255,26 @@ mod tests {
         Box::leak(Box::new(words)).as_ptr().cast()
     }
 
-    fn string(words: [Word; 2]) -> Str {
-        // SAFETY: two words are the size of a `Str`, and every word is a valid pointer field
-        // and a valid `u64` field.
-        unsafe { transmute(words) }
+    fn number(word: Word) -> u64 {
+        word.addr() as u64
     }
 
-    fn effect(words: [Word; 3]) -> Effect {
-        // SAFETY: three words are the size of an `Effect`, and every word is valid in each of
-        // its fields.
-        unsafe { transmute(words) }
+    // The words given to these three must make a value its decoder refuses, or point at memory
+    // that lives for the whole process.
+
+    fn string([ptr, len]: [Word; 2]) -> Str {
+        let len = number(len);
+        Str { ptr, len }
     }
 
-    fn list(words: [Word; 2]) -> List {
-        // SAFETY: two words are the size of a `List`, and every word is valid in each of its
-        // fields.
-        unsafe { transmute(words) }
+    fn effect([tag, ptr, len]: [Word; 3]) -> Effect {
+        let (tag, len) = (number(tag), number(len));
+        Effect { tag, ptr, len }
+    }
+
+    fn list([ptr, count]: [Word; 2]) -> List {
+        let (ptr, count) = (ptr.cast(), number(count));
+        List { ptr, count }
     }
 
     fn words_of_effect(effect: Effect) -> [u64; 3] {
@@ -514,20 +530,65 @@ mod tests {
     }
 
     fn set_sigpipe(handler: usize) -> usize {
-        // SAFETY: 13 is a signal whose action may be changed, and both handlers used here,
-        // `SIG_DFL` and `SIG_IGN`, install no code.
+        // SAFETY: 13 is a signal whose action may be changed, and the two handlers the test
+        // passes, 0 (`SIG_DFL`) and 1 (`SIG_IGN`), install no code.
         unsafe { signal(SIGPIPE, handler) }
     }
 
-    // One test, because the signal's action belongs to the whole process.
+    /// The error of a write to a pipe whose read end is closed. With SIGPIPE at its default the
+    /// write kills the test process instead.
+    fn write_to_closed_pipe() -> ErrorKind {
+        let (reader, mut writer) = io::pipe().unwrap();
+        drop(reader);
+        writer.write(b"x").unwrap_err().kind()
+    }
+
+    // One test, because the signal's action belongs to the whole process. 0 is `SIG_DFL` and 1
+    // is `SIG_IGN`, written out so the test does not lean on the module's own constant.
     #[test]
     fn the_wrapper_and_the_entry_set_sigpipe_to_ignored() {
-        set_sigpipe(SIG_DFL);
+        set_sigpipe(0);
         ignore_sigpipe();
-        assert_eq!(set_sigpipe(SIG_DFL), SIG_IGN);
+        assert_eq!(write_to_closed_pipe(), ErrorKind::BrokenPipe);
+        assert_eq!(set_sigpipe(0), 1);
         // SAFETY: the name is 5 constant bytes and there is no update function.
         let status = unsafe { paka_rt1_run(b"light".as_ptr(), 5, None, 0, 1) };
-        assert_eq!(set_sigpipe(SIG_IGN), SIG_IGN);
+        assert_eq!(write_to_closed_pipe(), ErrorKind::BrokenPipe);
+        assert_eq!(set_sigpipe(1), 1);
         assert_eq!(status, INTERNAL_ERROR);
+    }
+
+    // The limits, at their edges. `span` forms no slice, so no memory has to be there.
+
+    const LAST: usize = usize::MAX;
+
+    #[test]
+    fn a_null_address_has_no_span() {
+        assert_eq!(span(0, 1, 1), None);
+        assert_eq!(span(0, 1, EFFECT_BYTES), None);
+        assert_eq!(span(1, 1, 1), Some(1));
+    }
+
+    #[test]
+    fn a_span_is_at_most_the_longest_string() {
+        assert_eq!(span(8, MAX_BYTES, 1), Some(MAX_BYTES as usize));
+        assert_eq!(span(8, MAX_BYTES + 1, 1), None);
+    }
+
+    #[test]
+    fn a_span_is_at_most_the_longest_list() {
+        assert_eq!(
+            span(8, MAX_EFFECTS, EFFECT_BYTES),
+            Some(MAX_EFFECTS as usize)
+        );
+        assert_eq!(span(8, MAX_EFFECTS + 1, EFFECT_BYTES), None);
+    }
+
+    #[test]
+    fn a_span_ends_at_most_at_the_last_address() {
+        assert_eq!(span(LAST - 5, 5, 1), Some(5));
+        assert_eq!(span(LAST - 4, 5, 1), None);
+        assert_eq!(span(LAST - 24, 1, EFFECT_BYTES), Some(1));
+        assert_eq!(span(LAST - 23, 1, EFFECT_BYTES), None);
     }
 }
