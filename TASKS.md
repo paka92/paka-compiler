@@ -422,11 +422,12 @@ or merged during review. Ids with a letter were added during review.
 
 ### M2-18 · L4 · Write the language reference from the approved decisions, within 8,000 tokens
 
+- status: done
 - needs: M2-02, M2-03, M2-05, M2-06, M2-09, M2-10, M2-12, M2-14, M2-15
 - flags: none
 - done when: Reference merged; the size test passes under the one counting rule (bytes divided by 3, at most 8,000, until M3 records real tokens); a checklist maps every decision point to a line; samples are marked for later testing; the reference replaces the M1-06 spec, and each M1 case affected by M2-15 gets a re-expected copy under tests/cases-pending with the decision cited; tests/cases is not touched.
 - why this level: Must be exact, complete and tiny; one wrong sentence silently misleads every model reading it.
-- note: The same counting rule is reused by M4-18, M5-41 and M7-13. Follows docs/decisions/M2-15.md for the app form, effects, grants and ending. Follows docs/decisions/M2-14.md for the built-in table.
+- note: The same counting rule is reused by M4-18, M5-41 and M7-13. Follows docs/decisions/M2-15.md for the app form, effects, grants and ending. Follows docs/decisions/M2-14.md for the built-in table. Done: spec/paka.md with its checklist and size test. The copies under tests/cases-pending wait for the run loop task, which moves them into tests/cases; two `paka check` status changes and one run case cannot be held there and are described in its NOTE.md.
 
 ### M2-19 · L3 · Check statements and expressions against signatures only
 
