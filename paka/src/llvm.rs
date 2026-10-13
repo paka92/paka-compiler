@@ -1,17 +1,96 @@
 //! The LLVM IR text emitter for the core form, written to docs/abi/m1.md sections 3, 4 and 11.
 
-use crate::lower::Core;
+use crate::lower::{Core, Effect, Grant};
 
+/// The IR text of the program; layout and wording follow docs/abi/m1.md section 11.
 // Not called by `paka build` until M1-19.
 #[allow(dead_code)]
-pub fn emit(_core: &Core) -> String {
-    String::new()
+pub fn emit(core: &Core) -> String {
+    let texts: Vec<&str> = core
+        .update
+        .iter()
+        .filter_map(|e| match e {
+            Effect::Print(text) if !text.is_empty() => Some(text.as_str()),
+            _ => None,
+        })
+        .collect();
+    let mut constants = constant("name", &core.app);
+    for (i, text) in texts.iter().enumerate() {
+        constants += &constant(&format!("s{i}"), text);
+    }
+    constants += &effect_list(&core.update);
+    let (list, count) = match core.update.is_empty() {
+        true => ("null", 0),
+        false => ("@fx", core.update.len()),
+    };
+    let grants = core.grants.iter().fold(0, |bits, g| bits | grant_bit(g));
+    let update = format!("p_{}", core.update_name);
+    format!(
+        "target triple = \"x86_64-pc-linux-gnu\"
+
+{constants}
+declare i32 @paka_rt1_run(ptr, i64, ptr, i64, i64)
+
+define internal i32 @{update}(i64 %m, ptr %out) {{
+  store {{ ptr, i64 }} {{ ptr {list}, i64 {count} }}, ptr %out
+  ret i32 0
+}}
+
+define i32 @main() {{
+  %st = call i32 @paka_rt1_run(ptr @name, i64 {}, ptr @{update}, i64 {}, i64 {grants})
+  ret i32 %st
+}}
+",
+        core.app.len(),
+        core.start
+    )
+}
+
+fn grant_bit(grant: &Grant) -> u64 {
+    match grant {
+        Grant::Console => 1,
+    }
+}
+
+/// A byte-string constant, every byte hex-escaped.
+fn constant(name: &str, text: &str) -> String {
+    let hex: String = text.bytes().map(|b| format!("\\{b:02X}")).collect();
+    format!(
+        "@{name} = private constant [{} x i8] c\"{hex}\"\n",
+        text.len()
+    )
+}
+
+/// The `@fx` constant; empty for an empty list.
+fn effect_list(effects: &[Effect]) -> String {
+    let mut next_text = 0;
+    let records: Vec<String> = effects
+        .iter()
+        .map(|effect| {
+            let fields = match effect {
+                Effect::Print(text) if !text.is_empty() => {
+                    next_text += 1;
+                    format!("i64 0, ptr @s{}, i64 {}", next_text - 1, text.len())
+                }
+                Effect::Print(_) => "i64 0, ptr null, i64 0".into(),
+                Effect::Exit => "i64 1, ptr null, i64 0".into(),
+            };
+            format!("  {{ i64, ptr, i64 }} {{ {fields} }}")
+        })
+        .collect();
+    match records.is_empty() {
+        true => String::new(),
+        false => format!(
+            "@fx = private constant [{} x {{ i64, ptr, i64 }}] [\n{} ]\n",
+            records.len(),
+            records.join(",\n")
+        ),
+    }
 }
 
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::lower::{Effect, Grant};
     use std::fs;
     use std::io::Write;
     use std::path::{Path, PathBuf};
