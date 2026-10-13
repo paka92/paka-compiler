@@ -26,6 +26,12 @@ Not decided, because each waits on a measurement or a result: M3-21, M3-23, M4-0
 | M1-06 | A program asks for an effect its grants do not allow. What happens when it runs? | Treat it as a trap |
 | M1-06 | Print cannot write its output (disk full, or the reader closed the pipe). What happens? | Always an error |
 | M1-06 | How does the runtime know which message to send first? | The app block says it |
+| M1-14 | How does a compiled function hand back its result and say that it trapped? | Status return, result by pointer |
+| M1-14 | How are the effect list, an effect and a string laid out in memory? | Three 8-byte words |
+| M1-14 | How does the runtime learn which app it is running? | Plain arguments to one entry |
+| M1-14 | What happens when a program is linked with a runtime library built for a different layout? | Version in the entry name |
+| M1-14 | Who makes a closed pipe an ordinary write error instead of death by signal? | Runtime ignores SIGPIPE at entry |
+| M1-14 | What does the user see when the runtime itself fails? | Own status 4 |
 | M2-01 | Are graph tasks in the experiment, and does M2 build pools for them? | Graphs by list index |
 | M2-01 | Must any task need generic code written by the agent, or are the built-in generic collections enough? | Built-in generics only |
 | M2-01 | How much input and output must a task be able to do? | Whole files, several steps |
@@ -39,6 +45,52 @@ Not decided, because each waits on a measurement or a result: M3-21, M3-23, M4-0
 | M2-02 | May a call's result be thrown away without saying so? | Must use or discard |
 | M2-02 | Must a `match` on an enum name every variant, or may `_` cover the rest? | Every variant named |
 | M2-02 | Does Paka have comments, and which ones are kept? | Anywhere, all kept |
+| M2-03 | How wide is Int, and is there more than one integer type? | One Int, 64-bit signed |
+| M2-03 | What is one position in a String? | Code points, one-character Strings |
+| M2-03 | What do Int division and remainder give for negative numbers? | Truncate toward zero |
+| M2-03 | How are wrapping arithmetic and bit operations written? | Named functions |
+| M2-03 | How is a range of integers written? | Only a..<b |
+| M2-03 | How does a Float become text? | Fixed digits only |
+| M2-05 | What does it mean to assign a value to another name or store it somewhere? | Copy in meaning |
+| M2-05 | What happens when a call passes the same data as inout and as a read-only argument? | Refuse, with a fix |
+| M2-05 | When do two places overlap? | Fields apart, items not |
+| M2-05 | Are the names bound by a match arm or a for loop values or places, and may the body change what is matched or walked? | Values; walked list frozen |
+| M2-05 | Is a slice of a list or String its own kind of thing? | A slice is a value |
+| M2-05 | How does a type contain itself? | Allowed, stored indirectly |
+| M2-06 | Which parts of a trap report belong to the program's meaning? | Kind and position |
+| M2-06 | When more than one trap is possible, which one is reported? | First in evaluation order |
+| M2-06 | Which trap kinds exist? | Eight plain kinds |
+| M2-06 | How does a hole get its type? | From position, else error |
+| M2-06 | What is the body of an example, and when does it pass? | Block ending in Bool |
+| M2-09 | How do ==, <, +, max and len work on several types when there is no overloading? | One closed built-in table |
+| M2-09 | Do records, enums and collections have == without the agent writing it? | Every type, by structure |
+| M2-09 | What can be a function value? | Named functions and variants |
+| M2-09 | Can two function values be compared with ==? | Equal when same name |
+| M2-09 | Which types have an order (< <= > >=, min, max)? | Int, Float, String only |
+| M2-09 | Does + join two Strings? | Yes, + and += |
+| M2-09 | Can a record, enum or collection be turned into text automatically? | No automatic text |
+| M2-10 | Is there a shared immutable type in M2? | No shared type yet |
+| M2-10 | What is recorded about pools and handles, and how is a graph written until then? | Not decided; list indexes |
+| M2-12 | How does a function say it can fail or have no answer? | A value in the result |
+| M2-12 | Which built-in types carry failure and absence? | Option and Result |
+| M2-12 | Where is the line between a trap and a returned failure? | Bugs trap, outside data returns |
+| M2-12 | Is there a short form to pass a failure up to the caller? | Postfix ? |
+| M2-12 | Is there a form that stops the program where a value is expected? | unreachable() |
+| M2-14 | In what order is a Map walked, and which types may be keys? | Key order, Int or String |
+| M2-14 | How is a Map written, read and changed? | Literal, index and get |
+| M2-14 | How does code walk a Map or a String when there are no tuples? | Lists from keys and chars |
+| M2-14 | Do the built-ins that change a List change it in place or give back a new List? | In place, with & |
+| M2-14 | How is a List sorted in an order the program chooses, and what is the result for any function it passes? | before function, fixed merge sort |
+| M2-14 | How large is the built-in vocabulary? | About sixty rows, loops otherwise |
+| M2-14 | Do the text built-ins follow Unicode rules or ASCII rules for case and white space? | ASCII rules only |
+| M2-15 | How does a failed file read or write reach the program? | A second message, or: |
+| M2-15 | What does a file failure carry? | One of six fixed texts |
+| M2-15 | In what order are a handler's effects performed and their answers handled? | List order, answers queued |
+| M2-15 | How do the command-line arguments reach the first message? | One String field per argument |
+| M2-15 | Do the owner's two M1-06 rules on refused effects and failed Print stand, and are they trap kinds? | Both kept, as effect stops |
+| M2-15 | How does a program end, and how does it choose its exit status? | Exit and ExitWith(status) |
+| M2-15 | What happens when no message is left and the program has not performed Exit? | An error, status 3 |
+| M2-15 | Can a headless program read standard input? | None in M2 |
 | M3-01 | What can the model do inside one run: only answer with a whole program, or also call tools? | No tools, whole file |
 | M3-01 | How many submissions may one run make before it is recorded as never passing? | Eight submissions |
 | M3-01 | After a failed submission, how much of the test results does the model see? | Visible full, hidden counted |
@@ -131,6 +183,20 @@ Not decided, because each waits on a measurement or a result: M3-21, M3-23, M4-0
 | M5-07 | When is the choice demanded, and what happens to an edit without one? | Refused at the edit |
 | M5-07 | What happens when a migrate fails to check, or traps when it runs? | Old version keeps running |
 | M5-07 | What exactly does a reset do? | Launch again, same window |
+| M6-01 | What may count as proof that a promise to the optimizer is true? | Emitter alone, shape checked |
+| M6-01 | Who may remove a bounds or overflow check? | Only the optimizer |
+| M6-01 | How large is the first table? | Small core, grown by measurement |
+| M6-01 | What is the tail-call rule? | Never written, never promised |
+| M6-01 | What does the IR say at a place the checker proved cannot be reached? | Return internal-error status |
+| M6-01 | What may the IR promise about runtime functions written in Rust? | Only: does not unwind |
+| M6-02 | Which optimization level and target CPU does paka build use, and do the Rust and C++ builds use the same? | Baseline x86-64, -O3 |
+| M6-02 | How must the Rust and C++ versions of a benchmark be written? | Idiomatic safe code, tuned once |
+| M6-02 | Which programs make up the set? | Eleven small own programs |
+| M6-02 | What are the integer kernels compared against, given that Rust and C++ do not check overflow by default? | Both checked and unchecked Rust |
+| M6-02 | Are measurement-only builds that leave out one family of checks accepted? | Accepted, after a clean run |
+| M6-02 | What is timed, and how? | Whole process, timed outside |
+| M6-02 | How does the published table state that Rust is optimized by LLVM 22 and Paka and C++ by LLVM 21? | State it; C++ is control |
+| M6-02 | Which measured ratio is called 'parity'? | Parity means within 10% |
 | M7-01 | What makes an approval something an agent cannot produce? | Signature from owner's key |
 | M7-01 | Where do approvals live, and what exactly is signed? | One signed file, repository root |
 | M7-01 | What stops a pull request from weakening the gate itself? | Gate runs from target branch |
@@ -207,6 +273,141 @@ app light {
 ### M1-06 · settled without asking
 
 - The rest of the M1 spec (tokens, grammar, diagnostic codes, a program that stops without Exit): Written by the M1-06 agent and checked by its reviewer; the owner sees it in that pull request.
+
+## M1-14 · Decide how compiled code and the runtime share data and calls
+
+### M1-14.1 How does a compiled function hand back its result and say that it trapped?
+
+**Status return, result by pointer** (recommended). Every compiled function returns a 32-bit status (0 = finished, anything else = stopped early) and writes its result through a pointer the caller passes last. Costs one extra argument and a store per call.
+
+```
+; fn update(m: Msg) -> List<Effect<Msg>>
+define internal i32 @p_update(i64 %m, ptr %out) {
+  store { ptr, i64 } { ptr @fx, i64 2 }, ptr %out
+  ret i32 0
+}
+```
+
+- Why: Every piece of the contract is written in the IR and in the Rust function type, with nothing left to a compiler's hidden record-passing rule. It is the fixed 'status return' taken literally, and the status travels in a register.
+- Locks: The shape of every compiled function until M4-05 rules again: status in the return value, result through the last pointer. M1-16, M1-17 and M1-18 are written to it. In M1 compiled code only ever returns 0; the numbers of the trap kinds and where the position goes are M4-05's.
+- Not chosen: One returned record (The function returns status and result together as one record, with no extra argument. But LLVM hands such a record back in registers while Rust's C convention returns a 24-byte record through a hidden pointer, and the IR text shows neither, so the two sides disagree silently.) · Status kept in the runtime (The function returns its result; a trap sets a flag in the runtime that the caller reads after each call. Costs a call or a memory read after every call, and a forgotten read loses the trap.)
+- Look again when: M4-01b or M6 measurements show the out-pointer store costing real time on small functions; small results could then come back in registers.
+
+### M1-14.2 How are the effect list, an effect and a string laid out in memory?
+
+**Three 8-byte words** (recommended). A list is {pointer, count}, an effect is three 8-byte words (tag, pointer, length; Print = tag 0 with its text, Exit = tag 1 with zeros) and a string is pointer plus UTF-8 byte count with no ending zero. Costs 24 bytes per effect even for Exit.
+
+```
+@s0 = private constant [18 x i8] c"\6C\65\74\20\74\68\65\72\65\20\62\65\20\6C\69\67\68\74"
+@fx = private constant [2 x { i64, ptr, i64 }] [
+  { i64, ptr, i64 } { i64 0, ptr @s0, i64 18 },   ; Print(text)
+  { i64, ptr, i64 } { i64 1, ptr null, i64 0 } ]  ; Exit
+```
+
+- Why: Every field is 8 bytes at an 8-byte boundary, so there is no padding to disagree on and the Rust side is one plain three-field record. All M1 data is constant, so no heap and no ownership rule is needed.
+- Locks: Tag numbers (Print 0, Exit 1, the variant's position, the same rule as for messages) and the three-word record in M1-16's decoder and M1-18's template. Little beyond M1: M4-05 and M4-22 lay out every type afresh and say whether this stays.
+- Not chosen: Packed tag and union (A one-byte tag followed by the variant's own fields, as Rust lays out an enum. Smaller, but padding and alignment must match on both sides, which is exactly the silent mismatch this task guards against.) · Runtime calls build the list (Compiled code calls a runtime function per effect and shares no layout at all. Effects stop being data, the runtime needs a growing buffer (a heap) in M1, and M1-16's decoding task has nothing to decode.)
+- Look again when: M2-15 adds effects that need more than one text or a follow-up message (ReadFile with then:); the record then grows or M4-22's enum layout replaces it.
+
+### M1-14.3 How does the runtime learn which app it is running?
+
+**Plain arguments to one entry** (recommended). main calls one runtime function with five plain arguments (app name as pointer and length, update function, first message number, grant bits) and returns the status it gives back. No record to lay out; costs a longer call when apps gain more parts.
+
+```
+@name = private constant [5 x i8] c"\6C\69\67\68\74"
+declare i32 @paka_rt1_run(ptr, i64, ptr, i64, i64)
+define i32 @main() {
+  %st = call i32 @paka_rt1_run(ptr @name, i64 5, ptr @p_update, i64 0, i64 1)
+  ret i32 %st
+}
+```
+
+- Why: It shares no extra layout and the entry is an ordinary function a test can call with a fake update function. Five arguments all travel in registers.
+- Locks: The entry's name and argument order in M1-17 and in the emitted main. Cheap to change: one call in a text template.
+- Not chosen: Constant app record (main passes a pointer to one constant record holding the same fields. Grows without changing the call, but adds a fourth layout that unsafe code must read.) · Fixed symbol names (The runtime looks for symbols with agreed names, such as paka_app_update. No arguments at all, but the library then has undefined symbols, so its own unit tests cannot link without a fake program.)
+- Look again when: The app needs more than six arguments (state, command-line arguments in M2-15 or M4-05); a record is then the simpler form.
+
+### M1-14.4 What happens when a program is linked with a runtime library built for a different layout?
+
+**Version in the entry name** (recommended). The entry is called paka_rt1_run and any change to a layout or to the entry renames it to paka_rt2_run, so a stale library fails at link time with a missing symbol. Costs nothing at run time; someone must remember to bump the number.
+
+```
+$ paka build light.paka -o light
+light.paka: error[<code from M1-06's spec>]: clang failed: undefined reference to `paka_rt2_run'
+$ echo $?
+1
+```
+
+- Why: The linker does the check, so there is no code to write and nothing to run. It turns the silent failure into a loud one before the program exists.
+- Locks: The name paka_rt1_run, used by M1-17, M1-18 and docs/abi/light.ll. The rule to bump the number is written in the ABI document.
+- Not chosen: Version word checked at start (main passes a version number and the runtime compares it first. A clearer message, but one more argument and a check that runs in every program.) · No guard (Trust that compiler and library are always built together. Nothing to build, and a stale library corrupts memory without a word.)
+
+### M1-14.5 Who makes a closed pipe an ordinary write error instead of death by signal?
+
+**Runtime ignores SIGPIPE at entry** (recommended). paka_rt1_run first sets the broken-pipe signal to 'ignore' with one hand-declared libc call kept in paka-rt's one unsafe module, so the write fails with an ordinary error. Costs one more unsafe call in M1-16.
+
+```
+(standard output is a pipe whose reader has gone)
+light: effect Print failed: broken pipe
+$ echo $?
+3
+(the line's exact wording is M1-06's spec's)
+```
+
+- Why: The rule about writes belongs with the code that writes, and the emitted program stays a template that knows nothing about signals. Setting a signal to 'ignore' installs no handler.
+- Locks: Little. The call sits behind one safe function in M1-16's module, so M1-17 keeps its level.
+- Not chosen: Emitted main ignores it (The IR's main calls libc's signal itself before calling the runtime. No Rust unsafe, but runtime policy then lives in every emitted program and the IR declares a libc function.)
+- Look again when: M4-04 runs programs inside the tool server's process; the server then owns signal settings and the entry must not change them.
+
+### M1-14.6 What does the user see when the runtime itself fails?
+
+**Own status 4** (recommended). The entry catches every panic, prints the line 'app: internal error: reason' on standard error and returns 4; the same line and status are used when the runtime meets data it cannot decode, such as an unknown effect tag. Costs one more status number to document.
+
+```
+$ ./light
+(Rust's own panic message, naming file and line)
+light: internal error: runtime panicked
+$ echo $?
+4
+```
+
+- Why: It keeps 'the program stopped' apart from 'the toolchain broke', which tells the agent whether to fix its code or report a bug. Status 1 and 2 belong to the paka tool and 3 to traps.
+- Locks: Status 4 for compiled programs. M2-15 must keep 3 and 4 out of the statuses a program may choose for itself, if Exit ever carries one.
+- Not chosen: Report as a trap (A runtime panic exits with status 3 like any trap. One number fewer, but a compiler or runtime bug then looks like the program's own mistake, and the trap line M2-06 fixed needs a kind and a position that a runtime fault does not have.) · Abort the process (Build the runtime to abort on panic. Least code, but the process dies by signal, which M1-20 counts as a mismatch and M1-01 rules out.)
+
+### M1-14 · settled without asking
+
+- The IR owns main: docs/abi/light.ll defines 'i32 @main()' with no parameters; it calls paka_rt1_run and returns its result. Command-line arguments are not delivered in M1. The runtime never calls process exit itself, so the C library shuts down normally.
+- Triple and module header: target triple = "x86_64-pc-linux-gnu". No datalayout line: clang fills it in from the triple. If clang 21.1.8 prints anything for that, the document adds the exact line clang itself writes.
+- Calling convention: The C convention on both sides, with no other convention named in the IR. The Rust type of update is an extern "C" function taking (u64, pointer to a {pointer, u64} record) and returning i32. The entry takes it as an optional function pointer, so a null one is refused and never called.
+- Messages: A message is the variant's position in its enum, counted from 0 in declared order, as a 64-bit number. M1 variants carry no payload and there is no state argument and no context pointer; M4-05 adds them.
+- Grants: One 64-bit word of bits passed to the entry: bit 0 is Console, all others are zero. The runtime checks the bit before performing each effect and gives M1-06.1's line and status 3 when it is missing.
+- Who owns the memory: Every pointer compiled code hands over points at constants that live for the whole process. The runtime only reads through them and never frees. The result record is a slot on the runtime's stack, set before the call to a value the decoder refuses (null pointer, count 1), so an update that returns 0 without storing is an internal error and not an empty list. paka-rt has no allocator.
+- What the runtime refuses to read: An unknown tag, a null pointer with a non-zero length or count, a list pointer that is not 8-byte aligned, a count or length too large for the address space, a non-zero word in an unused field, or a null update pointer ends the run with the internal-error line and status 4. The runtime never reads past the count it was given, and it treats text as plain bytes: it never tells Rust that they are valid UTF-8.
+- Status values: The process exits 0 after Exit, 3 for a refused or failed effect, 4 for an internal error. A non-zero status from update is an internal error in M1 (status 4): no M1 program can trap, and the trap line M2-06 fixed ('app: trap kind at file:line:col') needs a kind and a position that only M4-05 gives numbers to. M1-17 tests it with a fake update.
+- A list that ends without Exit: The runtime does what M1-06's spec says for a program that stops without Exit. The document copies that status and adds no rule of its own.
+- No println, and failed writes: All output goes through one runtime function that writes the bytes and a newline to standard output and returns the error instead of panicking. A failed write gives M1-06.2's line on standard error and status 3; a failure to write that line itself is ignored.
+- Flushing: Standard output is flushed after every Print, so a failure is seen at the effect that caused it and later effects are dropped. Costs one system call per Print; M2-15 may rule otherwise for both back ends together.
+- Exact error lines: The document copies the standard-error lines from M1-06's spec word for word. The interpreter and paka-rt each print them, and M1-20's comparison catches any drift. Only the internal-error line is the document's own.
+- No link-time optimization across the two compilers: paka-rt is built to machine code by rustc with no lto and no linker-plugin-lto; clang gets no -flto. rustc's LLVM 22 and clang's LLVM 21 cannot read each other's intermediate files, and keeping them apart keeps Rust's optimizer promises out of Paka code.
+- Link command: clang -O2 light.ll libpaka_rt.a, then the system libraries that 'rustc --print native-static-libs' names for paka-rt, written out in the document (on the build machine: -lgcc_s -lutil -lrt -lpthread -lm -ldl -lc); the system linker, no -fuse-ld.
+- IR text rules: Opaque 'ptr' pointers; no attributes and no metadata; user functions are 'internal' and named p_ plus their Paka name, so none can clash with main or libc; constants are 'private constant' with every string byte hex-escaped; the result is stored as one whole record, so no getelementptr is needed. None of the banned words appears.
+- Panics: The body of paka_rt1_run runs inside catch_unwind, so nothing unwinds into compiled code. paka-rt keeps Rust's default unwinding panics, as M1-01 already requires. No panic hook is installed: Rust's own message, with file and line, stays on standard error and the internal-error line follows it.
+- Threads: Everything runs on the thread that entered main. The runtime starts no thread in M1.
+- The stand-in runtime: One Rust file built with 'rustc --crate-type staticlib', shown in the pull request log with the link command and the printed line. It is not added to the workspace; M1-16 and M1-17 replace it with paka-rt.
+- Heap ownership: None, as the note says: all M1 data is constant. Who frees what is M4-05's.
+
+### M1-14 · what this changes in TASKS.md
+
+- M1-06: Its code list needs one code for 'clang or the linker failed' beside 'missing clang', since a stale runtime library is reported under it; its exact standard-error lines and its rule for a program that stops without Exit are copied into the ABI document.
+- M1-16: Decodes three shapes made only of 8-byte words (string, effect, list header), refuses the cases the document lists, needs no allocator, and holds both the exported entry and the one safe wrapper that sets the broken-pipe signal to ignore.
+- M1-17: Its entry paka_rt1_run takes five plain arguments and is exported from M1-16's module, as its done-when says; the loop catches panics and returns 4, treats a non-zero status from update as an internal error, and prints the spec's lines; its fake update is an ordinary extern "C" function.
+- M1-18: Emits internal functions named p_ plus the Paka name, stores the result as one whole record with no getelementptr, and writes no datalayout line.
+- M1-19: Uses the document's link command with rustc's listed system libraries and never passes an LTO flag; a stale library shows up as the linker's undefined-reference error, reported as one diagnostic under the spec's code for a failed clang run, with status 1.
+- M1-20: Status 4 never appears in an expectation, so an internal error is always a mismatch.
+- M1-13: The interpreter flushes after every Print and prints the same standard-error lines as the ABI document lists, since M1-20 compares standard error.
+- M4-05: Its kept-or-changed list has these rules to go through: status return with out pointer, three-word effects, plain-argument entry, version in the entry name, SIGPIPE ignored at entry, status 4, non-zero status as internal error, flush per Print, no cross-compiler LTO; it adds state, a context pointer and trap kind numbers.
+- M2-15: If Exit gains a status, it must keep 3 and 4 out of a program's reach, and it rules whether flush-per-Print stays.
 
 ## M2-01 · Decide which kinds of experiment tasks the headless language must cover
 
@@ -488,6 +689,1245 @@ fn count_words(text: String) -> Int {
 - M1-06 rules kept or changed: Under the picks the light program parses and means the same, so no M1 run case changes; only the six planned reject cases stop holding (comment, hole, example, match, integer literal, labelled argument). Picking 'Always return' or 'Always with the enum' would change the light program itself. M1-06 is not written yet, so the line-by-line kept-or-changed list is made against it when it lands (M2-02 needs M1-06).
 - Corrections to the proposals: The paper keeper cited lines 139 and 150; the text it meant is at lines 136/140 (local checking) and 147 (when two agents conflict). The engineer wrote that labels can only be added later by rewriting every call; under 'Bare unless marked labelled' adding them later breaks no user code.
 - Left to other decisions: `&` at inout call sites and the overlap rule (M2-05); operators, string interpolation and wrapping arithmetic (M2-03); holes and example bodies (M2-06); function values and whether labels are part of a function type (M2-09); error-handling forms (M2-12); the built-in names table (M2-14); start, end and missing-grant rules (M2-15); canonical layout (M4-47).
+
+## M2-03 · Decide the primitive types and the exact meaning of every operation
+
+### M2-03.1 How wide is Int, and is there more than one integer type?
+
+**One Int, 64-bit signed** (recommended). One integer type, -9223372036854775808 to 9223372036854775807. A result outside it traps. Costs: no small or unsigned types, so byte-level work is clumsy.
+
+```
+fn next_id(n: Int) -> Int {
+  n + 1   // traps overflow when n is 9223372036854775807
+}
+```
+
+- Why: It is the width Rust's i64 gives, covers every M2-01 task class, and keeps one row per operation. More types can be added later without breaking a program.
+- Locks: Every Int row of the table, the overflow points of every program, the value layout in M4-22 and M6. Narrowing Int later breaks programs; adding types later does not.
+- Not chosen: Sized family (Int plus I32, U8, U64 and others. Costs a conversion rule between every pair and many more table rows, and a model must pick a width at every signature.) · Unbounded Int (Integers grow as needed and never overflow. Costs heap numbers on every operation, which ends the native-speed promise for integer loops, and removes the overflow trap the paper lists.)
+- Look again when: A task class or a benchmark needs bytes or unsigned numbers that Int cannot express at acceptable cost.
+
+### M2-03.2 What is one position in a String?
+
+**Code points, one-character Strings** (recommended). A String is a row of Unicode code points (character numbers). len counts them and text[i] gives a String of one character; there is no Char type. Costs: native back ends need a fast path so ASCII text indexes in constant time; other text may index in linear time.
+
+```
+fn initial(name: String) -> String {
+  name[0]            // "É" for "Élan": a String of one character
+}
+
+example len_counts_characters {
+  len("Élan") == 4
+}
+```
+
+- Why: No operation can cut a character, so text never traps for a reason the agent cannot see on ASCII tests, and there is one text type to learn. On ASCII it means the same as Rust and TypeScript.
+- Locks: len, index, slice, comparison and every String built-in in M2-14; the string layout in M4-32 and M6-11. Changing the unit later changes results of existing programs.
+- Not chosen: UTF-8 bytes (Positions are bytes, as in Rust. Always constant time, but a slice that cuts a character in two must trap, so a program that passes on ASCII can stop on real text.) · Code points plus Char (As the first option, but text[i] gives a Char, a fifth primitive type with its own literal and conversions. Cheaper per character in native code; costs reference tokens and a conversion at every mix of Char and String.)
+- Against: Bytes are constant time with no fast path to build, and they are what a toolchain written in Rust stores anyway.
+- Look again when: M6 benchmarks show string indexing or one-character Strings dominating text-heavy code even with the ASCII fast path.
+
+### M2-03.3 What do Int division and remainder give for negative numbers?
+
+**Truncate toward zero** (recommended). / drops the fraction and % takes the sign of the left side, as Rust and the hardware do; TypeScript's % agrees. Costs a manual fix-up in wrap-around index code with negative numbers.
+
+```
+example divide_truncates {
+  -7 / 2 == -3 && -7 % 2 == -1
+}
+```
+
+- Why: It is what Rust does and what a model writes by hand in TypeScript (Math.trunc and %), so the same tests hold in all three languages. It is also the machine instruction.
+- Locks: Results of every program that divides a negative number. Cannot change after programs exist.
+- Not chosen: Floor (/ rounds down and % takes the sign of the right side, as in Python. Nicer for wrap-around indexes, but differs from both comparison languages and needs a fix-up after the machine instruction.)
+
+### M2-03.4 How are wrapping arithmetic and bit operations written?
+
+**Named functions** (recommended). Built-in functions: wrap_add, wrap_sub, wrap_mul, bit_and, bit_or, bit_xor, bit_not, shift_left, shift_right. No new syntax; costs longer text in hash-like code.
+
+```
+fn step(seed: Int) -> Int {
+  let mixed = wrap_mul(seed, 6364136223846793005)
+  bit_xor(mixed, shift_right(mixed, 33))
+}
+```
+
+- Why: No experiment task depends on these (M2-01), so the cheapest form wins: nine table rows, no grammar. The choice is visible at every operation, and operators can be added later without breaking a program.
+- Locks: Nine built-in names taken from users; the wrapping benchmarks in M6-28 are written with them. Little else.
+- Not chosen: Extra operators (Symbols such as +% *% for wrapping and ^ << >> for bits. Shortest, but adds a dozen tokens and precedence rows, and << >> collide with generic brackets in the parser.) · Wrapping block (Inside wrapping { } the ordinary + - * wrap. Closest to the paper's wording, but the same operator then means two things depending on where it stands.)
+- Look again when: M6 benchmark kernels or real programs show wrapping code is common enough that the long spelling costs tokens.
+
+### M2-03.5 How is a range of integers written?
+
+**Only a..<b** (recommended). One form, end not included, as in Swift and Kotlin. Used in for and in slices. Costs an edit when a model writes Rust's 0..n; the error carries the fix.
+
+```
+fn sum_to(n: Int) -> Int {
+  var total = 0
+  for i in 0..<n { total += i }
+  total
+}
+```
+
+- Why: The spelling says which end is left out, so the mistake is a check error with a fix instead of a wrong answer. One spelling per construct (line 51).
+- Locks: Every for loop over numbers and every slice.
+- Not chosen: Only a..b (Rust's spelling, end not included. Familiar from the comparison language, but a model with Kotlin habit reads it as including the end and gets a silent off-by-one.) · Both ..< and ... (Half-open and closed forms, as in Swift. Two spellings for one construct, against line 51.)
+- Look again when: The experiment's practice runs show the Rust-habit error costing many counted edits; accepting 0..n as well is then a free loosening.
+
+### M2-03.6 How does a Float become text?
+
+**Fixed digits only** (recommended). The only way is fixed(x, digits: n), n from 0 to 20: the Float's exact value rounded to n decimals, ties away from zero. A Float inside "{ }" is a check error that names fixed; costs an edit when a model interpolates a Float by habit.
+
+```
+fn show(ratio: Float) -> String {
+  let text = fixed(ratio, digits: 2)   // 0.125 gives "0.13"
+  "ratio {text}"
+}
+```
+
+- Why: One form, no exponent rules to define, and one tie rule in the whole language: the same as the round function. Adding a second form later breaks nothing.
+- Locks: The rounding rule: ties away from zero. It matches Rust's round and TypeScript's toFixed, but not Rust's formatter on exact ties (2.5 to 0 digits is "3" here, "2" in Rust).
+- Not chosen: Fixed digits, ties to even (The same single form, but an exact tie goes to the even digit, as Rust's formatter and C's printf do. Costs a second rounding rule beside the round function, and differs from TypeScript's toFixed.) · Shortest round-trip too ("{x}" also works and prints the fewest digits that read back as the same number. Convenient, but needs rules for exponents and whole numbers that match neither Rust nor TypeScript, and bit-exact tests for all of them.)
+- Look again when: Reference solutions in M3-14 to M3-16 dispute many tests on exact ties.
+
+### M2-03 · settled without asking
+
+- The primitive types: Int, Float, Bool, String. No Char, no sized or unsigned integers, no byte type and no tuples: two values travel in a named type, which fits M2-02's flat patterns. Adding any of them later breaks no program.
+- Int operations: + - * and unary minus trap overflow when the result does not fit; abs of the smallest Int traps overflow. / or % by zero traps divide_by_zero; smallest Int / -1 traps overflow; smallest Int % -1 is 0. Comparisons == != < <= > >= give Bool. += -= *= /= %= mean the same as the long form.
+- Wrap and bit rows: wrap_add, wrap_sub and wrap_mul keep the low 64 bits of the exact result and never trap. bit_and, bit_or, bit_xor and bit_not work on the two's-complement bits. shift_left drops the bits pushed out and fills with zeros; shift_right copies the sign bit in; a count outside 0 to 63 traps out_of_bounds.
+- Int literals: Decimal digits only: no underscores, no hex, one spelling. A unary minus written before a literal is part of the literal (a parser rule, so a - 1 still subtracts), which lets the smallest Int be written. A literal that does not fit is a check error.
+- Float: IEEE 754 64-bit, round to nearest with ties to even, and no fused multiply-add (a multiply and an add done with one rounding; line 158). + - * / and unary minus never trap: 1.0 / 0.0 is infinity, 0.0 / 0.0 is NaN; += -= *= /= mean the long form; no % on Float. Literals need digits on both sides of the point, have no exponent form, give the nearest Float, and are a check error when that would be infinity.
+- Canonical NaN bits: Every operation whose result is NaN gives exactly 0x7FF8000000000000, unary minus and abs included. NaN == x is false and NaN != x is true for every x, itself included; < <= > >= with NaN are false; -0.0 == 0.0 is true. If min and max take Floats (M2-09, M2-14), a NaN argument gives NaN.
+- Float functions: sqrt (below zero gives NaN; sqrt of -0.0 is -0.0), floor, ceil, trunc, round (ties away from zero) and abs, all Float to Float. IEEE gives each exactly one result. Names are confirmed by M2-14.
+- sin, exp, pow and the maths library: None in M2, as M2-01.4 ruled. No maths library is chosen. Adding them later breaks nothing but needs one pinned library.
+- Conversions: None is implicit (line 47). Mixing Int and Float is a check error whose fix names to_float; an Int literal where a Float is needed is a check error whose fix writes it with a point (2.0). to_float(n) gives the nearest Float, ties to even. to_int(x) drops the fraction and traps bad_conversion when x is NaN, infinite or outside Int; 9223372036854775808.0 traps.
+- Text of Int, Bool and Floats: Int prints in decimal with a leading - when negative; Bool prints true or false. fixed never uses an exponent: a large Float prints all its digits. It prints NaN, inf and -inf for those values and a leading - whenever the sign bit is set, so -0.001 to 2 digits is "-0.00". digits outside 0 to 20 traps out_of_bounds.
+- Text to number: Parsing is a built-in whose name is M2-14's and whose failure form is M2-12's. Its meaning is fixed here: an optional -, then decimal digits, and for Float an optional point followed by digits; no spaces, no +, no exponent. An Int that does not fit is a failure, not a trap; a Float is the nearest Float, ties to even, and infinity when the text is too large.
+- String details: Source files are UTF-8 and a String is a row of Unicode code points with no surrogates (the half-characters of UTF-16). Literals use double quotes with escapes \n \r \t \\ \" \{ and \u{hex}. == compares code point by code point with no normalisation (no merging of two spellings of one accent); < <= > >= order by code point.
+- String positions: text[i] needs 0 <= i < len and text[a..<b] needs 0 <= a <= b <= len; anything else traps out_of_bounds. A position cannot be assigned or passed with &: a String changes only as a whole. What a read file that is not UTF-8 does is M2-15's.
+- Interpolation: "{expr}" takes an Int, Bool or String expression that contains no string literal; a literal { is written \{. Float is rejected with a message that names fixed. User types wait for M2-09's to-text ruling.
+- + on String: Not in this table: text is joined by interpolation or by M2-14's built-ins. Whether + also joins Strings is part of M2-09's ruling on operators over several types.
+- Bool: && and || evaluate the right side only when needed; ! negates; == and != compare. Bools have no order and do not convert to Int.
+- Operator precedence: From tightest: call, index and field access; unary - and !; * / %; + -; ..<; comparisons; &&; ||. Same-level operators group left to right, except that comparisons do not chain (a < b < c is a check error). Parentheses override.
+- Evaluation order: Strictly left to right: operands, then arguments in written order, then the call; items of a list and fields of a built record in written order; only the chosen branch of if and match runs. In an assignment the index and field parts of the left side come first, then the right side, then the read (for += and the like), the operation and the write. A check happens when its operation runs.
+- Ranges: a..<b is not a value: it is written only after the in of a for and inside [ ]. Both ends are Int and are evaluated once, before the first step. In a for, a start at or above the end runs zero times; in a slice, a start above the end traps out_of_bounds. Writing a..b or a...b is a check error whose fix is a..<b.
+- Trap names used by this table: overflow, divide_by_zero, out_of_bounds, bad_conversion. M2-06 fixes the full list and the report.
+
+### M2-03 · what this changes in TASKS.md
+
+- M2-08b: Dropped: no sin, exp or pow, so there are no maths rows to implement.
+- M4-29: Dropped with M2-08b: no maths functions to call from compiled code.
+- M6-08: Shrinks: no M2-08b vectors and no private maths names; the NaN and no-fused-multiply rules stay.
+- M2-08: Grows a little: nine wrap and bit rows, code-point String rows, and fixed needs its own exact rounding with ties away from zero instead of Rust's formatter; no shortest float printing.
+- M2-07: Token list gains ..< and loses any need for << >> ^ and character literals; number tokens have no hex, underscore or exponent; the string escapes are the eight listed.
+- M2-11: A range is parsed only in a for header and inside [ ]; a unary minus on a literal is folded into the literal by the parser.
+- M4-26: Reword: shifts are built-in functions whose bad count reports out_of_bounds, not a separate shift trap.
+- M4-27: Reword its trap list to overflow, divide_by_zero, out_of_bounds and bad_conversion.
+- M4-32: Grows: String positions are code points, so the runtime needs a constant-time path for ASCII text.
+- M6-11: Grows the same way as M4-32 for release strings.
+- M2-09: Must rule whether + joins Strings and how to-text feeds interpolation; Float equality is already fixed as IEEE.
+- M2-14: Must supply names for text parsing, character number conversion, the Float functions and Map iteration without tuples.
+- M3-04: Tasks with Float output must name their digits and keep clear of exact ties, NaN and infinity, or state Paka's rule; M3-11 writes the statements that way.
+
+## M2-05 · Decide ownership: copies, inout exclusivity, borrows, recursive types, changing items in place
+
+### M2-05.1 What does it mean to assign a value to another name or store it somewhere?
+
+**Copy in meaning** (recommended). Every binding, field and list item is its own value; assigning or storing makes an independent copy. The compiler skips the copy when nobody can tell; the cost is that a copy of a big list is not visible in the source.
+
+```
+fn demo() -> Int {
+  let a = [1, 2, 3]
+  var b = a          // b is its own list
+  append(&b, 4)
+  len(a)             // 3
+}
+```
+
+- Why: It is the mutable value semantics the paper names as its rule (line 427): no aliasing, no move errors, nothing to track in the checker, and the interpreter is a plain clone. The only cost is speed, which the experiment does not measure and M6 does.
+- Locks: Programs may rely on a name staying usable after it was assigned elsewhere, so moving to 'Move, copy by name' later breaks them. A warning on large hidden copies or a 'take' parameter mark can be added later without breaking anything.
+- Not chosen: Move, copy by name (Assigning moves the value and the old name is dead, as in Rust; a duplicate needs copy(a). Every copy is visible, but the checker needs move tracking through branches and loops and the agent meets use-after-move errors.) · Shared until written (The same meaning as the first option, plus a promise that a copy is cheap: every value carries a count and is copied on its first write, as in Swift. Costs a count on every value and a check on every write, which cuts into the native speed of line 85.)
+- Against: A stricter rule can be loosened for free and this one cannot be tightened; the counter-case is that move errors cost counted edits before the go/no-go.
+- Look again when: M6 measurements show hidden copies costing more than the estimated pointer-heavy gap of line 99.
+
+### M2-05.2 What happens when a call passes the same data as inout and as a read-only argument?
+
+**Refuse, with a fix** (recommended). The call is a check error; the fix is to bind the read-only part to a let first. An argument of type Int, Float or Bool, or any computed value (a literal, an operator result, a call result), is a value and never overlaps; costs an edit now and then.
+
+```
+fn grow(xs: inout List<Int>, more: List<Int>) {
+  for x in more { append(&xs, x) }
+}
+
+fn twice(xs: inout List<Int>) {
+  grow(&xs, xs)        // rejected: xs is inout and read in one call
+  let old = xs
+  grow(&xs, old)       // accepted
+  append(&xs, xs[0])   // accepted: an Int is a value, not a place
+}
+```
+
+- Why: It is the paper's rule, it keeps the copy visible, and the two exemptions remove the rejections that would be pure noise. Loosening to a silent copy later is free.
+- Locks: Each call is checked against its own arguments. A call nested in an argument has finished before the outer call starts, so append(&xs, len(xs)) is accepted; the one extra rule is that a read-only place may not be changed by a nested call in the same argument list. M2-21 checks this, M6-22 attacks it, M6-23 may turn it into an optimizer promise.
+- Not chosen: Copy silently (The compiler passes a copy of the read-only argument when it overlaps. Never an error, but a whole-list copy can hide inside a loop, and it departs from the paper's wording.) · Refuse any reuse (The variable behind an inout argument may not appear anywhere else in the call. One sentence to state, but it rejects everyday lines such as adding the sum of two earlier items.)
+- Look again when: M6-22 finds an accepted call that overlaps at run time; the rule is then tightened before M6-23.
+
+### M2-05.3 When do two places overlap?
+
+**Fields apart, items not** (recommended). A place is a variable followed by field names and index steps. Two places overlap unless they start at different variables or part ways at two different field names; any two index steps on the same list count as the same. Costs a let when a call needs two items of one list.
+
+```
+// grow(xs: inout List<Int>, more: List<Int>) appends more to xs
+type Pair { left: List<Int> = [], right: List<Int> = [] }
+
+fn mix(p: inout Pair, rows: inout List<List<Int>>) {
+  grow(&p.left, p.right)        // accepted: different fields
+  grow(&rows[0], rows[1])       // rejected: two items of one list
+  let other = rows[1]
+  grow(&rows[0], other)         // accepted
+}
+```
+
+- Why: It is a syntactic check of the kind line 427 describes, sound without knowing any index value, and it accepts the common state-update shape. Accepting more later is free.
+- Locks: The accept and reject line agents learn and M6-22 tests. What may follow &: a var local, an inout parameter, their fields, and existing items of a List (a missing item traps out_of_bounds).
+- Not chosen: Whole variable (Two places overlap whenever they start at the same variable. Simplest to check and can be loosened for free, but rejects passing one field inout and reading a sibling field, which state updates do all the time.) · Literal indexes apart (As the first option, and two different literal indexes are also apart. Accepts a few more calls, but adds a rule that only helps hand-written constants.)
+- Look again when: The experiment's practice runs show many rejected calls on list items; a swap built-in or the literal rule can then be added.
+
+### M2-05.4 Are the names bound by a match arm or a for loop values or places, and may the body change what is matched or walked?
+
+**Values; walked list frozen** (recommended). A bound name is a read-only value. A match arm may assign to the matched thing, but a for body may not change the list it walks: that is a check error whose fix is to walk by index or bind a copy first. Costs an edit when a model appends to the list it is walking, and no in-place change of a variant's fields.
+
+```
+enum Shape { Dot, Rect(w: Int, h: Int) }
+
+fn widen(s: inout Shape) {
+  match s {
+    Dot        => {}
+    Rect(w, h) => s = Rect(w + 1, h)   // accepted: w and h are values
+  }
+}
+// for x in xs { append(&xs, x) }        rejected: xs is being walked
+// for i in 0..<len(xs) { xs[i] += 1 }   accepted
+```
+
+- Why: A loop that appends to its own list means one thing in TypeScript, another in Swift and is refused in Rust, so the checker says so instead of picking one silently. Lifting the rejection later is free; taking a meaning back is not.
+- Locks: Little: the rejection can be lifted later without changing any program. Bound names stay values; place bindings can be added later under their own spelling.
+- Not chosen: Values; loop sees old items (A bound name is a read-only value, and a for loop walks the list as it was at the start, so the body may change it. No extra rule, but a queue loop that appends to its own list stops early without a word, and the compiler copies the whole list.) · Places when changeable (If the matched thing is a var or inout, bound names can be assigned and passed with &. Trees can be changed in place, but the matched thing must then be frozen inside the arm, a second exclusivity rule.) · Frozen in match too (As the first option, and an arm may not assign to the matched thing either. One rule for both, but it rejects the usual state-machine step, where an arm sets the state it matched on.)
+- Against: The author picked 'Values; loop sees old items': it follows from 'Copy in meaning' with no new rule, and it is what Swift does.
+- Look again when: Practice runs show many rejected loops, or tree-changing tasks and M6 pointer-heavy benchmarks show rebuild costs that an in-place binding would remove.
+
+### M2-05.5 Is a slice of a list or String its own kind of thing?
+
+**A slice is a value** (recommended). xs[a..<b] is an ordinary List (or String) value with those items. Passed straight to a read-only parameter it is not copied; stored, it is a copy. No slice type and no inout slices: in-place work on a part takes the list and two indexes.
+
+```
+fn total(xs: List<Int>) -> Int {
+  var sum = 0
+  for x in xs { sum += x }
+  sum
+}
+
+fn tail_total(xs: List<Int>) -> Int {
+  total(xs[1..<len(xs)])     // a List value; passed without a copy
+}
+```
+
+- Why: It keeps line 91's saving without a new type or a new rule; the agent writes what it would write in any language. In-place work by index is what models already do in Rust and TypeScript.
+- Locks: Read-only List and String parameters must accept a borrowed part in native code (M4-05, M4-34). In the overlap rule a slice of a place counts as that place, so grow(&xs, xs[0..<2]) is rejected. Adding inout slices later breaks nothing.
+- Not chosen: A Slice type (Slice<T> is a view that can be a parameter but cannot be stored or returned. Makes the no-copy promise visible, but adds a type with its own restrictions and two ways to take a list.) · Inout slices too (As the first option, and &xs[a..<b] passes a part for in-place change. Useful for sorts, but needs a rule for a callee that changes the part's length.)
+- Look again when: M6 benchmarks need in-place work on parts of an array and the index form blocks the optimizer.
+
+### M2-05.6 How does a type contain itself?
+
+**Allowed, stored indirectly** (recommended). An enum variant may hold its own enum, directly or through other types; the compiler stores such fields behind a pointer. The tree is one owned value: copying it copies all of it. Costs a hidden allocation per node.
+
+```
+enum Expr { Num(value: Int), Add(left: Expr, right: Expr) }
+
+fn eval(e: Expr) -> Int {
+  match e {
+    Num(value)       => value
+    Add(left, right) => eval(left) + eval(right)
+  }
+}
+```
+
+- Why: The agent writes the type the way it thinks of it and learns no extra word. Layout already belongs to the compiler and to the interface hash (line 285).
+- Locks: The agent never writes the indirection; which fields get the pointer is M4-22's. A type with no finite value is a check error: a record that holds itself with no enum or collection between, or an enum whose every variant holds it.
+- Not chosen: Marked indirection (The agent writes a mark such as Box<Expr> where the type recurs, as in Rust. The cost is visible, but it adds a built-in type and wrapping at every construction.) · Only through List (A type may hold itself only inside a List. Nothing new to build, but a two-child node becomes a list that the checker cannot see has two items.)
+- Look again when: Copies of deep trees hit the stack limit in real programs, or rebuilt trees dominate M6's pointer-heavy benchmarks.
+
+### M2-05 · settled without asking
+
+- The exact overlap test: A place is a variable followed by field, index and slice steps; parentheses change nothing. Two places overlap unless they start at different variables or their steps first differ at two different field names. Index and slice steps on one list always count as the same.
+- The exact call rule: In one call: (1) an argument written with & may not overlap any other place argument of that call, except a read-only one of type Int, Float or Bool; (2) a read-only place argument of any other type may not overlap a place written with & inside another argument of that call. The operands of an operator count as read-only arguments. Anything that is not a bare place (a literal, an operator result, a call result, an if or match value, a built record or list) is a fresh value and overlaps nothing.
+- The & mark at call sites: Required on every inout argument and nowhere else, as in the paper's sample (line 214). A missing or extra & is a check error with a fix.
+- What may follow &: A var local or an inout parameter, with any number of field steps and List index steps. Rejected: a let, a read-only parameter, a name bound by for or by a pattern, a String position, a slice, and any computed value.
+- Parameter kinds: Two: read-only (the default, passed without copying) and inout. No 'take' or 'sink' kind; a callee that stores a read-only parameter copies it. Adding a third kind later breaks nothing.
+- Borrows: There is no borrow or reference in any type. A read-only parameter cannot be assigned or passed with &; returning or storing it copies it. So nothing borrowed can be stored or returned (line 91) and no lifetime exists.
+- Changing items in place: xs[i] = v, xs[i].count += 1 and &xs[i] work on var locals and inout parameters, to any depth of fields and items. A let is fixed all the way down. Two items are swapped by three assignments.
+- Results: A function returns an owned value. Returning a local moves it; returning a parameter or part of one copies it.
+- When a value ends: A value is released when its owner goes out of scope or is overwritten. Nothing runs at that moment that a program can observe; there are no destructors, and releasing never traps.
+- Deep values: Copying, comparing or releasing a deeply nested value must never crash the process. A back end releases it with a loop; a copy or comparison that is too deep for the back end traps stack, and like every stack trap its place is not compared between back ends.
+- When the inout item is looked up: All arguments are evaluated left to right first, the index of &xs[i] among them. The item itself is looked up, with its bounds check, when the call starts; a missing item traps out_of_bounds at that [.
+- Assignments that call with & on the same variable: Allowed and defined by the evaluation order of M2-03: xs[i] = f(&xs) runs f first and then stores, with the bounds check at the store. An assignment holds no access across the call.
+- Map entries, swap and pools: Whether &m[key] is a place and what a missing key does is M2-14's and M2-12's; a swap built-in for two items of one list is M2-14's. Pools are not built (M2-01.1), so no pool rule is set.
+- Shared immutable data: Not needed for meaning under these picks; it is a cost matter only. M2-10 still rules on it with its tree sample.
+- Accept and reject lines: the & target: After let a = [1], append(&a, 2) is rejected; after var a = [1] it is accepted. In fn f(xs: List<Int>) the line append(&xs, 1) is rejected; with xs: inout List<Int> it is accepted and the caller writes f(&ys).
+- Accept and reject lines: one call: With user functions that take the marked arguments inout: swap_lists(&p.left, &p.left) and grow(&xs, xs[0..<2]) are rejected; swap_lists(&p.left, &p.right), append(&xs, len(xs)) and push(&st, pop(&st) + pop(&st)) are accepted.
+- Accept and reject lines: the order rule: merge(xs, take(&xs)) is rejected: xs is read and then changed before merge starts. let old = xs followed by merge(old, take(&xs)) is accepted.
+- Accept and reject lines: types that hold themselves: type Node { next: Node } and enum Chain { Link(next: Chain) } are rejected: no finite value. type Node { kids: List<Node> = [] } and enum Chain { End, Link(next: Chain) } are accepted.
+
+### M2-05 · what this changes in TASKS.md
+
+- M2-21: Shrinks: no move or use-after-move analysis; it checks what may follow &, the two call rules, and that a for body does not change the list it walks.
+- M2-16: Gains one rule: reject a type that has no finite value.
+- M2-26: The interpreter copies on bind and store, needs no snapshot for a for loop, releases deep values with a loop and counts depth when it copies or compares; no borrow machinery.
+- M4-33: Carries the cost side: skip the copy at a last use, and copy a matched value's fields only when the arm changes what was matched.
+- M4-34: Shrinks: no inout slices; read-only slices of List and String are passed as borrowed parts.
+- M4-05: Must give read-only List and String parameters a form that can point at part of a caller's value.
+- M4-22: Must implement indirect storage for types that contain themselves and say which fields get the pointer.
+- M6-22: Reword its count: slices appear only as read-only arguments and there are no pool nodes while pools stay undecided.
+- M6-22a: The detector checks two things: at each call start no inout argument shares storage with another argument, and no read-only place argument was written between its evaluation and the call's return.
+- M2-14: Must decide a swap built-in and whether a map entry can be passed with &.
+- M2-10: Shared data is now only a cost question, since copies already give the same meaning.
+- M2-40: Shrinks to the overlap, order-rule, walked-list, place and recursive-type lines; no move cases, no pool cases.
+
+## M2-06 · Decide traps, holes and what an example means
+
+### M2-06.1 Which parts of a trap report belong to the program's meaning?
+
+**Kind and position** (recommended). The trap kind and the file, line and column of the token that names the failing operation are meaning. The detail line and the call chain are help and may differ between back ends; costs one constant per trap site in native code.
+
+```
+$ paka run avg.paka data.txt
+avg: trap divide_by_zero at avg.paka:14:11
+  0 / 0
+  in mean, called from update
+$ echo $?
+3
+```
+
+- Why: It is what TASKS.md already compares, it tells the agent where to look, and it leaves the optimizer free to inline. The help lines cost the interpreter nothing.
+- Locks: The position rule: the operator for arithmetic, the [ for an index or slice (also in &xs[i]), the function name for a built-in call or assert, the ?? for a hole; a trap inside a built-in is reported at the user's call. Every native back end carries it.
+- Not chosen: Kind only (Only the kind is compared. Lets the optimizer merge trap sites, but two back ends may point the agent at different lines for the same run.) · Everything shown (Kind, position, values and call chain are all meaning. Best feedback guaranteed, but inlining and tail calls in release would have to keep every frame.)
+- Look again when: M6 shows per-site positions blocking an optimization that matters; position could then drop to line only.
+
+### M2-06.2 When more than one trap is possible, which one is reported?
+
+**First in evaluation order** (recommended). The trap reported is the one the reference interpreter reaches first under M2-03's order. Stack and memory traps are the exception: where they strike differs by mode (line 161). Costs: release code may not reorder checks unless it can still name the first one.
+
+```
+fn pick(xs: List<Int>, i: Int) -> Int {
+  xs[i] + xs[i + 1] * 2
+}
+// order: xs[i], i + 1, xs[i + 1], *, +. The first that fails is the trap.
+```
+
+- Why: It is the only option that is one meaning. Release code can still hoist a check: functions are pure and a trap drops the handler's effects (line 159), so after a failed early check it may rerun the exact path to find the first trap.
+- Locks: M6-01 takes it as given; M6-19 may remove or hoist checks only with that guarantee. For stack and memory traps only the kind is meaning.
+- Not chosen: Any possible trap (A back end may report any trap the run would hit. Frees the optimizer fully, but the same program and input can give different reports, which breaks line 161.) · Fixed rank by kind (When several traps are possible in one statement, a fixed order of kinds decides. Looks orderly, but the interpreter would have to run past a trap to find the others.)
+
+### M2-06.3 Which trap kinds exist?
+
+**Eight plain kinds** (recommended). overflow, divide_by_zero, out_of_bounds (index, slice, shift count, digits), bad_conversion (Float to Int), assert, hole (carries its name), stack, memory. stale_handle is reserved until pools exist; costs eight names in the reference.
+
+```
+wc: trap out_of_bounds at wc.paka:9:14
+  index 5, length 5
+wc: trap hole at wc.paka:12:3
+  ??scan
+```
+
+- Why: Each kind names a different mistake and the detail line carries the rest. It is the paper's list plus the two cases the paper's wording does not fit.
+- Locks: The kind names, which tests and agents match on. Adding a kind later is cheap; renaming or merging breaks expectations in every conformance case.
+- Not chosen: Paper's list only (Division by zero and failed conversion are folded into overflow. Fewer names, but 'overflow' for 1 / 0 sends the agent looking for the wrong bug.) · One kind per operation (Separate kinds for index, slice, shift, negative length and so on. Most exact, but each is one more thing every back end must tell apart, and the detail line already says it.)
+- Look again when: M2-12, M2-14 or M2-15 needs a kind this list lacks (they may add; they may not rename).
+
+### M2-06.4 How does a hole get its type?
+
+**From position, else error** (recommended). ??name takes the type its position expects: a parameter, a field, a declared local, a result, a condition, a branch or operand whose other side has a type. Where nothing is expected it is a check error that says to bind it to a let with its type written. As a statement on its own it has no value.
+
+```
+fn price(n: Int) -> Int {
+  let base: Int = ??base_price    // type written, so the hole is Int
+  if n > 10 { ??bulk } else { base * n }
+}
+// let x = ??later   is rejected: write the type
+```
+
+- Why: It is the paper's sentence made exact, with one spelling, and the code around a hole stays fully checked. The error tells the agent exactly what to write.
+- Locks: Hole checking in M2-20 and the placeholder rule M5-06 builds on. Holes stand for expressions and statements only, not for patterns, types or whole definitions.
+- Not chosen: Type may be written (As above, and a hole may also state its type: ??later: Int. Never stuck, but two spellings for a hole.) · Fits anything (A hole with no expected type gets an unknown type that matches everything it touches. Never an error, but mistakes around the hole go unreported until it is filled.)
+- Look again when: Agents in M4 or M5 often hit the no-expected-type error.
+
+### M2-06.5 What is the body of an example, and when does it pass?
+
+**Block ending in Bool** (recommended). The body is statements followed by one Bool expression: true is pass, false is fail. When that expression is a comparison, the fail report shows both sides. One example makes one claim; costs more examples for several claims.
+
+```
+example dec_stops_at_zero {
+  var s = Counter {}
+  update(&s, Dec)
+  s.count == 0
+}
+// dec_stops_at_zero fail at counter.paka:15:11
+//   left: -1  right: 0
+```
+
+- Why: It keeps the paper's sample as written, needs no new form, and keeps 'fail' (the claim is false) apart from 'trapped' (the code stopped).
+- Locks: Every example's shape, the four statuses, and what M5-06 extends for UI examples. Allowing more forms later breaks nothing.
+- Not chosen: Assert lines inside (The body is statements with assert(...) lines and no final value; it passes if it runs to the end. Several claims per example, but a failed claim then looks like a trap, and the paper's sample changes.) · Call and expected value (A fixed two-part form: an expression and the value it must equal. Easiest to report, but cannot express steps on changing state, which the paper's own sample needs.)
+- Look again when: M7-01 finds owners need several claims per example to keep acceptance examples readable.
+
+### M2-06 · settled without asking
+
+- Trap report for a headless program: One line on standard error, 'app: trap kind at file:line:col', then optional indented help lines; exit status 3. It is the same family as M1-06's effect lines ('light: effect Print refused: ...'); the wording of help lines is not fixed. What a handler trap does to state and effects is M2-15's.
+- Position format: The file's own name without its directory, then the 1-based line and column in the file's text, in the form M2-04 uses. A program is one file or one flat directory, so the name is unique, and the position is the same wherever the program is built or run from.
+- Interpreter limits: The 10,001st nested call traps stack; a single List, Map or String growing past 16,777,216 items traps memory; no step or time limit. Both numbers are the interpreter's own, not part of meaning, and can change without breaking a program. 10,000 is near what TypeScript runs get, so recursive tasks stay fair; raise it when a task or real program needs more.
+- assert: A built-in assert(cond) with no result; a false condition traps assert. No message argument: the position names it. A form that stops in a value position is M2-12's and would reuse this kind.
+- Effect refused or failed: M1-06 ends the program with one line and status 3, like a trap. Whether these become trap kinds or stay separate is M2-15's; until then they keep M1-06's lines.
+- Hole names: ??name with a lower-case name, required. Names need not be unique; the report gives name and position.
+- Where holes run: paka check accepts holes, lists them as notes and exits 0. The interpreter and dev mode run them: reaching one traps hole. paka build refuses the program and names each hole (line 308).
+- Example statuses: Four, computed by the toolchain only (line 185): pass, fail, trapped (any trap but hole), unfinished (a hole was reached). A hole that is not reached does not matter. If the program does not check, no example has a status: paka examples prints the errors and exits 1.
+- paka examples output and status: One line per example on standard output, 'name status', with ' at file:line:col' and help lines for fail, trapped and unfinished; for example 'price_bulk unfinished at shop.paka:3:15'. Order is by name. Exit 0 when all pass, 3 when any is fail, trapped or unfinished.
+- What an example may do: Call functions and build values; it performs no effects and needs no grants. It may call an update function on a var state and look at the state afterwards, dropping returned effects with _ =; comparing effect lists waits for M2-09's equality ruling. Examples take no arguments, cannot be called, share nothing and run in no promised order.
+- What an example is for: An example names no target. What it covers is whatever it uses, found by the who-uses-what index later (line 279). Agent-written and human-owned labels arrive in M7.
+- Endless loops: Not a trap and not a status in M2. A run that never ends is stopped by whoever started it: the M3 sandbox, later M4-39. Known gap, accepted for now.
+- Stack and memory traps across modes: Kind is reported and status is 3 as for any trap, and stack also covers a value nested too deep to copy or compare (M2-05). Whether and where they happen is not compared between back ends: only an unbounded-recursion case is shared, compared on kind and status. The exact 10,001 and size-cap tests are the interpreter's own unit tests (M2-26), outside the conformance suite.
+
+### M2-06 · what this changes in TASKS.md
+
+- M2-26: Adds the size cap beside the call-depth limit, tests both limits in its own unit tests, and must run on a thread whose stack holds 10,000 nested Paka calls.
+- M2-27: Statuses stay the four listed; it also prints both sides of a failed comparison and exits 3 unless all pass.
+- M2-20: A hole with no expected type is an error that says to bind it to a let with a written type; a hole alone as a statement is accepted.
+- M2-12: Must decide whether a stop-in-value-position form exists; if so it reuses the assert kind.
+- M2-14: Names the trap kind of every built-in from this list, or adds a kind; it may not rename one.
+- M2-15: Takes the report shape and status 3 as given and rules only on whether refused and failed effects are trap kinds, and on rollback.
+- M2-41: No case may depend on the depth number or on a memory trap; one unbounded-recursion case expects kind stack and status 3.
+- M4-27: Stack trap position is not compared with the interpreter; only that it is a clean stack trap.
+- M4-40: Compares kind and position for all traps except stack and memory, where only kind and status are compared.
+- M6-06: Same exception as M4-40 for stack and memory traps.
+- M6-16: Its stack traps are checked for kind and clean exit only, never for position.
+- M6-19: A hoisted or merged check must still report the first trap in evaluation order, for example by falling back to an exact path.
+- M3-04: Tasks must stay under 10,000 nested calls and 16,777,216 items in one collection.
+
+## M2-09 · Decide generics, interfaces and function values together
+
+### M2-09.1 How do ==, <, +, max and len work on several types when there is no overloading?
+
+**One closed built-in table** (recommended). Each operator and built-in name has one row that lists the types it takes; only the language adds rows, and a user function has one signature with written types. Costs: a user cannot make max or len work on their own type, and cannot define a function named like a built-in.
+
+```
+// len takes a String, a List or a Map; max takes two Ints, Floats or Strings
+// max(1, 2.0) is rejected: both sides must be one type; fix: 1.0
+// a user fn named len is rejected: len is a built-in name
+fn widest(a: String, b: String) -> Int {
+  max(len(a), len(b))
+}
+```
+
+- Why: It is what M2-03 and M2-05 already assume and what M2-01.2 ruled: built-in generics only. A use is checked from one table row and the argument types, so line 136's promise holds with nothing new to build.
+- Locks: The table form: one row per operator or built-in, and a user may not add or reuse a row. Rows already fixed upstream (M2-03, M2-05): comparisons on Int, Float and String; + - * / on Int and Float; % on Int only; len on String and List. The points below add ==, order and + on text; M2-14 adds its own rows. A later interface design must fit around these rows.
+- Not chosen: One name per type (Every built-in works on one type: max_int, max_float, text_len, list_len. No table of type sets, but more names to learn and a wrong pick possible at every call.) · Named built-in interfaces (The reference shows the type sets as names (Equal, Ordered) inside built-in signatures, though users cannot write them. Ready for user generics later, but spends reference tokens on words no program can use.)
+- Look again when: After 'go', when user generics and interfaces are designed; the table rows then become the first interfaces.
+- Owner must still: Section 8's question on generics and interfaces (line 354) stays open, as M2-01.2 ruled, and TASKS.md has no task that decides it after 'go'. Add a decision task before M4-38, or record that Paka ships without user generics.
+
+### M2-09.2 Do records, enums and collections have == without the agent writing it?
+
+**Every type, by structure** (recommended). == and != work on any two values of one type: records field by field, enums by variant then fields, Lists item by item, Maps by the same keys with equal values. Costs: a deep comparison hides behind one operator, and a record that holds a NaN is not equal to itself, as IEEE says.
+
+```
+type Point { x: Int = 0, y: Int = 0 }
+
+enum Shape { Dot(at: Point), Line(p: Point, q: Point) }
+
+example same_shape {
+  let a = Line(Point {}, Point { x: 3, y: 4 })
+  let b = Line(Point {}, Point { x: 3, y: 4 })
+  a == b && a != Dot(Point {})
+}
+```
+
+- Why: Values are copies with no identity (M2-05), so structure is the only meaning equality can have. One sentence in the reference, and every example can compare whole values.
+- Locks: Results of == on every user type; comparing is deep and can trap stack (M2-05). Field and variant order do not matter to ==, so reordering them stays safe. What a function value inside a type does is the fourth point's.
+- Not chosen: Only when marked (A type has == only if its definition says so. The cost of a deep comparison is visible, but it is one more mark to forget and one more error kind.) · Primitives only (== works on Int, Float, Bool and String; for anything else the agent writes a function. Nothing to build, but every example on a record needs hand-written comparison code.)
+- Look again when: M6 shows hidden deep comparisons costing real time; a warning can be added without breaking a program.
+
+### M2-09.3 What can be a function value?
+
+**Named functions and variants** (recommended). A function value is the name of a user fn or of a user variant that has fields; its type is written fn(Int, Int) -> Bool. No function written in place (a lambda) and no capture; costs a named helper or a loop where a model would write a lambda.
+
+```
+// ordered("fig", "kiwi", by_length) is true
+// with wc's Msg: let wrap: fn(String) -> Msg = Loaded
+fn by_length(a: String, b: String) -> Bool {
+  len(a) < len(b)
+}
+
+fn ordered(a: String, b: String, less: fn(String, String) -> Bool) -> Bool {
+  !less(b, a)
+}
+```
+
+- Why: It is exactly what the paper's sample (line 248) and M5-01's event arguments need and nothing more. Anonymous functions and capture can be added later without breaking a program.
+- Locks: The function type spelling fn(A, B) -> R and that a function value is one name with no data. M4-37b and M6-15 stay level 3, and M5-03's on_change keeps taking a variant name.
+- Not chosen: Anonymous, no capture (Also a function written in place that may use only its own parameters. Saves naming a helper, but adds a form, and the first one that needs an outer variable is an error anyway.) · Closures that copy (A function written in place may use outer variables; it gets a copy of each. Closest to model habit, but a function value then carries data: new layout, new equality rule, level 4 work in two back ends.)
+- Against: Models write filter and map with lambdas by habit in Rust and TypeScript; each one here costs an edit and a rewrite as a loop.
+- Look again when: Practice runs show lambdas written by habit costing many counted edits, or M2-14 finds its collection built-ins unusable without capture.
+
+### M2-09.4 Can two function values be compared with ==?
+
+**Equal when same name** (recommended). Two function values are equal when they name the same function or the same variant, so == really works on every type, effect lists included. Costs: native code must compare which definition it is, not a code address.
+
+```
+example wc_asks_for_the_file {
+  var s = Tally {}
+  update(&s, Start("a.txt")) == [ReadFile("a.txt", then: Loaded)]
+}
+```
+
+- Why: With no capture a function value is only a name, so the answer is exact and the same in every back end (line 161). It keeps the rule 'every type has ==' whole and lets examples check the effects an update returns (lines 166, 183).
+- Locks: Function identity is part of meaning: it is the definition's name, so editing a body or swapping code in dev mode (line 304) does not change it, and release code may not merge two functions into one identity. If closures arrive later they must compare by function and captured values.
+- Not chosen: Not comparable (== on a function type, or on any type that holds one, is a check error. Free to loosen later, but no example can state which effects an update returned, and 'has ==' becomes a property the checker tracks through every type.) · Compare, false if unsure (== is allowed and gives false whenever a function value is reached. Never an error, but a list is then not equal to its own copy.)
+- Against: Rejecting the comparison is the option that is free to loosen later; this pick is harder to take back.
+- Look again when: Closures are designed, or M6 finds that keeping function identities apart blocks an optimization that matters.
+
+### M2-09.5 Which types have an order (< <= > >=, min, max)?
+
+**Int, Float, String only** (recommended). Only these three compare with < and feed min and max. Records, enums, Lists and Maps have no order: the agent compares a field, or passes a named function to a sorting built-in, which costs a small helper per sort of records.
+
+```
+// a > b is rejected: a Player has no order; fix: compare a field
+type Player { name: String, score: Int }
+
+fn ahead(a: Player, b: Player) -> Bool {
+  a.score > b.score
+}
+```
+
+- Why: An order taken from field or variant position is the kind of silent dependence M1-06.3 refused for the first variant. The rejected line is an exact error with a fix, and more types can be added later for free.
+- Locks: min and max take two values of one ordered type. Sorting anything else needs a named function, which M2-14 must supply a built-in for.
+- Not chosen: Every type, by structure (Records order by their fields in written order, enums by variant order, Lists item by item. No helper needed, but moving a field or a variant silently changes results.) · Lists too (As the first option, plus Lists of ordered items compare item by item. Handy for a few tasks; one more row and one more deep operation.)
+- Look again when: Practice runs show many rejected comparisons on Lists or records.
+
+### M2-09.6 Does + join two Strings?
+
+**Yes, + and +=** (recommended). + joins two Strings and += appends to a var String; both sides must be Strings. Costs a second way to build text beside interpolation, and two text fields joined where a sum was meant pass the checker.
+
+```
+// "n = " + n is rejected when n is an Int; fix: "n = {n}"
+fn banner(words: List<String>) -> String {
+  var out = ""
+  for w in words {
+    out += w + " "
+  }
+  out
+}
+```
+
+- Why: Rust, TypeScript, Swift and Kotlin all join text with +, so a model writes it without thinking, and a rejected + would cost the first-try pass rate (line 372) in every run. Types still cannot be mixed: Int + String is an error with a fix.
+- Locks: Programs will use it, so it cannot be removed. out += x copies in meaning; M4-33 may append in place.
+- Not chosen: No, interpolation only (+ is for numbers; text is joined by interpolation or a built-in. One spelling, and free to loosen later, but a + written by habit is an error and loops that build text get longer.)
+- Against: Rejecting + on text keeps one spelling (line 51) and could be loosened later for free; this pick cannot be tightened.
+- Look again when: Practice runs show text joined where a sum was meant (a number read as text and never parsed) passing the checker and failing tests.
+
+### M2-09.7 Can a record, enum or collection be turned into text automatically?
+
+**No automatic text** (recommended). Interpolation takes Int, Bool and String only; for any other type the agent writes the text from its parts. Costs a small function per printed type and an error where a model writes "{p}" by habit.
+
+```
+// "{p}" is rejected: write the fields
+fn show(p: Point) -> String {
+  "({p.x}, {p.y})"
+}
+```
+
+- Why: No task's expected output matches a debug form, so a habitual "{p}" is better met by an error with a fix than by output that is silently wrong. Adding a built-in later breaks nothing.
+- Locks: Nothing in what an M2 program can compute. The tools still need one way to print a value (failed examples in M2-27, the tree text of M5-06); that form is fixed under defaults and becomes meaning in M5, where ui_tree hands it to a program.
+- Not chosen: One fixed debug form (A built-in gives every value one fixed text, such as Point { x: 3, y: 4 }. Handy for debugging, but task output never wants that form, and its exact layout becomes program meaning for good.)
+- Look again when: Agents in M4 ask for print-debugging of whole values often enough to justify a built-in that returns the tools' value text form.
+
+### M2-09 · settled without asking
+
+- User-written generics and interfaces: Not decided, as M2-01.2 ruled. No type parameter, no interface and no seventh definition kind exist in M2; a helper is written once per type. Adding them later breaks no program. Line 354 stays an open question; see the first point's owner action.
+- Checked from signatures alone: There is no user generic definition to check. Each built-in generic type and function has one row in the built-in table; a use is checked from that row and the types of its arguments, and no other body is read. With var xs: List<Int> = [], the line append(&xs, 1) is accepted and append(&xs, "a") is rejected from the append row and the two argument types alone.
+- Where a type cannot be worked out: An empty list [] and any other built-in value with no arguments to fix its type takes the type its position expects, by the same rule as a hole (M2-06). let ys = [] is a check error whose fix is to write the type; let ys: List<String> = [] is accepted.
+- Where type arguments are written: Only in type positions after a built-in type name: List<Int>, Map<String, Int>, Effect<Msg>, and M2-12's Option<Int> and Result<Int, String>. Never in an expression, so < and > in an expression are always comparisons. List<List<Int>> closes two brackets; there is no >> token (M2-03).
+- How generic code is compiled in dev mode: Built-in generic functions are shared runtime code, one copy for all item types, driven by the item type's layout record from M4-22 (size, copy, release, equality). Editing a program never recompiles them. Release may make one copy per type (M6-14). How user generics would be compiled is not decided.
+- What a user's interface hash covers: What line 285 lists and nothing more: the signature as written (parameter types, function types among them, inout marks, labels, result), and for a type its fields, defaults and variants with the layout of everything held by value. No derived property is added: every type has ==, and order exists only on three built-in types.
+- Equality details: Both sides must have the same type; Int == Float is a check error whose fix names to_float (M2-03). Float compares by IEEE, also inside records and lists. Two Maps are equal when they hold the same keys with equal values, whatever their order. Ui stays outside comparison, as M5-06 ruled.
+- max and min: Two arguments of one type out of Int, Float, String; the result has that type. For Floats a NaN argument gives NaN (M2-03); max(-0.0, 0.0) is 0.0 and min(-0.0, 0.0) is -0.0 in either argument order, so every back end agrees. Strings order by code point.
+- += and the other compound forms: Each means the long form: += on Int, Float and String; -= *= /= on Int and Float; %= on Int. No + on Lists: append is the way.
+- len and index: len takes a String, a List or a Map and gives an Int. [ ] reads a String or a List; whether a Map has an index form is M2-14's, under M2-12's line between trap and returned failure.
+- Other rows fixed upstream: abs and unary minus take an Int or a Float; Bool has == and != but no order (M2-03). Nothing here changes them.
+- What for can walk: A List and an integer range, as M2-02 and M2-03 fixed. Whether a String or a Map can be walked is a table row for M2-14 to add; no user type can be walked.
+- Function types: Written fn(A, B) -> R, or fn(A) for no result, with one space after each comma and around the arrow (M4-47 asked for this sample). Labels are not part of the type: a call through a function value passes every argument by position. A function with an inout parameter cannot be a value; lifting this later breaks nothing.
+- Using and calling a function value: A lower-case function name, or an Upper variant name with fields, written without ( ) is the value; a variant without fields is just its value, so then: Saved passes a Msg value as in M2-01.3's sample. It may be a parameter, a local, a field, a variant field or a list item, and is called with ( ) like any function: less(a, b), s.on_done(x). Which effect field takes a function and which a value is M2-15's.
+- Built-ins as function values: A built-in function, or a built-in variant that has fields (Some, Ok, Err, ReadFile), cannot be a value, because its row may take several types. The fix is a one-line user function that calls it. Built-in variants without fields (None, Exit) are plain values. Can be loosened later.
+- Hiding a built-in name: A local may hide a built-in function name, as M2-02 allows for user functions: var max = xs[0] and let count = len(xs) are accepted, and adding a built-in later breaks no body. A user definition (fn, type or variant) may not reuse a built-in name.
+- Value text form for the tools: One spelling, used by paka examples for the two sides of a failed comparison (M2-06, M2-27) and by M5-06's tree text: a value prints as it is written in source. A variant with fields prints them in round brackets by position (Toggle(7)); a variant without fields and a function value print as the name (Add, Loaded); a record prints its type name and every field in declared order (Point { x: 3, y: 4 }); a List prints in square brackets; a String is quoted with M2-03's escapes; Int and Bool print as M2-03 says. How a Float and a Map print inside it is M2-14's, since M2-03 gives a Float no text but fixed. No M2 program can reach this form.
+- Bool, records and enums as Map keys: M2-14's call. M2-01 lets tasks rely on Int and String keys only; structural == makes record keys possible later.
+
+### M2-09 · what this changes in TASKS.md
+
+- M2-08: Gains rows: + and += on String; == and != on every type with the Map, NaN and function-value cases; min and max on Int, Float and String with the signed-zero and NaN results.
+- M2-13: A local may hide a built-in function name; a user definition that reuses a built-in name is rejected with a fix.
+- M2-14: Must supply a sorting built-in that takes a named function and gives one defined result for any such function, the same in every back end; decide Map key types and whether for walks a String or a Map; fix how a Float and a Map print in the value text form. Map equality ignores order, so if Map order is insertion order two equal Maps can walk differently: say so or pick key order. It may not add automatic to-text; len, min, max and + follow the rows fixed here.
+- M2-15: Effect values are comparable, so examples may compare an update's effect list; M2-06's 'drop effects with _ =' is no longer the only way. It says which effect fields take a function value and which a message value.
+- M2-16: Adds function types to signatures and rejects a user definition that reuses a built-in name; no equality or order property per type is stored.
+- M2-17: Shrinks: no generic declarations and no type arguments in expressions, so the bracket-versus-comparison trap is gone. It still parses nested type brackets such as List<List<Int>>, function types and M2-12's forms. Its level is the owner's to re-grade; level 3 looks right.
+- M2-18: The reference carries the table rows and the one-line rules of this page: == on every type, order on three types, + on text, named function values, no automatic text.
+- M2-22: Shrinks to checking uses of built-in generic types against the closed table and the typed-from-position rule. Its done-when clause 'a generic body's result never depends on any caller' cannot be met, as there is no generic body: reword it to 'a use is checked from the table row and the argument types, reading no other body'. Likely level 3.
+- M2-27: Prints the two sides of a failed comparison in the value text form fixed here; that text is the tool's help, not something a program can reach.
+- M2-29: Shrinks: no interface calls and no interface lookup; only built-in generic calls and structural == reach the core form.
+- M2-30: Its done-when clause 'every rejected capture' is empty: all definitions are top level and there is no function written in place, so capture cannot be written. Its reject cases are a built-in used as a value and a function with an inout parameter used as a value; it adds == on function values.
+- M2-39: Its generics cases are uses of built-in generic types and the accept and reject lines on this page; function-value cases include == on function values and on effect lists.
+- M3-16: When it rechecks M3-04's weak-spot tags: a sort takes a named function and there are no closures, records have no order, + joins text. The tags on T3 (custom sort order) and R2 (priority queue) stand until M2-14 rules.
+- M4-03: Function types appear in the type text of takes and gives queries in the canonical spelling. Its look-again for agent-written generic functions does not fire.
+- M4-11: The interface hash needs no generic or derived-property input; it covers what line 285 lists plus labels and inout marks.
+- M4-22: Each type's layout record also gives its copy, release and equality routines for the shared collection code.
+- M4-37b: Stays level 3 (no capture). A function value must carry an identity that == compares, the same for a function and for a variant used as a function, and unchanged by a code swap.
+- M4-38: Shrinks: no user generics; it only passes the item type's layout record to the shared runtime code of built-in collections. Its done-when clause 'editing a generic body recompiles only what the decision says' has no generic body to edit: reword it to 'editing any user definition recompiles no collection code, shown by the compile counter'.
+- M5-16: Message values in trees print in the value text form fixed here, plus M2-14's spelling for a Float and a Map.
+- M5-28: M5-07.2's look-again fires: a function value can now sit in state. Decide when M5 starts; the cheapest rule is that a visual app's stored types may not hold a function type. Headless apps are rebuilt and rerun (line 74) and are not affected.
+- M6-14: Shrinks to making per-type copies of built-in collection code; no user generic instances.
+- M6-15: Stays level 3; release code must keep function identities apart so == gives the interpreter's answer.
+- M6-21: The planted 'wrong generic instance' bug can only be in a built-in collection instance.
+
+## M2-10 · Decide shared immutable data and pools with handles
+
+### M2-10.1 Is there a shared immutable type in M2?
+
+**No shared type yet** (recommended). Nothing in the language says 'shared': a value used in two places is two copies in meaning, and the compiler may skip a copy when nobody can tell. Costs: a big value held in many places is really copied until M6 measures and decides.
+
+```
+// a tree: e is used twice, so the result holds two copies of it
+enum Expr { Num(value: Int), Add(left: Expr, right: Expr) }
+
+fn double(e: Expr) -> Expr {
+  Add(e, e)
+}
+
+example double_num {
+  double(Num(2)) == Add(Num(2), Num(2))
+}
+```
+
+- Why: A Shared<T> would mean exactly what T means, so it adds vocabulary and three build tasks (M2-35, M4-35, M6-12) with no change to any program's result. No M2-01 task class has a subtree with two parents, and adding the type later breaks nothing.
+- Locks: Nothing in meaning. The plan of line 269 (immutable, no cycles, counted) stays the plan for when a shared type is added; it is recorded as not decided. The M6 figure for reference counting (line 360) cannot be measured until then.
+- Not chosen: A Shared type now (A built-in Shared<T> holds a counted, read-only value; copying it copies a pointer. Makes the cost visible, but adds a type, a wrap and an unwrap to learn, and work in M2-35, M4-35 and M6-12 before any measurement asks for it.) · Promise cheap copies (No new type, but the language promises that copying a let value never copies its storage. This is the 'shared until written' option M2-05 turned down: it costs a count on every value and a check on every write.)
+- Look again when: M6 measurements show copies of large unchanged values costing more than the pointer-heavy gap of line 99, or a real program holds one big value in many places.
+- Owner must still: Approving this page records the shared type as not decided. Approve the reworded M6 exit check listed under effects, and after 'go' either add a decision task for shared data and pools (TASKS.md has none) or confirm that M6 reports copy cost instead.
+
+### M2-10.2 What is recorded about pools and handles, and how is a graph written until then?
+
+**Not decided; list indexes** (recommended). Graph tasks in, pools not built, pool part dropped: no pool type, no handle type, no stale-handle rule and no pool iteration order exist, and a graph keeps its nodes in a List and refers to them by Int position. Costs: a position outside the list traps out_of_bounds, but a wrong position inside it reads the wrong node without a trap.
+
+```
+type Graph { next: List<List<Int>> = [] }
+
+fn add_node(g: inout Graph) -> Int {
+  append(&g.next, [])
+  len(g.next) - 1
+}
+
+fn link(g: inout Graph, a: Int, b: Int) {
+  append(&g.next[a], b)
+}
+```
+
+- Why: It is M2-01.1 carried through: rules nobody runs before the go/no-go are guesses. The stale-handle rule is the one new idea in pools and should be designed against real graph programs.
+- Locks: The go/no-go says nothing about pools. The trap kind stale_handle stays reserved and unused (M2-06). The M6 figure for handle checks (line 360) cannot be measured until pools exist.
+- Not chosen: Rules now, build later (Write the pool, handle and stale-handle rules on paper now so later milestones have a target, but build nothing. Costs a design made with no evidence from the experiment, which its first user will likely reopen.)
+- Look again when: After 'go': graph programs that remove nodes show wrong-node bugs, or M6 pointer-heavy benchmarks need pools to be measured (line 360).
+- Owner must still: The note on M2-35 asks the owner to record pools as not decided; approving this page is that record.
+
+### M2-10 · settled without asking
+
+- The types and their operations: None. M2 has no shared type, no pool type and no handle type, so M2-14 takes nothing from M2-10.
+- The stale-handle rule: Not decided. Nothing in M2 can raise stale_handle; the kind name stays reserved as M2-06 ruled.
+- Iteration order: No pool exists, so there is no pool order. A graph's order is its List's order; Map order is M2-14's.
+- Tree sample: A tree is a type that contains itself (M2-05): one owned value, copied whole in meaning, compared by structure (M2-09). A subtree used twice is two copies. An enum tree such as Expr is changed by building the changed tree, because names bound by a pattern are values; a record tree such as type Node { kids: List<Node> = [] } can be changed in place through fields and indexes (M2-05).
+- Graph sample: Nodes sit in a List and point at each other by Int position, as in M2-01.1. link(&g, a, b) traps out_of_bounds at the [ when a is no node. Removing a node is the program's own business: it marks the node dead or rebuilds the list; the language gives no help and no trap.
+- Cycles: Values cannot form cycles: there are no references, only owned values and Int positions. A cycle in a graph is a cycle of positions.
+- Cost of copies: Left to M4-33 (skip a copy at a last use) and to M6 measurements. The language makes no promise about copy cost beyond M2-05's: a read-only argument is passed without copying.
+- The names Shared, Pool and Handle: Not reserved. A user may name a type Pool or Handle, which are ordinary names in tasks; a reservation would cost counted edits before the go/no-go for a feature that does not exist. If a built-in takes one of the names later, the few programs that use it are renamed mechanically; names can be reserved at any later point.
+
+### M2-10 · what this changes in TASKS.md
+
+- M2-35: Dropped: there is no shared type and no pool to implement. It is not flagged conditional, so say it outright: tasks that need it treat it as done, and its tree and graph samples move to M2-40 as golden tests.
+- M2-40: Loses M2-35 from needs and its shared-data and pool cases. It runs this page's tree and graph samples and adds one case showing that a value used twice in a tree is two independent copies.
+- M2-33: Its done-when names M2-35 as a boundary; no built-in falls there any more.
+- M2-14: Takes no types or operations from M2-10.
+- M2-18: The reference spends no tokens on shared data or pools; it says in one line that graphs use list positions.
+- M4-35: Dropped while no shared type and no pool exist. It is not flagged conditional, so M4-42 drops it from needs.
+- M4-42: Drops M4-35 from needs.
+- M5-28: Reword its test list: no 'shared value or pool' case. M5-07 said M2-10 fixes what those words mean; neither exists.
+- M6 exit check: The figure for 'reference counting and handle checks' cannot be measured while M6-12 and M6-13 are dropped. Reword it to 'the cost of copying owned trees and of bounds checks on list-index graphs', or bring in a decision on shared data and pools after 'go'.
+- M6-02: Its cost-measurement method must say how copy cost of owned trees and bounds checks on list-index graphs stand in for the reference-counting and handle-check figures of line 360.
+- M6-06: The tags 'shared data' and 'pools' have no cases.
+- M6-10: The layout table gains no shared-box and no pool-slot header.
+- M6-12: Dropped while no shared type exists; it returns if M6 measurements bring one in. Not flagged conditional, so M6-15, M6-29 and M6-30 drop it from needs.
+- M6-13: Dropped while pools are not decided. Not flagged conditional, so M6-21, M6-29 and M6-30 drop it from needs.
+- M6-15: Drops M6-12 from needs.
+- M6-21: Drops M6-13 from needs. The planted wrong-reference-count and wrong-stale-handle bugs cannot exist; the owner replaces them or lowers the count of ten.
+- M6-29: Drops M6-12 and M6-13 from needs; the pointer-heavy benchmarks use owned trees and list-index graphs.
+- M6-30: Drops M6-12 and M6-13 from needs; the families 'reference-count updates' and 'handle checks' have nothing to leave out, so it measures bounds checks and copies instead.
+- M6-32: The published table shows reference counting and handle checks as not present, with the copy-cost figure beside them.
+
+## M2-12 · Decide the one error-handling mechanism
+
+### M2-12.1 How does a function say it can fail or have no answer?
+
+**A value in the result** (recommended). Failure and absence are ordinary values of built-in enum types, named in the signature and taken apart with match (the sample uses the next point's names). No hidden jumps; costs a wrapped result type on every function that can fail.
+
+```
+fn ratio(a: Int, b: Int) -> Result<Int, String> {
+  if b == 0 {
+    return Err("divide by zero")
+  }
+  Ok(a / b)
+}
+
+example ratio_reports_zero {
+  ratio(1, 0) == Err("divide by zero")
+}
+```
+
+- Why: It needs no new control flow: enums, match and the use-or-discard rule already exist, and the signature carries the whole fact (line 136). It is Rust's model, which the model under test knows well.
+- Locks: Every signature that can fail, every built-in that can fail (M2-14) and how effect failures reach a program (M2-15). Moving to exceptions later rewrites all of them.
+- Not chosen: Marked throwing functions (A signature says throws, the body uses throw, callers use try and catch, as in Swift. Familiar, but it adds four keywords and a second way for control to leave a function.) · Unmarked exceptions (Any function may throw and any caller may catch, as in TypeScript. Least to write, but a signature no longer tells whether a call can fail, which breaks checking from signatures alone.)
+- Look again when: Practice runs show failure handling costing clearly more tokens or edits than Rust's and TypeScript's on the same tasks (lines 373-374).
+
+### M2-12.2 Which built-in types carry failure and absence?
+
+**Option and Result** (recommended). Option<T> is Some(value) or None; Result<T, E> is Ok(value) or Err(error), where E is any type the function picks. Costs four variant names taken from users and two types to learn.
+
+```
+fn describe(found: Option<Int>) -> String {
+  match found {
+    Some(i) => "found at {i}"
+    None => "missing"
+  }
+}
+
+example nothing_found {
+  describe(None) == "missing"
+}
+```
+
+- Why: They are the two shapes a model already writes in Rust, names included, so nothing new is learnt. A free error type lets a task use text where a message is enough and an enum where it must branch.
+- Locks: The names Option, Some, None, Result, Ok, Err and their meaning; a user type or variant with one of these names is an error (M2-02.2). Flat patterns (M2-02) mean a Result inside an Option needs two matches.
+- Not chosen: Result with text error (As above, but Result<T> has one parameter and the error is always a String. Shorter signatures and any two failures combine, but a program cannot branch on the kind of error except by comparing text.) · Option only (Only Option<T> is built in; a failure with a reason is a user enum written once per result type. Smallest built-in list, but more code per task and no shared shape for a failure.)
+- Look again when: Practice runs show mismatched error types between functions costing many edits; a conversion built-in can then be added.
+
+### M2-12.3 Where is the line between a trap and a returned failure?
+
+**Bugs trap, outside data returns** (recommended). If the program can tell beforehand by comparing numbers it already holds (a position against a length, a divisor against zero), failing is a bug and traps. If telling needs the same work as doing it (is this text a number, is this key present, does this file exist), the answer comes back as Option or Result, which costs a match at every parse and lookup.
+
+```
+// xs[2] on a short list traps out_of_bounds: len(xs) could have told
+// parse_int stands for M2-14's name; only parsing can tell
+fn count_of(text: String) -> Result<Int, String> {
+  match parse_int(text) {
+    Some(n) => Ok(n)
+    None => Err("not a number: {text}")
+  }
+}
+```
+
+- Why: It keeps the traps already decided and makes the checker, not a test run, tell the agent that input can be bad (line 33). M2-01 lets a task demand an error message and exit status on malformed input, which a trap cannot give.
+- Locks: The result type of every built-in that reads outside data or looks something up (M2-14, M2-15). Turning a returned failure into a trap later, or the reverse, changes signatures.
+- Not chosen: Everything returns (Indexing, division and conversion also return Option. No program stops by surprise, but every xs[i] needs handling, and it reverses M2-03 and M2-05.) · Traps plus test functions (No built-in returns Option; the program asks first (is_number, has) and the operation traps if it did not. No wrapped results from built-ins, but every check is done twice and a forgotten one ends the program on bad input.)
+- Look again when: Practice runs show a parse or lookup result costing many edits where the task guarantees the data, or a trap ending programs on input the task calls malformed.
+
+### M2-12.4 Is there a short form to pass a failure up to the caller?
+
+**Postfix ?** (recommended). expr? gives the inside of Some or Ok; on None or Err the function returns that None or Err at once. Allowed only where the function's own result is an Option, or a Result with the same error type; costs one operator, a less visible exit, and a token that sits next to the hole mark ??.
+
+```
+// ratio(a, b) gives Result<Int, String>, as in the first point
+fn mean(total: Int, count: Int) -> Result<String, String> {
+  let m = ratio(total, count)?
+  Ok("mean {m}")
+}
+
+example mean_passes_the_failure_up {
+  mean(10, 0) == Err("divide by zero")
+}
+```
+
+- Why: It is checked from the function's own signature, it is a known small rewrite into match and return, and it is the spelling that goes with Option and Result in the model's training. Without it Paka pays tokens on every chained step.
+- Locks: The ? token and the early exit it hides. ? never converts: an Option in a Result function, or two different error types, is a check error with the expected and found types. x?.name leaves the function as in Rust; it is not TypeScript's optional chaining.
+- Not chosen: Prefix try (The same meaning written try expr, as in Swift and Zig. No clash with ??, but a new keyword, and it differs from the Rust spelling the model knows for these very types.) · Match only (No short form: every failure is taken apart with match. Nothing to build and free to extend later, but the longest programs of the three languages on failure-heavy tasks.)
+- Against: Match only is the option that can be extended later for free, and it keeps every exit of a function visible.
+- Look again when: Practice runs show ? written in places it cannot work (update functions, examples) costing many edits.
+
+### M2-12.5 Is there a form that stops the program where a value is expected?
+
+**unreachable()** (recommended). A built-in with no arguments that takes the type its position expects, like a hole, and traps with kind assert when reached. Unlike a hole it builds in release; costs one built-in name and gives no message beyond the position.
+
+```
+enum Mode { Idle, Busy(job: Int) }
+
+fn job_of(m: Mode) -> Int {
+  match m {
+    Busy(job) => job
+    // reaching this traps with kind assert, reported at the name
+    Idle => unreachable()
+  }
+}
+```
+
+- Why: It reuses the hole's typing rule and the assert kind, so it adds one name and no new rule. The name says what it is for, which keeps it apart from reporting bad input.
+- Locks: The name unreachable and that reaching it is trap kind assert, reported at the name. Adding a message argument later breaks nothing.
+- Not chosen: panic with a message (The same, with a String that is printed as a help line. Matches Rust habit, but invites using a trap to report bad input, which gives status 3 and the toolchain's wording instead of the task's.) · No such form (The arm must give some value, after an assert(false). Nothing new, but a made-up value hides the bug it stands for.)
+- Look again when: Agents write panic or unwrap by habit often enough in practice runs to cost counted edits; either can be added as one more row.
+
+### M2-12 · settled without asking
+
+- Typing of None, Ok and Err: Some(x) fixes its own type. None, Ok(x) and Err(e) take the missing type from their position by the hole rule of M2-06: a result, a parameter, a declared let, the other side of ==. The expected type passes into the branches of an if, the arms of a match and the last expression of a block, so Some(v) => Ok(v) beside None => Err("missing") is typed by the function's result. let r = Ok(3) is a check error whose fix is to write the type.
+- Blocks that leave: A block that ends in return, break or continue, and unreachable() itself, give no value and fit any expected type. So an arm may be None => { return Err("missing") } with the block broken over three lines. A return in an arm needs a block (M2-02's arm forms; M4-47 puts return on its own line); loosen to a bare => return only if practice runs show it costing edits.
+- Handling is forced by rules already made: A Result or Option cannot be used as its inside value: only match, ? or == reach it. A call whose Result is left unused is the M2-02.6 error; its fix offers match, ? or _ =. Writing _ = on purpose drops a failure and is allowed. One gap is accepted: a Result bound to a let and never read gets only the unused-name warning.
+- Where ? may stand: Inside a fn whose result is an Option (for an Option) or a Result with the same error type (for a Result). Anywhere else, an update that returns effects or an example included, it is a check error whose fix is a match.
+- Telling ? from a hole: ?? followed directly by a lower-case letter is a hole; any other ? is the postfix operator. It binds as tightly as a call or an index. A ? at the end of a line does not continue the line: it is not a trailing two-sided operator under M2-02's line rule.
+- unreachable() as a statement: Accepted on its own line with no _ =, like a hole: it has no value there. A hole in the same place would report 'unfinished' and stop paka build; unreachable() builds.
+- No extra kinds of failure: No exceptions, no catch, no way to recover from a trap inside a program, no error codes and no null. A trap ends the handler or program as M2-06 and M2-15 say.
+- Text to number: The parsing built-ins of M2-03 give Option<Int> and Option<Float>: there is one way to fail and no reason to carry. An Int that does not fit is None. M2-14 names them.
+- Lookups, searches and taking by position: A key lookup that may miss gives Option<V>; a search gives Option<Int>. Taking an item by position from an empty List (pop, first or last, if M2-14 has them) traps out_of_bounds like xs[0], because len could have told. If M2-14 also keeps an index form m[key], it is the form that claims the key is there: a missing key traps, and M2-14 names the kind (out_of_bounds fits; M2-06 lets it add a kind but not rename one).
+- Effect failures: A failed file read or write must reach update as data the program matches on (a Result in the message or a second message), which agrees with M7-02's 'as a message, never as a trap'. The exact form is M2-15's, as is whether a failed Print stays the error M1-06.2 made it.
+- Comparing and printing: Option and Result compare with == like any enum (M2-09), so an example may end in place_of(xs, "a") == Some(0). A program gets no automatic text for them; the tools print Some(3), None and Err("divide by zero") in M2-09's value text form.
+- Trap kinds: None added. unreachable() reuses assert, as M2-06 asked.
+- Helpers: Whether there are built-ins that give a default for None or turn None into an Err is M2-14's; each is one table row and none changes the mechanism. Without the second one every Option met inside a Result function costs a four-line match, so M2-14 should weigh it.
+- Layout of the new forms: As M4-47 asks: Result<Int, String> with one space after the comma; expr? with no space before the ?; unreachable() like any call; a match on an Option or Result has one arm per line. The samples on this page are in that layout.
+
+### M2-12 · what this changes in TASKS.md
+
+- M2-07: The token list gains ?; ?? stays one token only when a lower-case letter follows directly.
+- M2-11: A postfix ? at the end of a line ends the statement; it does not continue the line.
+- M2-17: Parses postfix ? at call-and-index tightness and the two-parameter type Result<T, E>; no throw, try or catch forms.
+- M2-20: None, Ok and Err with no expected type are errors that say to write the type. The expected type passes into the branches of an if, the arms of a match and the last expression of a block; holes use the same path, which only accepts more than M2-06 listed. A block that ends in return, break or continue fits any type. unreachable() is typed like a hole and accepted as a statement; a match on Option or Result must name both variants.
+- M2-23: The core form needs no new node beyond early return: ? lowers to a match that returns, and a block that ends in return has no value.
+- M2-31: Its forms are the two built-in enums, ? as a rewrite into match and return, and unreachable(). Its 'unhandled failure is rejected' case is the M2-02.6 unused-result error with a fix that offers match, ? or _ =.
+- M2-14: Takes Option, Some, None, Result, Ok, Err and unreachable into the names table. Gives every parse, search and key lookup an Option result and lets take-by-position on an empty List trap, under the line fixed here; names the trap kind of a missing key if it keeps m[key]; decides the helper rows, the None-to-Err one first.
+- M2-15: Must deliver file effect failures as data to match on and supply a way to print a message and exit with a status the program chooses (M3-04 needs 20). It must keep the paper's wc sample (line 248) running as the M2 exit check asks, or list the change to it.
+- M2-18: The reference shows Option, Result, ? with the places it may stand, the trap-or-return test in one sentence, and unreachable().
+- M2-39: Error cases cover ? in each allowed and rejected place, mismatched error types, a dropped Result, None and Err typed from position and rejected without one, and unreachable() reached and not reached.
+- M3-16: When it rechecks M3-04's weak-spot tags on the file tools and the tasks with error messages: failures are values, ? passes them up inside functions, and ? cannot stand in update.
+- M4-30: unreachable() is compiled like a hole that traps with kind assert, but is allowed in release builds.
+- M4-31b: Small: Option and Result are ordinary enums (M4-31); it adds the early exit of ? and the assert trap of unreachable().
+- M6-15: Error handling is enum lowering plus an early return; nothing else to lower.
+- M7-02: A failed foreign call reaches the program as an Option or Result inside a message, the same form M2-15 gives a failed file read.
+
+## M2-14 · Decide the built-in types and functions a headless program may call
+
+### M2-14.1 In what order is a Map walked, and which types may be keys?
+
+**Key order, Int or String** (recommended). A Map keeps its entries in rising key order: Ints by number, Strings by code point; only Int and String may be keys. Costs: a lookup is a search in a sorted structure, slower than hashing, and a record cannot be a key.
+
+```
+example keys_come_in_key_order {
+  var m: Map<String, Int> = [:]
+  m["pear"] = 2
+  m["fig"] = 1
+  keys(m) == ["fig", "pear"] && m == ["fig": 1, "pear": 2]
+}
+```
+
+- Why: The order follows from the content alone, so equal Maps always walk the same and M2-09's warning is answered. It needs only the order Int and String already have (M2-09), no hashing, and it is Rust's standard ordered map in the interpreter.
+- Locks: Results of every program that walks a Map. The key types can be widened later for free; the order cannot change once programs print in it.
+- Not chosen: Insertion order, any key (Entries stay in the order they were first added, as in TypeScript, and any type may be a key because every type has ==. Costs a hash rule for every type that all back ends must share, and two equal Maps can walk in different orders.) · Insertion order, Int or String (As the second option but with the two key types only. Less to build than any-key, but equal Maps still walk differently, and removing an entry needs a rule for the gap it leaves.)
+- Look again when: M6 benchmarks show Map lookups dominating real programs, or a task needs a record as a key.
+
+### M2-14.2 How is a Map written, read and changed?
+
+**Literal, index and get** (recommended). A Map is written [key: value, ...], or [:] when empty, as in Swift; m[key] reads an entry that must be there and traps out_of_bounds on a missing key, m[key] = v adds or replaces, &m[key] passes an existing entry in place, and get(m, key) gives an Option. Costs two ways to read, one that traps and one that does not, and counts[word] += 1 traps on a new key.
+
+```
+fn add_edge(g: inout Map<String, List<String>>, a: String, b: String) {
+  if !has(g, a) {
+    g[a] = []
+  }
+  append(&g[a], b)
+}
+
+fn add_word(counts: inout Map<String, Int>, word: String) {
+  counts[word] = unwrap_or(get(counts, word), 0) + 1
+}
+```
+
+- Why: It follows M2-12's line exactly: the index form claims the key is there and traps, the lookup that may miss returns an Option. In-place change through &m[key] keeps group-by code as short as in Rust and TypeScript.
+- Locks: The literal spelling, and that m[key] = v on a new key adds it while xs[i] = v on a missing List item traps. A Map index step counts like a List index step in M2-05's overlap rule: two entries of one Map always overlap.
+- Not chosen: Functions only (No index form and no literal: get, put and remove are the only ways in and out. One way to read, but a value held in a Map cannot be changed in place, so every grouped list is copied out and put back.) · Index gives an Option (m[key] always gives Option<V>, so a missing key can never trap. Costs a match or a helper at every read, and [ ] then means two different things on List and Map.)
+- Look again when: Practice runs show missing-key traps, above all from += on a new key, costing counted edits; a row that adds to a key with a starting value can then be added without breaking a program.
+
+### M2-14.3 How does code walk a Map or a String when there are no tuples?
+
+**Lists from keys and chars** (recommended). for walks a List or an integer range and nothing else; keys(m), values(m) and chars(text) give ordinary Lists to walk. Costs a lookup per entry, and for c in text written by habit is a check error whose fix names chars(text).
+
+```
+fn report(counts: Map<String, Int>) -> List<String> {
+  var out: List<String> = []
+  for name in keys(counts) {
+    let n = counts[name]
+    append(&out, "{name} {n}")
+  }
+  out
+}
+```
+
+- Why: No new syntax and no new type: three table rows. keys(m) is a fresh List, so the loop body may change the Map and M2-05's frozen-list rule needs no extension. Letting for walk more later breaks nothing.
+- Locks: Little. The names keys, values and chars, and that their results are in key order and position order.
+- Not chosen: Two names in for (A new for form binds key and value at once, and for also walks a String directly. Shortest to write, but it adds a loop form and a rule for changing a Map or String while it is walked.) · A built-in Entry record (entries(m) gives a List of a built-in record with key and value fields. No new loop form, but one more built-in generic type and one more Upper-case name taken.)
+- Look again when: Practice runs show for over a String or Map written by habit costing many counted edits; accepting it is then a free loosening.
+
+### M2-14.4 Do the built-ins that change a List change it in place or give back a new List?
+
+**In place, with &** (recommended). Every built-in that changes a List takes it as inout: append, extend, pop, insert, remove_at, swap, reverse, sort, sort_by. One rule; costs a var copy first when the List is a let or a read-only parameter.
+
+```
+fn top_three(scores: List<Int>) -> List<Int> {
+  var best = scores
+  sort(&best)
+  reverse(&best)
+  best[0..<min(3, len(best))]
+}
+```
+
+- Why: One rule covers every change to a List, the copy is visible, and it is what a model writes in Rust (v.sort()). The second form can be added later as plain new rows.
+- Locks: Little: the names. Adding sorted and reversed later breaks only a program that defined those names itself.
+- Not chosen: New List returned (sorted(xs) and reversed(xs) give new Lists and nothing but append works in place. Reads well inside expressions, but it is a second rule beside append, and the copy is hidden.) · Both forms (sort and sorted, reverse and reversed, as Swift and Kotlin have. Never an error whichever a model writes, but two spellings for each and twice the rows.)
+- Look again when: Practice runs show sort or reverse called on a let or a read-only parameter costing many counted edits.
+
+### M2-14.5 How is a List sorted in an order the program chooses, and what is the result for any function it passes?
+
+**before function, fixed merge sort** (recommended). sort_by(&xs, before) takes a named fn(T, T) -> Bool that says whether its first argument must come first; the sort is stable (equal items keep their order) and is one fixed merge sort, so even a function that contradicts itself gives the same result everywhere. Costs: release code may not swap in a faster algorithm.
+
+```
+type Player { name: String, score: Int }
+
+fn before(a: Player, b: Player) -> Bool {
+  a.score > b.score || a.score == b.score && a.name < b.name
+}
+
+fn rank(ps: inout List<Player>) {
+  sort_by(&ps, before)
+}
+```
+
+- Why: A Bool needs no new type and no sign rule, and it handles any number of keys. Fixing the algorithm is the only way a trap inside the function, or a function that contradicts itself, means one thing (M2-06: first trap in evaluation order).
+- Locks: The exact sequence of calls to the function, which every back end must copy: M6-14 may make per-type copies but not change the algorithm. sort(&xs) is the same sort with < as the function.
+- Not chosen: Three-way function (The function gives an Int: below zero, zero or above, as in TypeScript and C. One call tells everything, but the sign convention is a classic silent mistake and a - b can trap overflow.) · Key function only (sort_by_key(&xs, key) takes a function that gives an Int or String to order by. Shortest for one key, but two keys or a falling order cannot be written without tuples.)
+- Look again when: M6 benchmarks show sorting dominating a real program; a faster sort could then be allowed where the order is a built-in one on Int or String.
+
+### M2-14.6 How large is the built-in vocabulary?
+
+**About sixty rows, loops otherwise** (recommended). Text, List, Map, number and Option helpers that each replace a loop a model would otherwise write by hand: 63 functions in all, listed under defaults, with no map, filter or fold, no Set, no priority queue and no text patterns. Costs: common names such as find, get, insert and words cannot be user function names.
+
+```
+fn long_words(text: String, n: Int) -> List<String> {
+  var out: List<String> = []
+  for w in words(text) {
+    if len(w) > n {
+      append(&out, w)
+    }
+  }
+  out
+}
+```
+
+- Why: Each row is something at least one of M2-01's seven task classes uses and that Rust and TypeScript give for free. Functions that take functions are held to the one that cannot be done without, the sort.
+- Locks: The names: none can be renamed after the experiment, and a built-in added later breaks any program that already defined that name, though the fix is a plain rename. So the list is meant to be enough for the experiment, not a start.
+- Not chosen: Wide, with map and filter (Also map, filter, fold, any, all, sum, a Set and a priority queue. Closer to model habit, but without closures (M2-09) a passed function cannot use a local value, so most habitual uses are errors anyway.) · Bare minimum (Only len, append, index, slice and the number rows of M2-03. Fewest names taken, but every program writes its own split, trim, join and find, which costs tokens and bugs before the go/no-go.)
+- Look again when: Practice runs show a helper written by hand in most solutions, or a habitual name (map, filter, sum) costing many counted edits.
+
+### M2-14.7 Do the text built-ins follow Unicode rules or ASCII rules for case and white space?
+
+**ASCII rules only** (recommended). upper and lower change the letters a to z and A to Z and leave every other character alone; trim, trim_start, trim_end and words treat only six ASCII characters as white space (listed under defaults). Exact and table-free; costs: accented letters do not change case.
+
+```
+example case_is_ascii_only {
+  upper("élan") == "éLAN" && lower("ÉLAN") == "Élan" && trim(" a\t\n") == "a"
+}
+```
+
+- Why: The result is one sentence, never changes with a library version and is the same in every back end with no data to ship. Unicode versions of these functions can be added later under their own names.
+- Locks: Results of upper, lower, trim, trim_start, trim_end and words on non-ASCII text. Changing them later changes what existing programs print.
+- Not chosen: Full Unicode rules (Case and white space follow the Unicode tables. Right for real text, but the tables change with each Unicode version, some case changes alter the length, and every back end must carry the same tables.)
+- Look again when: A real program after 'go' needs case-blind matching of non-ASCII text.
+
+### M2-14 · settled without asking
+
+- Built-in types: Int, Float, Bool, String, List<T>, Map<K, V>, Option<T>, Result<T, E> and Effect<Msg> (M2-15). No Set (use Map<K, Bool>), no tuple, no priority queue, no pool or shared type (M2-10 supplies none).
+- Upper-case built-in names: Int, Float, Bool, String, List, Map, Option, Some, None, Result, Ok, Err, Effect; from M2-15 the effects Print, ReadFile, WriteFile, Exit, ExitWith and the grants Console, ReadFiles, WriteFiles. Grant names sit in the one pool of names (M7-02). A user type or variant may not reuse any of these (M2-02.2).
+- How the table is written: One row per name in M2-02's signature form, name(parameters) -> result, with T, K, V, E standing for any type; a row with no arrow gives no result. Labels are on three rows only: fixed (digits:, from M2-03), insert (at:) and list_of (count:), the two where an Int item and an Int position or count could be swapped unseen. Every other row is positional, with the value worked on first. All 63 function names are lower case; a user definition may not reuse one, a local may hide one (M2-09). A few rows take several types, as len already does; user functions cannot.
+- Rows shared by several types (4): len(x) -> Int and is_empty(x) -> Bool take a String, List<T> or Map<K, V>. contains(text: String, part: String) -> Bool and contains(xs: List<T>, item: T) -> Bool. find(text: String, part: String) -> Option<Int> and find(xs: List<T>, item: T) -> Option<Int> give the first position. An empty part is always found, at 0. Items are compared with ==. None of these traps.
+- Number rows (20, names confirmed from M2-03 and M2-09): min(a: T, b: T) -> T and max(a: T, b: T) -> T for T of Int, Float or String. abs(x: Int) -> Int and abs(x: Float) -> Float. to_float(n: Int) -> Float. to_int(x: Float) -> Int. sqrt, floor, ceil, trunc and round are (x: Float) -> Float. fixed(x: Float; digits: Int) -> String. wrap_add, wrap_sub, wrap_mul, bit_and, bit_or and bit_xor are (a: Int, b: Int) -> Int. bit_not(a: Int) -> Int. shift_left(a: Int, count: Int) -> Int and shift_right(a: Int, count: Int) -> Int. Results are exactly those M2-03 and M2-09 fixed. No power, no sum over a List, no random numbers, no dates.
+- Text to number (2): parse_int(text: String) -> Option<Int> and parse_float(text: String) -> Option<Float>, with M2-03's meaning. Nothing is trimmed: parse_int(" 7") is None, parse_int("") is None, parse_float("7") is Some(7.0).
+- Number to text: An Int goes into text by interpolation ("{n}"), a Float by fixed. There is no other to-text function (M2-09).
+- Character numbers (2): code_at(text: String, i: Int) -> Int gives the code point at position i and traps out_of_bounds like text[i]. from_code(n: Int) -> String gives a one-character String and traps bad_conversion when n is outside 0 to 1114111 or inside 55296 to 57343. A digit test is written c >= "0" && c <= "9" on a one-character String.
+- White space, exactly: The six characters with code points 9 to 13 and 32: tab, line feed, vertical tab, form feed, carriage return and space. trim, trim_start, trim_end and words use this set; no other row does. On ASCII text this is what Rust's trim and split_whitespace and TypeScript's trim do.
+- Splitting text (4): split(text: String, sep: String) -> List<String> cuts at each sep found left to right: split("a,,b", ",") is ["a", "", "b"] and split("", ",") is [""]. It gives at least one piece unless sep is empty; an empty sep gives chars(text), so split("", "") is []. chars(text: String) -> List<String> gives one String per character. lines(text: String) -> List<String>: each line ends at a line feed, which is dropped, and text after the last line feed is one more line only if it is not empty. So lines("a\nb\n") is ["a", "b"], lines("") is [], lines("\n") is [""], lines("a\n\n") is ["a", ""]. A carriage return is an ordinary character and stays; trim_end removes it. words(text: String) -> List<String> gives the runs between white space and never an empty piece; words("") is [].
+- Joining and padding text (4): join(parts: List<String>, sep: String) -> String; join([], sep) is "". repeat(text: String, n: Int) -> String gives n copies and traps out_of_bounds when n is below zero. pad_left(text: String, width: Int) -> String and pad_right(text: String, width: Int) -> String add spaces until len is width and leave longer text alone.
+- Trimming, testing and replacing text (8): trim, trim_start and trim_end are (text: String) -> String and remove white space from both ends, the start or the end. starts_with(text: String, part: String) -> Bool and ends_with(text: String, part: String) -> Bool are true for an empty part. replace(text: String, old: String, new: String) -> String replaces every occurrence found left to right without overlap; an empty old changes nothing. upper(text: String) -> String and lower(text: String) -> String follow the ASCII rule.
+- List rows (10): append(xs: inout List<T>, item: T). extend(xs: inout List<T>, more: List<T>) appends each item in order. pop(xs: inout List<T>) -> T removes and gives the last item. insert(xs: inout List<T>, item: T; at: Int) needs 0 <= at <= len. remove_at(xs: inout List<T>, i: Int) -> T. swap(xs: inout List<T>, i: Int, j: Int), the built-in M2-05 asked for; i == j does nothing. reverse(xs: inout List<T>). sort(xs: inout List<T>) for Int, Float or String items. sort_by(xs: inout List<T>, before: fn(T, T) -> Bool). list_of(item: T; count: Int) -> List<T>. A bad position, pop on an empty List or a count below zero traps out_of_bounds.
+- The sort, exactly: A List of 0 or 1 items is left alone. Otherwise the items before position len / 2 are sorted, then the rest, then the two halves are merged from the front: the next item comes from the right half only when before(right, left) is true, else from the left. sort uses < as before, so a NaN stays where this leaves it.
+- Map rows (5): get(m: Map<K, V>, key: K) -> Option<V>. has(m: Map<K, V>, key: K) -> Bool. remove(m: inout Map<K, V>, key: K) gives no result and does nothing when the key is missing. keys(m: Map<K, V>) -> List<K> in rising order. values(m: Map<K, V>) -> List<V> in key order. In a literal, entries are added in written order and a later equal key replaces the earlier one. A key type other than Int or String is a check error.
+- Map index details: m[key] as a read, m[key] += 1, m[key].field = v and &m[key] all need the key to be there; a missing key traps out_of_bounds at the [ with the key in the help line. Only the last step of a plain assignment may add a key: m[key] = v adds, and m[a][b] = v needs key a. The reference shows the count idiom counts[word] = unwrap_or(get(counts, word), 0) + 1. This answers M2-05: a Map entry is a place.
+- Option and Result helpers (2): unwrap_or(opt: Option<T>, fallback: T) -> T gives the inside of Some or the fallback. ok_or(opt: Option<T>, error: E) -> Result<T, E> turns Some(x) into Ok(x) and None into Err(error), so an Option can be passed up with ? in a Result function. Both arguments are evaluated before the call. No unwrap and no panic (M2-12).
+- assert and unreachable (2): As M2-06 and M2-12 fixed them; both are rows of the table.
+- Functions that take functions: Only sort_by. No map, filter, fold, any or all: without closures they could not use a local value, so loops are the form. M2-09's look-again does not fire.
+- Trap kinds: None added. out_of_bounds: a bad position (index, slice, code_at, insert, remove_at, swap), pop on an empty List, a missing Map key at an index, a count below zero (repeat, list_of), a shift count outside 0 to 63, fixed digits outside 0 to 20. bad_conversion: to_int and from_code. overflow: abs of the smallest Int. assert: assert and unreachable. Every other row never traps. A trap is reported at the user's call (M2-06) and the help line says which case it was.
+- What for can walk: A List and an integer range only. for over a String or a Map is a check error whose fix names chars(text) or keys(m).
+- Value text form for the tools: A Float prints as the shortest digits that read back as the same Float, with no exponent and at least one digit on each side of the point (1.0, 0.1, -0.0); NaN, inf and -inf print as fixed prints them. A Map prints as its literal in key order, [:] when empty. No M2 program can reach this form (M2-09).
+- Coverage of the task classes: Text processing: the String rows, sort and sort_by. Parsing and small interpreters: chars, code_at, slices, parse_int, parse_float, Map for names. State machines and simulations: enums and match, Map, list_of. Grids and dynamic programming: list_of, index in place, swap, min and max. Graph algorithms by list index: Lists of Lists, append, pop, remove_at, Map for name to position. Integer and float reports: the number rows, fixed, pad_left, join. File tools: the effects of M2-15 with lines, split and join. Tree data in any class uses recursive types (M2-05), no built-in.
+- The paper's samples: The counter's update (line 208) needs max, which is a row. The wc's count_words is written len(words(text)). Its field words stands beside the built-in words, because field names clash with nothing (M2-02).
+- Pool and shared-data operations: None: M2-10 decided there is no shared type and no pool, so nothing is taken from it.
+- Layout of the new forms: As M4-47 asks: a Map literal is flat like a List, with one space after each colon and comma: ["a": 1, "b": 2]; the empty one is [:].
+- Room in the reference: The 63 signatures with their one-line results take about 2,000 of the reference's 8,000 tokens under M2-18's bytes-divided-by-3 rule. If M2-18 cannot fit them, the first rows to go are extend, pad_right, trim_start, trim_end, is_empty and values, in that order; each dropped row is a change to this table and is listed in that pull request.
+
+### M2-14 · what this changes in TASKS.md
+
+- M2-08: The names of M2-03's number rows are confirmed as written; no row is added or renamed.
+- M2-13: The built-in names table holds the 63 function names and the Upper-case names listed here, grant names included; a user definition that reuses one is rejected with a fix.
+- M2-16: Adds one rule: a Map key type other than Int or String is rejected.
+- M2-20: Types [:] and a Map literal from position like [], and types m[key] as a read, an assignment target and a place.
+- M2-21: A place after & may pass through Map index steps; in the overlap rule they count like List index steps.
+- M2-34: Grows a little: it parses and checks the Map literal (or M2-17 does, if it has not started), builds Map as an ordered map and implements the one fixed merge sort.
+- M2-33: Its list is every row here outside the List and Map rows and outside M2-08's number rows; non-ASCII tests show that case and white-space functions leave those characters alone.
+- M2-18: The reference carries the 63 rows as one signature table with one-line results and the count idiom; plan about 2,000 tokens for it, with the fallback order under defaults.
+- M2-27: Prints a Float and a Map in failed comparisons in the text form fixed here.
+- M2-39b: Its cases include a sort with a function that contradicts itself, Map key order, the missing-key trap with += on a new key, the six white-space characters, and the edge cases of split, lines and words.
+- M3-16: The weak-spot tags stand: T3 needs a named before function with no closure, and R2 has no built-in priority queue.
+- M4-03: len and split in its samples are real built-in names, so the count_words text there stays valid as written.
+- M4-38b: The map is ordered by key, so it is a sorted structure with comparison on Int and String and no hashing.
+- M4-32: String built-ins need no Unicode tables: case and white space follow the ASCII rule.
+- M5-16: A Float and a Map in tree text print in the form fixed here.
+- M6-14: Per-type copies of sort and sort_by must make the same calls in the same order as the fixed merge sort.
+
+## M2-15 · Decide headless apps: first message, effects, grants, ending, effect failure, standard input and handler traps
+
+### M2-15.1 How does a failed file read or write reach the program?
+
+**A second message, or:** (recommended). ReadFile and WriteFile take two labelled fields, both required: then: for success and or: for failure, a function from the reason to a message. Costs one more variant and one more arm in every program that touches a file, and the paper's wc gains them.
+
+```
+enum Msg { Start(path: String), Loaded(text: String), Failed(why: String) }
+
+fn update(m: Msg) -> List<Effect<Msg>> {
+  match m {
+    Start(path) => [ReadFile(path, then: Loaded, or: Failed)]
+    Loaded(text) => [Print(text), Exit]
+    Failed(why) => [Print("cannot read: {why}"), Exit]
+  }
+}
+```
+
+- Why: A failure is then one more message, which fits flat patterns and the rule that every variant is named: the checker, not a test run, makes the program say what a missing file does, which is M2-12's own reason. Paka has no unit type and no tuples, so a Result for a write would have nothing in Ok. Making or: optional later is a free loosening; the reverse is not.
+- Locks: The shape of every file effect and of M7-02's foreign effects, which follow it. The paper's Loaded(text: String) stays as written. Earlier samples that write ReadFile(path, then: Loaded) alone gain or: when they become tests or reference text.
+- Not chosen: A Result in the message (then: is the only field and its message carries a Result. It reuses M2-12's type, but patterns are flat (M2-02), so every answer needs a match inside a match, ? cannot stand in update, and a finished write has nothing to put in Ok.) · or: may be left out (As the first option, but without or: a failure ends the program like a failed Print, status 3. The paper's wc runs unchanged, but a forgotten or: shows up only when a test feeds a missing file.) · Failure always ends (A failed file effect always ends the program with status 3. Nothing to handle, but a task cannot print its own message, which M2-01 and M2-12 require.)
+- Against: A Result in the message keeps one failure mechanism in the whole language (line 357) and needs no second field. Leaving or: optional would keep the paper's wc and five decided samples as written and save a variant and an arm, about 30 tokens, in every program; every task reads a file, and a forgotten or: is a check error that counts as an edit (M3-01.5).
+- Look again when: Practice runs show the extra variant and arm, or a forgotten or:, costing Paka counted edits or clearly more tokens than Rust's and TypeScript's file error handling on the same tasks. Making or: optional is then free.
+
+### M2-15.2 What does a file failure carry?
+
+**One of six fixed texts** (recommended). The reason is a String: "not found", "no permission", "not a file", "not text", "no space" or "failed"; the run loop maps each system error to one of them. Costs: a misspelt comparison is not caught by the checker.
+
+```
+fn explain(path: String, why: String) -> String {
+  if why == "not found" {
+    "no such file: {path}"
+  } else {
+    "cannot read {path}: {why}"
+  }
+}
+```
+
+- Why: It takes no names from users, prints directly, and a new cause can be added without breaking a match. Most programs only pass the reason on or ignore it.
+- Locks: The six texts, which programs may compare against. Adding a text later is cheap; changing one breaks comparisons.
+- Not chosen: A built-in enum (The reason is a built-in enum with one variant per cause. Checked spelling, but six variant names are taken from every program, a match must name them all, and adding a cause later breaks every such match.) · The system's own text (The reason is whatever the operating system reports. Most detail, but it differs between systems and library versions, so the same program prints different things.)
+- Look again when: Programs after 'go' branch on the reason often enough that misspelt comparisons become a real source of bugs.
+
+### M2-15.3 In what order are a handler's effects performed and their answers handled?
+
+**List order, answers queued** (recommended). The runtime performs the effects one at a time in list order; each answer joins the end of one queue of messages, and when the list is done the next message in the queue is handled. Costs: nothing runs in parallel, and an answer still queued when the program exits is dropped.
+
+```
+// one handler returns
+//   [ReadFile(a, then: Loaded, or: Failed), ReadFile(b, then: Loaded, or: Failed), Print("asked")]
+// the runtime reads a, reads b, prints asked,
+// then handles the answer for a and performs its effects,
+// then handles the answer for b
+```
+
+- Why: It is a plain loop over one queue, gives one result for the same inputs, and lets a program match answers to requests by counting. It is the rule M5-03 already fixed for visual apps: effect results wait in one queue and each becomes a message when its turn comes. Another order here would be a second model.
+- Locks: The order of all output and file changes of every program. Concurrency (line 356) and the step-by-step notation (line 355) stay not decided; whatever comes later must give this order for programs written now.
+- Not chosen: Answer handled at once (Each answer is handled, with all its own effects, before the next effect of the list is performed. A failure then cuts off the rest of the list, as in step-by-step code, but update runs in the middle of another handler's list, against the one queue M5-03 fixed.) · No promised order (The runtime may perform effects in any order or at the same time. Fast for many files, but the same program can print in different orders, against line 161.)
+- Against: Handling each answer at once would let a failed write stop the Print and Exit that follow it in the same list; under the pick that failure is dropped without a word.
+- Look again when: After 'go', when concurrency or a sequential notation is designed; or earlier if practice runs show programs losing a write failure by exiting in the same list.
+
+### M2-15.4 How do the command-line arguments reach the first message?
+
+**One String field per argument** (recommended). M1-06.3 is kept: the start: line names the first message, and its fields, all Strings, are filled from the arguments by position. A wrong number of arguments ends the run before any handler with a usage line and status 2; costs: a program cannot take a varying number of arguments.
+
+```
+enum Msg { Start(src: String, dest: String) }
+
+// paka run copy.paka a.txt b.txt sends Start("a.txt", "b.txt")
+// paka run copy.paka a.txt gives a usage line and status 2
+app copy {
+  start: Start
+  update: update
+  grants: [ReadFiles, WriteFiles, Console]
+}
+```
+
+- Why: It is the paper's wc as written and the owner's start: line with nothing reserved. The runtime checks the count, so no program carries usage code; a List field for the rest can be allowed later without breaking a program.
+- Locks: The start variant of a headless app has only String fields. Status 2 for a wrong argument count, the same number paka itself uses for bad usage.
+- Not chosen: One List of all arguments (The start variant has one List<String> field holding every argument. Any number of arguments works, but each program checks the count itself, and the paper's Start(path: String) changes.) · Arguments by an effect (The first message carries nothing; the program asks for the arguments with an effect and gets them in a second message. Uniform with files, but every program pays one more round and one more grant question.)
+- Look again when: A task or real program needs a varying number of arguments; a last field of type List<String> is then a free loosening.
+
+### M2-15.5 Do the owner's two M1-06 rules on refused effects and failed Print stand, and are they trap kinds?
+
+**Both kept, as effect stops** (recommended). Both rules stand as the owner chose them: an effect without its grant is refused when it is about to be performed, a Print that cannot write always ends the program, and each ends the program as a trap does, with one line on standard error and status 3. They are not added to the list of trap kinds, because they happen after the handler and have no source position; costs: a missing grant is found only when that effect runs.
+
+```
+$ ./light_no_console
+light: effect Print refused: grant Console is missing
+$ ./light > /dev/full
+light: effect Print failed: no space left on device
+(status 3 in both)
+```
+
+- Why: Nothing in the wider language makes either of the owner's choices impossible, so both stand unchanged: the program ends as it does at a trap. Keeping them out of the list of trap kinds keeps M2-06's rule that a trap has a kind and a position.
+- Locks: Two stop lines of the run loop, effect refused and effect failed, both status 3, in M1-06's wording. Only the stream, the status and that it is one line are meaning; the wording is help, as M1-06.1 says. No M1 case changes by this point. In M4-03's run reply trap is null for a stop.
+- Not chosen: Kept, as trap kinds (The same behaviour, reported as two new trap kinds with the position where the effect was built. One report shape, but every effect value must then carry a source position through every back end.) · Missing grant at check time (The checker rejects a program whose code names an effect its app does not grant. Earlier feedback, but it needs the reach of every function through the whole program, which the paper rejected (line 344), and it reverses the owner's choice.)
+- Look again when: Agents in M4 often hit refusals late in a run; a check-time warning can then be added without changing what a program means.
+
+### M2-15.6 How does a program end, and how does it choose its exit status?
+
+**Exit and ExitWith(status)** (recommended). Exit ends the program with status 0, as now; ExitWith(n) ends it with status n, which must be 0 or 4 to 255, since 1 and 2 belong to the paka tool and 3 to traps and stops. Costs one more effect name.
+
+```
+fn finish(errors: Int) -> List<Effect<Msg>> {
+  if errors == 0 {
+    [Print("ok"), Exit]
+  } else {
+    [Print("{errors} errors"), ExitWith(20)]
+  }
+}
+```
+
+- Why: It keeps the paper and every M1 case as written and adds one row. Under M2-09 one variant name cannot be both a bare value and a call, so a second name is the only way to keep Exit.
+- Locks: The two names, and that status 3 always means a trap or a stop. An ExitWith status outside 0 and 4 to 255 ends the program as a failed effect, status 3. 101 is legal here; M3-11 never uses it, as M3-04 ruled.
+- Not chosen: Exit(status) always (One effect that always carries its status. One name, but light.paka, its M1 cases and the paper's samples must all be rewritten to Exit(0).) · Exit only, status 0 (A program cannot choose a status. Nothing to add, but M3-04's error status cannot be given and tasks could not tell an error from success.)
+- Look again when: A real program after 'go' must exit with status 1, as many command-line tools do; the range can be widened for free.
+
+### M2-15.7 What happens when no message is left and the program has not performed Exit?
+
+**An error, status 3** (recommended). The program ends with one line on standard error and status 3; its earlier effects stay done. Costs: a forgotten Exit is found only when the program runs, and the M1 spec draft's rule for this case changes.
+
+```
+$ paka run quiet.paka
+done
+quiet: ended without Exit
+$ echo $?
+3
+```
+
+- Why: Every program then ends in one written way (line 51), and the rule still makes sense when later milestones add messages from outside. Allowing a quiet end later is a free loosening; forbidding it later breaks programs.
+- Locks: A third stop line in the same form as the two above, '<app>: ended without Exit', status 3. It changes the M1 spec draft's end rule, so two of its run cases get new expected results, listed under defaults.
+- Not chosen: Ends quietly, status 0 (Nothing left to do means success. Least to write, but then Exit is optional at the end, two spellings for one program, and programs that rely on it would hang once messages can arrive from outside.) · Waits forever (The program stays alive, as a server would. Honest about the model, but in M2 it is only a hang that the harness must kill.)
+- Against: The M1 spec draft's quiet end is the simplest rule and needs no Exit at the end; a model that forgets Exit loses a first try on a program that printed the right answer.
+- Look again when: M3 logs show 'ended without Exit' behind more than about one in twenty of Paka's counted edits; a quiet end with status 0 is then a free loosening.
+
+### M2-15.8 Can a headless program read standard input?
+
+**None in M2** (recommended). No effect reads standard input, so there is one way in: files. Costs: a Paka program cannot sit in a pipe yet.
+
+- Why: Nothing needs it before the go/no-go, and adding an input effect later breaks no program.
+- Locks: Nothing. M4-03 adds no stdin field.
+- Not chosen: Whole input as one text (One effect gives all of standard input as a String, like a file read. Small, but it adds an effect, a grant question and an end-of-input rule that no task uses.) · Line by line (An effect gives the next line. Needed for interactive programs, but it forces the order of prints and reads and makes the open notation of line 355 hard to put off.)
+- Look again when: After 'go', the first program that must run inside a pipe or answer a person.
+
+### M2-15 · settled without asking
+
+- The app form: app name { } with one key per line, each written once: state (optional in a headless app), start (required in a headless app), update, grants (required, may be []). An app with no view key is headless (line 126). Key order has no meaning.
+- A program with no app, or with several: A program with no app checks: paka check accepts it and paka examples runs its examples, because M2-43 tests the paper's counter with no app and most conformance cases are examples only. paka run refuses it with one line and status 1. More than one app in a program stays a check error, as the M1 spec has it; allowing several later is a free loosening.
+- The update function: With state: fn update(s: inout S, m: Msg) -> List<Effect<Msg>>; without: fn update(m: Msg) -> List<Effect<Msg>>. The update a headless app names must give the effect list, since returning nothing could never end the program. The name update is not reserved; the app block names the function. A function no app names is an ordinary function, so the counter's update, which returns nothing, checks.
+- First state: The state type built from its field defaults (Tally {}), so it is a record with a default on every field: the same rule as M5-01.6, whose look-again does not fire. Then the start message is handled.
+- The effect list: Print(text: String). ReadFile(path: String; then: fn(String) -> Msg, or: fn(String) -> Msg). WriteFile(path: String, text: String; then: Msg, or: fn(String) -> Msg). Exit. ExitWith(status: Int). All are variants of the built-in Effect<Msg>, where Msg is the app's message enum.
+- Which fields take a function and which a message: A field takes a function when the answer carries data: then: of ReadFile gets the text, every or: gets the reason. then: of WriteFile takes a message value, because a finished write carries nothing; so it may carry context, as in then: Wrote(name). A function here is a named fn or a variant with fields (M2-09). It is called when the answer's turn comes in the queue; a trap inside it ends the program like a trap in a handler.
+- Grants: Console allows Print, ReadFiles allows ReadFile, WriteFiles allows WriteFile; Exit and ExitWith need none. WriteFiles is a new name in the style of the paper's ReadFiles and Console (line 259). Grants take no arguments, so M7-01's look-again does not fire. An unknown or repeated name in grants is a check error; a grant that is never used is accepted.
+- When a grant is checked: When the effect is about to be performed, in list order. A refused effect is not performed, the effects after it are dropped, and the program ends. An effect that stands after an Exit is never reached and so never refused.
+- Print, exactly: Writes the text as UTF-8 and one line feed to standard output. It is written before the next effect is performed, so a failed Print stops everything after it. No effect writes to standard error and none prints without the line feed.
+- ReadFile and WriteFile, exactly: ReadFile gives the whole file as text, bytes unchanged; a file that is not UTF-8 fails with "not text" (the case M2-03 left here), and one too large for the interpreter's String limit fails with "failed". WriteFile creates or replaces the file with the text's UTF-8 bytes and makes no directories; after a failure the file's content is not promised. A relative path starts at the working directory.
+- Reason texts: "not found": the file or a directory on its path does not exist. "no permission": the system refused. "not a file": the path is a directory. "not text": not UTF-8. "no space": the disk is full. "failed": anything else.
+- Answers carry no path: A then: or or: answer holds only the text or the reason. A program that asks for several files keeps the names it is waiting for in its state, in the order asked; answers arrive in the order the effects were performed.
+- Answers still queued at Exit: Dropped, a failure included: [WriteFile(...), Print("done"), Exit] ends with status 0 even if the write failed. This cannot be made a stop, because an ExitWith from an or: handler rightly leaves later answers queued. A program that must know a write worked exits from its then: message; the reference says so in one line.
+- A trap in a handler: Ends the program (line 160): the trap report of M2-06 on standard error, status 3. None of that handler's effects is performed, because a trapped handler returns no list. Effects of earlier handlers stay done.
+- Rollback visibility: None in a headless app: the program ends at a trap, so nobody can see the restored state. M2-36 tests no rollback; it arrives with M5-25b for visual apps.
+- Ending: Exit and ExitWith end the program at once with output flushed; later effects in the list and queued messages are dropped. ExitWith(0) is allowed and means the same as Exit. The process never dies by signal on its own account. What a kill from outside does is not meaning.
+- The three stop lines: All on standard error, each one line, status 3: '<app>: effect <Effect> refused: grant <Grant> is missing'; '<app>: effect <Effect> failed: <reason>', which also covers an ExitWith status outside its range; '<app>: ended without Exit', which may name the last message handled. Stream, status and the one-line shape are meaning; the wording is help.
+- Effects are plain values: Any function may build and return effects; only the list the app's update returns is performed. Effects compare with == (M2-09), so an example may end in update(&s, Start("a.txt")) == [ReadFile("a.txt", then: Loaded, or: Failed)]. Examples perform nothing (M2-06).
+- Sequencing notation: Not decided (line 355). Chains are written by hand as messages; the order rule above is what any later notation must compile to.
+- Concurrency: None, and not decided (line 356). One handler runs at a time and one effect is performed at a time; the run loop waits for each.
+- The usage line: On a wrong argument count, or an argument that is not UTF-8: one line on standard error naming the app, the fields expected and the number given, for example 'copy: expected 2 arguments (src dest), got 1'; status 2; no handler runs. The wording is help. A released binary started with exactly --paka-examples runs its examples and sends no first message (M7-03); that argument is taken before the count check.
+- wc under the rules: type Tally { words: Int = 0 }
+
+enum Msg { Start(path: String), Loaded(text: String), Failed(why: String) }
+
+fn count_words(text: String) -> Int {
+  len(words(text))
+}
+
+fn update(s: inout Tally, m: Msg) -> List<Effect<Msg>> {
+  match m {
+    Start(path) => [ReadFile(path, then: Loaded, or: Failed)]
+    Loaded(text) => {
+      s.words = count_words(text)
+      [Print("{s.words} words"), Exit]
+    }
+    Failed(why) => [Print("cannot read file: {why}"), ExitWith(20)]
+  }
+}
+
+app wc {
+  state: Tally
+  start: Start
+  update: update
+  grants: [ReadFiles, Console]
+}
+- wc: each change from the paper: The start: line (M1-06.3, kept here). or: Failed with its variant and arm (this page, first point). count_words written out with words (M2-14; the paper calls it an ordinary function and does not show it, line 263). Single spaces instead of aligned arrows and keys (M4-47). Nothing else differs from lines 242 to 260.
+- Earlier samples without or:: Samples decided before this ruling write ReadFile(path, then: Loaded) alone: in M2-01.3, M3-04.4, M4-03, M4-47 and M7-02. Each gains or: with a failure variant when it is turned into a test or reference text. M7-02's look-again on the form of built-in effects fires in this narrow sense only.
+- M1-06.3 start rule: Kept and widened: the start: line stays; the start variant may now have String fields filled from the arguments. light.paka is unchanged. Case run/light: standard output 'let there be light' and a line feed, status 0, as before.
+- M1-06 end rule: Kept for Exit: status 0 after output is flushed. Changed for a program that stops without Exit, which the M1 spec draft ends quietly with status 0. If the spec lands as drafted: run/no_exit gives 'let there be light' and a line feed on standard output, the line '<app>: ended without Exit' on standard error, status 3; run/empty_list gives empty standard output, the same line, status 3. Every other M1 run case keeps its result.
+- M1 no-app rule: Changed, as ruled above. If the M1 spec lands as drafted: check/no_app and check/empty_file now check, status 0 and no output; check/order_no_app_bad_type reports only the bad type. check/two_apps and check/order_two_apps_bad_grant keep their results.
+- M1-06.1 missing-grant rule: Kept unchanged. Case run/light_no_console: empty standard output, the line 'light: effect Print refused: grant Console is missing' on standard error, status 3, as before.
+- M1-06.2 failed Print rule: Kept unchanged. The /dev/full run and the closed-pipe run each give one line on standard error and status 3, as before, on both back ends.
+- M1's narrowing on arguments: Lifted: arguments are now delivered. light takes none, so running it with an argument gives the usage line and status 2. No M1 case passes an argument, so none changes.
+
+### M2-15 · what this changes in TASKS.md
+
+- M2-18: Writes re-expected copies under tests/cases-pending for run/no_exit, run/empty_list, check/no_app, check/empty_file and check/order_no_app_bad_type if the M1 spec lands as drafted; the reference carries the app form, five effects, three grants, six reason texts, the order rule and the one line on answers dropped at Exit.
+- M2-23: The core form needs an app node, effect values whose fields hold function values, and one message queue; no rollback node.
+- M2-32: Checks that the start variant has only String fields, that a headless app's update returns the effect list, that the state type has a default on every field, and that grants are known and not repeated; a second app stays rejected.
+- M2-36: Implements, in the interpreter and in paka-rt's run loop, the queue order, the argument-count check with the usage line and status 2, ExitWith and the 'ended without Exit' stop. It also lifts M1's no-app check error (paka check accepts, paka run refuses with status 1) and moves all five re-expected M1 cases over the old ones. It tests no rollback, since a headless app does not survive a trap.
+- M2-37: Its effects are Print, ReadFile, WriteFile, Exit and ExitWith; there is no argument effect, since arguments arrive in the start message; it maps system errors to the six reason texts. The missing-grant rule is unchanged, so it moves no M1 case.
+- M2-41: Cases cover both then: forms, or: with each reason text, an effect refused after others were performed, effects after Exit, a wrong argument count, a program that ends without Exit, a write failure dropped because Exit stood in the same list, and a trap inside a then: function.
+- M2-42: New reject cases: a missing or: field, a start variant with a field that is not a String, a headless update without a result, an unknown grant, a second app.
+- M2-43: The counter is checked and its example run in a program with no app, which the no-app rule here allows; the wc is the text under defaults with its four listed changes.
+- M3-11: The error status is 20, written ExitWith(20). Every task takes a fixed number of arguments; a task with a varying number of files names them in a list file. Statements must not test a wrong number of arguments, statuses 1 to 3 or 101, standard input, standard error text, or output that does not end in a line feed.
+- M3-16: The file-tool tags stand: each file effect costs Paka a failure variant and arm on top of the hand-written chain, and a program reading several files tracks the pending names itself.
+- M4-03: The args of a run call fill the start variant's fields in order; a wrong count gives status 2 in the run reply; no stdin field is added; trap is null for a stop, whose line is in stderr. Its wc samples gain or: Failed, so the version strings shown for those definitions are recomputed.
+- M4-36: The compiled run loop follows the same queue order and the same three stop lines; function-valued effect fields are called through M4-37b's identities.
+- M6-17: A trapping handler ends the program with status 3 and none of its effects performed; there is no rollback to link in for headless apps.
+- M5-06: This settles its open case: an effect a UI example's app does not grant stops the example with M2-06's trapped status, its report being the refusal line with no position; granted effects are still dropped in examples.
+- M5-22: Computes that trapped status for a refused effect, as M5-06 now has it.
+- M5-25b: State rollback after a trapping handler is first built and tested here, not in M2-36.
+- M5-35: On a window close the effect being performed finishes and the rest are dropped, like effects after Exit.
+- M7-02: A foreign effect takes then: and or: like ReadFile, and its failure reasons (host could not start, host died, timed out, bad reply) are fixed texts in the same style; its own ReadFile sample gains or:.
 
 ## M3-01 · Decide what one run is: prompt, tools, feedback and counting rules
 
@@ -2466,6 +3906,314 @@ tree: Text #0 "0" (was "3")
 - M5-14: Grows slightly: the who-uses-what index must give the set of types reached from the state type, through built-in containers too.
 - M5-41: Reworded slightly: the reference describes migrate as text carried by an edit, with the one sample, and not as a definition kind.
 - M5-42: Reworded slightly: part 3 is met by the Counter edits listed under defaults; since the accepted reset installs the change, the script restores the old type or adds a second field before the migrate part.
+
+## M6-01 · Decide what release IR may promise the optimizer and what proves it
+
+### M6-01.1 What may count as proof that a promise to the optimizer is true?
+
+**Emitter alone, shape checked** (recommended). A promise is allowed only when the compiler's own way of writing the IR makes it true for every program, with nothing resting on an analysis of the user's code, and where possible only in a shape the linter can see. Costs some speed where only a checker fact would help.
+
+```
+  %ok = icmp ult i64 %i, %len
+  br i1 %ok, label %in, label %trap7, !prof !0
+in:
+  %p = getelementptr inbounds double, ptr %data, i64 %i
+  %x = load double, ptr %p, align 8   ; inbounds: every use is a load or store
+```
+
+- Why: A promise the emitter makes true by construction cannot be broken by any program, so the proof does not grow with the language. Checker facts get their own evidence and their own signed decision (M6-23), not a row here.
+- Locks: The rule every later row must meet, and what M6-05's linter checks. Loosening it later is a new owner decision of M6-23's kind; tightening it later only costs speed.
+- Not chosen: Checker facts count too (Facts the checker proved about user code, such as 'inout arguments never overlap' (GENESIS line 90), may be passed on as promises. Faster, but one hole in a checker rule becomes undefined behaviour.) · No promises at all (Keep M1's ban list for good. Nothing can be wrong, but without 'inbounds' LLVM must assume an address can wrap around, which can block loop optimizations and puts the array-loop parity of line 97 at risk.)
+- Look again when: M6-23 signs the no-overlap promise: that is the one planned exception, added as its own row with its own evidence.
+
+### M6-01.2 Who may remove a bounds or overflow check?
+
+**Only the optimizer** (recommended). Paka writes every check the source has into the IR and LLVM removes the ones it can prove never fire; Paka's part (M6-19) is only to write loops in a shape LLVM can see through. Costs the checks LLVM cannot prove.
+
+```
+fn total(xs: List<Int>) -> Int {
+  var sum = 0
+  // bounds check on xs[i]: written, then proven away by LLVM
+  // overflow check on +=: written, and it stays
+  for i in 0..<len(xs) {
+    sum += xs[i]
+  }
+  sum
+}
+```
+
+- Why: There is one prover, it is LLVM's and it is the most tested, and it is sound as long as the IR holds no false promise, which the first point guards. Each trap site returns its own position, so LLVM cannot merge or reorder traps that differ.
+- Locks: M6-19 shapes IR and removes nothing. Adding a second prover later breaks no program.
+- Not chosen: Paka's own range analysis (The Paka compiler also proves ranges and leaves checks out before LLVM sees them. Removes more, but adds a second prover whose every bug is a missing check with no symptom.) · Hoist with exact rerun (Paka moves checks out of loops and, when a moved check fails, reruns the exact path to find the first trap (the route M2-06 left open). Helps loops LLVM gives up on, but needs two copies of every such loop.)
+- Look again when: M6-19's loop list has loops that matter where the check stays and no reshaping helps.
+
+### M6-01.3 How large is the first table?
+
+**Small core, grown by measurement** (recommended). Start with the few rows array loops need (listed under defaults) and add a row later only with a by-construction proof, a linter rule, a measured gain on an M6-02 benchmark and a reviewer told to break it. Costs some speed until rows are added.
+
+```
+allowed:  nounwind | inbounds (use is load/store) | natural align
+          hints: !prof, cold, inline marks | internal, private, constant
+never:    nsw nuw exact | fast-math | undef poison unreachable
+          assume | mustprogress willreturn | tail musttail | noalias
+```
+
+- Why: Nothing is promised before a number shows it is needed, and each added row arrives with its own proof and its own review. Adding a row breaks no program; removing a wrong one after release does.
+- Locks: The procedure for adding a row. The first rows themselves are cheap to extend.
+- Not chosen: Rust's full set now (Also noundef, nonnull, dereferenceable, readonly, value ranges and lifetime marks from the first day. Likely faster on pointer-heavy code, but a dozen more rows to prove before a single benchmark shows which of them matter.)
+- Look again when: M6-28 or M6-29 show a gap to Rust that a missing row explains; that row is then proposed through the procedure.
+- Owner must still: Approve each later pull request that adds a promise row: it changes the table you signed.
+
+### M6-01.4 What is the tail-call rule?
+
+**Never written, never promised** (recommended). Paka's IR never marks a call 'tail' or 'musttail', though LLVM may still turn a call into a jump where it proves that safe. The language promises nothing, so a program that needs a bounded stack must use a loop.
+
+```
+// interpreter: count_down(1000000) traps stack past 10,000 nested calls
+// release: may run as a loop and give 0
+fn count_down(n: Int) -> Int {
+  if n == 0 {
+    0
+  } else {
+    count_down(n - 1)
+  }
+}
+```
+
+- Why: The 'tail' mark is itself a promise about the caller's stack slots, and inout arguments often point at them, so Paka never writes it. Leaving the choice to LLVM costs nothing and adds no meaning to the language.
+- Locks: Programs cannot rely on deep tail recursion. Promising it later breaks no program; taking a promise back would.
+- Not chosen: Promised with musttail (A call in tail position always reuses the frame, in every mode. Deep recursion then works everywhere, but the interpreter and dev mode must do the same and the reference must define 'tail position'.) · Forbidden with notail (Every call is marked so it is never turned into a jump. Stack use is then closer between modes, but it costs speed for a difference the paper already accepts.)
+- Look again when: Agents in M3 or M4 often write deep tail recursion that traps stack in the interpreter.
+
+### M6-01.5 What does the IR say at a place the checker proved cannot be reached?
+
+**Return internal-error status** (recommended). Such a place returns one reserved status that the runtime reports as an internal error (M1-14's line and exit status 4). Costs one compare and branch per match that LLVM cannot remove.
+
+```
+  switch i64 %tag, label %bad [ i64 0, label %arm0
+                                i64 1, label %arm1 ]
+bad:
+  ret i32 255        ; the reserved internal-error status; M4-05 picks the number
+```
+
+- Why: A compiler or runtime bug then shows up as one clear line instead of silent damage, for the price of a predictable branch. Changing to 'unreachable' later is a table row like any other.
+- Locks: Little: one reserved status value in compiled code, numbered by M4-05, which the runtime turns into exit status 4.
+- Not chosen: Write unreachable (The place is marked unreachable and LLVM drops the branch. Fastest, but a wrong tag then runs into whatever code comes next, with no report.)
+- Look again when: M6-29 shows match dispatch costing measurable time in parsers.
+
+### M6-01.6 What may the IR promise about runtime functions written in Rust?
+
+**Only: does not unwind** (recommended). Runtime declarations carry 'nounwind' and nothing else; it holds for any Rust code, because Rust stops the process rather than let a panic leave a C-convention function. Costs LLVM's knowledge that, say, a length call changes nothing.
+
+```
+declare i32 @paka_rt1_list_grow(ptr, i64) nounwind
+```
+
+- Why: It is the one fact the Rust language itself guarantees for every entry, so it can never go stale. Hot paths such as item access are written inline in the IR (M6-11), where LLVM sees them anyway.
+- Locks: Little. More marks can be added row by row through the procedure.
+- Not chosen: Allocator and read-only facts too (Also 'fresh memory' on the allocator's result and 'reads only' on query functions. Helps LLVM keep values in registers across calls, but each mark must stay true through every later edit of the Rust code.) · Nothing (No attribute on any declaration. Safest to state, but every runtime call then looks as if it could unwind, which blocks optimizations around it for no gain in safety.)
+- Look again when: A benchmark shows a runtime call inside a hot loop that LLVM cannot move for lack of a read-only or fresh-memory fact.
+
+### M6-01 · settled without asking
+
+- Row: nounwind: Allowed on every function Paka defines and every runtime declaration. Proof: the emitter never writes invoke, landingpad or resume (the linter rejects them), a trap is a status return, and Rust stops the process rather than let a panic leave a C-convention function. Each runtime entry also catches panics, so what the user sees is status 4 and not an abort.
+- Row: inbounds: Allowed on a getelementptr only when every use of its result is the address of a load or store (or another such getelementptr), so it promises nothing the access itself does not already need. The emitter writes it only in the one helper that writes the bounds check, the address and the access together; field addresses use constant offsets inside a live value. An address passed to a call is written without inbounds.
+- Row: alignment: Loads and stores use the type's natural alignment from M4-22's layout table, written out on every instruction. Proof: the compiler lays out every value itself and the runtime allocates at 8-byte alignment or more; M6-10's test compares both sides.
+- Row: hints that cannot change meaning: Allowed freely: !prof branch weights (to mark trap branches unlikely), llvm.expect, cold, hot, noinline, inlinehint, alwaysinline. A wrong hint costs only speed.
+- Row: linkage and constants: Allowed: internal and private linkage, unnamed_addr (a Paka program cannot see an address), and 'constant' on globals. Proof for constant: release IR defines no changeable global, the linter rejects any store whose address is a global, and a list or string whose bytes sit in a constant is marked as such and copied before its first write, by compiled code and by the runtime alike (M6-11 tests it). A global the runtime owns, such as a stack limit, is declared without 'constant' and only loaded.
+- Plain words that promise nothing: Besides the rows, the linter's allow-list holds the words that carry no flag and are defined for every value they are given: integer and float arithmetic and comparison, select, phi, br, switch, ret, getelementptr without flags, extractvalue, insertvalue, zext, sext, trunc, sitofp, ptrtoint, the overflow-reporting intrinsics and llvm.memset, plus load, store, call and alloca under the rules below. A lowering task adds a word it needs in its own pull request, with a note that no input makes LLVM call its result undefined or poison.
+- Instructions that are undefined on bad input: sdiv and srem only after the zero and smallest-Int-by-minus-one checks; shl and ashr only after the 0 to 63 check; fptosi only after the range and NaN check that traps bad_conversion. Each is written only by the helper that writes its check first. Any other such instruction the emitter comes to need (udiv, urem, lshr, fptoui) follows the same rule: behind its check, or with a constant operand that is in range. Checked + - * use LLVM's overflow-reporting intrinsics; wrap_add, wrap_sub and wrap_mul are plain add, sub and mul.
+- Copying memory: llvm.memmove by default. llvm.memcpy only when the destination was allocated in the same function, since memcpy is undefined when the two ranges partly overlap.
+- Never allowed: nsw, nuw, exact, disjoint, nneg, samesign and nusw; undef and poison as written values; unreachable; llvm.assume; mustprogress and willreturn (an endless loop is a legal Paka program under M2-06 and must not be deleted); tail and musttail; invoke; inline assembly; type-based alias metadata; value-range, nonnull, noundef, dereferenceable, readonly, readnone, memory(...), captures and lifetime marks until a row is added for them.
+- Float: No fast-math flag ever (fast, nnan, ninf, nsz, arcp, contract, afn, reassoc), and no llvm.fmuladd or llvm.fma, so nothing is fused (M2-03). Allowed float intrinsics are the exactly rounded ones: sqrt, floor, ceil, trunc, round, fabs. How the canonical NaN is kept is M6-08's: the rule is only that every place a program or a test can see a NaN's bits (today the text form) sees the canonical ones. Forcing them after each operation is also correct, but it puts a compare and a select into every float loop and so risks the parity of line 97.
+- noalias: Not allowed anywhere in the first table, neither on parameters nor on results. Only M6-23 can add it for inout parameters, at the exact places it signs. Until then a loop over two lists keeps LLVM's own run-time overlap check, which line 90 expects to be absent; the benchmark table is made after M6-24, so it shows whatever was signed.
+- Stack slots: alloca only with a constant size and only in a function's first block, so M6-16 can bound every frame. No lifetime marks in the first table. M6-16 may read the stack position (the address of one of its own slots, or an intrinsic it adds as a plain word), compare it with a limit the runtime owns, and mark a large-frame function noinline; it uses no attribute that relies on a guard page, since no signal handler is installed.
+- What a trap shows and which trap wins: Taken from M2-06 as given: kind and position, first in evaluation order. Each trap site returns its own constant, so LLVM cannot merge sites that differ; stack and memory traps are compared on kind only.
+- What the linter reads: The IR text Paka writes, before clang optimizes it. It is an allow-list: any keyword, attribute, metadata name or intrinsic that is neither a row nor a plain word fails. What LLVM adds for itself afterwards is LLVM's own proof and is not linted.
+- The clang command: It may add no flag that loosens meaning: no -ffast-math and no floating-point contraction flag. Optimization level and target CPU are M6-02's one constant.
+- Adding a row later: A promise row needs one pull request with: the proof that the emitter alone makes it true, the linter rule, a measured gain on an M6-02 benchmark, a level 4 reviewer told to break it, and the owner's approval, since it changes the signed table. A plain word needs only its note and the normal review. No row rests on a checker analysis of user code except through a signed decision like M6-23.
+- Measurement-only builds: A build that omits a check family (M6-30) stands outside this table. Its numbers count only under M6-02's rule that the normal build ran the same input without a trap, so every omitted check would have passed.
+- What the table does not cover: Every load and store also relies on its address being live and written. That rests on the language itself (bounds checks, one owner, borrows that cannot be stored) and on the layouts of M6-10 to M6-13, and is tested by three-mode conformance and the fuzz. No flag is involved, so it is not a row.
+
+### M6-01 · what this changes in TASKS.md
+
+- M6-05: Its allow-list has two parts, the promise rows and the plain words, and it adds two checks that read whole lines: every use of an inbounds result is a load or store address, and no store targets a global. Its level 2 reason ('token scan') no longer fits fully and should be looked at again.
+- M6-07: Checked arithmetic uses the overflow-reporting intrinsics with no nsw or nuw; division and shifts go through the helpers that write their checks first; the fall-through of a match returns the reserved internal-error status.
+- M6-08: No fmuladd or fma and no flag of any kind on float operations; only the six exact float intrinsics are called. It chooses where NaN bits are made canonical; if it does so after every operation, M6-02's float kernels will show the cost.
+- M6-09: Field addresses that are passed to a call (inout arguments) are written without inbounds.
+- M6-10: Its test also covers two facts that rows lean on: the runtime allocates at 8-byte alignment or more, and a buffer that sits in a constant is marked as such.
+- M6-11: Item access goes through one helper that writes check, address and access together; copies use memmove unless the destination is fresh; a list or string whose bytes sit in a constant is copied before its first write, with a test; runtime declarations carry nounwind only.
+- M6-16: May assume fixed-size stack slots in the first block only and no 'tail' marks written by Paka; it adds the word it reads the stack position with as a plain word and uses no guard-page attribute.
+- M6-19: Shapes loops only and removes no check itself; a check that stays is fixed by reshaping or by proposing a table row with a measured gain.
+- M6-20: When the interpreter ends in a stack trap, release may finish or keep running (a tail call LLVM made into a loop), so such runs are cut by a time limit and not filed as a divergence.
+- M6-21: Its planted 'wrongly removed check' bugs are emitter bugs that leave a check out, since Paka has no pass that removes checks.
+- M6-24: The noalias row does not exist until M6-23 signs it; M6-24 adds the row and its linter rule together.
+- M6-30: A measurement build drops checks but keeps the promises that rested on them, so it is valid only on inputs the normal build ran without a trap.
+- M2-41: The shared unbounded-recursion case must use the call's result in a checked operation after the call (for example 1 + down(n + 1)), so LLVM cannot turn it into a loop and it still traps stack in release.
+- M4-05: Reserves one status number for 'internal error' beside the trap numbers; the runtime reports it with M1-14's line and exit status 4.
+
+## M6-02 · Propose the benchmark set, fairness rules and cost-measurement method
+
+### M6-02.1 Which optimization level and target CPU does paka build use, and do the Rust and C++ builds use the same?
+
+**Baseline x86-64, -O3** (recommended). Full optimization and the plain x86-64 instruction set that clang and rustc target when given no CPU flag, so binaries run on any 64-bit PC. Costs speed on loops that wider vector instructions (AVX2) would help, equally in all three languages.
+
+```
+paka:  clang -O3 prog.ll libpaka_rt.a ...
+rust:  rustc --edition 2024 -C opt-level=3 -C codegen-units=1 -C panic=abort prog.rs
+c++:   clang++ -O3 -std=c++20 -fno-exceptions -fno-rtti -ffp-contract=off prog.cpp
+```
+
+- Why: No CPU flag is each compiler's own default, so no language gets an instruction set the others lack, and the constant is safe to ship. It is one constant and cheap to change.
+- Locks: The flag constant in M6-04 and the conditions under which every published number was measured. Raising the CPU level later means re-running the whole set.
+- Not chosen: x86-64-v3 (AVX2) (The 2013-and-later level, with wider vector instructions. Faster float and array loops, but shipped programs stop with an illegal instruction on older or low-end CPUs.) · The build machine's CPU (native) (Tune for the Ryzen 3900X the benchmarks run on. Best numbers here, but the published table then describes one machine and the build constant cannot ship.)
+- Look again when: A user needs AVX2 speed; a CPU-level option on paka build is then added and the set is re-run at that level beside the baseline.
+
+### M6-02.2 How must the Rust and C++ versions of a benchmark be written?
+
+**Idiomatic safe code, tuned once** (recommended). Same algorithm, input and checksum in all three, standard library only, one thread: safe Rust with iterators allowed, C++ with std::vector and plain indexing, no vector intrinsics, pragmas or 'restrict'. Each version gets one tuning pass by a second agent and all are frozen by commit before any timing; costs that tuning pass.
+
+```
+// rust: safe, the idiom a Rust programmer would write
+fn dot(a: &[f64], b: &[f64]) -> f64 {
+    a.iter().zip(b).map(|(x, y)| x * y).sum()
+}
+```
+
+- Why: It compares what a competent writer gets in each language, which is the claim the paper makes. The tuning pass keeps the rivals from being straw men, and the freeze keeps numbers from steering the code.
+- Locks: The frozen commit of all benchmark sources. After the first timing a program changes only by a logged reason, and then all three versions are re-run.
+- Not chosen: Line-by-line translation (The Rust and C++ sources mirror the Paka source statement by statement. Easiest to audit, but it denies Rust its iterators and so flatters Paka.) · Fastest known versions (Take the fastest published programs, with unsafe code, hand-written vector code and threads. It tests the row where the paper already says Paka loses.)
+
+### M6-02.3 Which programs make up the set?
+
+**Eleven small own programs** (recommended). Four float and array kernels, three integer kernels and four pointer-heavy programs, each under about 150 lines per language (list under defaults). Costs about 40 small source files to write and keep in step, since two kernels also have a wrapping twin.
+
+```
+float/array: saxpy_dot, matmul, stencil, nbody
+integer:     sieve, collatz (each checked and wrapping), mix (wrapping only)
+pointer:     expr_parse, binary_trees, bfs, word_count
+```
+
+- Why: Each program stresses one thing the paper makes a claim about, so a gap can be traced to a cause. Small programs can be checked line against line across three languages.
+- Locks: The program list M6-28 and M6-29 write. Adding a program later is free; dropping one after seeing its number is not allowed.
+- Not chosen: Benchmarks Game ports only (Port the well-known public set. Rival versions already exist, but most of the fast ones use threads, unsafe code or big-number and regex libraries Paka does not have.) · A few large programs (Two or three programs of a thousand lines each, such as a full interpreter. Closer to real use, but one number then mixes every cost and explains nothing.)
+- Look again when: M2-09 or M2-10 add user generics, shared data or pools before M6: one program per new feature is then added before the freeze.
+
+### M6-02.4 What are the integer kernels compared against, given that Rust and C++ do not check overflow by default?
+
+**Both checked and unchecked Rust** (recommended). Paka checked is shown beside Rust built with overflow checks on (like for like) and beside default Rust and C++ (what their users get); Paka wrapping is shown beside Rust's wrapping operations and C++ unsigned arithmetic. Inputs never overflow, so all checksums agree; costs one extra Rust build per integer kernel.
+
+```
+// checked form: traps overflow if a value leaves Int
+x = 3 * x + 1
+// wrapping twin: same result on these inputs, never traps
+x = wrap_add(wrap_mul(3, x), 1)
+```
+
+- Why: The two columns answer two different questions, and both matter: is Paka's checked code as good as Rust's checked code, and what does checking cost against the usual build.
+- Locks: The columns of the integer rows in the published table.
+- Not chosen: Default Rust only (Compare Paka checked with Rust and C++ as shipped. Shows the gap users see, but hides how much of it is the checks and how much is Paka.) · Checked Rust only (Compare only like for like. Fair to Paka, but hides the price of the language's own choice to check.)
+
+### M6-02.5 Are measurement-only builds that leave out one family of checks accepted?
+
+**Accepted, after a clean run** (recommended). Yes, under M6-30's fence: only a compiler built with the measure feature takes the switch, the binary prints a warning banner on standard error, and it is never shipped. A measured run counts only if the normal build ran the same program and input first, without a trap and with the same checksum; costs the switch through several lowerings.
+
+```
+(paka built with the measure feature; the normal paka rejects --omit)
+$ paka build stencil.paka --omit bounds -o stencil_nb
+$ ./stencil_nb
+MEASUREMENT BUILD: bounds checks omitted, not a Paka program   (standard error)
+4183902771
+```
+
+- Why: It is the only way to put a time on a check that cannot be switched off. The clean-run rule means every omitted check would have passed, so the measured program computes the same thing.
+- Locks: M6-30 is built; the spelling of its switch is M6-30's. The overflow family needs no such build: its cost is the checked kernel against its wrapping twin.
+- Not chosen: Refused: count checks instead (No build without checks ever exists. The table reports how many checks stay in hot loops and how often they run, not their time, so the paper's cost question gets a count, not a cost.)
+
+### M6-02.6 What is timed, and how?
+
+**Whole process, timed outside** (recommended). The runner times each program from start to exit, pinned to one core, with inputs sized so a run takes 1 to 3 seconds and start-up cost is too small to matter. Costs that input building is inside the timed span, equally for all three.
+
+```
+$ paka-bench run stencil
+stencil  paka 1.412 s  rust 1.398 s  c++ 1.371 s   (median of 10, spread 1.9%)
+stencil  paka/rust 1.01   paka/c++ 1.03   expected: parity
+```
+
+- Why: It needs nothing added to the language and treats the three languages alike. Runs of a second or more keep the fixed start-up cost well under one percent.
+- Locks: The run protocol in M6-27 (details under defaults).
+- Not chosen: Timer inside the program (Each program times only its kernel. Most exact, but Paka would need a Clock effect and grant built just for benchmarks.) · Count instructions with perf (Count executed instructions instead of time. No noise at all, but instruction counts hide cache misses and vector width, which are what the paper's claims are about, and on the build machine perf needs a kernel setting only the owner can loosen.)
+- Look again when: Spread stays above the noise limit on the build machine even when idle; instruction counts are then added beside the times, which needs the owner to allow perf.
+- Owner must still: Leave the machine idle while the published run is made. Setting the CPU governor to 'performance' or turning frequency boost off is optional and is a system setting only the owner can change; the runner records whatever is set (schedutil with boost on today).
+
+### M6-02.7 How does the published table state that Rust is optimized by LLVM 22 and Paka and C++ by LLVM 21?
+
+**State it; C++ is control** (recommended). Every column header names its compiler and LLVM version, and a note says the C++ column, built with the same clang 21.1.8 as Paka, is the same-optimizer comparison while a small gap to Rust may be the optimizer's. Costs nothing; the Rust gap stays partly unexplained.
+
+```
+            paka             rust             c++
+            clang 21.1.8     rustc 1.96.1     clang++ 21.1.8
+            (LLVM 21)        (LLVM 22)        (LLVM 21)
+Note: Rust is optimized by a newer LLVM. The C++ column is the like-for-like one.
+```
+
+- Why: It needs no download and hides nothing. Compiling C++ with the same clang as Paka already gives one comparison where only the language differs.
+- Locks: The table header and note that M6-32 generates.
+- Not chosen: Older rustc with LLVM 21 (Build the Rust benchmarks with an older rustc that carries LLVM 21. Same optimizer everywhere, but it is a download and it measures a Rust nobody uses now.) · Move Paka to clang 22 (Re-pin clang to 22 so all three match. Cleanest table, but it is an install and it changes the pin M1 was proven on.)
+- Look again when: The project re-pins clang to 22 for any other reason; the set is then re-run and the note goes away.
+
+### M6-02.8 Which measured ratio is called 'parity'?
+
+**Parity means within 10%** (recommended). The table always prints the raw ratio and beside it one word, fixed now: 'parity' when Paka's median time is at most 1.10 times the other's, 'as expected' on a pointer-heavy row up to the paper's 1.30, 'worse than expected' above the row's line, and 'measured' where the paper names no amount (checked integer loops). Costs that a real 8% loss is called parity.
+
+```
+matmul   paka/c++ 1.04            expected: parity         -> parity
+bfs      paka/rust 1.22           expected: behind 10-30%  -> as expected
+bfs      paka/c++ 1.36            expected: behind 10-30%  -> worse than expected
+collatz  paka/rust 1.31           expected: behind         -> measured
+collatz  paka/rust(checked) 1.06  expected: none stated    -> measured
+```
+
+- Why: The line must sit above what noise (limit 5%, see defaults) and a one-version optimizer gap can produce. The raw ratio is always printed, so a stricter reader loses nothing.
+- Locks: The verdict words in the published table. Fixed before the first timing and not changed after.
+- Not chosen: Within 5% (A stricter line. More honest on a quiet machine, but run-to-run noise and the LLVM version gap can each be that large, so noise would be labelled as loss.) · No words, ratios only (Print numbers and let the reader judge. Nothing to argue about beforehand, but the exit check asks for each number 'beside its expectation', and without a line nobody can say whether one was met.)
+
+### M6-02 · settled without asking
+
+- Program list: float and array: saxpy_dot (scale-and-add over two lists, then a dot product; the two-list kernel M6-24 names), matmul (plain matrix product on flat lists), stencil (five-point average over a grid, many sweeps), nbody (five bodies as records of Floats, with sqrt).
+- Program list: integer: sieve (primes below N in a List<Bool>), collatz (longest chain below N), each in a checked form with + - * and a wrapping twin written with wrap_add and wrap_mul; mix (a 64-bit mixing generator and running hash, wrapping only, since wrap is its meaning). mix and the seed generator are defined with operations Paka has (wrapping multiply, xor, and a right shift that copies the sign bit), so all three languages compute the same bits.
+- Program list: pointer-heavy: expr_parse (parse an ASCII arithmetic text into a tree of a self-containing enum, then evaluate), binary_trees (build and walk many trees), bfs (shortest paths on a graph kept as List<List<Int>>, per M2-01.1), word_count (count words of an ASCII text in a Map<String, Int>).
+- Programs that wait on other decisions: If M2-10 builds shared immutable data, expr_parse gains a shared-subtree form for the reference-count row. If pools exist by M6, bfs gains a pool form for the handle-check row. A cost whose feature the language does not have reads 'not built' and no number is invented; today that is the case for handle checks, since pools are not decided (M2-01.1). The M6 exit check is reworded to allow this (see effects).
+- Inputs and checksums: Numeric programs build their input from a fixed seed with the same wrapping generator in all three languages; expr_parse and word_count read one ASCII file made by the runner. Each prints one Int checksum line; a Float result is scaled and turned to Int by a rule written in the program list, so float-to-text rules never matter. The runner refuses a row whose three checksums differ.
+- Input sizes: Chosen so the default Rust build runs 1 to 3 seconds and building the input takes under 5% of that (a kernel repeats its loop as often as needed), by a Rust-only calibration run, and committed before any Paka binary is timed.
+- Compiler versions: clang and clang++ 21.1.8 and rustc 1.96.1, checked by the runner before each run; C++ uses the system's libstdc++, whose version the results file records. Both are already installed, so no download is needed.
+- Flags per language: Paka: clang -O3 with no CPU flag, from M6-04's one constant. Rust: rustc --edition 2024 -C opt-level=3 -C codegen-units=1 -C panic=abort, single file, no crates; plus -C overflow-checks=on for the checked integer column. C++: clang++ -O3 -std=c++20 -fno-exceptions -fno-rtti -ffp-contract=off. No fast-math anywhere, no profile-guided or link-time optimization for anyone.
+- Library rule: Standard library only in Rust and C++, with their default allocator: Vec and HashMap with the default hasher, std::vector and std::unordered_map, Box and std::unique_ptr for tree nodes. Numbers are 64-bit signed integers and 64-bit floats in all three, since Paka has no others. C++ keeps sieve flags in std::vector<char>, not the bit-packed std::vector<bool>. No program's checksum depends on map iteration order. The table's notes name the containers used.
+- Paka sources: Written from the language reference as an agent would write them, with no compiler switch and no benchmark-only built-in. Each is a headless app whose first handler computes, prints the checksum and exits, built with plain 'paka build' (M7-03). They get the same single tuning pass as the Rust and C++ versions.
+- The runner: M6-27's runner is plain Rust with the standard library only, started as 'paka-bench run'. It pins with the taskset program already on the machine and times with Rust's monotonic clock, as M4-01 does. Nothing is installed.
+- Run protocol: Single thread, pinned to one fixed logical CPU with taskset (the machine has two per core; the load check keeps the other one quiet). Per benchmark: one unrecorded warm-up of each binary, then 10 timed rounds, each round running the three languages one after another. Reported: median, and spread as (slowest minus fastest) over median. A benchmark with spread above 5% is rerun once; if still noisy its row is published with a noise mark. The runner refuses to start when the one-minute load average is above 1.
+- What is recorded: Raw times of every run, checksums, compiler versions, flags, CPU model, kernel, governor, frequency boost setting, the CPU pinned to and the commit of the sources, all in the committed results file. Build time and memory use are not measured.
+- Expectation shown per row: Float and array rows: parity with Rust; parity with C++ only where no trap branch is left in the inner loop (line 97), otherwise 'none stated'. Wrapping integer rows: parity with both. Checked integer rows: 'behind' with no amount against default Rust and C++ (line 98), and 'none stated' against checked Rust. Pointer-heavy rows: behind by 10 to 30% (line 99).
+- Cost: overflow checks: Time of the checked kernel over its wrapping twin, for sieve and collatz. No special build is needed.
+- Cost: bounds checks: Time of the normal build over the measurement build without bounds checks, for saxpy_dot, matmul, stencil and sieve. Beside it stands a yes or no from M6-19's own check run on each kernel: is a trap branch left inside the inner loop.
+- Cost: reference counting and handle checks: Time of the normal build over the measurement build without that family, on the shared form of expr_parse and the pool form of bfs. Reported as 'not built' while the feature does not exist.
+- Cost: state copy per handler: A visual app run with no window handles 10,000 messages on a state holding a List<Int> of 1,000, 100,000 and 10,000,000 items, once with a handler that writes one small field and once with one that writes one list item. It must be a visual app: a headless program ends on a trap (line 160), so its runtime may keep no copy at all. A runtime built with the measure feature times the copy itself and prints the total; the figure is time per handler at each size.
+- Cost: dev-mode slowdown: The to-do sample from M5-23, run with no window through one committed script (add 1,000 items, then tick each one), in dev and in release. A runtime built with the measure feature replays the script and times each frame, because UI examples do not run in release before M7-11. Two ratios are published: time in Paka code (update and view) and whole-frame time including layout; drawing to a real screen is not timed and the table says so. The numeric kernels are also run once in dev mode, timed like any other run, to place Paka between the 2 to 3 times and 10 to 100 times of GENESIS line 77.
+- Order of events: Program list, sources, sizes, flags, protocol and the parity line are committed first. No Paka timing is looked at before that commit, and the runner refuses to publish from any other commit.
+- What the table does not claim: Single-threaded code on one machine at the baseline CPU level. Nothing about hand-written vector code, threads or memory use, which the paper already puts outside its promise (line 100). The pointer-heavy rows are measured without pools, so until pools exist they do not test the cause the paper gives for that gap, handle checks (line 269).
+
+### M6-02 · what this changes in TASKS.md
+
+- M6 exit check: Reworded: a section 8 cost whose feature the language does not have when M6 ends is listed in the table as 'not built' with the reason, and that counts as shown. Today this is handle checks (pools are not decided) and, if M2-10 builds no shared data, reference counting.
+- M6-04: The one constant is '-O3' with no CPU flag; M1-19's -O2 is replaced by it.
+- M6-27: Timing is whole-process from outside with Rust's monotonic clock, pinned with taskset, 1 warm-up and 10 interleaved rounds, a 5% noise limit and a load check; it also builds the extra checked-Rust binary for integer kernels and records the machine facts. Standard library only.
+- M6-28: Writes seven kernels: four float and array, sieve and collatz each in checked and wrapping form, and mix in wrapping form only; C++ has no checked column. Each kernel is also put through M6-19's inner-loop check, which here only reports yes or no.
+- M6-29: Writes expr_parse, binary_trees, bfs by list index and word_count; the shared-data and pool forms exist only if those features are built, and its needs on M6-12 and M6-13 hold only for a feature that exists.
+- M6-30: Is built as accepted. Its banner goes to standard error so the checksum line still compares; its families are bounds checks plus reference counts and handle checks where those exist (its needs on M6-12 and M6-13 fall away otherwise); its runs count only after a clean normal run with the same checksum.
+- M6-31: Measures the state copy on a visual app run with no window, with the three state sizes and two handlers named here, and replays the committed to-do script in dev and release; copy and frame times are taken inside a runtime built with the measure feature, and both the Paka-code ratio and the whole-frame ratio are reported.
+- M6-32: The table carries compiler and LLVM version in each header, the note on LLVM 22 versus 21, the raw ratio, the expectation and the pre-set word (parity, as expected, worse than expected, measured); a cost whose feature was never built reads 'not built'.
+- M6-13: Stays dropped or pending with pools (M2-01.1); the handle-check figure depends on it.
+- M2-10: Its ruling decides whether the reference-count and handle-check rows of the cost table can hold a number at all.
 
 ## M7-01 · Decide how the owner writes and approves examples and grant changes
 
