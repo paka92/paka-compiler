@@ -57,6 +57,33 @@ fn directory_is_unreadable() {
 }
 
 #[test]
+fn lexical_reject_is_one_diagnostic_and_exit_1() {
+    let dir = concat!(
+        env!("CARGO_MANIFEST_DIR"),
+        "/../tests/cases-pending/lex/comment"
+    );
+    for args in [
+        vec!["run", "main.paka"],
+        vec!["build", "main.paka", "-o", "unused"],
+    ] {
+        let out = Command::new(env!("CARGO_BIN_EXE_paka"))
+            .args(&args)
+            .current_dir(dir)
+            .output()
+            .unwrap();
+        assert_eq!(out.status.code(), Some(1), "args {args:?}");
+        assert!(out.stdout.is_empty(), "args {args:?}");
+        let stderr = String::from_utf8(out.stderr).unwrap();
+        let rest = stderr.strip_prefix("main.paka:1:20: error[unsupported-comment]: ");
+        let message = rest.and_then(|r| r.strip_suffix('\n'));
+        assert!(
+            message.is_some_and(|m| !m.is_empty() && !m.contains('\n')),
+            "{stderr:?}"
+        );
+    }
+}
+
+#[test]
 fn readable_file_is_silent_and_exit_0() {
     let file = concat!(env!("CARGO_MANIFEST_DIR"), "/../examples/light.paka");
     for args in [vec!["run", file], vec!["build", file, "-o", "unused"]] {

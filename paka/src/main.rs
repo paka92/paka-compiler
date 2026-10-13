@@ -1,4 +1,6 @@
 mod diagnostic;
+#[allow(dead_code)] // the parser (M1-09) reads the token fields
+mod lexer;
 
 use diagnostic::Diagnostic;
 use std::io::Write;

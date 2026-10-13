@@ -1,6 +1,7 @@
 use std::fmt;
 
 /// One reported problem. `position` is (line, column); tool errors have none.
+#[derive(Debug)]
 pub struct Diagnostic {
     pub path: String,
     pub position: Option<(usize, usize)>,
