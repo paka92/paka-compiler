@@ -50,9 +50,14 @@ globals, references or shared data. Functions cannot see anything but their para
 - `//` starts a comment that runs to the line end. No block comments.
 - A line break ends a statement. A line continues only inside an open `(` or `[`, after a line
   ending in `,` `=` `->` `=>` `|` `{` or a two-sided operator, or before a line starting with
-  `}` `)` `]`. So: no `;` after a statement, `else` stands on the line of the `}` before it, a
-  type is written on one line, and `{ x }` may stand on one line.
-- No trailing comma anywhere. Brackets nest at most 64 deep.
+  `}` `)` `]`. So: no `;` after a statement, `else` stands on the line of the `}` before it, and
+  `{ x }` may stand on one line. Fields and variants are separated by `,`, on one line or on
+  many; a line break alone does not separate them.
+- No trailing comma anywhere.
+- Nesting is at most 64 levels: each open `(` `[` `{`, type `<` and string `{`, and an `if` or
+  `match` in the condition or subject of another, and a `fn` type as the result of another. A
+  chain of operators, calls, fields or `?` has at most 1,000 links. Beyond either:
+  `nesting-too-deep`.
 
 ## 3. Types
 
@@ -141,8 +146,9 @@ example tour {
 - Parameters before `;` are passed by position; those after it as `name: value`, in declared
   order. A call writes exactly those labels. `f()` calls a function without parameters.
 - A function without `-> T` gives no value.
-- The value of a block is its last line. `return value` only leaves early; on the last line it is
-  the error `return-last`: drop `return`.
+- The value of a block is its last line. `return value` only leaves early, and a bare `return`
+  leaves a function without a result; on the last line it is the error `return-last`: drop
+  `return`.
 - `let x = e` is fixed; `var x = e` can be assigned. Either may carry a type: `let x: T = e`.
 - No shadowing: a `let`, `var`, parameter, `for` name or pattern name may not reuse a local name
   visible there (`duplicate-local`). Blocks side by side may reuse a name. A local may hide a
@@ -156,7 +162,7 @@ example tour {
   each a new name or `_`), an Int, a String, `true`, `false` or `_`. `A | B => ...` joins
   patterns and binds no names. A match on an enum names every variant; a whole-pattern `_` is
   allowed only when the subject is an Int, String or Bool. An arm is an expression, an assignment
-  or a block.
+  or a block; `V => {}` does nothing.
 - A value must be used. A statement whose value is dropped is `unused-result`; write
   `_ = pop(&q)`. A call that gives no value stands alone, without `_ =`.
 - An unused local is only a warning.
@@ -186,7 +192,9 @@ Both sides of an operator have the same type; nothing converts by itself (`to_fl
   truncates toward zero, `%` takes the sign of the left side, a zero divisor traps
   `divide_by_zero`. Wrapping and bit operations are functions (section 9).
 - Float arithmetic never traps. NaN equals nothing, itself included.
-- String escapes, exactly: `\n` `\r` `\t` `\\` `\"` `\{` `\}`.
+- String escapes, exactly these seven, no `\u{hex}`: `\n` `\r` `\t` `\\` `\"` `\{` `\}`. A
+  literal `{` or `}` is always written `\{` or `\}`; a bare `}` is the error
+  `unexpected-character`.
 - `"{expr}"` puts an Int, Bool or String into the text. The expression holds no `"`, `{` or `}`;
   bind anything larger to a `let` first. A Float is written `"{fixed(x, digits: 2)}"`. No other
   type becomes text by itself: build the text from its parts.
@@ -219,7 +227,8 @@ Both sides of an operator have the same type; nothing converts by itself (`to_fl
 - The fields of a variant are not places. To change one, match, build the new value and assign
   the subject: `Rect(w, h) => s = Rect(w + 1, h)`.
 - Trees are enums or records that hold themselves; using a subtree twice makes two copies.
-  Graphs use list positions: a node is its index.
+  Graphs use list positions: a node is its index. Build the adjacency lists with
+  `var adj: List<List<Int>> = list_of([], count: n)`; the annotation is needed (`cannot-infer`).
 
 ```paka
 type Graph { adj: List<List<Int>> = [] }
@@ -249,7 +258,8 @@ example reach {
 - `e?` gives the inside of `Some` or `Ok`; on `None` or `Err` the function returns that at once.
   It may stand only in a function whose result is `Option<_>` (for an Option) or `Result<_, E>`
   with the same `E` (for a Result). Not in `update`, not in an example.
-- An Option inside a Result function: `ok_or(opt, error)?`.
+- An Option inside a Result function: `ok_or(opt, error)?`. A Result inside an Option function is
+  matched.
 - Changes made through an inout parameter before a `?` returns stay made.
 - An arm that returns is a block: `None => {`, `return Err("empty")`, `}` on three lines.
 - `unreachable()` stands where a value is expected but cannot be reached; it traps `assert`.
@@ -292,8 +302,8 @@ example failures {
 - A function value is the bare name of a user `fn` without inout parameters, or of a user variant
   with fields (`Loaded` is a `fn(String) -> Msg`). Its type is written `fn(A, B) -> R`.
 - A call through a function value is positional and takes no `&`.
-- Built-in functions and built-in variants are not values (`not-a-value`): wrap one in a user
-  `fn`.
+- Built-in functions and built-in variants with fields are not values (`not-a-value`): wrap one in
+  a user `fn`. `None` and `Exit` are plain values.
 - There are no lambdas. Write a top-level function and pass its name:
 
 ```
@@ -307,7 +317,8 @@ sort_by(&players, by_score)
 ## 9. Built-in functions
 
 These 63 names cannot be user function names. `T`, `K`, `V`, `E` stand for any type. All
-arguments are positional except the three labels shown (`digits:`, `at:`, `count:`). A row
+arguments are positional except the three labels shown (`digits:`, `at:`, `count:`); a `;` in a
+row only marks where the labels start, a call writes `,`. A row
 without `->` gives no value. A row that changes its first argument takes it with `&`.
 
 ```
@@ -320,11 +331,11 @@ min(a, b) -> T   max(a, b) -> T       Int, Float or String
 abs(x) -> T                           Int or Float
 to_float(n: Int) -> Float
 to_int(x: Float) -> Int               drops the fraction; traps bad_conversion on NaN or out of range
-sqrt(x) floor(x) ceil(x) trunc(x) round(x)    Float -> Float; round: ties away from zero
+sqrt(x) floor(x) ceil(x) trunc(x) round(x) -> Float    round: ties away from zero
 fixed(x: Float; digits: Int) -> String        digits 0 to 20; ties away from zero
-wrap_add(a, b) wrap_sub(a, b) wrap_mul(a, b)  Int, wraps instead of trapping
-bit_and(a, b) bit_or(a, b) bit_xor(a, b) bit_not(a)
-shift_left(a, count) shift_right(a, count)    count 0 to 63
+wrap_add(a, b) wrap_sub(a, b) wrap_mul(a, b) -> Int   wraps instead of trapping
+bit_and(a, b) bit_or(a, b) bit_xor(a, b) bit_not(a) -> Int
+shift_left(a, count) shift_right(a, count) -> Int      count 0 to 63
 
 parse_int(text) -> Option<Int>        "-12", "007"; nothing trimmed; None when not a number
 parse_float(text) -> Option<Float>
@@ -347,7 +358,7 @@ upper(text) lower(text) -> String     ASCII letters only
 append(&xs, item)
 extend(&xs, more)                     appends every item of the List more
 pop(&xs) -> T                         removes the last item; traps on an empty List
-insert(&xs, item; at: Int)            at == len(xs) appends
+insert(&xs, item; at: Int)            at == len(xs) appends. Call: insert(&xs, x, at: 0)
 remove_at(&xs, i) -> T
 swap(&xs, i, j)
 reverse(&xs)
@@ -382,7 +393,7 @@ unreachable()                         traps assert when reached
 
 ```
 app NAME {
-  state: S          // optional: a record type with a default on every field
+  state: S          // optional: a record with a default on every field, else `bad-state`
   start: Start      // required: a variant of the message enum; its fields are all String
   update: update    // required: the handler
   grants: [Console] // required, may be []: Console, ReadFiles, WriteFiles
@@ -403,6 +414,9 @@ fn update(m: Msg) -> List<Effect<Msg>>                 // without state:
 | `WriteFile(path, text; then: Msg, or: fn(String) -> Msg)` | `WriteFiles` | `then` or `or(reason)` |
 | `Exit` | none | ends with status 0 |
 | `ExitWith(status)` | none | ends with that status: 0 or 5 to 255 |
+
+`then:` of `WriteFile` is a message value, which may carry context:
+`WriteFile(path, text, then: Saved(path), or: Failed)`.
 
 Effects are plain values; only the list the app's `update` returns is performed. `then:` and `or:`
 are both required. A reason is one of `not found`, `no permission`, `not a file`, `not text`,
@@ -481,7 +495,8 @@ and compare effect lists with `==`. They are checked with the program and run on
 Exit status: 0 good; 1 an error in the program; 2 bad usage; 3 a trap, a stop or an example that
 did not pass; 4 an internal error.
 
-A command reports the first error only, as one line; `paka check` adds one line per field:
+`paka build` lists every hole, one line each; every other command reports the first error only,
+as one line. `paka check` adds one line per field:
 
 ```
 main.paka:4:3: error[type-mismatch]: expected `List<Effect<Msg>>`, found `String`
