@@ -32,6 +32,12 @@ pub fn build_runtime() {
     });
 }
 
+/// The runtime archive beside the `paka` binary under test, built first.
+pub fn runtime_archive() -> PathBuf {
+    build_runtime();
+    Path::new(PAKA).with_file_name("libpaka_rt.a")
+}
+
 /// Runs `paka build source -o output` once the runtime archive exists.
 pub fn build_native(source: &str, output: &Path) -> Output {
     build_runtime();

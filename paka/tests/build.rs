@@ -4,7 +4,6 @@ mod common;
 
 use common::{LIGHT, PAKA, Scratch, build_native, build_runtime};
 use std::fs;
-use std::os::unix::fs::symlink;
 use std::path::Path;
 use std::process::{Command, Output};
 
@@ -12,6 +11,18 @@ const NO_APP: &str = concat!(
     env!("CARGO_MANIFEST_DIR"),
     "/../tests/cases/check/no_app/main.paka"
 );
+
+const LIGHT_IR: &str = concat!(env!("CARGO_MANIFEST_DIR"), "/../docs/abi/light.ll");
+const FAKE_CLANG_DIR: &str = concat!(env!("CARGO_MANIFEST_DIR"), "/tests/fake_clang");
+const SYSTEM_LIBS: [&str; 7] = [
+    "-lgcc_s",
+    "-lutil",
+    "-lrt",
+    "-lpthread",
+    "-lm",
+    "-ldl",
+    "-lc",
+];
 
 /// One line on standard error: `<path>: error[<code>]: <message>`; nothing else written; status 1.
 fn assert_tool_error(out: &Output, path: &str, code: &str) {
@@ -70,26 +81,60 @@ fn rejected_program_behaves_as_run_and_writes_nothing() {
 #[test]
 fn missing_clang_is_one_diagnostic() {
     build_runtime();
-    let dir = Scratch::new("no-clang");
-    let out = build_with(Path::new(PAKA), LIGHT, &dir.path("out"), "");
-    assert_tool_error(&out, LIGHT, "clang-missing");
-    assert!(dir.entries().is_empty());
-}
-
-#[test]
-fn failing_clang_is_one_diagnostic() {
-    build_runtime();
-    let (bin, dir) = (Scratch::new("bin"), Scratch::new("failing"));
-    symlink("/bin/false", bin.path("clang")).unwrap();
-    let path = bin.path("");
+    let (empty, dir) = (Scratch::new("empty-path"), Scratch::new("no-clang"));
+    let path = empty.path("");
     let out = build_with(
         Path::new(PAKA),
         LIGHT,
         &dir.path("out"),
         path.to_str().unwrap(),
     );
+    assert_tool_error(&out, LIGHT, "clang-missing");
+    assert!(dir.entries().is_empty());
+}
+
+#[test]
+fn failing_clang_is_one_diagnostic_and_leaks_nothing() {
+    build_runtime();
+    let dir = Scratch::new("failing");
+    let out = build_with(Path::new(PAKA), LIGHT, &dir.path("out"), FAKE_CLANG_DIR);
     assert_tool_error(&out, LIGHT, "clang-failed");
+    let stderr = String::from_utf8_lossy(&out.stderr);
+    assert!(!stderr.contains("fake-clang"), "{stderr:?}");
     assert!(dir.entries().is_empty(), "left behind: {:?}", dir.entries());
+}
+
+#[test]
+fn clang_gets_the_documents_command() {
+    let archive = common::runtime_archive();
+    let (log, dir) = (Scratch::new("log"), Scratch::new("args"));
+    let (output, log_file) = (dir.path("out"), log.path("args"));
+    let out = Command::new(PAKA)
+        .args(["build", LIGHT, "-o"])
+        .arg(&output)
+        .env("PATH", FAKE_CLANG_DIR)
+        .env("FAKE_CLANG_LOG", &log_file)
+        .output()
+        .unwrap();
+    assert_eq!(out.status.code(), Some(0));
+    assert!(out.stdout.is_empty() && out.stderr.is_empty());
+    assert!(dir.entries().is_empty(), "temporary file left behind");
+    let recorded = fs::read_to_string(log_file).unwrap();
+    let args: Vec<_> = recorded.lines().collect();
+    let output = output.to_str().unwrap();
+    let ir = args[1]
+        .strip_prefix(output)
+        .and_then(|r| r.strip_prefix('.'));
+    let pid = ir.and_then(|r| r.strip_suffix(".ll"));
+    assert!(
+        pid.is_some_and(|p| p.bytes().all(|b| b.is_ascii_digit())),
+        "{args:?}"
+    );
+    let archive = fs::canonicalize(archive).unwrap();
+    assert_eq!(fs::canonicalize(args[2]).unwrap(), archive);
+    assert_eq!(args[0], "-O2");
+    assert_eq!(args[3..10], SYSTEM_LIBS);
+    assert_eq!(args[10..], ["-o", output]);
 }
 
 #[test]
@@ -109,4 +154,83 @@ fn missing_runtime_comes_before_missing_clang() {
         assert_tool_error(&out, LIGHT, "runtime-missing");
         assert!(dir.entries().is_empty());
     }
+}
+
+#[test]
+fn rejected_program_comes_before_missing_runtime() {
+    let (bin, dir) = (
+        Scratch::new("copy-rejected"),
+        Scratch::new("rejected-first"),
+    );
+    fs::hard_link(PAKA, bin.path("paka")).unwrap();
+    let out = build_with(&bin.path("paka"), NO_APP, &dir.path("out"), "");
+    assert_tool_error(&out, NO_APP, "no-app");
+    assert!(dir.entries().is_empty());
+}
+
+#[test]
+fn abi_document_ir_links_and_runs() {
+    let archive = common::runtime_archive();
+    let dir = Scratch::new("abi-ir");
+    let status = Command::new("clang")
+        .args(["-O2", LIGHT_IR])
+        .arg(archive)
+        .args(SYSTEM_LIBS)
+        .arg("-o")
+        .arg(dir.path("light"))
+        .status()
+        .unwrap();
+    assert!(status.success());
+    let run = Command::new(dir.path("light")).output().unwrap();
+    assert_eq!(run.stdout, b"let there be light\n");
+    assert!(run.stderr.is_empty());
+    assert_eq!(run.status.code(), Some(0));
+}
+
+#[test]
+fn output_name_may_start_with_a_dash() {
+    build_runtime();
+    let dir = Scratch::new("dash");
+    let out = Command::new(PAKA)
+        .args(["build", LIGHT, "-o", "-dash"])
+        .current_dir(dir.path(""))
+        .output()
+        .unwrap();
+    assert_eq!(
+        out.status.code(),
+        Some(0),
+        "{}",
+        String::from_utf8_lossy(&out.stderr)
+    );
+    assert!(out.stdout.is_empty() && out.stderr.is_empty());
+    assert_eq!(dir.entries(), ["-dash"]);
+    let run = Command::new(dir.path("-dash")).output().unwrap();
+    assert_eq!(run.stdout, b"let there be light\n");
+}
+
+#[test]
+fn existing_temporary_name_is_never_written_through_or_removed() {
+    build_runtime();
+    let (victim, dir) = (Scratch::new("victim"), Scratch::new("planted"));
+    fs::write(victim.path("file"), "victim").unwrap();
+    // The shell plants a symlink under the name its own process id gives, then becomes paka.
+    let script = r#"ln -s "$VICTIM" "$OUT.$$.ll" && exec "$PAKA" build "$SRC" -o "$OUT""#;
+    let out = Command::new("sh")
+        .args(["-c", script])
+        .env("VICTIM", victim.path("file"))
+        .env("OUT", dir.path("out"))
+        .env("PAKA", PAKA)
+        .env("SRC", LIGHT)
+        .output()
+        .unwrap();
+    assert_tool_error(&out, LIGHT, "clang-failed");
+    assert_eq!(fs::read_to_string(victim.path("file")).unwrap(), "victim");
+    let [planted] = &dir.entries()[..] else {
+        panic!("{:?}", dir.entries())
+    };
+    assert!(
+        fs::symlink_metadata(dir.path(planted))
+            .unwrap()
+            .is_symlink()
+    );
 }
