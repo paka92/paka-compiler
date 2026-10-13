@@ -1697,6 +1697,7 @@ example case_is_ascii_only {
 - Pool and shared-data operations: None: M2-10 decided there is no shared type and no pool, so nothing is taken from it.
 - Layout of the new forms: As M4-47 asks: a Map literal is flat like a List, with one space after each colon and comma: ["a": 1, "b": 2]; the empty one is [:].
 - Room in the reference: The 63 signatures with their one-line results take about 2,000 of the reference's 8,000 tokens under M2-18's bytes-divided-by-3 rule. If M2-18 cannot fit them, the first rows to go are extend, pad_right, trim_start, trim_end, is_empty and values, in that order; each dropped row is a change to this table and is listed in that pull request.
+- Changed in the final record: All seven picks stand: 9 types, 4 constructors, 63 functions; no new diagnostic code or trap kind. Made exact: the sort is a fixed procedure (halves split at lo + (hi - lo) / 2; the right item is taken only when before(right, left) is true), so any passed function has one result; a Map key type other than Int or String is a type-mismatch; swap checks both positions even when they are equal; a pad width below zero changes nothing; every growing row traps `memory` at the item limit; lines is split on line feed minus a trailing empty piece. No wrong-name table is built until practice runs show which spellings cost edits. The full record is docs/decisions/M2-14.md.
 
 ### M2-14 · what this changes in TASKS.md
 

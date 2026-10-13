@@ -387,11 +387,12 @@ or merged during review. Ids with a letter were added during review.
 
 ### M2-14 · L5 · Decide the built-in types and functions a headless program may call
 
+- status: done
 - needs: M2-01, M2-03, M2-09, M2-12, M2-10
 - flags: decision, owner
 - done when: Owner approves a full list with signatures and exact results that covers every approved experiment task class. Pool and shared-data types and operations are taken from M2-10 unchanged.
 - why this level: Sets the vocabulary models must learn; names and ordering rules cannot change after the experiment.
-- note: Follows docs/decisions/M2-12.md for Option, Result, `?` and unreachable().
+- note: Follows docs/decisions/M2-12.md for Option, Result, `?` and unreachable(). Decided: the full table of 9 types, 4 constructors and 63 functions, with the exact sort procedure, is docs/decisions/M2-14.md.
 
 ### M2-15 · L5 · Decide headless apps: first message, effects, grants, ending, effect failure, standard input and handler traps
 
@@ -408,7 +409,7 @@ or merged during review. Ids with a letter were added during review.
 - flags: none
 - done when: Tests pass: each definition kind's signature is accepted or rejected with expected and found types; built-ins come from one table.
 - why this level: Base for per-definition checking; recursive types and default values hide easy-to-miss cases.
-- note: Follows docs/decisions/M2-05.md, including its two tightened call rules. Follows docs/decisions/M2-09.md: the interface hash covers every named type a signature reaches, and no app state may hold a function type.
+- note: Follows docs/decisions/M2-05.md, including its two tightened call rules. Follows docs/decisions/M2-09.md: the interface hash covers every named type a signature reaches, and no app state may hold a function type. Follows docs/decisions/M2-14.md for the built-in table.
 
 ### M2-17 · L4 · Parse generics, function values and error-handling forms
 
@@ -424,7 +425,7 @@ or merged during review. Ids with a letter were added during review.
 - flags: none
 - done when: Reference merged; the size test passes under the one counting rule (bytes divided by 3, at most 8,000, until M3 records real tokens); a checklist maps every decision point to a line; samples are marked for later testing; the reference replaces the M1-06 spec, and each M1 case affected by M2-15 gets a re-expected copy under tests/cases-pending with the decision cited; tests/cases is not touched.
 - why this level: Must be exact, complete and tiny; one wrong sentence silently misleads every model reading it.
-- note: The same counting rule is reused by M4-18, M5-41 and M7-13. Follows docs/decisions/M2-15.md for the app form, effects, grants and ending.
+- note: The same counting rule is reused by M4-18, M5-41 and M7-13. Follows docs/decisions/M2-15.md for the app form, effects, grants and ending. Follows docs/decisions/M2-14.md for the built-in table.
 
 ### M2-19 · L3 · Check statements and expressions against signatures only
 
@@ -530,6 +531,7 @@ or merged during review. Ids with a letter were added during review.
 - flags: none
 - done when: Every function in the approved list outside M2-34 has hand-written golden tests (String functions for normal, empty and non-ASCII input); all pass; a test fails if an entry of the built-in table has no golden test.
 - why this level: Each function is small with a clear spec; routine code.
+- note: Follows docs/decisions/M2-14.md for the built-in table.
 
 ### M2-34 · L3 · Implement the built-in collection types and their functions
 
@@ -537,6 +539,7 @@ or merged during review. Ids with a letter were added during review.
 - flags: none
 - done when: Every collection function in the approved list has hand-written golden tests, including bounds traps and iteration order; all pass.
 - why this level: Generic signatures, function arguments and in-place change meet here; several modules.
+- note: Follows docs/decisions/M2-14.md for the built-in table.
 
 ### M2-36 · L3 · Run a headless app: first message, message loop, exit
 
@@ -584,7 +587,7 @@ or merged during review. Ids with a letter were added during review.
 - flags: none
 - done when: Expected results merged before any run, written without access to a built paka; every decision point in scope has a case.
 - why this level: The accept and reject boundary is subtle; a wrong expectation silently blesses a wrong rule.
-- note: The caller runs this agent with no paka binary and no way to build one (no cargo, or a checkout holding only the reference, the decision records and the tests folder); the agent must not build or run paka; the cases land in a not-yet-required list. M2-41b runs them. M2-01 put graphs in by list index and pools are not built: the pool part is dropped, shared data is covered with a tree sample only, and pools are recorded as not decided. Follows docs/decisions/M2-05.md, including its two tightened call rules. Follows docs/decisions/M2-10.md: runs its tree and graph samples and one case showing a value used twice in a tree is two independent copies. M2-35 is dropped.
+- note: The caller runs this agent with no paka binary and no way to build one (no cargo, or a checkout holding only the reference, the decision records and the tests folder); the agent must not build or run paka; the cases land in a not-yet-required list. M2-41b runs them. M2-01 put graphs in by list index and pools are not built: the pool part is dropped, shared data is covered with a tree sample only, and pools are recorded as not decided. Follows docs/decisions/M2-05.md, including its two tightened call rules. Follows docs/decisions/M2-10.md: runs its tree and graph samples and one case showing a value used twice in a tree is two independent copies. M2-35 is dropped. Follows docs/decisions/M2-14.md for the built-in table.
 
 ### M2-41 · L3 · Write conformance tests for apps, effects, grants, traps, examples and holes
 
