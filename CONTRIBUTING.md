@@ -8,6 +8,8 @@ Rules that hold from the first commit:
   rest of the list in `clippy.toml`). Clippy rejects them.
 - `f64` maths lives in `paka-rt/src/ops` alone: clippy rejects float arithmetic and the `f64`
   methods elsewhere, and a test fails on any other file that names `f64` or `f32`.
+- A Paka Int is `paka_rt::ops::Int`. Clippy rejects `Int::get` outside that module; allow it only
+  where a value leaves Paka, never to do arithmetic on the raw `i64`.
 - Overflow checks stay on in dev and release.
 - `unsafe` is forbidden in the `paka` crate. Only one module of `paka-rt` may use it.
 - Expected outputs are written by hand and committed before the code that produces them.

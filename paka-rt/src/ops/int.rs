@@ -13,10 +13,12 @@ impl Int {
     pub const MIN: Int = Int(i64::MIN);
     pub const MAX: Int = Int(i64::MAX);
 
+    /// For literals in tests and back ends; not a Paka operation.
     pub fn new(n: i64) -> Int {
         Int(n)
     }
 
+    /// The raw value, for where it leaves Paka; clippy rejects it outside this module.
     pub fn get(self) -> i64 {
         self.0
     }

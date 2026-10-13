@@ -46,6 +46,7 @@ impl Arg for Text {
 }
 
 impl Ret for Int {
+    #[allow(clippy::disallowed_methods)] // the value leaves Paka for the vector file
     fn out(self) -> Outcome {
         Ok(Value::Int(self.get()))
     }

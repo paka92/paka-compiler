@@ -72,4 +72,5 @@ disallowed-methods = [
     { path = "f64::rem_euclid", reason = "use Float from paka_rt::ops" },
     { path = "f64::div_euclid", reason = "use Float from paka_rt::ops" },
     { path = "f64::clamp", reason = "use Float from paka_rt::ops" },
+    { path = "paka_rt::ops::Int::get", reason = "raw i64: use the operations of Int; allow it only where a value leaves Paka" },
 ]
