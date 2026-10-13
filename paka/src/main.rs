@@ -1,4 +1,5 @@
 mod ast;
+mod build;
 mod check;
 mod diagnostic;
 mod interp;
@@ -18,30 +19,28 @@ const USAGE: &str = "usage: paka run <file>\n       paka build <file> -o <output
 fn main() -> ExitCode {
     let args: Vec<_> = env::args_os().skip(1).collect();
     let args: Vec<_> = args.iter().map(|a| a.to_str().unwrap_or("\0")).collect();
-    let file = match args[..] {
-        ["run", file] | ["build", file, "-o", _] => file,
+    let (file, output) = match args[..] {
+        ["run", file] => (file, None),
+        ["build", file, "-o", output] => (file, Some(output)),
         _ => return report(USAGE, 2),
     };
-    match fs::read(file) {
-        Ok(source) => match front_end(file, &source) {
-            Ok(core) if args[0] == "run" => ExitCode::from(interp::run(
-                &core,
-                &mut io::stdout().lock(),
-                &mut io::stderr(),
-            )),
-            Ok(_) => ExitCode::SUCCESS,
-            Err(d) => report(&format!("{d}\n"), 1),
-        },
-        Err(e) => {
-            let d = Diagnostic {
-                path: file.into(),
-                position: None,
-                code: "file-unreadable",
-                message: e.to_string(),
-            };
-            report(&format!("{d}\n"), 1)
-        }
+    let result = load(file).and_then(|core| match output {
+        None => Ok(interp::run(
+            &core,
+            &mut io::stdout().lock(),
+            &mut io::stderr(),
+        )),
+        Some(output) => build::build(file, &core, output).map(|()| 0),
+    });
+    match result {
+        Ok(status) => ExitCode::from(status),
+        Err(d) => report(&format!("{d}\n"), 1),
     }
+}
+
+fn load(file: &str) -> Result<Core, Diagnostic> {
+    let source = fs::read(file).map_err(|e| Diagnostic::tool(file, "file-unreadable", e))?;
+    front_end(file, &source)
 }
 
 fn front_end(path: &str, source: &[u8]) -> Result<Core, Diagnostic> {

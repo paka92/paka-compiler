@@ -9,6 +9,18 @@ pub struct Diagnostic {
     pub message: String,
 }
 
+impl Diagnostic {
+    /// A tool failure: no position.
+    pub fn tool(path: &str, code: &'static str, message: impl ToString) -> Diagnostic {
+        Diagnostic {
+            path: path.into(),
+            position: None,
+            code,
+            message: message.to_string(),
+        }
+    }
+}
+
 impl fmt::Display for Diagnostic {
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
         write!(f, "{}", self.path)?;
