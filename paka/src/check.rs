@@ -32,7 +32,6 @@ enum Item<'a> {
     App,
 }
 
-#[derive(Clone, Copy)]
 struct Func<'a> {
     param_type: &'a Type<'a>,
     result: &'a Type<'a>,
