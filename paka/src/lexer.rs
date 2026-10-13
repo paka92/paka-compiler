@@ -1,17 +1,39 @@
+//! Source bytes to tokens (docs/decisions/M2-02.md sections 1.5 to 1.9, M2-03.md sections 1.8 to
+//! 1.12 and 2.7). Comments are skipped. A line feed becomes a `Newline` token by the rule of M2-02
+//! section 1.5.
+
 use crate::diagnostic::Diagnostic;
 
 #[derive(Clone, Copy, Debug, PartialEq)]
 pub enum Kind {
-    Enum,
-    Fn,
     App,
-    Type,
-    View,
+    Break,
+    Continue,
+    Else,
+    Enum,
     Example,
+    False,
+    Fn,
+    For,
+    If,
+    In,
+    Inout,
+    Let,
     Match,
+    Migrate,
+    Return,
+    True,
+    Type,
+    Var,
+    View,
+    While,
     Upper,
     Lower,
+    Int,
+    Float,
     Str,
+    /// `??` and the name after it.
+    Hole,
     LBrace,
     RBrace,
     LParen,
@@ -20,13 +42,40 @@ pub enum Kind {
     RBracket,
     Lt,
     Gt,
+    LtEq,
+    GtEq,
+    EqEq,
+    NotEq,
+    AndAnd,
+    OrOr,
+    Plus,
+    Minus,
+    Star,
+    Slash,
+    Percent,
+    Bang,
+    DotDotLt,
+    Amp,
+    Question,
+    Eq,
+    PlusEq,
+    MinusEq,
+    StarEq,
+    SlashEq,
+    PercentEq,
     Colon,
     Comma,
+    Semi,
+    Dot,
     Arrow,
+    FatArrow,
+    Pipe,
+    Underscore,
+    Newline,
     End,
 }
 
-/// `text` is the spelling; for `Str` it is the value, without the quotes.
+/// `text` is the spelling; for `Str` it is the source between the quotes, escapes undecoded.
 #[derive(Clone, Copy, Debug)]
 pub struct Token<'a> {
     pub kind: Kind,
@@ -37,10 +86,62 @@ pub struct Token<'a> {
     pub start: usize,
 }
 
-impl Token<'_> {
+/// One piece of a string literal, in written order.
+#[allow(dead_code)] // the parser reads these from M2-11 on
+#[derive(Debug, PartialEq)]
+pub enum Part<'a> {
+    /// Literal text with its escapes decoded.
+    Text(Vec<u8>),
+    /// The expression between `{` and `}`, and the byte offset where it starts.
+    Expr { start: usize, text: &'a [u8] },
+}
+
+impl<'a> Token<'a> {
     /// Bytes in the source, including a string's quotes.
     pub fn len(&self) -> usize {
         self.text.len() + if self.kind == Kind::Str { 2 } else { 0 }
+    }
+
+    /// The parts of a `Str` token; the lexer has checked its escapes and braces.
+    #[allow(dead_code)]
+    pub fn parts(&self) -> Vec<Part<'a>> {
+        let (text, base) = (self.text, self.start + 1);
+        let (mut parts, mut run, mut i) = (vec![], vec![], 0);
+        while i < text.len() {
+            match text[i] {
+                b'\\' => {
+                    run.push(unescape(text[i + 1]));
+                    i += 2;
+                }
+                b'{' => {
+                    let end = i + text[i..].iter().position(|&b| b == b'}').unwrap();
+                    if !run.is_empty() {
+                        parts.push(Part::Text(std::mem::take(&mut run)));
+                    }
+                    let (start, text) = (base + i + 1, &text[i + 1..end]);
+                    parts.push(Part::Expr { start, text });
+                    i = end + 1;
+                }
+                b => {
+                    run.push(b);
+                    i += 1;
+                }
+            }
+        }
+        if !run.is_empty() {
+            parts.push(Part::Text(run));
+        }
+        parts
+    }
+}
+
+#[allow(dead_code)]
+fn unescape(b: u8) -> u8 {
+    match b {
+        b'n' => b'\n',
+        b'r' => b'\r',
+        b't' => b'\t',
+        _ => b,
     }
 }
 
@@ -51,39 +152,114 @@ pub struct Lexer<'a> {
     at: usize,
     line: usize,
     line_start: usize,
+    /// The kind of the last token handed out.
+    last: Option<Kind>,
+    /// Brackets opened and not yet closed.
+    open: Vec<Kind>,
 }
 
-fn printable(b: u8) -> bool {
-    (0x20..=0x7E).contains(&b)
+const KEYWORDS: &[(&str, Kind)] = &[
+    ("app", Kind::App),
+    ("break", Kind::Break),
+    ("continue", Kind::Continue),
+    ("else", Kind::Else),
+    ("enum", Kind::Enum),
+    ("example", Kind::Example),
+    ("false", Kind::False),
+    ("fn", Kind::Fn),
+    ("for", Kind::For),
+    ("if", Kind::If),
+    ("in", Kind::In),
+    ("inout", Kind::Inout),
+    ("let", Kind::Let),
+    ("match", Kind::Match),
+    ("migrate", Kind::Migrate),
+    ("return", Kind::Return),
+    ("true", Kind::True),
+    ("type", Kind::Type),
+    ("var", Kind::Var),
+    ("view", Kind::View),
+    ("while", Kind::While),
+];
+
+/// Longest first, so the first match is the longest.
+const SYMBOLS: &[(&str, Kind)] = &[
+    ("..<", Kind::DotDotLt),
+    ("==", Kind::EqEq),
+    ("!=", Kind::NotEq),
+    ("<=", Kind::LtEq),
+    (">=", Kind::GtEq),
+    ("&&", Kind::AndAnd),
+    ("||", Kind::OrOr),
+    ("+=", Kind::PlusEq),
+    ("-=", Kind::MinusEq),
+    ("*=", Kind::StarEq),
+    ("/=", Kind::SlashEq),
+    ("%=", Kind::PercentEq),
+    ("->", Kind::Arrow),
+    ("=>", Kind::FatArrow),
+    ("{", Kind::LBrace),
+    ("}", Kind::RBrace),
+    ("(", Kind::LParen),
+    (")", Kind::RParen),
+    ("[", Kind::LBracket),
+    ("]", Kind::RBracket),
+    ("<", Kind::Lt),
+    (">", Kind::Gt),
+    ("+", Kind::Plus),
+    ("-", Kind::Minus),
+    ("*", Kind::Star),
+    ("/", Kind::Slash),
+    ("%", Kind::Percent),
+    ("!", Kind::Bang),
+    ("&", Kind::Amp),
+    ("?", Kind::Question),
+    ("=", Kind::Eq),
+    (":", Kind::Colon),
+    (",", Kind::Comma),
+    (";", Kind::Semi),
+    (".", Kind::Dot),
+    ("|", Kind::Pipe),
+];
+
+/// After these a line feed continues the statement (M2-02 section 1.5, rule 2); a `Newline` or the
+/// end has nothing left to end.
+fn continues(kind: Kind) -> bool {
+    use Kind::*;
+    matches!(
+        kind,
+        Comma
+            | Eq
+            | Arrow
+            | FatArrow
+            | Pipe
+            | LBrace
+            | Plus
+            | Minus
+            | Star
+            | Slash
+            | Percent
+            | EqEq
+            | NotEq
+            | Lt
+            | Gt
+            | LtEq
+            | GtEq
+            | AndAnd
+            | OrOr
+            | DotDotLt
+            | PlusEq
+            | MinusEq
+            | StarEq
+            | SlashEq
+            | PercentEq
+            | Newline
+            | End
+    )
 }
 
-fn keyword(name: &[u8]) -> Option<Kind> {
-    Some(match name {
-        b"enum" => Kind::Enum,
-        b"fn" => Kind::Fn,
-        b"app" => Kind::App,
-        b"type" => Kind::Type,
-        b"view" => Kind::View,
-        b"example" => Kind::Example,
-        b"match" => Kind::Match,
-        _ => return None,
-    })
-}
-
-fn punctuation(b: u8) -> Option<Kind> {
-    Some(match b {
-        b'{' => Kind::LBrace,
-        b'}' => Kind::RBrace,
-        b'(' => Kind::LParen,
-        b')' => Kind::RParen,
-        b'[' => Kind::LBracket,
-        b']' => Kind::RBracket,
-        b'<' => Kind::Lt,
-        b'>' => Kind::Gt,
-        b':' => Kind::Colon,
-        b',' => Kind::Comma,
-        _ => return None,
-    })
+fn name_byte(b: u8) -> bool {
+    b.is_ascii_alphanumeric() || b == b'_'
 }
 
 impl<'a> Lexer<'a> {
@@ -94,11 +270,24 @@ impl<'a> Lexer<'a> {
             at: 0,
             line: 1,
             line_start: 0,
+            last: None,
+            open: vec![],
         }
     }
 
     fn peek(&self, ahead: usize) -> Option<u8> {
         self.src.get(self.at + ahead).copied()
+    }
+
+    fn make(&self, kind: Kind, start: usize, end: usize) -> Token<'a> {
+        let src: &'a [u8] = self.src;
+        Token {
+            kind,
+            text: &src[start..end],
+            line: self.line,
+            col: start - self.line_start + 1,
+            start,
+        }
     }
 
     /// The error for the `len` bytes at `index`, on the current line.
@@ -107,133 +296,222 @@ impl<'a> Lexer<'a> {
         Diagnostic::new(self.path, position, len, code, message)
     }
 
+    fn invalid(&self, index: usize) -> Diagnostic {
+        let message = "control byte or invalid UTF-8";
+        self.fail(index, 1, "invalid-byte", message)
+    }
+
+    /// Length of the valid UTF-8 character at `index`, if there is one.
+    fn char_len(&self, index: usize) -> Option<usize> {
+        let chunk = &self.src[index..self.src.len().min(index + 4)];
+        let valid = std::str::from_utf8(chunk)
+            .or_else(|e| std::str::from_utf8(&chunk[..e.valid_up_to()]))
+            .unwrap_or_default();
+        valid.chars().next().map(char::len_utf8)
+    }
+
     /// The error for a byte that no rule accepts at `index`.
     fn bad_byte(&self, index: usize) -> Diagnostic {
-        if printable(self.src[index]) {
-            self.fail(
-                index,
-                1,
-                "unexpected-character",
-                "no token starts with this byte",
-            )
-        } else {
-            self.fail(
-                index,
-                1,
-                "invalid-byte",
-                "only printable ASCII and line feed are allowed",
-            )
+        let code = "unexpected-character";
+        match (self.src[index], self.char_len(index)) {
+            (0x20..=0x7E, _) => self.fail(index, 1, code, "no token starts with this byte"),
+            (0x80.., Some(n)) => {
+                self.fail(index, n, code, "only ASCII outside strings and comments")
+            }
+            _ => self.invalid(index),
         }
     }
 
-    fn skip_space(&mut self) {
-        while let Some(b @ (b' ' | b'\n')) = self.peek(0) {
-            self.at += 1;
-            if b == b'\n' {
-                self.line += 1;
-                self.line_start = self.at;
+    /// The index after the character at `index`, which may sit in a string or a comment.
+    fn text_char(&self, index: usize) -> Result<usize, Diagnostic> {
+        match self.src[index] {
+            0x20..=0x7E => Ok(index + 1),
+            0x80.. => (self.char_len(index).map(|n| index + n)).ok_or_else(|| self.invalid(index)),
+            _ => Err(self.invalid(index)),
+        }
+    }
+
+    /// Skips spaces, line feeds and comments; returns the first line feed, or the end if the
+    /// last line has none.
+    fn skip_trivia(&mut self) -> Result<Option<Token<'a>>, Diagnostic> {
+        let mut newline = None;
+        loop {
+            match (self.peek(0), self.peek(1)) {
+                (Some(b' '), _) => self.at += 1,
+                (Some(b'\n'), _) => {
+                    newline = newline.or(Some(self.make(Kind::Newline, self.at, self.at + 1)));
+                    self.at += 1;
+                    self.line += 1;
+                    self.line_start = self.at;
+                }
+                (Some(b'/'), Some(b'/')) => {
+                    while self.peek(0).is_some_and(|b| b != b'\n') {
+                        self.at = self.text_char(self.at)?;
+                    }
+                }
+                (None, _) => {
+                    return Ok(newline.or(Some(self.make(Kind::Newline, self.at, self.at))));
+                }
+                _ => return Ok(newline),
             }
         }
+    }
+
+    /// Whether a line feed here ends a statement (M2-02 section 1.5, rules 1 to 3).
+    fn ends_statement(&self) -> bool {
+        let inside = matches!(self.open.last(), Some(Kind::LParen | Kind::LBracket));
+        let closing = matches!(self.peek(0), Some(b'}' | b')' | b']'));
+        self.last.is_some_and(|k| !continues(k)) && !inside && !closing
     }
 
     pub fn next(&mut self) -> Result<Token<'a>, Diagnostic> {
-        self.skip_space();
-        let start = self.at;
-        let (line, col) = (self.line, start - self.line_start + 1);
-        let token = |kind, text| Token {
-            kind,
-            text,
-            line,
-            col,
-            start,
+        let newline = self.skip_trivia()?;
+        let token = match newline.filter(|_| self.ends_statement()) {
+            Some(newline) => newline,
+            None => self.token()?,
         };
-        let Some(first) = self.peek(0) else {
-            return Ok(token(Kind::End, &[]));
-        };
-        if first == b'"' {
-            return self.string().map(|text| token(Kind::Str, text));
+        match token.kind {
+            Kind::LBrace | Kind::LParen | Kind::LBracket => self.open.push(token.kind),
+            Kind::RBrace | Kind::RParen | Kind::RBracket => drop(self.open.pop()),
+            _ => {}
         }
-        let kind = match (first, self.peek(1)) {
-            (b'a'..=b'z' | b'A'..=b'Z', _) => {
-                let len = (self.src[start..].iter())
-                    .take_while(|b| b.is_ascii_alphanumeric() || **b == b'_')
-                    .count();
-                self.at += len;
-                let name = &self.src[start..self.at];
-                let default = if first.is_ascii_uppercase() {
-                    Kind::Upper
-                } else {
-                    Kind::Lower
-                };
-                return Ok(token(keyword(name).unwrap_or(default), name));
+        self.last = Some(token.kind);
+        Ok(token)
+    }
+
+    /// The token at `self.at`, which is not space or comment.
+    fn token(&mut self) -> Result<Token<'a>, Diagnostic> {
+        let start = self.at;
+        let rest = &self.src[start..];
+        let (kind, len) = match rest {
+            [] => (Kind::End, 0),
+            [b'"', ..] => return self.string(),
+            [b'0'..=b'9', ..] => self.number()?,
+            [b'_', next, ..] if name_byte(*next) => {
+                let message = "names start with a letter; `_` alone discards";
+                return Err(self.fail(start, 1, "unexpected-character", message));
             }
-            (b'-', Some(b'>')) => {
-                self.at += 1;
-                Kind::Arrow
+            [b'_', ..] => (Kind::Underscore, 1),
+            [b'a'..=b'z' | b'A'..=b'Z', ..] => {
+                let len = rest.iter().take_while(|&&b| name_byte(b)).count();
+                (self.word(&rest[..len]), len)
             }
-            (b'/', Some(b'/')) => {
-                return Err(self.fail(
-                    start,
-                    2,
-                    "unsupported-comment",
-                    "comments are not supported",
-                ));
+            [b'?', b'?', b'a'..=b'z', ..] => (
+                Kind::Hole,
+                2 + rest[2..].iter().take_while(|&&b| name_byte(b)).count(),
+            ),
+            [b'.', b'.', ..] if !rest.starts_with(b"..<") => {
+                return Err(self.fail(start, 1, "unexpected-character", "write a..<b"));
             }
-            (b'?', Some(b'?')) => {
-                return Err(self.fail(start, 2, "unsupported-hole", "holes are not supported"));
-            }
-            (b'0'..=b'9', _) => {
-                let len = (self.src[start..].iter())
-                    .take_while(|b| b.is_ascii_digit())
-                    .count();
-                return Err(self.fail(
-                    start,
-                    len,
-                    "unsupported-integer",
-                    "integers are not supported",
-                ));
-            }
-            _ => match punctuation(first) {
-                Some(kind) => kind,
+            _ => match SYMBOLS.iter().find(|(s, _)| rest.starts_with(s.as_bytes())) {
+                Some((s, kind)) => (*kind, s.len()),
                 None => return Err(self.bad_byte(start)),
             },
         };
-        self.at += 1;
-        Ok(token(kind, &self.src[start..self.at]))
+        self.at = start + len;
+        Ok(self.make(kind, start, self.at))
     }
 
-    /// Scans a string at the opening quote and returns its value.
-    fn string(&mut self) -> Result<&'a [u8], Diagnostic> {
-        let open = self.at;
-        for (i, &b) in self.src.iter().enumerate().skip(open + 1) {
-            match b {
-                b'"' => {
-                    self.at = i + 1;
-                    return Ok(&self.src[open + 1..i]);
-                }
-                b'\n' => break,
-                b'\\' => {
-                    return Err(self.fail(i, 1, "unsupported-escape", "escapes are not supported"));
-                }
-                b'{' | b'}' => {
-                    return Err(self.fail(
-                        i,
-                        1,
-                        "unsupported-interpolation",
-                        "braces are not supported in strings",
-                    ));
-                }
-                _ if !printable(b) => return Err(self.bad_byte(i)),
-                _ => {}
-            }
+    fn word(&self, name: &[u8]) -> Kind {
+        let keyword = KEYWORDS.iter().find(|(k, _)| k.as_bytes() == name);
+        match (keyword, name[0].is_ascii_uppercase()) {
+            (Some((_, kind)), _) => *kind,
+            (None, true) => Kind::Upper,
+            (None, false) => Kind::Lower,
         }
-        let line_end = (self.src[open..].iter().position(|&b| b == b'\n')).map(|n| open + n);
-        Err(self.fail(
+    }
+
+    /// An Int or Float at `self.at`: its kind and length (M2-03 section 1.12).
+    fn number(&self) -> Result<(Kind, usize), Diagnostic> {
+        let digits = |from: usize| {
+            self.src[from..]
+                .iter()
+                .take_while(|b| b.is_ascii_digit())
+                .count()
+        };
+        let whole = digits(self.at);
+        if self.src[self.at] == b'0' && whole > 1 {
+            let message = "no leading zero: write 7";
+            return Err(self.fail(self.at + 1, 1, "unexpected-character", message));
+        }
+        let point = self.at + whole;
+        match self.src.get(point..point + 2) {
+            Some([b'.', b'0'..=b'9']) => Ok((Kind::Float, whole + 1 + digits(point + 1))),
+            _ => Ok((Kind::Int, whole)),
+        }
+    }
+
+    fn unterminated(&self, open: usize) -> Diagnostic {
+        let line = &self.src[open..];
+        let len = line.iter().position(|&b| b == b'\n').unwrap_or(line.len());
+        self.fail(
             open,
-            line_end.unwrap_or(self.src.len()) - open,
+            len,
             "unterminated-string",
             "the string has no closing quote",
-        ))
+        )
+    }
+
+    /// Scans a string at the opening quote (M2-03 section 2.7): the first problem found wins.
+    fn string(&mut self) -> Result<Token<'a>, Diagnostic> {
+        let open = self.at;
+        let mut i = open + 1;
+        let mut interpolation = None;
+        loop {
+            let Some(&b) = self.src.get(i) else {
+                return Err(self.unterminated(open));
+            };
+            match (b, interpolation) {
+                (b'\n', _) => return Err(self.unterminated(open)),
+                (b'"', None) => break,
+                (b'\\', None) => {
+                    if !matches!(
+                        self.src.get(i + 1),
+                        Some(b'n' | b'r' | b't' | b'\\' | b'"' | b'{' | b'}')
+                    ) {
+                        let message = r#"escapes are \n \r \t \\ \" \{ \}"#;
+                        return Err(self.fail(i, 1, "bad-escape", message));
+                    }
+                    i += 2;
+                }
+                (b'{', None) => {
+                    interpolation = Some(i + 1);
+                    i += 1;
+                }
+                (b'}', None) => {
+                    return Err(self.fail(i, 1, "unexpected-character", r"write \}"));
+                }
+                (b'}', Some(from)) if from == i => {
+                    return Err(self.fail(i, 1, "unexpected-token", "expected an expression"));
+                }
+                (b'}', Some(_)) => {
+                    interpolation = None;
+                    i += 1;
+                }
+                (b'"' | b'{', Some(_)) => {
+                    let closed =
+                        (self.src[i..].iter().take_while(|&&b| b != b'\n')).any(|&b| b == b'}');
+                    if !closed {
+                        return Err(self.unterminated(open));
+                    }
+                    let message = if b == b'"' {
+                        "no string literal inside { }"
+                    } else {
+                        "no { inside { }"
+                    };
+                    return Err(self.fail(i, 1, "unexpected-character", message));
+                }
+                (0x20..=0x7E, _) => i += 1,
+                (_, None) => i = self.text_char(i)?,
+                (_, Some(_)) => return Err(self.bad_byte(i)),
+            }
+        }
+        self.at = i + 1;
+        let src: &'a [u8] = self.src;
+        Ok(Token {
+            text: &src[open + 1..i],
+            ..self.make(Kind::Str, open, i + 1)
+        })
     }
 }
 
@@ -256,11 +534,12 @@ mod tests {
         }
     }
 
-    /// `text@line:col`, with STRING and END named by kind.
+    /// `text@line:col`, with STRING, NL and END named by kind.
     fn describe(src: &[u8]) -> Vec<String> {
         let tokens = lex(src).unwrap_or_else(|d| panic!("{d}"));
         let name = |t: &Token| match t.kind {
             Kind::Str => "STRING".to_string(),
+            Kind::Newline => "NL".to_string(),
             Kind::End => "END".to_string(),
             _ => String::from_utf8_lossy(t.text).into_owned(),
         };
@@ -273,104 +552,334 @@ mod tests {
         tokens.iter().map(|t| t.kind).collect()
     }
 
-    /// The first two parts of the diagnostic line: `path:line:col` and `error[code]`.
-    fn code(src: &str) -> String {
-        match lex(src.as_bytes()) {
+    fn texts(src: &str) -> Vec<String> {
+        let tokens = lex(src.as_bytes()).unwrap_or_else(|d| panic!("{d}"));
+        let text = |t: &Token| String::from_utf8_lossy(t.text).into_owned();
+        tokens.iter().map(text).collect()
+    }
+
+    fn parts(src: &str) -> Vec<Part<'_>> {
+        lex(src.as_bytes()).unwrap_or_else(|d| panic!("{d}"))[0].parts()
+    }
+
+    /// The diagnostic line up to and including the code: `path:line:col: error[code]`.
+    fn code(src: impl AsRef<[u8]>) -> String {
+        match lex(src.as_ref()) {
             Err(d) => d
                 .to_string()
                 .split(": ")
                 .take(2)
                 .collect::<Vec<_>>()
                 .join(": "),
-            Ok(_) => panic!("{src:?} lexed"),
+            Ok(_) => panic!("{:?} lexed", src.as_ref()),
         }
+    }
+
+    fn message(src: &str) -> String {
+        lex(src.as_bytes()).unwrap_err().message
     }
 
     #[test]
     fn light_paka_tokens() {
         let path = Path::new(env!("CARGO_MANIFEST_DIR")).join("../examples/light.paka");
         let src = fs::read(path).unwrap();
-        // Spec section 14, line by line.
+        // Spec section 14, line by line, with the line ends that end a statement.
         let expected = "
-            enum@1:1 Msg@1:6 {@1:10 Start@1:12 }@1:18
+            enum@1:1 Msg@1:6 {@1:10 Start@1:12 }@1:18 NL@1:19
             fn@3:1 update@3:4 (@3:10 m@3:11 :@3:12 Msg@3:14 )@3:17 ->@3:19 List@3:22 <@3:26
             Effect@3:27 <@3:33 Msg@3:34 >@3:37 >@3:38 {@3:40
             [@4:3 Print@4:4 (@4:9 STRING@4:10 )@4:30 ,@4:31 Exit@4:33 ]@4:37
-            }@5:1
+            }@5:1 NL@5:2
             app@7:1 light@7:5 {@7:11
-            start@8:3 :@8:8 Start@8:11
-            update@9:3 :@9:9 update@9:11
+            start@8:3 :@8:8 Start@8:11 NL@8:16
+            update@9:3 :@9:9 update@9:11 NL@9:17
             grants@10:3 :@10:9 [@10:11 Console@10:12 ]@10:19
-            }@11:1
+            }@11:1 NL@11:2
             END@12:1";
         let expected: Vec<_> = expected.split_whitespace().collect();
-        assert_eq!(expected.len(), 46);
+        assert_eq!(expected.len(), 51);
         assert_eq!(describe(&src), expected);
-    }
-
-    #[test]
-    fn light_paka_string_value() {
-        let tokens = lex(b"Print(\"let there be light\")").unwrap();
-        assert_eq!(tokens[2].kind, Kind::Str);
-        assert_eq!(tokens[2].text, b"let there be light");
     }
 
     #[test]
     fn keywords() {
         use Kind::*;
-        let want = [Enum, Fn, App, Type, View, Example, Match, End];
-        assert_eq!(kinds("enum fn app type view example match"), want);
+        let src = "app break continue else enum example false fn for if in inout let match \
+                   migrate return true type var view while";
+        let want = [
+            App, Break, Continue, Else, Enum, Example, False, Fn, For, If, In, Inout, Let, Match,
+            Migrate, Return, True, Type, Var, View, While, Newline, End,
+        ];
+        assert_eq!(kinds(src), want);
     }
 
     #[test]
     fn names() {
         use Kind::*;
-        assert_eq!(
-            kinds("A Zed9_x a b_1 z9"),
-            [Upper, Upper, Lower, Lower, Lower, End]
-        );
-        // A keyword is a keyword only as a whole name.
-        assert_eq!(kinds("enumerate Match fns"), [Lower, Upper, Lower, End]);
-        assert_eq!(describe(b"a_b9"), ["a_b9@1:1", "END@1:5"]);
+        let want = [Upper, Upper, Lower, Lower, Lower, Newline, End];
+        assert_eq!(kinds("A Zed9_x a b_1 z9"), want);
+        // A keyword is a keyword only as a whole name, in lower case.
+        let want = [Lower, Upper, Lower, Lower, Lower, Lower, Newline, End];
+        assert_eq!(kinds("enumerate Match fns start state update"), want);
+        assert_eq!(describe(b"a_b9"), ["a_b9@1:1", "NL@1:5", "END@1:5"]);
     }
 
     #[test]
-    fn punctuation() {
+    fn symbols() {
         use Kind::*;
+        let src = "{ } ( ) [ ] < > <= >= == != && || + - * / % ! ..< & ? = += -= *= /= %= \
+                   : , ; . -> => | _";
         let want = [
-            LBrace, RBrace, LParen, RParen, LBracket, RBracket, Lt, Gt, Colon, Comma, End,
+            LBrace, RBrace, LParen, RParen, LBracket, RBracket, Lt, Gt, LtEq, GtEq, EqEq, NotEq,
+            AndAnd, OrOr, Plus, Minus, Star, Slash, Percent, Bang, DotDotLt, Amp, Question, Eq,
+            PlusEq, MinusEq, StarEq, SlashEq, PercentEq, Colon, Comma, Semi, Dot, Arrow, FatArrow,
+            Pipe, Underscore,
         ];
-        assert_eq!(kinds("{}()[]<>:,"), want);
-        assert_eq!(kinds("->"), [Arrow, End]);
-        assert_eq!(kinds(">>"), [Gt, Gt, End]);
-        assert_eq!(kinds("->>"), [Arrow, Gt, End]);
+        let got = kinds(&format!("{{ {src} }}"));
+        assert_eq!(&got[1..got.len() - 3], want);
+    }
+
+    #[test]
+    fn longest_symbol_wins() {
+        use Kind::*;
+        assert_eq!(kinds("(>>"), [LParen, Gt, Gt, End]);
+        assert_eq!(kinds("(->>"), [LParen, Arrow, Gt, End]);
+        assert_eq!(kinds("(<=>"), [LParen, LtEq, Gt, End]);
+        assert_eq!(kinds("(===>"), [LParen, EqEq, FatArrow, End]);
+        assert_eq!(kinds("(!!="), [LParen, Bang, NotEq, End]);
+        assert_eq!(kinds("(&&&"), [LParen, AndAnd, Amp, End]);
+        assert_eq!(kinds("(|||"), [LParen, OrOr, Pipe, End]);
+        assert_eq!(kinds("(a-1"), [LParen, Lower, Minus, Int, End]);
+        assert_eq!(kinds("(a..<b"), [LParen, Lower, DotDotLt, Lower, End]);
+        assert_eq!(kinds("(1..<5"), [LParen, Int, DotDotLt, Int, End]);
+        assert_eq!(kinds("(a.b"), [LParen, Lower, Dot, Lower, End]);
+        assert_eq!(kinds("(a.<"), [LParen, Lower, Dot, Lt, End]);
+    }
+
+    #[test]
+    fn holes() {
+        use Kind::*;
+        assert_eq!(kinds("??rest"), [Hole, Newline, End]);
+        assert_eq!(texts("??rest_2 x")[0], "??rest_2");
+        assert_eq!(
+            describe(b"a ??b"),
+            ["a@1:1", "??b@1:3", "NL@1:6", "END@1:6"]
+        );
+        // Without a lower-case letter right after, `?` stays a `?`.
+        assert_eq!(kinds("(??"), [LParen, Question, Question, End]);
+        assert_eq!(kinds("(?? a"), [LParen, Question, Question, Lower, End]);
+        assert_eq!(kinds("(??A"), [LParen, Question, Question, Upper, End]);
+        assert_eq!(kinds("(?a"), [LParen, Question, Lower, End]);
+    }
+
+    #[test]
+    fn numbers() {
+        use Kind::*;
+        assert_eq!(
+            kinds("0 7 10 9223372036854775808"),
+            [Int, Int, Int, Int, Newline, End]
+        );
+        assert_eq!(
+            kinds("0.0 0.5 1.50 12.25"),
+            [Float, Float, Float, Float, Newline, End]
+        );
+        assert_eq!(texts("0 10 1.50")[..3], ["0", "10", "1.50"]);
+        // The sign is a separate token; the parser folds it.
+        assert_eq!(kinds("(-7 -1.5"), [LParen, Minus, Int, Minus, Float, End]);
+        // No `1.`, `.5`, exponent, hex or underscore: the rest is other tokens.
+        assert_eq!(kinds("(1."), [LParen, Int, Dot, End]);
+        assert_eq!(kinds("(.5"), [LParen, Dot, Int, End]);
+        assert_eq!(kinds("(1.x"), [LParen, Int, Dot, Lower, End]);
+        assert_eq!(kinds("(1.5.5"), [LParen, Float, Dot, Int, End]);
+        assert_eq!(kinds("(1e3"), [LParen, Int, Lower, End]);
+        assert_eq!(kinds("(0x1"), [LParen, Int, Lower, End]);
     }
 
     #[test]
     fn strings() {
-        assert_eq!(kinds("\"\""), [Kind::Str, Kind::End]);
+        assert_eq!(kinds("\"\""), [Kind::Str, Kind::Newline, Kind::End]);
         let tokens = lex(b"\"a b\" \"~ !\"").unwrap();
         assert_eq!(tokens[0].text, b"a b");
         assert_eq!(tokens[1].text, b"~ !");
-        // `//`, `??` and digits are plain bytes inside a string.
-        assert_eq!(lex(b"\"// ?? 42 - _\"").unwrap()[0].text, b"// ?? 42 - _");
+        // `//`, `??`, digits and other symbols are plain bytes inside a string.
+        let tokens = lex(b"\"// ?? 42 - _ ; &\"").unwrap();
+        assert_eq!(tokens[0].text, b"// ?? 42 - _ ; &");
+        // The text is the source between the quotes; the length counts the quotes.
+        let tokens = lex(br#""a\n{x}""#).unwrap();
+        assert_eq!(tokens[0].text, br#"a\n{x}"#);
+        assert_eq!(tokens[0].len(), 8);
+        assert_eq!(
+            describe(r#""x y" z"#.as_bytes())[..2],
+            ["STRING@1:1", "z@1:7"]
+        );
+    }
+
+    #[test]
+    fn string_parts() {
+        let text = |s: &str| Part::Text(s.as_bytes().to_vec());
+        assert_eq!(parts("\"\""), []);
+        assert_eq!(parts("\"abc\""), [text("abc")]);
+        let expr = |start, text| Part::Expr { start, text };
+        assert_eq!(parts(r#""a{x}b""#), [text("a"), expr(3, b"x"), text("b")]);
+        assert_eq!(parts(r#""{a}{b + 1}""#), [expr(2, b"a"), expr(5, b"b + 1")]);
+        assert_eq!(parts(r#""\{x\}""#), [text("{x}")]);
+        assert_eq!(parts(r#""a\n\r\t\\\"\{\}""#), [text("a\n\r\t\\\"{}")]);
+        assert_eq!(
+            parts("\"caf\u{e9} {n}\""),
+            [text("caf\u{e9} "), expr(8, b"n")]
+        );
+    }
+
+    #[test]
+    fn utf8_in_strings_and_comments() {
+        assert_eq!(
+            lex("\"caf\u{e9} \u{1f600}\"".as_bytes()).unwrap()[0].kind,
+            Kind::Str
+        );
+        // Columns count bytes.
+        let want = ["STRING@1:1", "x@1:6", "NL@1:7", "END@1:7"];
+        assert_eq!(describe("\"\u{e9}\" x".as_bytes()), want);
+        assert_eq!(
+            describe("// \u{e9}\nx".as_bytes()),
+            ["x@2:1", "NL@2:2", "END@2:2"]
+        );
+    }
+
+    #[test]
+    fn comments() {
+        use Kind::*;
+        assert_eq!(kinds("// only a comment"), [End]);
+        assert_eq!(kinds("a // c\nb"), [Lower, Newline, Lower, Newline, End]);
+        assert_eq!(
+            kinds("a\n// c\n\n// d\nb"),
+            [Lower, Newline, Lower, Newline, End]
+        );
+        assert_eq!(kinds("a //"), [Lower, Newline, End]);
+        assert_eq!(kinds("a ////x"), [Lower, Newline, End]);
+        // A comment after a continuing token does not end the statement.
+        assert_eq!(kinds("a + // c\nb"), [Lower, Plus, Lower, Newline, End]);
+        assert_eq!(
+            kinds("(a // c\nb)"),
+            [LParen, Lower, Lower, RParen, Newline, End]
+        );
+        assert_eq!(kinds("/ /"), [Slash, Slash, End]);
+    }
+
+    #[test]
+    fn newline_rule() {
+        use Kind::*;
+        assert_eq!(kinds("a\nb"), [Lower, Newline, Lower, Newline, End]);
+        assert_eq!(kinds("a\n\n  \n b"), [Lower, Newline, Lower, Newline, End]);
+        assert_eq!(kinds("a\n"), [Lower, Newline, End]);
+        assert_eq!(kinds("a"), [Lower, Newline, End]);
+        assert_eq!(kinds(""), [End]);
+        assert_eq!(kinds("\n\n"), [End]);
+        assert_eq!(kinds("\n\na"), [Lower, Newline, End]);
+    }
+
+    #[test]
+    fn newline_continues_after() {
+        use Kind::*;
+        let tokens = [
+            ",", "=", "->", "=>", "|", "{", "+", "-", "*", "/", "%", "==", "!=", "<", ">", "<=",
+            ">=", "&&", "||", "..<", "+=", "-=", "*=", "/=", "%=",
+        ];
+        for token in tokens {
+            let got = kinds(&format!("a {token}\nb"));
+            assert!(!got[..got.len() - 2].contains(&Newline), "{token}: {got:?}");
+            assert_eq!(got[got.len() - 2..], [Newline, End], "{token}");
+        }
+        // End of input after a continuing token adds no NEWLINE either.
+        assert_eq!(kinds("a +"), [Lower, Plus, End]);
+        assert_eq!(kinds("a +\n"), [Lower, Plus, End]);
+        // `?` and `&` are not two-sided operators.
+        assert_eq!(
+            kinds("a ?\nb"),
+            [Lower, Question, Newline, Lower, Newline, End]
+        );
+        assert_eq!(kinds("a &\nb"), [Lower, Amp, Newline, Lower, Newline, End]);
+        // Neither are `;` and `.`.
+        assert_eq!(
+            kinds("{ a }\nb"),
+            [LBrace, Lower, RBrace, Newline, Lower, Newline, End]
+        );
+        assert_eq!(kinds("f ;\nb"), [Lower, Semi, Newline, Lower, Newline, End]);
+        assert_eq!(kinds("a.\nb"), [Lower, Dot, Newline, Lower, Newline, End]);
+        // A type's `>` is the comparison token, so it continues too.
+        assert_eq!(
+            kinds("List<Int>\nx"),
+            [Upper, Lt, Upper, Gt, Lower, Newline, End]
+        );
+    }
+
+    #[test]
+    fn newline_not_before_closing_bracket() {
+        use Kind::*;
+        assert_eq!(kinds("{ a\n}"), [LBrace, Lower, RBrace, Newline, End]);
+        assert_eq!(
+            kinds("{ a\n\n// c\n}"),
+            [LBrace, Lower, RBrace, Newline, End]
+        );
+        assert_eq!(kinds("(a\n)"), [LParen, Lower, RParen, Newline, End]);
+        assert_eq!(kinds("[a\n]"), [LBracket, Lower, RBracket, Newline, End]);
+    }
+
+    #[test]
+    fn newline_inside_brackets() {
+        use Kind::*;
+        assert_eq!(
+            kinds("(a\nb)"),
+            [LParen, Lower, Lower, RParen, Newline, End]
+        );
+        assert_eq!(
+            kinds("[1,\n2]"),
+            [LBracket, Int, Comma, Int, RBracket, Newline, End]
+        );
+        assert_eq!(
+            kinds("[a\nb]"),
+            [LBracket, Lower, Lower, RBracket, Newline, End]
+        );
+        // The innermost bracket decides: a block inside parentheses has line ends again.
+        let want = [
+            LParen, LBrace, Lower, Newline, Lower, RBrace, RParen, Newline, End,
+        ];
+        assert_eq!(kinds("({ a\nb })"), want);
+        let want = [
+            LBrace, Lower, LParen, Lower, Lower, RParen, Newline, Lower, RBrace,
+        ];
+        assert_eq!(kinds("{ f(a\nb)\nc }")[..9], want);
+        // After the parenthesis closes, the enclosing block counts again.
+        let want = [LBrace, LParen, RParen, Newline, Lower, RBrace, Newline, End];
+        assert_eq!(kinds("{ ()\nc }"), want);
+    }
+
+    #[test]
+    fn newline_token_positions() {
+        let want = ["a@1:1", "NL@1:3", "b@3:2", "NL@3:3", "END@3:3"];
+        assert_eq!(describe(b"a \n\n b"), want);
+        assert_eq!(
+            describe(b"a // x\n b"),
+            ["a@1:1", "NL@1:7", "b@2:2", "NL@2:3", "END@2:3"]
+        );
+        assert_eq!(
+            describe(b"a +\n b"),
+            ["a@1:1", "+@1:3", "b@2:2", "NL@2:3", "END@2:3"]
+        );
     }
 
     #[test]
     fn positions() {
         assert_eq!(describe(b""), ["END@1:1"]);
-        assert_eq!(describe(b"a\n"), ["a@1:1", "END@2:1"]);
-        assert_eq!(describe(b"\n\n  a b"), ["a@3:3", "b@3:5", "END@3:6"]);
-        assert_eq!(
-            describe(b"  \"x y\" z"),
-            ["STRING@1:3", "z@1:9", "END@1:10"]
-        );
+        assert_eq!(describe(b"a\n"), ["a@1:1", "NL@1:2", "END@2:1"]);
+        let want = ["a@3:3", "b@3:5", "NL@3:6", "END@3:6"];
+        assert_eq!(describe(b"\n\n  a b"), want);
     }
 
     #[test]
     fn end_is_repeatable() {
         let mut lexer = Lexer::new("main.paka", b"a");
         assert_eq!(lexer.next().unwrap().kind, Kind::Lower);
+        assert_eq!(lexer.next().unwrap().kind, Kind::Newline);
         assert_eq!(lexer.next().unwrap().kind, Kind::End);
         assert_eq!(lexer.next().unwrap().kind, Kind::End);
     }
@@ -380,52 +889,182 @@ mod tests {
         let mut lexer = Lexer::new("main.paka", b"enum \x01");
         assert_eq!(lexer.next().unwrap().kind, Kind::Enum);
         assert!(lexer.next().is_err());
-        let mut lexer = Lexer::new("main.paka", b"enum ; ");
+        let mut lexer = Lexer::new("main.paka", b"enum $ ");
         assert_eq!(lexer.next().unwrap().kind, Kind::Enum);
     }
 
     #[test]
-    fn error_codes_and_columns() {
-        assert_eq!(code("a // b"), "main.paka:1:3: error[unsupported-comment]");
-        assert_eq!(code("a ??b"), "main.paka:1:3: error[unsupported-hole]");
-        assert_eq!(code("a 7"), "main.paka:1:3: error[unsupported-integer]");
-        assert_eq!(code("a\n 7a"), "main.paka:2:2: error[unsupported-integer]");
-        assert_eq!(code("a\t"), "main.paka:1:2: error[invalid-byte]");
-        assert_eq!(code("a\r\n"), "main.paka:1:2: error[invalid-byte]");
-        assert_eq!(code("a \u{e9}"), "main.paka:1:3: error[invalid-byte]");
-        assert_eq!(code("a \x7f"), "main.paka:1:3: error[invalid-byte]");
-        for src in [
-            "a -", "a /", "a ?", "a _", "a =", "a ;", "a .", "a &", "a ?/",
-        ] {
+    fn invalid_bytes() {
+        let invalid =
+            |src: &str| assert_eq!(code(src), "main.paka:1:3: error[invalid-byte]", "{src:?}");
+        for src in ["a \t", "a \r", "a \x00", "a \x1f", "a \x7f"] {
+            invalid(src);
+        }
+        assert_eq!(code("a\n\t"), "main.paka:2:1: error[invalid-byte]");
+        // Invalid UTF-8 is invalid-byte at its first byte, wherever it stands.
+        let sources: [(&[u8], &str); 8] = [
+            (b"a \xff", "1:3"),
+            (b"a \x80", "1:3"),
+            (b"a \xc0\x80", "1:3"),
+            (b"a \xed\xa0\x80", "1:3"),
+            (b"a \xe2\x82", "1:3"),
+            (b"a \xf4\x90\x80\x80", "1:3"),
+            (b"a \"\xff\"", "1:4"),
+            (b"a //\xff", "1:5"),
+        ];
+        for (src, at) in sources {
+            assert_eq!(
+                code(src),
+                format!("main.paka:{at}: error[invalid-byte]"),
+                "{src:?}"
+            );
+        }
+        // Control bytes inside strings and comments too.
+        assert_eq!(code("a \"b\t\""), "main.paka:1:5: error[invalid-byte]");
+        assert_eq!(code("a \"b\x7f\""), "main.paka:1:5: error[invalid-byte]");
+        assert_eq!(code("a // b\t"), "main.paka:1:7: error[invalid-byte]");
+        assert_eq!(code("a \"{\t}\""), "main.paka:1:5: error[invalid-byte]");
+    }
+
+    #[test]
+    fn unexpected_characters() {
+        for src in ["a $", "a #", "a @", "a ~", "a ^", "a `", "a '", "a \\"] {
             assert_eq!(
                 code(src),
                 "main.paka:1:3: error[unexpected-character]",
                 "{src}"
             );
         }
-        assert_eq!(code("a \"b"), "main.paka:1:3: error[unterminated-string]");
+        // Non-ASCII outside strings and comments, a byte order mark included.
         assert_eq!(
-            code("a \"b\nc\""),
-            "main.paka:1:3: error[unterminated-string]"
+            code("a \u{e9}"),
+            "main.paka:1:3: error[unexpected-character]"
         );
         assert_eq!(
-            code("a \"b\\\""),
-            "main.paka:1:5: error[unsupported-escape]"
+            code("\u{feff}a"),
+            "main.paka:1:1: error[unexpected-character]"
         );
         assert_eq!(
-            code("a \"b{\""),
-            "main.paka:1:5: error[unsupported-interpolation]"
+            code("a\n \u{1f600}"),
+            "main.paka:2:2: error[unexpected-character]"
         );
+        assert_eq!(message("\u{e9}"), "only ASCII outside strings and comments");
+        assert_eq!(message("$"), "no token starts with this byte");
+    }
+
+    #[test]
+    fn name_and_number_errors() {
+        for src in ["a _m", "a __", "a _1"] {
+            assert_eq!(
+                code(src),
+                "main.paka:1:3: error[unexpected-character]",
+                "{src}"
+            );
+        }
+        assert_eq!(
+            message("_m"),
+            "names start with a letter; `_` alone discards"
+        );
+        assert_eq!(code("a 01"), "main.paka:1:4: error[unexpected-character]");
+        assert_eq!(
+            code("a\n 007"),
+            "main.paka:2:3: error[unexpected-character]"
+        );
+        assert_eq!(code("a 00.5"), "main.paka:1:4: error[unexpected-character]");
+        assert_eq!(code("a 01.5"), "main.paka:1:4: error[unexpected-character]");
+        assert_eq!(message("01"), "no leading zero: write 7");
+    }
+
+    #[test]
+    fn range_errors() {
+        for src in ["a..b", "a...b", "a..", "a.. <b", "a..>b"] {
+            assert_eq!(
+                code(src),
+                "main.paka:1:2: error[unexpected-character]",
+                "{src}"
+            );
+        }
+        assert_eq!(message("a..b"), "write a..<b");
+    }
+
+    #[test]
+    fn string_errors() {
+        let unterminated = |src: &str, at: &str| {
+            let want = format!("main.paka:{at}: error[unterminated-string]");
+            assert_eq!(code(src), want, "{src:?}");
+        };
+        unterminated("a \"b", "1:3");
+        unterminated("a \"b\nc\"", "1:3");
+        unterminated("a \"{\"", "1:3");
+        unterminated("a \"{x", "1:3");
+        unterminated("a \"{x\ny}\"", "1:3");
+        unterminated("a \"{ \"", "1:3");
+        unterminated("a \"{{", "1:3");
+        unterminated("a\n \"", "2:2");
+        unterminated("\"a\\\\", "1:1");
+        assert_eq!(code("a \"b\\q\""), "main.paka:1:5: error[bad-escape]");
+        assert_eq!(code("a \"\\u{e9}\""), "main.paka:1:4: error[bad-escape]");
+        assert_eq!(code("a \"b\\"), "main.paka:1:5: error[bad-escape]");
+        assert_eq!(code("a \"b\\\nc\""), "main.paka:1:5: error[bad-escape]");
         assert_eq!(
             code("a \"b}\""),
-            "main.paka:1:5: error[unsupported-interpolation]"
+            "main.paka:1:5: error[unexpected-character]"
         );
-        assert_eq!(code("a \"b\t\""), "main.paka:1:5: error[invalid-byte]");
+        assert_eq!(
+            code("a \"{x}}\""),
+            "main.paka:1:7: error[unexpected-character]"
+        );
+        // M2-03 section 1.10: a bare `}` is an error even after an escaped `\{`.
+        assert_eq!(
+            code(r#"a "\{x}""#),
+            "main.paka:1:7: error[unexpected-character]"
+        );
+        assert_eq!(
+            code("a \"{\"x\"}\""),
+            "main.paka:1:5: error[unexpected-character]"
+        );
+        assert_eq!(
+            code("a \"{{x}\""),
+            "main.paka:1:5: error[unexpected-character]"
+        );
+        assert_eq!(code("a \"{}\""), "main.paka:1:5: error[unexpected-token]");
+        assert_eq!(
+            code("a \"{\u{e9}}\""),
+            "main.paka:1:5: error[unexpected-character]"
+        );
+        // The first problem in scan order wins.
+        assert_eq!(code("\"\\q}\""), "main.paka:1:2: error[bad-escape]");
+        assert_eq!(
+            code("\"}\\q\""),
+            "main.paka:1:2: error[unexpected-character]"
+        );
+        assert_eq!(code("\"{}\\q\""), "main.paka:1:3: error[unexpected-token]");
+        assert_eq!(code("\"\t\\q\""), "main.paka:1:2: error[invalid-byte]");
+    }
+
+    #[test]
+    fn error_messages() {
+        assert_eq!(message("\"\\q\""), r#"escapes are \n \r \t \\ \" \{ \}"#);
+        assert_eq!(message("\"}\""), r"write \}");
+        assert_eq!(message("\"{\"x}\""), "no string literal inside { }");
+        assert_eq!(message("\"{{x}\""), "no { inside { }");
+        assert_eq!(message("\"{}\""), "expected an expression");
+        assert_eq!(message("\"x"), "the string has no closing quote");
+    }
+
+    #[test]
+    fn escapes_are_the_seven() {
+        for escape in ["n", "r", "t", "\\", "\"", "{", "}"] {
+            assert!(
+                lex(format!("\"\\{escape}\"").as_bytes()).is_ok(),
+                "{escape}"
+            );
+        }
     }
 
     #[test]
     fn diagnostic_carries_path_and_message() {
-        let line = Lexer::new("dir/x.paka", b";")
+        let line = Lexer::new("dir/x.paka", b"$")
             .next()
             .unwrap_err()
             .to_string();
@@ -445,7 +1084,7 @@ mod tests {
             .map(|e| e.unwrap().path())
             .collect();
         cases.sort();
-        assert_eq!(cases.len(), 18);
+        assert_eq!(cases.len(), 5);
         for case in cases {
             let source = fs::read(case.join("main.paka")).unwrap();
             let reject = fs::read_to_string(case.join("reject")).unwrap();
