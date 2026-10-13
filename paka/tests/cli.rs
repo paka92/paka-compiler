@@ -60,7 +60,7 @@ fn directory_is_unreadable() {
 fn lexical_reject_is_one_diagnostic_and_exit_1() {
     let dir = concat!(
         env!("CARGO_MANIFEST_DIR"),
-        "/../tests/cases-pending/lex/comment"
+        "/../tests/cases/lex/comment"
     );
     for args in [
         vec!["run", "main.paka"],

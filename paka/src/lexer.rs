@@ -415,7 +415,7 @@ mod tests {
     /// Each lex case is decided by the lexer alone: its `reject` file names path, position and code.
     #[test]
     fn lex_cases() {
-        let dir = Path::new(env!("CARGO_MANIFEST_DIR")).join("../tests/cases-pending/lex");
+        let dir = Path::new(env!("CARGO_MANIFEST_DIR")).join("../tests/cases/lex");
         let mut cases: Vec<_> = fs::read_dir(dir)
             .unwrap()
             .map(|e| e.unwrap().path())
