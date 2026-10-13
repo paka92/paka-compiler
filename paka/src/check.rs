@@ -491,4 +491,16 @@ mod tests {
             );
         }
     }
+
+    #[test]
+    fn a_variant_with_parentheses_has_no_fields() {
+        let src = LIGHT.replacen("Exit", "Exit()", 1);
+        let program = parse("main.paka", src.as_bytes()).unwrap();
+        let d = checked(&program).unwrap_err();
+        assert_eq!(
+            (d.code, d.position),
+            ("wrong-argument-count", Some((4, 33)))
+        );
+        assert!(d.message.contains("Exit has no fields: write Exit"), "{d}");
+    }
 }

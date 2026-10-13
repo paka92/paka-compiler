@@ -1071,9 +1071,7 @@ mod tests {
     }
 
     fn tree(src: &str) -> Program<'_> {
-        let (program, errors) = parse_all("main.paka", src.as_bytes());
-        assert!(errors.is_empty(), "{errors:?}");
-        program
+        parse("main.paka", src.as_bytes()).unwrap()
     }
 
     /// The statements of `fn f() { ... }` holding `code` on line 2, column 3.
@@ -1096,8 +1094,7 @@ mod tests {
 
     /// The first error of `src`: position, code, and a part of the message.
     fn fail(src: &str, at: Pos, code: &str, message: &str) {
-        let (_, errors) = parse_all("main.paka", src.as_bytes());
-        let d = errors.first().expect("no error");
+        let d = parse("main.paka", src.as_bytes()).unwrap_err();
         assert_eq!((d.position, d.code), (Some(at), code), "{d}");
         assert!(d.message.contains(message), "{d}");
     }
@@ -1115,6 +1112,9 @@ mod tests {
     fn unexpected(code: &str, col: usize, message: &str) {
         fail_in(code, col, "unexpected-token", message);
     }
+
+    const LAMBDA: &str = "no function written in place; write it at top level and pass its name: fn before(a: T, b: T) -> Bool { ... }; a local it would have used becomes a parameter or a field";
+    const SEMICOLON: &str = "remove the ;: a line break ends the statement";
 
     // Definitions
 
@@ -1775,7 +1775,13 @@ mod tests {
 
     #[test]
     fn a_semicolon_is_not_a_line_end() {
-        unexpected("x;", 4, "remove the ;: a line break ends the statement");
+        unexpected("x;", 4, SEMICOLON);
+    }
+
+    #[test]
+    fn a_semicolon_is_refused_wherever_it_stands() {
+        unexpected("Print(m;)", 10, SEMICOLON);
+        unexpected("[1; 2]", 5, SEMICOLON);
     }
 
     #[test]
@@ -1841,9 +1847,15 @@ mod tests {
             interface,
         );
         fail("impl Shape {}\n", (1, 1), "unexpected-token", interface);
-        let lambda = "no function written in place; write it at top level and pass its name: fn before(a: T, b: T) -> Bool { ... }; a local it would have used becomes a parameter or a field";
-        unexpected("let f = x => x", 13, lambda);
-        unexpected("let f = (x) -> x", 15, lambda);
+        unexpected("let f = x => x", 13, LAMBDA);
+        unexpected("let f = (x) -> x", 15, LAMBDA);
+    }
+
+    #[test]
+    fn a_lambda_in_a_call_is_refused_where_it_starts_or_arrows() {
+        let bar = "sort_by(&ps, |a, b| a.score > b.score)";
+        fail_in(bar, 16, "unexpected-character", LAMBDA);
+        unexpected("sort_by(&ps, a => a)", 18, LAMBDA);
     }
 
     #[test]
@@ -1869,10 +1881,10 @@ mod tests {
         );
     }
 
-    /// Runs `f` on a big stack: 64 nested levels do not fit the 2 MiB of a debug test thread.
+    /// Runs `f` on the 8 MiB of a program's main thread; a debug test thread has only 2 MiB.
     fn deep(f: impl FnOnce() + Send) {
         std::thread::scope(|s| {
-            let run = std::thread::Builder::new().stack_size(32 << 20);
+            let run = std::thread::Builder::new().stack_size(8 << 20);
             run.spawn_scoped(s, f).unwrap().join().unwrap();
         });
     }
@@ -1971,6 +1983,107 @@ mod tests {
     fn a_lexical_error_is_reported_as_it_is() {
         let src = "fn f() {\n  \"abc\n}\n";
         fail(src, (2, 3), "unterminated-string", "closing quote");
+    }
+
+    #[test]
+    fn an_app_key_is_a_name_not_a_string() {
+        let src = "app a {\n  \"start\": Start\n}\n";
+        fail(src, (2, 3), "unexpected-token", "expected state, start");
+    }
+
+    #[test]
+    fn a_label_after_a_list_item_is_unexpected_at_the_colon() {
+        unexpected("[Exit, then: Exit]", 14, "expected `]`, found `:`");
+        unexpected("[1: 2, 3]", 11, "expected `:`, found `]`");
+    }
+
+    #[test]
+    fn a_range_binds_tighter_than_a_comparison() {
+        let range = e(16, 7, ExprKind::Range(bx(var(16, "b")), bx(var(22, "c"))));
+        let list = e(
+            12,
+            11,
+            ExprKind::Binary(BinOp::Lt, bx(var(12, "a")), bx(range)),
+        );
+        let name = nm("i", 2, 7);
+        let body = empty(2, 26);
+        stmt(
+            "for i in a < b ..< c { }",
+            StmtKind::For { name, list, body },
+        );
+    }
+
+    #[test]
+    fn a_type_list_closes_before_an_equals_sign() {
+        stmt(
+            "let x: List<Int>= []",
+            StmtKind::Let {
+                var: false,
+                name: nm("x", 2, 7),
+                ty: Some(generic("List", 2, 10, vec![ty("Int", 2, 15)])),
+                value: e(21, 2, ExprKind::List(vec![])),
+            },
+        );
+    }
+
+    #[test]
+    fn an_if_or_match_in_a_header_is_a_level() {
+        deep(|| {
+            let message = "nesting deeper than 64 levels";
+            let chain = |word: &str, n: usize| {
+                let (open, close) = match word {
+                    "if" => ("if ", " { 1 } else { 2 }"),
+                    _ => ("match ", " { _ => 1 }"),
+                };
+                format!("fn f() {{\n  {}a{}\n}}\n", open.repeat(n), close.repeat(n))
+            };
+            for (word, width) in [("if", 3), ("match", 6)] {
+                assert!(parse("main.paka", chain(word, 63).as_bytes()).is_ok());
+                fail(
+                    &chain(word, 65),
+                    (2, 3 + 64 * width),
+                    "nesting-too-deep",
+                    message,
+                );
+                fail(
+                    &chain(word, 1_800),
+                    (2, 3 + 64 * width),
+                    "nesting-too-deep",
+                    message,
+                );
+            }
+        });
+    }
+
+    #[test]
+    fn a_function_type_as_a_result_is_a_level() {
+        deep(|| {
+            let message = "nesting deeper than 64 levels";
+            let chain = |n: usize| format!("fn f() -> {}fn() {{}}\n", "fn() -> ".repeat(n - 1));
+            assert!(parse("main.paka", chain(64).as_bytes()).is_ok());
+            fail(&chain(65), (1, 525), "nesting-too-deep", message);
+            fail(&chain(22_000), (1, 525), "nesting-too-deep", message);
+        });
+    }
+
+    #[test]
+    fn a_chain_stops_at_1000_links() {
+        deep(|| {
+            let message = "chain longer than 1,000 links; split it with a local";
+            let kinds: [(fn(usize) -> String, usize); 5] = [
+                (|n| format!("{}a", "-".repeat(n)), 1003),
+                (|n| format!("a{}", "+a".repeat(n)), 2004),
+                (|n| format!("a{}", ".b".repeat(n)), 2004),
+                (|n| format!("a{}", "()".repeat(n)), 2004),
+                (|n| format!("a{}", "?".repeat(n)), 1004),
+            ];
+            for (chain, col) in kinds {
+                let ok = format!("fn f() {{\n  {}\n}}\n", chain(1_000));
+                assert!(parse("main.paka", ok.as_bytes()).is_ok());
+                fail_in(&chain(1_001), col, "nesting-too-deep", message);
+                fail_in(&chain(130_000), col, "nesting-too-deep", message);
+            }
+        });
     }
 
     // Recovery
