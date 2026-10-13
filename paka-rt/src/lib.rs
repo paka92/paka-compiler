@@ -6,8 +6,10 @@
 #[allow(unsafe_code)]
 pub mod abi;
 
+use abi::List;
 use abi::{Str, Update};
-use std::io::{self, Write};
+use std::io::{self, ErrorKind, Write};
+use std::panic::{AssertUnwindSafe, catch_unwind};
 
 /// The status of an internal error (ABI section 7).
 pub const INTERNAL_ERROR: i32 = 4;
@@ -58,10 +60,38 @@ pub fn decode_grants(word: u64) -> Result<Grants, Refused> {
     }
 }
 
-/// Why a run stopped.
+/// Why a run stopped, short of `Exit`.
 #[derive(Debug, PartialEq, Eq)]
 enum Stop {
+    Ended,
+    Missing,
+    Failed(&'static str),
     Internal(&'static str),
+}
+
+impl From<Refused> for Stop {
+    fn from(refused: Refused) -> Stop {
+        Stop::Internal(refused.reason())
+    }
+}
+
+impl Stop {
+    fn status(&self) -> i32 {
+        match self {
+            Stop::Internal(_) => INTERNAL_ERROR,
+            _ => 3,
+        }
+    }
+
+    /// The line's text after `<app>: `, in two pieces.
+    fn pieces(&self) -> [&'static str; 2] {
+        match self {
+            Stop::Ended => ["ended without Exit", ""],
+            Stop::Missing => ["effect Print refused: grant Console is missing", ""],
+            Stop::Failed(reason) => ["effect Print failed: ", reason],
+            Stop::Internal(reason) => ["internal error: ", reason],
+        }
+    }
 }
 
 /// Runs on the real standard streams.
@@ -70,24 +100,83 @@ pub fn run(name: Str, update: Option<Update>, start: u64, grants: u64) -> i32 {
     run_with(&mut out, &mut err, name.bytes(), update, start, grants)
 }
 
-/// The run loop, on any sinks. `name` is the decoded app name, `None` when it was refused.
+/// The run loop of ABI section 5, on any sinks. `name` is the decoded app name, `None` when it
+/// was refused.
 pub fn run_with(
-    _out: &mut dyn Write,
-    _err: &mut dyn Write,
-    _name: Option<&[u8]>,
-    _update: Option<Update>,
-    _start: u64,
-    _grants: u64,
+    out: &mut dyn Write,
+    err: &mut dyn Write,
+    name: Option<&[u8]>,
+    update: Option<Update>,
+    start: u64,
+    grants: u64,
 ) -> i32 {
-    INTERNAL_ERROR
+    let mut app: &[u8] = b"?";
+    let caught = catch_unwind(AssertUnwindSafe(|| {
+        app = name.ok_or(Refused::AppName)?;
+        perform(out, update, start, grants)
+    }));
+    match caught {
+        Ok(Ok(())) => 0,
+        Ok(Err(why)) => stop(err, app, why),
+        Err(_) => stop(err, app, Stop::Internal("runtime panicked")),
+    }
 }
 
-fn buffer(_len: usize) -> Result<Vec<u8>, Stop> {
-    Err(Stop::Internal("stub"))
+/// Calls `update` once and performs its effects; `Ok` after `Exit`.
+fn perform(
+    out: &mut dyn Write,
+    update: Option<Update>,
+    start: u64,
+    grants: u64,
+) -> Result<(), Stop> {
+    let grants = decode_grants(grants)?;
+    let update = update.ok_or(Refused::UpdateNull)?;
+    let mut slot = List::UNWRITTEN;
+    if update(start, &mut slot) != 0 {
+        return Err(Stop::Internal("update returned a non-zero status"));
+    }
+    for effect in slot.effects()? {
+        match effect.decode()? {
+            Decoded::Exit => return Ok(()),
+            Decoded::Print(_) if !grants.console => return Err(Stop::Missing),
+            Decoded::Print(text) => print(out, text)?,
+        }
+    }
+    Err(Stop::Ended)
 }
 
-fn stop(_err: &mut dyn Write, _app: &[u8], _why: Stop) -> i32 {
-    0
+/// The text and a line feed in one buffer, one write, then a flush.
+fn print(out: &mut dyn Write, text: &[u8]) -> Result<(), Stop> {
+    let mut line = buffer(text.len() + 1)?;
+    line.extend_from_slice(text);
+    line.push(b'\n');
+    out.write_all(&line)
+        .and_then(|()| out.flush())
+        .map_err(|e| Stop::Failed(reason(&e)))
+}
+
+fn buffer(len: usize) -> Result<Vec<u8>, Stop> {
+    let mut buffer = Vec::new();
+    buffer
+        .try_reserve_exact(len)
+        .map_err(|_| Stop::Internal("out of memory"))?;
+    Ok(buffer)
+}
+
+fn reason(e: &io::Error) -> &'static str {
+    match e.kind() {
+        ErrorKind::StorageFull => "no space left on device",
+        ErrorKind::BrokenPipe => "broken pipe",
+        _ => "write error",
+    }
+}
+
+/// Writes the stop's line piece by piece, without allocating; a failure to write is ignored.
+fn stop(err: &mut dyn Write, app: &[u8], why: Stop) -> i32 {
+    let [text, reason] = why.pieces();
+    let line = [app, b": ", text.as_bytes(), reason.as_bytes(), b"\n"];
+    let _ = line.iter().try_for_each(|piece| err.write_all(piece));
+    why.status()
 }
 
 #[cfg(test)]
