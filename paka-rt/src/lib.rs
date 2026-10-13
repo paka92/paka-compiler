@@ -7,6 +7,7 @@
 pub mod abi;
 
 use abi::{Str, Update};
+use std::io::{self, Write};
 
 /// The status of an internal error (ABI section 7).
 pub const INTERNAL_ERROR: i32 = 4;
@@ -57,11 +58,40 @@ pub fn decode_grants(word: u64) -> Result<Grants, Refused> {
     }
 }
 
-/// The run loop is M1-17's. Until it exists no run can succeed: status 4, nothing called,
-/// nothing written.
-pub fn run(_name: Str, _update: Option<Update>, _start: u64, _grants: u64) -> i32 {
+/// Why a run stopped.
+#[derive(Debug, PartialEq, Eq)]
+enum Stop {
+    Internal(&'static str),
+}
+
+/// Runs on the real standard streams.
+pub fn run(name: Str, update: Option<Update>, start: u64, grants: u64) -> i32 {
+    let (mut out, mut err) = (io::stdout(), io::stderr());
+    run_with(&mut out, &mut err, name.bytes(), update, start, grants)
+}
+
+/// The run loop, on any sinks. `name` is the decoded app name, `None` when it was refused.
+pub fn run_with(
+    _out: &mut dyn Write,
+    _err: &mut dyn Write,
+    _name: Option<&[u8]>,
+    _update: Option<Update>,
+    _start: u64,
+    _grants: u64,
+) -> i32 {
     INTERNAL_ERROR
 }
+
+fn buffer(_len: usize) -> Result<Vec<u8>, Stop> {
+    Err(Stop::Internal("stub"))
+}
+
+fn stop(_err: &mut dyn Write, _app: &[u8], _why: Stop) -> i32 {
+    0
+}
+
+#[cfg(test)]
+mod run_tests;
 
 #[cfg(test)]
 mod tests {
