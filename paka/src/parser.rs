@@ -100,6 +100,19 @@ fn assign_op(kind: Kind) -> Option<AssignOp> {
 const LAMBDA: &str = "no function written in place; write it at top level and pass its name: \
     fn before(a: T, b: T) -> Bool { ... }; a local it would have used becomes a parameter or a field";
 
+const DEFAULT: &str = "`??` starts a hole; write `unwrap_or(e, d)`";
+
+const RETURNING_ARM: &str =
+    "an arm that returns is a block: write `=> { return Err(...) }` over three lines";
+
+/// Whether a token of this kind can begin an expression.
+fn starts_value(kind: Kind) -> bool {
+    use Kind::*;
+    let literal = matches!(kind, Int | Float | Str | True | False | Hole);
+    let name = matches!(kind, Lower | Upper | If | Match);
+    literal || name || matches!(kind, LParen | LBracket | Minus | Bang)
+}
+
 fn too_deep(path: &str, at: Pos, len: usize) -> Diagnostic {
     let message = format!(
         "nesting deeper than {NESTING} levels; move the inner part into a named function or local"
@@ -738,7 +751,8 @@ impl<'a> Parser<'a> {
                     ExprKind::Field(Box::new(e), self.name(Kind::Lower, "field")?)
                 }
                 Kind::Question if !place => {
-                    self.advance()?;
+                    let mark = self.advance()?;
+                    self.no_default(mark)?;
                     ExprKind::Try(Box::new(e))
                 }
                 _ => return Ok(e),
@@ -827,6 +841,22 @@ impl<'a> Parser<'a> {
         }
         let to = self.binary(ADD, false)?;
         Ok(self.node(first, ExprKind::Range(Box::new(from), Box::new(to))))
+    }
+
+    /// Refuses `e ?? d`: a second `?` right after the first, with a value following.
+    fn no_default(&self, mark: Token) -> Parse<()> {
+        let doubled = self.src[..mark.start].ends_with(b"?");
+        if doubled && starts_value(self.cur.kind) {
+            let at = (mark.line, mark.col - 1);
+            return Err(Diagnostic::new(
+                self.path,
+                at,
+                2,
+                "unexpected-token",
+                DEFAULT,
+            ));
+        }
+        Ok(())
     }
 
     fn primary(&mut self, first: Token<'a>) -> Parse<Expr<'a>> {
@@ -972,6 +1002,9 @@ impl<'a> Parser<'a> {
         }
         self.eat(Kind::FatArrow)?;
         let first = self.cur;
+        if first.kind == Kind::Return {
+            return Err(self.error("unexpected-token", RETURNING_ARM));
+        }
         let body = if first.kind == Kind::LBrace {
             ArmBody::Block(self.block()?)
         } else {
