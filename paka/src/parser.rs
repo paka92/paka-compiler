@@ -13,7 +13,7 @@ const NESTING: usize = 64;
 
 pub fn parse<'a>(path: &'a str, src: &'a [u8]) -> Parse<Program<'a>> {
     let mut lexer = Lexer::new(path, src);
-    let cur = lexer.next()?;
+    let cur = significant(&mut lexer)?;
     Parser {
         path,
         lexer,
@@ -24,8 +24,18 @@ pub fn parse<'a>(path: &'a str, src: &'a [u8]) -> Parse<Program<'a>> {
     .program()
 }
 
+/// The next token that is not a line end: this parser reads a statement by its brackets alone.
+fn significant<'a>(lexer: &mut Lexer<'a>) -> Parse<Token<'a>> {
+    loop {
+        match lexer.next()? {
+            token if token.kind != Kind::Newline => return Ok(token),
+            _ => {}
+        }
+    }
+}
+
 fn text<'a>(token: Token<'a>) -> &'a str {
-    std::str::from_utf8(token.text).expect("the lexer yields ASCII")
+    std::str::from_utf8(token.text).expect("the lexer yields UTF-8")
 }
 
 fn pos(token: Token) -> Pos {
@@ -46,7 +56,10 @@ impl<'a> Parser<'a> {
     /// Takes the current token and lexes the next one.
     fn advance(&mut self) -> Parse<Token<'a>> {
         self.prev_end = self.cur.start + self.cur.len();
-        Ok(std::mem::replace(&mut self.cur, self.lexer.next()?))
+        Ok(std::mem::replace(
+            &mut self.cur,
+            significant(&mut self.lexer)?,
+        ))
     }
 
     fn eat(&mut self, kind: Kind, what: &str) -> Parse<Token<'a>> {
@@ -215,7 +228,7 @@ impl<'a> Parser<'a> {
         if self.cur.kind != Kind::Lower {
             return self.expr();
         }
-        if self.lexer.next().is_ok_and(|t| t.kind == Kind::Colon) {
+        if significant(&mut self.lexer).is_ok_and(|t| t.kind == Kind::Colon) {
             return Err(self.error(
                 "unsupported-labelled-argument",
                 "labelled arguments are not supported".into(),

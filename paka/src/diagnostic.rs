@@ -10,12 +10,8 @@ const KINDS: &[(&str, bool, bool)] = &[
     ("runtime-missing", false, false),
     ("invalid-byte", false, false),
     ("unexpected-character", false, false),
-    ("unsupported-comment", false, false),
-    ("unsupported-hole", false, false),
-    ("unsupported-integer", false, false),
     ("unterminated-string", false, false),
-    ("unsupported-escape", false, false),
-    ("unsupported-interpolation", false, false),
+    ("bad-escape", false, false),
     ("unexpected-token", false, false),
     ("nesting-too-deep", false, false),
     ("unsupported-type", false, false),
@@ -237,7 +233,7 @@ mod tests {
     fn table_lists_exactly_the_spec_codes() {
         let mut table: Vec<_> = KINDS.iter().map(|k| k.0.to_string()).collect();
         let mut spec = spec_codes();
-        assert_eq!(spec.len(), 36);
+        assert_eq!(spec.len(), 32);
         table.sort();
         spec.sort();
         assert_eq!(table, spec);
