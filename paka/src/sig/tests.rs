@@ -1,7 +1,7 @@
 //! Hand-written programs and the signature table they must give.
 
 use super::*;
-use crate::builtins::{Kind, ROWS, name};
+use crate::builtins::{Kind, ROWS, arity, name};
 use crate::parser::parse;
 use crate::resolve::resolve;
 use std::collections::BTreeSet;
@@ -65,14 +65,22 @@ fn fields(t: &Table, fs: &[Field]) -> String {
 
 /// One line per definition: its signature, or its error as the tool prints it.
 fn shown(src: &str) -> Vec<String> {
+    lines_of(src, true)
+}
+
+/// One line per definition: its signature, kept whether or not the definition has an error.
+fn kept(src: &str) -> Vec<String> {
+    lines_of(src, false)
+}
+
+fn lines_of(src: &str, errors: bool) -> Vec<String> {
     with(src, |program, t| {
-        let line = |(def, result): (&Def, &Result<Item, Diagnostic>)| {
+        let line = |(def, checked): (&Def, &Checked)| {
             let name = def.name().text;
-            let item = match result {
-                Ok(item) => item,
-                Err(d) => return d.to_string(),
-            };
-            match item {
+            if let Some(d) = checked.error.as_ref().filter(|_| errors) {
+                return d.to_string();
+            }
+            match &checked.item {
                 Item::Record(fs) if fs.is_empty() => format!("type {name} {{}}"),
                 Item::Record(fs) => format!("type {name} {{ {} }}", fields(t, fs)),
                 Item::Enum(vs) => {
@@ -99,7 +107,7 @@ fn shown(src: &str) -> Vec<String> {
 
 fn error(lines: &[&str], def: usize) -> (String, Diagnostic) {
     let src = program(lines);
-    let found = with(&src, |_, t| t.defs[def].as_ref().err().cloned());
+    let found = with(&src, |_, t| t.defs[def].error.clone());
     (src, found.expect("no error"))
 }
 
@@ -132,16 +140,6 @@ fn accepted(lines: &[&str]) {
     for (i, line) in shown(&src).iter().enumerate() {
         assert!(!line.contains("error["), "definition {i}: {line}\n{src}");
     }
-}
-
-fn hashes(lines: &[&str]) -> Vec<Option<u64>> {
-    with(&program(lines), |_, t| {
-        (0..t.defs.len()).map(|i| t.hash(i)).collect()
-    })
-}
-
-fn hash(lines: &[&str], def: usize) -> u64 {
-    hashes(lines)[def].unwrap_or_else(|| panic!("no hash for definition {def}"))
 }
 
 // Signatures of every definition kind
@@ -246,7 +244,7 @@ fn equal_types_are_one_id() {
     let src =
         program(&["fn f(a: List<Int>, b: List<Int>, c: List<Float>, d: fn(Int), e: fn(Int)) { }"]);
     with(&src, |_, t| {
-        let Ok(Item::Fn(sig)) = &t.defs[0] else {
+        let Item::Fn(sig) = &t.defs[0].item else {
             panic!("not a fn")
         };
         let ids: Vec<_> = sig.params.iter().map(|p| p.ty).collect();
@@ -259,8 +257,19 @@ fn equal_types_are_one_id() {
 
 #[test]
 fn a_body_error_leaves_the_signature_in_the_table() {
-    let src = program(&["fn f(x: Int) -> Int { nope }", "fn g(x: Int) -> Int { x }"]);
-    assert_eq!(shown(&src), ["fn f(x: Int) -> Int", "fn g(x: Int) -> Int"]);
+    let lines = ["fn f(x: Int) -> Int { nope }", "fn g(x: Int) -> Int { x }"];
+    assert_eq!(
+        kept(&program(&lines)),
+        ["fn f(x: Int) -> Int", "fn g(x: Int) -> Int"]
+    );
+    assert_error(
+        &lines,
+        0,
+        "unknown-name",
+        1,
+        "{ ^nope",
+        "nope is not defined here",
+    );
 }
 
 // Function types stand anywhere a type stands
@@ -356,16 +365,56 @@ fn a_map_key_is_an_int_or_a_string() {
 }
 
 #[test]
-fn a_map_key_is_checked_before_the_value_to_its_right() {
-    let lines = ["type A { m: Map<Float, Intt> }"];
+fn a_map_key_is_tested_right_after_the_key_argument_before_the_value() {
+    let message = "a Map key is an Int or a String";
+    let value = ["type A { m: Map<Float, Intt> }"];
+    assert_error(&value, 0, "type-mismatch", 1, "Map<^Float", message);
+    let nested = ["fn f(m: Map<Bool, Map<Float, Int>>) { }"];
+    assert_error(&nested, 0, "type-mismatch", 1, "Map<^Bool", message);
+    let inner = ["fn f(m: Map<Int, Map<Float, Intt>>) { }"];
     assert_error(
-        &lines,
+        &inner,
         0,
-        "unknown-type",
+        "type-mismatch",
         1,
-        "Float, ^Intt",
-        "Intt is not a type; did you mean Int?",
+        "Map<Int, Map<^Float",
+        message,
     );
+}
+
+#[test]
+fn the_earliest_error_in_source_order_wins_in_every_definition_kind() {
+    let key = "a Map key is an Int or a String";
+    let unknown = "Intt is not a type; did you mean Int?";
+    let later = [
+        "type A { y: Map<Float, Int>, x: Intt }",
+        "enum E { P(y: Map<Float, Int>), Q(x: Intt) }",
+        "fn f(y: Map<Float, Int>, x: Intt) { }",
+        "fn g() -> Map<Float, Int> { nope }",
+    ];
+    for line in later {
+        assert_error(&[line], 0, "type-mismatch", 1, "Map<^Float", key);
+    }
+    let earlier = [
+        "type A { x: Intt, y: Map<Float, Int> }",
+        "enum E { P(x: Intt), Q(y: Map<Float, Int>) }",
+        "fn f(x: Intt, y: Map<Float, Int>) { }",
+        "fn f(y: Map<Int, Intt>, z: Map<Float, Int>) { }",
+    ];
+    for line in earlier {
+        assert_error(&[line], 0, "unknown-type", 1, "^Intt", unknown);
+    }
+    let default = ["type A { n: Int = \"x\", m: Intt }"];
+    assert_error(
+        &default,
+        0,
+        "type-mismatch",
+        1,
+        "= ^\"x\"",
+        "the default of n is String, not Int",
+    );
+    let name = ["type A { m: Intt, n: Int = \"x\" }"];
+    assert_error(&name, 0, "unknown-type", 1, "m: ^Intt", unknown);
 }
 
 #[test]
@@ -443,57 +492,22 @@ fn the_first_bad_field_is_the_error() {
 }
 
 #[test]
-fn a_default_is_a_constant() {
-    let message =
-        "a default is a constant: a literal, [], [:], a variant or a record built from constants";
-    let cases: [(&[&str], &str); 6] = [
-        (&["type A { n: Int = len([]) }"], "= ^len"),
-        (&["type A { n: Int = 1 + 2 }"], "= ^1 +"),
-        (&["type A { s: String = \"a{1}\" }"], "= ^\"a{1}\""),
-        (
-            &[
-                "fn f(n: Int) -> Int { n }",
-                "type A { g: fn(Int) -> Int = f }",
-            ],
-            "= ^f",
-        ),
-        (
-            &["enum E { Blue(x: Int) }", "type A { e: E = Blue }"],
-            "= ^Blue",
-        ),
-        (
-            &[
-                "fn f(n: Int) -> Int { n }",
-                "type A { xs: List<Int> = [f(1)] }",
-            ],
-            "[^f(1)]",
-        ),
-    ];
-    for (lines, pattern) in cases {
-        let line = lines.len();
-        assert_error(
-            lines,
-            lines.len() - 1,
-            "unexpected-token",
-            line,
-            pattern,
-            message,
-        );
-    }
-}
-
-#[test]
 fn constants_of_every_form_are_accepted() {
     accepted(&[
         "enum Color { Red, Blue(shade: Int) }",
         "type P { x: Int = 0 }",
         "type A {",
         "  a: Int = -1, b: Float = -1.5, c: String = \"hi\", d: Bool = true,",
-        "  e: List<Int> = [], f: Map<String, Int> = [:], g: List<Int> = [1, 2], h: Map<String, Int> = [\"a\": 1],",
+        "  e: List<Int> = [], f: Map<String, Int> = [:],",
         "  i: Color = Red, j: Color = Blue(2), k: Option<Int> = None, l: Option<Int> = Some(1),",
         "  m: P = P { x: 1 }, n: Result<Int, String> = Ok(1), o: Effect<Color> = Exit, p: Float = 1.5",
         "}",
     ]);
+}
+
+#[test]
+fn a_bare_variant_with_fields_is_left_to_the_expression_checker() {
+    accepted(&["enum E { Blue(x: Int) }", "type A { e: E = Blue }"]);
 }
 
 #[test]
@@ -626,110 +640,66 @@ fn a_cycle_is_found_with_the_other_definitions_unchanged() {
     assert_eq!(shown[2], "type C { a: A, n: Int = _ }");
 }
 
-// An app's state holds no function type
+// An app: the state type and the update function, and no other rule
 
-const LATER: &str = "state Later holds a function type in field after; keep a message value instead and match on it in update";
-
-fn app(types: &[&str], state: &str) -> Vec<String> {
+/// A program whose app names `state`, with the extra `types` before it.
+fn app(types: &[&str], state: &[&str]) -> String {
     let mut lines = vec!["enum Msg { Start }"];
     lines.extend(types);
-    lines.extend([
-        "fn update(s: inout Later, m: Msg) -> List<Effect<Msg>> { [Exit] }",
-        "app wc {",
-    ]);
-    let state = format!("  state: {state}");
-    lines.extend([
-        state.as_str(),
-        "  start: Start",
-        "  update: update",
-        "  grants: []",
-        "}",
-    ]);
-    lines.into_iter().map(String::from).collect()
+    lines.push("fn update(s: inout Tally, m: Msg) -> List<Effect<Msg>> { [Exit] }");
+    lines.extend(["app wc {", "  start: Start", "  update: update"]);
+    lines.extend(state);
+    lines.extend(["  grants: []", "}"]);
+    program(&lines)
 }
 
-fn state_error(types: &[&str], state: &str, message: &str) {
-    let lines = app(types, state);
-    let lines: Vec<&str> = lines.iter().map(String::as_str).collect();
-    let def = lines
-        .iter()
-        .filter(|l| l.starts_with("type ") || l.starts_with("enum ") || l.starts_with("fn "))
-        .count();
-    let line = lines.iter().position(|l| l.contains("state:")).unwrap() + 1;
-    assert_error(
-        &lines,
-        def,
-        "type-mismatch",
-        line,
-        &format!("state: ^{state}"),
-        message,
-    );
+fn app_line(src: &str) -> String {
+    shown(src).pop().unwrap()
 }
 
 #[test]
-fn a_state_that_holds_a_function_type_is_refused() {
-    state_error(&["type Later { after: fn(String) -> Msg }"], "Later", LATER);
+fn an_app_records_a_state_that_holds_a_function_type_without_judging_it() {
+    let src = app(
+        &["type Tally { after: fn(String) -> Msg, kids: List<fn()> }"],
+        &["  state: Tally"],
+    );
+    assert!(shown(&src).iter().all(|l| !l.contains("error[")), "{src}");
+    assert_eq!(app_line(&src), "app wc { state: Tally, update: update }");
 }
 
 #[test]
-fn a_function_type_is_found_through_every_holder() {
-    let later = |field: &str| {
-        format!(
-            "state Later holds a function type in field {field}; keep a message value instead and match on it in update"
-        )
-    };
-    state_error(
-        &["type Later { after: List<fn(Int)> }"],
-        "Later",
-        &later("after"),
-    );
-    state_error(
-        &["type Later { after: Option<fn(Int)> }"],
-        "Later",
-        &later("after"),
-    );
-    state_error(
-        &["type Later { after: Map<String, fn(Int)> }"],
-        "Later",
-        &later("after"),
-    );
-    state_error(
-        &["type Later { after: Result<Int, List<fn(Int)>> }"],
-        "Later",
-        &later("after"),
-    );
-    state_error(
-        &["type Later { job: Job }", "type Job { done: fn(Int) }"],
-        "Later",
-        &later("done"),
-    );
-    state_error(
-        &[
-            "type Later { mode: Mode }",
-            "enum Mode { Idle, Wait(then: fn(Int) -> Mode) }",
-        ],
-        "Later",
-        &later("then"),
-    );
-    state_error(
-        &[
-            "type Later { first: Later2 }",
-            "type Later2 { back: List<Later>, f: fn() }",
-        ],
-        "Later",
-        &later("f"),
-    );
+fn an_app_records_a_state_that_is_not_a_record_without_judging_it() {
+    let src = app(&["type Tally {}"], &["  state: Msg"]);
+    assert_eq!(app_line(&src), "app wc { state: Msg, update: update }");
+    assert!(with(&src, |_, t| t.defs.iter().all(|c| c.error.is_none())));
 }
 
 #[test]
-fn a_function_type_outside_the_state_is_fine() {
-    let types = [
-        "type Later { after: fn(String) -> Msg }",
-        "type Tally { words: Int = 0, kids: List<Tally> = [] }",
-    ];
-    let lines = app(&types, "Tally");
-    let lines: Vec<&str> = lines.iter().map(String::as_str).collect();
-    let shown = shown(&program(&lines));
+fn an_app_with_two_state_entries_records_the_first() {
+    let src = app(&["type Tally {}"], &["  state: Tally", "  state: Msg"]);
+    assert_eq!(app_line(&src), "app wc { state: Tally, update: update }");
+    let src = app(&["type Tally {}"], &["  state: Nope", "  state: Tally"]);
+    assert_eq!(app_line(&src), "app wc { update: update }");
+}
+
+#[test]
+fn an_unknown_state_name_is_left_to_the_resolvers_entry_error() {
+    let src = app(&["type Tally {}"], &["  state: Nope"]);
+    let program = parse("main.paka", src.as_bytes()).unwrap();
+    let resolved = resolve("main.paka", &program).unwrap();
+    let table = Table::build("main.paka", &program, &resolved);
+    let last = table.defs.last().unwrap();
+    assert!(last.error.is_none());
+    assert!(matches!(last.item, Item::App { state: None, .. }));
+    let named = at(&src, 7, "state: ^Nope");
+    assert!(resolved.entry_error(named).is_some());
+}
+
+#[test]
+fn a_state_that_is_a_bad_definition_adds_no_error_to_the_app() {
+    let src = app(&["type Tally { m: Map<Float, fn()> }"], &["  state: Tally"]);
+    let shown = shown(&src);
+    assert!(shown[1].contains("error[type-mismatch]"), "{shown:?}");
     assert_eq!(
         shown.last().unwrap(),
         "app wc { state: Tally, update: update }"
@@ -737,111 +707,94 @@ fn a_function_type_outside_the_state_is_fine() {
 }
 
 #[test]
-fn a_state_that_is_a_bad_definition_adds_no_second_error() {
-    let lines = app(&["type Later { m: Map<Float, fn()> }"], "Later");
-    let lines: Vec<&str> = lines.iter().map(String::as_str).collect();
-    let shown = shown(&program(&lines));
-    assert!(shown[1].contains("error[type-mismatch]"), "{shown:?}");
+fn only_a_type_of_the_program_has_a_user_type_id() {
+    let src = app(&["type Tally {}", "example e { }"], &["  state: Tally"]);
+    with(&src, |program, t| {
+        let given: Vec<_> = (0..program.defs.len())
+            .map(|i| t.types.user(i).is_some())
+            .collect();
+        assert_eq!(given, [true, true, false, false, false]);
+    });
+}
+
+// An error is not an unknown signature: the well-formed parts stay
+
+#[test]
+fn a_definition_with_an_error_keeps_every_well_formed_part() {
+    let src = program(&[
+        "type A { good: Int = 0, m: Map<Float, Int>, bad: Intt, after: List<String> }",
+        "enum E { P(x: Int), Q(y: Intt, z: Bool) }",
+        "fn f(a: Int, b: Intt, c: List<Bool>) -> Map<Bool, Int> { a }",
+        "type Node { next: Node, n: Int }",
+        "type D { n: Int = \"x\", k: String }",
+    ]);
     assert_eq!(
-        shown.last().unwrap(),
-        "app wc { state: Later, update: update }"
+        kept(&src),
+        [
+            "type A { good: Int = _, m: _, bad: _, after: List<String> }",
+            "enum E { P(x: Int), Q(y: _, z: Bool) }",
+            "fn f(a: Int, b: _, c: List<Bool>) -> _",
+            "type Node { next: Node, n: Int }",
+            "type D { n: Int = _, k: String }",
+        ]
     );
+    assert!(shown(&src).iter().all(|l| l.contains("error[")));
+}
+
+#[test]
+fn a_definition_without_an_error_has_none() {
+    let src = program(&["type A { n: Int = 0 }", "fn f(a: A) -> A { a }"]);
+    with(&src, |_, t| {
+        assert!(t.defs.iter().all(|c| c.error.is_none()))
+    });
 }
 
 // One definition's error never changes another's result
 
 #[test]
 fn an_error_in_one_definition_changes_no_other_result() {
-    let bad = |field: &str| {
+    let with_key = |key: &str| {
         program(&[
             "type Good { x: Int = 0 }",
-            &format!("type Bad {{ m: {field} }}"),
+            &format!("type Bad {{ m: Map<{key}, Int> }}"),
             "fn uses(b: Bad, g: Good) -> Good { g }",
             "fn broken(x: Intt) { }",
             "enum Loop { Link(next: Loop) }",
             "fn after(l: Loop) -> Good { Good { } }",
+            "type Holder { b: Bad, l: Loop }",
         ])
     };
-    let one = shown(&bad("Map<Float, Int>"));
-    let other = shown(&bad("Map<Bool, Int>"));
-    for i in [0, 2, 5] {
-        assert_eq!(one[i], other[i]);
-        assert!(!one[i].contains("error["), "{}", one[i]);
+    let failing = shown(&with_key("Float"));
+    let fixed = shown(&with_key("String"));
+    assert!(failing[1].contains("error[type-mismatch]"), "{failing:?}");
+    assert_eq!(fixed[1], "type Bad { m: Map<String, Int> }");
+    for i in [0, 2, 3, 4, 5, 6] {
+        assert_eq!(failing[i], fixed[i]);
     }
-    assert_eq!(one[2], "fn uses(b: Bad, g: Good) -> Good");
-    for i in [1, 3, 4] {
-        assert!(one[i].contains("error["), "{}", one[i]);
-    }
-    let hashes = |field: &str| {
-        let src = bad(field);
-        with(&src, |_, t| [0, 2, 5].map(|i| t.hash(i)))
-    };
-    assert_eq!(hashes("Map<Float, Int>"), hashes("Map<Bool, Int>"));
-    assert!(hashes("Map<Float, Int>").iter().all(Option::is_some));
-}
-
-#[test]
-fn a_rejected_definition_has_no_hash() {
-    let lines = [
-        "type Bad { m: Map<Float, Int> }",
-        "example e { }",
-        "type Good {}",
-    ];
-    let h = hashes(&lines);
-    assert_eq!((h[0], h[1]), (None, None));
-    assert!(h[2].is_some());
-}
-
-// The interface hash
-
-#[test]
-fn the_hash_is_fnv_one_a() {
-    assert_eq!(hash::fnv(""), 0xcbf2_9ce4_8422_2325);
-    assert_eq!(hash::fnv("a"), 0xaf63_dc4c_8601_ec8c);
-}
-
-#[test]
-fn a_fn_hash_ignores_the_body_the_name_and_positional_names() {
-    let base = hash(&["fn f(a: Int) -> Int { a }"], 0);
-    assert_eq!(base, hash(&["fn f(b: Int) -> Int { 0 }"], 0));
-    assert_eq!(
-        base,
-        hash(&["fn g(a: Int) -> Int {", "  let x = a", "  x", "}"], 0)
-    );
-}
-
-#[test]
-fn a_fn_hash_covers_types_marks_labels_order_and_result() {
-    let base = hash(&["fn f(a: Int, w: Float; n: Int) -> Int { a }"], 0);
-    let others = [
-        "fn f(a: Float, w: Float; n: Int) -> Int { a }",
-        "fn f(a: inout Int, w: Float; n: Int) -> Int { a }",
-        "fn f(w: Float, a: Int; n: Int) -> Int { a }",
-        "fn f(a: Int; w: Float, n: Int) -> Int { a }",
-        "fn f(a: Int, w: Float; m: Int) -> Int { a }",
-        "fn f(a: Int, w: Float; n: Int) -> Float { a }",
-        "fn f(a: Int, w: Float; n: Int) { a }",
-        "fn f(a: Int, w: Float) -> Int { a }",
-    ];
-    for other in others {
-        assert_ne!(base, hash(&[other], 0), "{other}");
+    assert_eq!(failing[2], "fn uses(b: Bad, g: Good) -> Good");
+    assert_eq!(failing[6], "type Holder { b: Bad, l: Loop }");
+    for i in [3, 4] {
+        assert!(failing[i].contains("error["), "{}", failing[i]);
     }
 }
 
-// Stack safety
+// Stack safety and time
+
+/// `type Ti { next: Ti+1 }` for `n` types; with `back`, each also holds a List of the first.
+fn chain(n: usize, back: bool) -> String {
+    let back = if back { ", back: List<T0>" } else { "" };
+    let mut src = String::new();
+    for i in 0..n - 1 {
+        src += &format!("type T{i} {{ next: T{}{back} }}\n", i + 1);
+    }
+    let last = back.trim_start_matches(", ");
+    src + &format!("type T{} {{ {last} }}\nfn f(t: T0) {{ }}\n", n - 1)
+}
 
 #[test]
 fn a_very_long_chain_of_types_is_walked_by_loops() {
-    let n = 20_000;
-    let mut src = String::new();
-    for i in 0..n - 1 {
-        src += &format!("type T{i} {{ next: T{} }}\n", i + 1);
-    }
-    src += &format!("type T{} {{}}\nfn f(t: T0) {{ }}\n", n - 1);
-    with(&src, |_, t| {
-        assert!(t.defs.iter().all(Result::is_ok));
-        assert!(t.hash(0).is_some() && t.hash(0) != t.hash(1));
-        assert!(t.hash(n).is_some());
+    with(&chain(20_000, false), |_, t| {
+        assert!(t.defs.iter().all(|c| c.error.is_none()));
     });
 }
 
@@ -853,14 +806,24 @@ fn a_very_long_cycle_of_types_is_walked_by_loops() {
         src += &format!("type T{i} {{ next: Option<T{}> }}\n", (i + 1) % n);
     }
     with(&src, |_, t| {
-        assert!(t.defs.iter().all(Result::is_ok));
-        assert!(t.hash(0) != t.hash(1));
+        assert!(t.defs.iter().all(|c| c.error.is_none()));
     });
     let mut bad = String::new();
     for i in 0..n {
         bad += &format!("type T{i} {{ next: T{} }}\n", (i + 1) % n);
     }
-    with(&bad, |_, t| assert!(t.defs.iter().all(Result::is_err)));
+    with(&bad, |_, t| {
+        assert!(t.defs.iter().all(|c| c.error.is_some()))
+    });
+}
+
+#[test]
+fn a_long_chain_that_leads_back_through_a_list_is_grounded_in_linear_time() {
+    let start = std::time::Instant::now();
+    with(&chain(20_000, true), |_, t| {
+        assert!(t.defs.iter().all(|c| c.error.is_none()));
+    });
+    assert!(start.elapsed().as_secs() < 5, "{:?}", start.elapsed());
 }
 
 #[test]
@@ -895,73 +858,101 @@ fn the_table_holds_63_functions_in_76_rows_and_9_variants() {
     });
 }
 
+/// Every row of M2-14 section 1.2 and of M2-15, as `sig_text` writes it; the message type is `M`.
+const DECIDED: [&str; 85] = [
+    "len(x: String) -> Int",
+    "len(x: List<T>) -> Int",
+    "len(x: Map<K, V>) -> Int",
+    "is_empty(x: String) -> Bool",
+    "is_empty(x: List<T>) -> Bool",
+    "is_empty(x: Map<K, V>) -> Bool",
+    "contains(text: String, part: String) -> Bool",
+    "contains(xs: List<T>, item: T) -> Bool",
+    "find(text: String, part: String) -> Option<Int>",
+    "find(xs: List<T>, item: T) -> Option<Int>",
+    "min(a: Int, b: Int) -> Int",
+    "min(a: Float, b: Float) -> Float",
+    "min(a: String, b: String) -> String",
+    "max(a: Int, b: Int) -> Int",
+    "max(a: Float, b: Float) -> Float",
+    "max(a: String, b: String) -> String",
+    "abs(x: Int) -> Int",
+    "abs(x: Float) -> Float",
+    "to_float(n: Int) -> Float",
+    "to_int(x: Float) -> Int",
+    "sqrt(x: Float) -> Float",
+    "floor(x: Float) -> Float",
+    "ceil(x: Float) -> Float",
+    "trunc(x: Float) -> Float",
+    "round(x: Float) -> Float",
+    "fixed(x: Float; digits: Int) -> String",
+    "wrap_add(a: Int, b: Int) -> Int",
+    "wrap_sub(a: Int, b: Int) -> Int",
+    "wrap_mul(a: Int, b: Int) -> Int",
+    "bit_and(a: Int, b: Int) -> Int",
+    "bit_or(a: Int, b: Int) -> Int",
+    "bit_xor(a: Int, b: Int) -> Int",
+    "bit_not(a: Int) -> Int",
+    "shift_left(a: Int, count: Int) -> Int",
+    "shift_right(a: Int, count: Int) -> Int",
+    "parse_int(text: String) -> Option<Int>",
+    "parse_float(text: String) -> Option<Float>",
+    "code_at(text: String, i: Int) -> Int",
+    "from_code(n: Int) -> String",
+    "split(text: String, sep: String) -> List<String>",
+    "chars(text: String) -> List<String>",
+    "lines(text: String) -> List<String>",
+    "words(text: String) -> List<String>",
+    "join(parts: List<String>, sep: String) -> String",
+    "repeat(text: String, n: Int) -> String",
+    "pad_left(text: String, width: Int) -> String",
+    "pad_right(text: String, width: Int) -> String",
+    "trim(text: String) -> String",
+    "trim_start(text: String) -> String",
+    "trim_end(text: String) -> String",
+    "starts_with(text: String, part: String) -> Bool",
+    "ends_with(text: String, part: String) -> Bool",
+    "replace(text: String, old: String, new: String) -> String",
+    "upper(text: String) -> String",
+    "lower(text: String) -> String",
+    "append(xs: inout List<T>, item: T)",
+    "extend(xs: inout List<T>, more: List<T>)",
+    "pop(xs: inout List<T>) -> T",
+    "insert(xs: inout List<T>, item: T; at: Int)",
+    "remove_at(xs: inout List<T>, i: Int) -> T",
+    "swap(xs: inout List<T>, i: Int, j: Int)",
+    "reverse(xs: inout List<T>)",
+    "sort(xs: inout List<Int>)",
+    "sort(xs: inout List<Float>)",
+    "sort(xs: inout List<String>)",
+    "sort_by(xs: inout List<T>, before: fn(T, T) -> Bool)",
+    "list_of(item: T; count: Int) -> List<T>",
+    "get(m: Map<K, V>, key: K) -> Option<V>",
+    "has(m: Map<K, V>, key: K) -> Bool",
+    "remove(m: inout Map<K, V>, key: K)",
+    "keys(m: Map<K, V>) -> List<K>",
+    "values(m: Map<K, V>) -> List<V>",
+    "unwrap_or(opt: Option<T>, fallback: T) -> T",
+    "ok_or(opt: Option<T>, error: E) -> Result<T, E>",
+    "assert(cond: Bool)",
+    "unreachable() -> T",
+    "Some(value: T) -> Option<T>",
+    "None -> Option<T>",
+    "Ok(value: T) -> Result<T, E>",
+    "Err(error: E) -> Result<T, E>",
+    "Print(text: String) -> Effect<M>",
+    "ReadFile(path: String; then: fn(String) -> M, or: fn(String) -> M) -> Effect<M>",
+    "WriteFile(path: String, text: String; then: M, or: fn(String) -> M) -> Effect<M>",
+    "Exit -> Effect<M>",
+    "ExitWith(status: Int) -> Effect<M>",
+];
+
 #[test]
-fn the_rows_are_the_signatures_of_the_decision() {
-    let have = built_in_rows();
-    let want = [
-        "len(x: String) -> Int",
-        "len(xs: List<T>) -> Int",
-        "len(m: Map<K, V>) -> Int",
-        "is_empty(m: Map<K, V>) -> Bool",
-        "contains(text: String, part: String) -> Bool",
-        "contains(xs: List<T>, item: T) -> Bool",
-        "find(text: String, part: String) -> Option<Int>",
-        "find(xs: List<T>, item: T) -> Option<Int>",
-        "min(a: Int, b: Int) -> Int",
-        "min(a: Float, b: Float) -> Float",
-        "max(a: String, b: String) -> String",
-        "abs(x: Int) -> Int",
-        "abs(x: Float) -> Float",
-        "to_float(n: Int) -> Float",
-        "to_int(x: Float) -> Int",
-        "round(x: Float) -> Float",
-        "fixed(x: Float; digits: Int) -> String",
-        "wrap_mul(a: Int, b: Int) -> Int",
-        "bit_not(a: Int) -> Int",
-        "shift_left(a: Int, count: Int) -> Int",
-        "parse_int(text: String) -> Option<Int>",
-        "parse_float(text: String) -> Option<Float>",
-        "code_at(text: String, i: Int) -> Int",
-        "from_code(n: Int) -> String",
-        "split(text: String, sep: String) -> List<String>",
-        "join(parts: List<String>, sep: String) -> String",
-        "repeat(text: String, n: Int) -> String",
-        "pad_left(text: String, width: Int) -> String",
-        "replace(text: String, old: String, new: String) -> String",
-        "append(xs: inout List<T>, item: T)",
-        "extend(xs: inout List<T>, more: List<T>)",
-        "pop(xs: inout List<T>) -> T",
-        "insert(xs: inout List<T>, item: T; at: Int)",
-        "remove_at(xs: inout List<T>, i: Int) -> T",
-        "swap(xs: inout List<T>, i: Int, j: Int)",
-        "reverse(xs: inout List<T>)",
-        "sort(xs: inout List<Int>)",
-        "sort(xs: inout List<Float>)",
-        "sort(xs: inout List<String>)",
-        "sort_by(xs: inout List<T>, before: fn(T, T) -> Bool)",
-        "list_of(item: T; count: Int) -> List<T>",
-        "get(m: Map<K, V>, key: K) -> Option<V>",
-        "has(m: Map<K, V>, key: K) -> Bool",
-        "remove(m: inout Map<K, V>, key: K)",
-        "keys(m: Map<K, V>) -> List<K>",
-        "values(m: Map<K, V>) -> List<V>",
-        "unwrap_or(opt: Option<T>, fallback: T) -> T",
-        "ok_or(opt: Option<T>, error: E) -> Result<T, E>",
-        "assert(cond: Bool)",
-        "unreachable() -> T",
-        "Some(value: T) -> Option<T>",
-        "None -> Option<T>",
-        "Ok(value: T) -> Result<T, E>",
-        "Err(error: E) -> Result<T, E>",
-        "Print(text: String) -> Effect<M>",
-        "ReadFile(path: String; then: fn(String) -> M, or: fn(String) -> M) -> Effect<M>",
-        "WriteFile(path: String, text: String; then: M, or: fn(String) -> M) -> Effect<M>",
-        "Exit -> Effect<M>",
-        "ExitWith(status: Int) -> Effect<M>",
-    ];
-    for row in want {
-        assert!(have.iter().any(|h| h == row), "missing {row}");
-    }
+fn the_rows_are_exactly_the_signatures_of_the_decision() {
+    let (mut have, mut want) = (built_in_rows(), DECIDED.map(String::from).to_vec());
+    have.sort();
+    want.sort();
+    assert_eq!(have, want);
 }
 
 #[test]
@@ -1038,4 +1029,13 @@ fn every_row_is_built_from_the_one_table() {
     assert_eq!(rows_of(Kind::Variant), 9);
     assert_eq!(rows_of(Kind::Type), 9);
     assert_eq!(rows_of(Kind::Grant), 3);
+}
+
+#[test]
+fn the_arity_of_a_type_is_the_number_of_variables_in_its_row() {
+    for &(_, row) in ROWS.iter().filter(|r| r.0 == Kind::Type) {
+        let vars = row[name(row).len()..].matches(char::is_uppercase).count();
+        assert_eq!(arity(name(row)), vars, "{row}");
+    }
+    assert_eq!(arity("Counter"), 0);
 }

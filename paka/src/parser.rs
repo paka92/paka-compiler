@@ -1274,6 +1274,74 @@ mod tests {
     }
 
     #[test]
+    fn a_default_is_a_constant() {
+        let src = [
+            "enum Color { Red, Blue(shade: Int) }",
+            "type P { x: Int = 0 }",
+            "type A {",
+            "  a: Int = -1, b: Float = -1.5, c: String = \"hi\", d: Bool = true,",
+            "  e: List<Int> = [], f: Map<String, Int> = [:], g: Color = Red, h: Color = Blue(2),",
+            "  i: Option<Int> = Some(-1), j: P = P { x: 1 }, k: Option<Option<Int>> = Some(Some(1))",
+            "}",
+            "",
+        ];
+        assert_eq!(tree(&src.join("\n")).defs.len(), 3);
+    }
+
+    #[test]
+    fn a_variant_default_keeps_its_arguments() {
+        let src = "type A { c: Color = Blue(2, Red) }\n";
+        let Def::Type { fields, .. } = &tree(src).defs[0] else {
+            panic!("not a type")
+        };
+        let call = ExprKind::Call(
+            bx(node(1, 21, 4, ExprKind::Name("Blue"))),
+            vec![
+                arg(node(1, 26, 1, ExprKind::Int("2"))),
+                arg(node(1, 29, 3, ExprKind::Name("Red"))),
+            ],
+        );
+        assert_eq!(fields[0].default, Some(node(1, 21, 12, call)));
+    }
+
+    /// `type A { ... }` holding `pattern` without its `^`, which marks the first token that is not
+    /// part of a constant.
+    fn bad_default(pattern: &str) {
+        let (before, after) = pattern.split_once('^').unwrap();
+        let src = format!("type A {{ {before}{after} }}\n");
+        let col = "type A { ".len() + before.len() + 1;
+        fail(&src, (1, col), "unexpected-token", "expected");
+    }
+
+    #[test]
+    fn a_default_that_is_not_a_constant_is_refused_at_its_first_bad_token() {
+        bad_default("n: Int = ^len(xs)");
+        bad_default("n: Int = 1 ^+ 2");
+        bad_default("n: Int = -^x");
+        bad_default("n: Int = ^!true");
+        bad_default("n: Int = ^(1)");
+        bad_default("n: Int = 1 ^== 1");
+        bad_default("xs: List<Int> = [^1, 2]");
+        bad_default("xs: List<Int> = [^f(1)]");
+        bad_default("m: Map<String, Int> = [^\"a\": 1]");
+        bad_default("s: String = ^\"a{1}\"");
+        bad_default("g: fn(Int) = ^f");
+        bad_default("e: E = ^f(1)");
+        bad_default("e: E = Blue(^x)");
+        bad_default("e: E = Blue(1, ^f(2))");
+        bad_default("e: E = Blue([^1])");
+        bad_default("p: P = P { x: ^len(a) }");
+        bad_default("n: Int = ^if a { 1 } else { 2 }");
+        let src = "type A { n: Int = }\n";
+        fail(
+            src,
+            (1, 19),
+            "unexpected-token",
+            "expected a constant, found `}`",
+        );
+    }
+
+    #[test]
     fn empty_type_and_empty_app() {
         let want = vec![
             Def::Type {
