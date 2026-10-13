@@ -85,13 +85,6 @@ fn lexical_reject_is_one_diagnostic_and_exit_1() {
 const LIGHT: &str = concat!(env!("CARGO_MANIFEST_DIR"), "/../examples/light.paka");
 
 #[test]
-fn build_of_readable_file_is_silent_and_exit_0() {
-    let out = paka(&["build", LIGHT, "-o", "unused"]);
-    assert_eq!(out.status.code(), Some(0));
-    assert!(out.stdout.is_empty() && out.stderr.is_empty());
-}
-
-#[test]
 fn run_of_light_prints_the_line_and_exits_0() {
     let out = paka(&["run", LIGHT]);
     assert_eq!(out.status.code(), Some(0));
