@@ -39,16 +39,177 @@ pub struct Token<'a> {
 pub struct Lexer<'a> {
     path: &'a str,
     src: &'a [u8],
+    at: usize,
+    line: usize,
+    line_start: usize,
+}
+
+fn printable(b: u8) -> bool {
+    (0x20..=0x7E).contains(&b)
+}
+
+fn keyword(name: &[u8]) -> Option<Kind> {
+    Some(match name {
+        b"enum" => Kind::Enum,
+        b"fn" => Kind::Fn,
+        b"app" => Kind::App,
+        b"type" => Kind::Type,
+        b"view" => Kind::View,
+        b"example" => Kind::Example,
+        b"match" => Kind::Match,
+        _ => return None,
+    })
+}
+
+fn punctuation(b: u8) -> Option<Kind> {
+    Some(match b {
+        b'{' => Kind::LBrace,
+        b'}' => Kind::RBrace,
+        b'(' => Kind::LParen,
+        b')' => Kind::RParen,
+        b'[' => Kind::LBracket,
+        b']' => Kind::RBracket,
+        b'<' => Kind::Lt,
+        b'>' => Kind::Gt,
+        b':' => Kind::Colon,
+        b',' => Kind::Comma,
+        _ => return None,
+    })
 }
 
 impl<'a> Lexer<'a> {
     pub fn new(path: &'a str, src: &'a [u8]) -> Self {
-        Lexer { path, src }
+        Lexer {
+            path,
+            src,
+            at: 0,
+            line: 1,
+            line_start: 0,
+        }
+    }
+
+    fn peek(&self, ahead: usize) -> Option<u8> {
+        self.src.get(self.at + ahead).copied()
+    }
+
+    /// The error for the byte at `index`, on the current line.
+    fn fail(&self, index: usize, code: &'static str, message: &str) -> Diagnostic {
+        Diagnostic {
+            path: self.path.into(),
+            position: Some((self.line, index - self.line_start + 1)),
+            code,
+            message: message.into(),
+        }
+    }
+
+    /// The error for a byte that no rule accepts at `index`.
+    fn bad_byte(&self, index: usize) -> Diagnostic {
+        if printable(self.src[index]) {
+            self.fail(
+                index,
+                "unexpected-character",
+                "no token starts with this byte",
+            )
+        } else {
+            self.fail(
+                index,
+                "invalid-byte",
+                "only printable ASCII and line feed are allowed",
+            )
+        }
+    }
+
+    fn skip_space(&mut self) {
+        while let Some(b @ (b' ' | b'\n')) = self.peek(0) {
+            self.at += 1;
+            if b == b'\n' {
+                self.line += 1;
+                self.line_start = self.at;
+            }
+        }
     }
 
     pub fn next(&mut self) -> Result<Token<'a>, Diagnostic> {
-        let _ = (self.path, self.src);
-        todo!()
+        self.skip_space();
+        let start = self.at;
+        let (line, col) = (self.line, start - self.line_start + 1);
+        let token = |kind, text| Token {
+            kind,
+            text,
+            line,
+            col,
+        };
+        let Some(first) = self.peek(0) else {
+            return Ok(token(Kind::End, &[]));
+        };
+        if first == b'"' {
+            return self.string().map(|text| token(Kind::Str, text));
+        }
+        let kind = match (first, self.peek(1)) {
+            (b'a'..=b'z' | b'A'..=b'Z', _) => {
+                let len = (self.src[start..].iter())
+                    .take_while(|b| b.is_ascii_alphanumeric() || **b == b'_')
+                    .count();
+                self.at += len;
+                let name = &self.src[start..self.at];
+                let default = if first.is_ascii_uppercase() {
+                    Kind::Upper
+                } else {
+                    Kind::Lower
+                };
+                return Ok(token(keyword(name).unwrap_or(default), name));
+            }
+            (b'-', Some(b'>')) => {
+                self.at += 1;
+                Kind::Arrow
+            }
+            (b'/', Some(b'/')) => {
+                return Err(self.fail(start, "unsupported-comment", "comments are not supported"));
+            }
+            (b'?', Some(b'?')) => {
+                return Err(self.fail(start, "unsupported-hole", "holes are not supported"));
+            }
+            (b'0'..=b'9', _) => {
+                return Err(self.fail(start, "unsupported-integer", "integers are not supported"));
+            }
+            _ => match punctuation(first) {
+                Some(kind) => kind,
+                None => return Err(self.bad_byte(start)),
+            },
+        };
+        self.at += 1;
+        Ok(token(kind, &self.src[start..self.at]))
+    }
+
+    /// Scans a string at the opening quote and returns its value.
+    fn string(&mut self) -> Result<&'a [u8], Diagnostic> {
+        let open = self.at;
+        for (i, &b) in self.src.iter().enumerate().skip(open + 1) {
+            match b {
+                b'"' => {
+                    self.at = i + 1;
+                    return Ok(&self.src[open + 1..i]);
+                }
+                b'\n' => break,
+                b'\\' => {
+                    return Err(self.fail(i, "unsupported-escape", "escapes are not supported"));
+                }
+                b'{' | b'}' => {
+                    return Err(self.fail(
+                        i,
+                        "unsupported-interpolation",
+                        "braces are not supported in strings",
+                    ));
+                }
+                _ if !printable(b) => return Err(self.bad_byte(i)),
+                _ => {}
+            }
+        }
+        Err(self.fail(
+            open,
+            "unterminated-string",
+            "the string has no closing quote",
+        ))
     }
 }
 

@@ -3,6 +3,7 @@ mod diagnostic;
 mod lexer;
 
 use diagnostic::Diagnostic;
+use lexer::{Kind, Lexer};
 use std::io::Write;
 use std::process::ExitCode;
 use std::{env, fs, io};
@@ -17,7 +18,10 @@ fn main() -> ExitCode {
         _ => return report(USAGE, 2),
     };
     match fs::read(file) {
-        Ok(_source) => ExitCode::SUCCESS,
+        Ok(source) => match lex_all(file, &source) {
+            Ok(()) => ExitCode::SUCCESS,
+            Err(d) => report(&format!("{d}\n"), 1),
+        },
         Err(e) => {
             let d = Diagnostic {
                 path: file.into(),
@@ -28,6 +32,14 @@ fn main() -> ExitCode {
             report(&format!("{d}\n"), 1)
         }
     }
+}
+
+/// Stand-in until the parser (M1-09) pulls the tokens: a lexical error is the first problem
+/// only when no syntax error comes before it.
+fn lex_all(path: &str, source: &[u8]) -> Result<(), Diagnostic> {
+    let mut lexer = Lexer::new(path, source);
+    while lexer.next()?.kind != Kind::End {}
+    Ok(())
 }
 
 /// Writes to standard error; a failed write is ignored.
