@@ -1,0 +1,16 @@
+enum Msg { Start }
+enum Other { Stop }
+
+fn update(m: Msg) -> List<Effect<Msg>> {
+  [Print("let there be light"), Exit]
+}
+
+fn other(s: String) -> String {
+  "unused"
+}
+
+app light {
+  start:  Start
+  update: update
+  grants: [Console]
+}

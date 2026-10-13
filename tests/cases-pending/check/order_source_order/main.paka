@@ -1,0 +1,11 @@
+app light {
+  start:  Start
+  update: update
+  grants: [ReadFiles]
+}
+
+enum Msg { Start }
+
+fn update(m: Msg) -> List<Effect<Msg>> {
+  "light"
+}
