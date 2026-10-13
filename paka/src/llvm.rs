@@ -3,8 +3,6 @@
 use crate::lower::{Core, Effect, Grant};
 
 /// The IR text of the program; layout and wording follow docs/abi/m1.md section 11.
-// Not called by `paka build` until M1-19.
-#[allow(dead_code)]
 pub fn emit(core: &Core) -> String {
     let texts: Vec<&str> = core
         .update
