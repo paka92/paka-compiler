@@ -1,6 +1,10 @@
+#[allow(dead_code)] // the checker (M1-10) reads the tree
+mod ast;
 mod diagnostic;
 #[allow(dead_code)] // the parser (M1-09) reads the token fields
 mod lexer;
+#[allow(dead_code)] // `paka run` calls the parser in the next commit
+mod parser;
 
 use diagnostic::Diagnostic;
 use lexer::{Kind, Lexer};
