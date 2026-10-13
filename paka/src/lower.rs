@@ -1,7 +1,7 @@
 //! The core form of the M1 subset and the lowering into it. It is owned data, so it outlives the
 //! source. M2-23 redefines it.
 
-use crate::ast::{Def, Expr, ExprKind, Program};
+use crate::ast::{Def, Expr, ExprKind, Program, StrPart};
 use crate::check::Checked;
 
 #[derive(Debug, PartialEq)]
@@ -49,8 +49,8 @@ fn message_enum(program: &Program, start: &str) -> (Vec<String>, usize) {
         .iter()
         .find_map(|def| match def {
             Def::Enum { variants, .. } => {
-                let at = variants.iter().position(|v| v.text == start)?;
-                Some((variants.iter().map(|v| v.text.into()).collect(), at))
+                let at = variants.iter().position(|v| v.name.text == start)?;
+                Some((variants.iter().map(|v| v.name.text.into()).collect(), at))
             }
             _ => None,
         })
@@ -70,13 +70,24 @@ fn effects(body: &Expr) -> Vec<Effect> {
 
 fn effect(e: &Expr) -> Option<Effect> {
     match &e.kind {
-        ExprKind::Apply("Print", args) => match args.first()?.kind {
-            ExprKind::Str(text) => Some(Effect::Print(text.into())),
-            _ => None,
-        },
-        ExprKind::Apply("Exit", _) => Some(Effect::Exit),
+        ExprKind::Name("Exit") => Some(Effect::Exit),
+        ExprKind::Call(callee, args) if matches!(callee.kind, ExprKind::Name("Print")) => {
+            match &args.first()?.value.kind {
+                ExprKind::Str(parts) => Some(Effect::Print(text(parts))),
+                _ => None,
+            }
+        }
         _ => None,
     }
+}
+
+/// The text of a string without interpolations, which is all the checker accepts.
+fn text(parts: &[StrPart]) -> String {
+    let texts = parts.iter().filter_map(|p| match p {
+        StrPart::Text(t) => Some(t.as_str()),
+        StrPart::Expr(_) => None,
+    });
+    texts.collect()
 }
 
 #[cfg(test)]

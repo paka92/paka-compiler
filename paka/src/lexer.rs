@@ -87,7 +87,6 @@ pub struct Token<'a> {
 }
 
 /// One piece of a string literal, in written order.
-#[allow(dead_code)] // the parser reads these from M2-11 on
 #[derive(Debug, PartialEq)]
 pub enum Part<'a> {
     /// Literal text with its escapes decoded.
@@ -103,7 +102,6 @@ impl<'a> Token<'a> {
     }
 
     /// The parts of a `Str` token; the lexer has checked its escapes and braces.
-    #[allow(dead_code)]
     pub fn parts(&self) -> Vec<Part<'a>> {
         let (text, base) = (self.text, self.start + 1);
         let (mut parts, mut run, mut i) = (vec![], vec![], 0);
@@ -135,7 +133,6 @@ impl<'a> Token<'a> {
     }
 }
 
-#[allow(dead_code)]
 fn unescape(b: u8) -> u8 {
     match b {
         b'n' => b'\n',
@@ -222,6 +219,12 @@ const SYMBOLS: &[(&str, Kind)] = &[
     ("|", Kind::Pipe),
 ];
 
+/// The spelling of a punctuation or keyword kind.
+pub fn symbol(kind: Kind) -> &'static str {
+    let found = SYMBOLS.iter().chain(KEYWORDS).find(|(_, k)| *k == kind);
+    found.map_or("?", |(s, _)| s)
+}
+
 /// After these a line feed continues the statement (M2-02 section 1.5, rule 2); a `Newline` or the
 /// end has nothing left to end.
 fn continues(kind: Kind) -> bool {
@@ -273,6 +276,26 @@ impl<'a> Lexer<'a> {
             last: None,
             open: vec![],
         }
+    }
+
+    /// A lexer that starts at byte `at`, which is on `line` and which that line starts at `line_start`.
+    pub fn at(path: &'a str, src: &'a [u8], at: usize, line: usize, line_start: usize) -> Self {
+        Lexer {
+            at,
+            line,
+            line_start,
+            ..Lexer::new(path, src)
+        }
+    }
+
+    /// Steps over the byte a lexical error stopped at.
+    pub fn skip_byte(&mut self) {
+        self.at += 1;
+    }
+
+    /// Forgets the open brackets, for a restart after an error.
+    pub fn reset_brackets(&mut self) {
+        self.open.clear();
     }
 
     fn peek(&self, ahead: usize) -> Option<u8> {

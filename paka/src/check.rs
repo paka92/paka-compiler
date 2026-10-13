@@ -1,7 +1,9 @@
 //! Name resolution and type checking (spec/m1.md sections 6 to 8). The first problem in the
 //! spec's fixed order is the one reported.
 
-use crate::ast::{Def, Entry, Expr, ExprKind, Name, Pos, Program, Type};
+use crate::ast::{
+    Arg, Block, Def, Entry, Expr, ExprKind, Name, Param, Pos, Program, StmtKind, StrPart, Type,
+};
 use crate::diagnostic::Diagnostic;
 use std::collections::BTreeMap;
 
@@ -40,17 +42,17 @@ struct Func<'a> {
 }
 
 struct Keys<'a> {
-    start: &'a Name<'a>,
+    start: Name<'a>,
     update: &'a Name<'a>,
     grants: &'a [Name<'a>],
 }
 
-const STRING: Type = Type {
+const STRING: Type = Type::Name {
     name: Name {
         text: "String",
         at: (0, 0),
     },
-    arg: None,
+    args: Vec::new(),
 };
 
 pub fn check<'a>(path: &'a str, program: &'a Program<'a>) -> Check<Checked<'a>> {
@@ -86,20 +88,32 @@ fn builtins<'a>() -> BTreeMap<&'a str, Item<'a>> {
 
 /// The argument of `t` when it is the type `name` with one argument.
 fn inner<'t, 'a>(t: &'t Type<'a>, name: &str) -> Option<&'t Type<'a>> {
-    t.arg.as_deref().filter(|_| t.name.text == name)
+    match t {
+        Type::Name { name: n, args } if n.text == name && args.len() == 1 => Some(&args[0]),
+        _ => None,
+    }
+}
+
+/// The name of a type that passed `well_formed`.
+fn head<'a>(t: &Type<'a>) -> &'a str {
+    match t {
+        Type::Name { name, .. } => name.text,
+        Type::Fn { .. } => "fn",
+    }
 }
 
 fn same(a: &Type, b: &Type) -> bool {
-    a.name.text == b.name.text
-        && match (&a.arg, &b.arg) {
-            (None, None) => true,
-            (Some(a), Some(b)) => same(a, b),
-            _ => false,
+    match (a, b) {
+        (Type::Name { name: n, args: x }, Type::Name { name: m, args: y }) => {
+            n.text == m.text && x.len() == y.len() && x.iter().zip(y).all(|(a, b)| same(a, b))
         }
+        _ => false,
+    }
 }
 
 fn key(entry: &Entry) -> (Pos, &'static str) {
     match entry {
+        Entry::State(at, _) => (*at, "state"),
         Entry::Start(at, _) => (*at, "start"),
         Entry::Update(at, _) => (*at, "update"),
         Entry::Grants(at, _) => (*at, "grants"),
@@ -116,27 +130,54 @@ impl<'a> Checker<'a> {
         Diagnostic::new(self.path, at, len, code, message)
     }
 
+    fn unsupported_name(&self, name: &Name, what: &str) -> Diagnostic {
+        self.unsupported(name.at, name.text.len(), what)
+    }
+
     fn fail_at(&self, name: &Name, code: &'static str, message: String) -> Diagnostic {
         self.fail(name.at, name.text.len(), code, message)
     }
 
+    /// A form that only a later milestone's checker handles, reported at `at`.
+    fn unsupported(&self, at: Pos, len: usize, what: &str) -> Diagnostic {
+        let message = format!("{what} is not supported yet");
+        self.fail(at, len, "unsupported-form", message)
+    }
+
     fn check_def(&self, def: &'a Def<'a>) -> Check<Option<Checked<'a>>> {
         match def {
-            Def::Enum { .. } => Ok(None),
             Def::Fn {
-                param_type,
+                name,
+                params,
                 result,
                 body,
-                ..
             } => {
-                let func = Func {
-                    param_type,
-                    result,
-                    body,
-                };
+                let func = self.func(name, params, result, body)?;
                 self.check_fn(func).map(|()| None)
             }
             Def::App { name, entries } => self.check_app(name, entries).map(Some),
+            Def::Enum { .. } | Def::Type { .. } | Def::Example { .. } => Ok(None),
+        }
+    }
+
+    /// The only function shape of this checker: one plain parameter, a result and one expression.
+    fn func(
+        &self,
+        name: &Name,
+        params: &'a [Param<'a>],
+        result: &'a Option<Type<'a>>,
+        body: &'a Block<'a>,
+    ) -> Check<Func<'a>> {
+        match (params, result, body.stmts.as_slice()) {
+            ([p], Some(result), [stmt]) if !p.inout && !p.labelled => match &stmt.kind {
+                StmtKind::Expr(body) => Ok(Func {
+                    param_type: &p.ty,
+                    result,
+                    body,
+                }),
+                _ => Err(self.unsupported(stmt.at, stmt.len, "a statement")),
+            },
+            _ => Err(self.unsupported(name.at, name.text.len(), "this function shape")),
         }
     }
 
@@ -154,25 +195,25 @@ impl<'a> Checker<'a> {
         match def {
             Def::Enum { name, variants } => {
                 self.declare(name, Item::Enum)?;
-                variants
-                    .iter()
-                    .try_for_each(|v| self.declare(v, Item::Variant(name.text)))
+                variants.iter().try_for_each(|v| {
+                    if !v.fields.is_empty() {
+                        return Err(self.unsupported_name(&v.name, "a variant with fields"));
+                    }
+                    self.declare(&v.name, Item::Variant(name.text))
+                })
             }
             Def::Fn {
                 name,
-                param_type,
+                params,
                 result,
                 body,
-                ..
             } => {
-                let func = Func {
-                    param_type,
-                    result,
-                    body,
-                };
+                let func = self.func(name, params, result, body)?;
                 self.declare(name, Item::Fn(func))
             }
             Def::App { name, .. } => self.declare(name, Item::App),
+            Def::Type { name, .. } => Err(self.unsupported_name(name, "a type definition")),
+            Def::Example { name, .. } => Err(self.unsupported_name(name, "an example")),
         }
     }
 
@@ -192,21 +233,25 @@ impl<'a> Checker<'a> {
         }
     }
 
-    /// Outside in: the name, then the argument count, then the argument.
+    /// Outside in: the name, then the argument count, then the arguments.
     fn well_formed(&self, t: &Type) -> Check<()> {
-        let arity = match self.pool.get(t.name.text) {
+        let (name, args) = match t {
+            Type::Name { name, args } => (name, args),
+            Type::Fn { at, .. } => return Err(self.unsupported(*at, 2, "a function type")),
+        };
+        let arity = match self.pool.get(name.text) {
             Some(Item::Type(n)) => *n,
             Some(Item::Enum) => 0,
             _ => {
-                let message = format!("`{}` is not a type", t.name.text);
-                return Err(self.fail_at(&t.name, "unknown-type", message));
+                let message = format!("`{}` is not a type", name.text);
+                return Err(self.fail_at(name, "unknown-type", message));
             }
         };
-        if arity != usize::from(t.arg.is_some()) {
-            let message = format!("`{}` takes {arity} type arguments", t.name.text);
-            return Err(self.fail_at(&t.name, "wrong-type-arguments", message));
+        if arity != args.len() {
+            let message = format!("`{}` takes {arity} type arguments", name.text);
+            return Err(self.fail_at(name, "wrong-type-arguments", message));
         }
-        t.arg.as_deref().map_or(Ok(()), |a| self.well_formed(a))
+        args.iter().try_for_each(|a| self.well_formed(a))
     }
 
     fn check_fn(&self, f: Func) -> Check<()> {
@@ -223,31 +268,55 @@ impl<'a> Checker<'a> {
             d.with_types(want, &found)
         };
         match &e.kind {
-            ExprKind::Str(_) if want.name.text == "String" => Ok(()),
-            ExprKind::Str(_) => Err(mismatch("String")),
+            ExprKind::Str(parts) => {
+                if parts.iter().any(|p| matches!(p, StrPart::Expr(_))) {
+                    return Err(self.unsupported(e.at, e.len, "an interpolated string"));
+                }
+                if head(want) == "String" {
+                    Ok(())
+                } else {
+                    Err(mismatch("String"))
+                }
+            }
             ExprKind::List(items) => {
                 let elem = inner(want, "List").ok_or_else(|| mismatch("List<_>"))?;
                 items.iter().try_for_each(|i| self.expr(i, elem))
             }
-            ExprKind::Apply(name, args) => {
-                let (arity, fits, found) = match self.pool.get(name) {
-                    Some(Item::Variant(en)) => (0, want.name.text == *en, *en),
-                    Some(Item::Effect(n)) => (*n, inner(want, "Effect").is_some(), "Effect<_>"),
-                    _ => {
-                        let message = format!("`{name}` is not a variant or an effect");
-                        return Err(self.fail(e.at, name.len(), "unknown-name", message));
-                    }
-                };
-                if args.len() != arity {
-                    let message = format!("`{name}` takes {arity} arguments");
-                    return Err(self.fail(e.at, name.len(), "wrong-argument-count", message));
-                }
-                if !fits {
-                    return Err(mismatch(found));
-                }
-                args.iter().try_for_each(|a| self.expr(a, &STRING))
-            }
+            ExprKind::Name(name) => self.apply(e, name, &[], false, want),
+            ExprKind::Call(callee, args) => match callee.kind {
+                ExprKind::Name(name) => self.apply(e, name, args, true, want),
+                _ => Err(self.unsupported(e.at, e.len, "a call of a value")),
+            },
+            _ => Err(self.unsupported(e.at, e.len, "this expression")),
         }
+    }
+
+    /// A variant or an effect `name`, written bare or called with `args`.
+    fn apply(&self, e: &Expr, name: &str, args: &[Arg], called: bool, want: &Type) -> Check<()> {
+        if let Some(label) = args.iter().find_map(|a| a.label.as_ref()) {
+            return Err(self.unsupported_name(label, "a labelled argument"));
+        }
+        let (arity, fits, found) = match self.pool.get(name) {
+            Some(Item::Variant(en)) => (0, head(want) == *en, *en),
+            Some(Item::Effect(n)) => (*n, inner(want, "Effect").is_some(), "Effect<_>"),
+            _ => {
+                let message = format!("`{name}` is not a variant or an effect");
+                return Err(self.fail(e.at, name.len(), "unknown-name", message));
+            }
+        };
+        if args.len() != arity || (called && arity == 0) {
+            let message = match arity {
+                0 => format!("`{name}` takes no arguments and no parentheses"),
+                _ => format!("`{name}` takes {arity} arguments"),
+            };
+            return Err(self.fail(e.at, name.len(), "wrong-argument-count", message));
+        }
+        if !fits {
+            let message = format!("expected `{want}`, found `{found}`");
+            let d = self.fail(e.at, e.len, "type-mismatch", message);
+            return Err(d.with_types(want, &found));
+        }
+        args.iter().try_for_each(|a| self.expr(&a.value, &STRING))
     }
 
     fn check_app(&self, app: &Name<'a>, entries: &'a [Entry<'a>]) -> Check<Checked<'a>> {
@@ -256,6 +325,7 @@ impl<'a> Checker<'a> {
             update,
             grants,
         } = self.keys(app, entries)?;
+        let start = &start;
         let Some(Item::Fn(f)) = self.pool.get(update.text) else {
             let message = format!("`{}` is not a function", update.text);
             return Err(self.fail_at(update, "unknown-name", message));
@@ -280,7 +350,15 @@ impl<'a> Checker<'a> {
         let (mut start, mut update, mut grants) = (None, None, None);
         for entry in entries {
             let repeated = match entry {
-                Entry::Start(_, n) => start.replace(n).is_some(),
+                Entry::State(at, _) => {
+                    return Err(self.unsupported(*at, 5, "the `state` entry"));
+                }
+                Entry::Start(_, e) => {
+                    let ExprKind::Name(text) = e.kind else {
+                        return Err(self.unsupported(e.at, e.len, "a start other than a name"));
+                    };
+                    start.replace(Name { text, at: e.at }).is_some()
+                }
                 Entry::Update(_, n) => update.replace(n).is_some(),
                 Entry::Grants(_, g) => grants.replace(g.as_slice()).is_some(),
             };
@@ -300,10 +378,12 @@ impl<'a> Checker<'a> {
 
     /// `M` when `f` is `(x: M) -> List<Effect<M>>` for an enum `M`, judged by the types as written.
     fn message_enum(&self, f: &Func<'a>) -> Option<&'a str> {
-        let m = f.param_type;
-        let is_enum = m.arg.is_none() && matches!(self.pool.get(m.name.text), Some(Item::Enum));
+        let Type::Name { name, args } = f.param_type else {
+            return None;
+        };
+        let is_enum = args.is_empty() && matches!(self.pool.get(name.text), Some(Item::Enum));
         let result = inner(f.result, "List").and_then(|t| inner(t, "Effect"))?;
-        (is_enum && same(m, result)).then_some(m.name.text)
+        (is_enum && same(f.param_type, result)).then_some(name.text)
     }
 
     fn check_start(&self, start: &Name, message: &str) -> Check<()> {
