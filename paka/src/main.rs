@@ -2,6 +2,9 @@
 
 mod ast;
 mod build;
+// The one table of built-in names and signatures.
+#[allow(dead_code)]
+mod builtins;
 mod check;
 mod diagnostic;
 mod interp;
@@ -13,6 +16,9 @@ mod parser;
 // Used by the checker passes that follow; nothing calls it yet.
 #[allow(dead_code)]
 mod resolve;
+// The signature table; the checker passes that follow use it, nothing calls it yet.
+#[allow(dead_code)]
+mod sig;
 #[cfg(test)]
 mod vectors;
 

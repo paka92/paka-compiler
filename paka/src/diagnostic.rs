@@ -45,7 +45,7 @@ fn declared(code: &str) -> &'static (&'static str, bool, bool) {
 
 /// One reported problem. `position` is (line, column); tool errors have none. `len` is the
 /// byte length of the offending text, which starts at `position`. A fix replaces that text.
-#[derive(Debug)]
+#[derive(Clone, Debug)]
 pub struct Diagnostic {
     pub path: String,
     pub position: Option<(usize, usize)>,
@@ -56,7 +56,7 @@ pub struct Diagnostic {
 }
 
 /// The optional fields, boxed to keep `Result<_, Diagnostic>` small.
-#[derive(Debug, Default)]
+#[derive(Clone, Debug, Default)]
 struct More {
     definition: Option<String>,
     types: Option<(String, String)>,
@@ -227,11 +227,15 @@ mod tests {
         section.lines().filter_map(cell).collect()
     }
 
+    /// Codes of the second milestone, until the spec lists them.
+    const M2: [&str; 1] = ["no-finite-value"];
+
     #[test]
     fn table_lists_exactly_the_spec_codes() {
         let mut table: Vec<_> = KINDS.iter().map(|k| k.0.to_string()).collect();
         let mut spec = spec_codes();
         assert_eq!(spec.len(), 30);
+        spec.extend(M2.map(String::from));
         table.sort();
         spec.sort();
         assert_eq!(table, spec);
