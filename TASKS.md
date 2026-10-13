@@ -334,18 +334,21 @@ or merged during review. Ids with a letter were added during review.
 
 ### M2-08b · L3 · Add the approved maths functions without f64 methods
 
+- status: done
 - needs: M2-03, M2-08
 - flags: conditional
 - done when: Every maths row of the table has a hand-written bit-exact vector passing in the interpreter.
 - why this level: Bit-exact results without the platform's maths library; rounding mistakes are easy to miss.
-- note: Only if M2-03 approves functions such as sin, exp or pow. Gains the download and owner flags if a crate is vendored for it.
+- note: Only if M2-03 approves functions such as sin, exp or pow. Gains the download and owner flags if a crate is vendored for it. Closed without work: M2-03 approves no maths functions beyond the table rows M2-08 implements.
 
 ### M2-09 · L5 · Decide generics, interfaces and function values together
 
+- status: done
 - needs: M2-02, M2-05
 - flags: decision, owner
 - done when: Owner approves a proposal with alternatives and samples showing every generic definition is checked from signatures alone. It also fixes how a generic definition is compiled in dev mode (shared code or one copy per type) and what a user's interface hash covers. It also fixes equality, ordering and to-text for user types, whether function values can be compared, and how max, ==, +, += and length work on several types without overloading.
 - why this level: Open research point; pillars 1 and 4 hold only if this design works.
+- note: Decided: the full record, with the built-in table, the matching rule, the interface hash and the dev-mode compilation rule, is docs/decisions/M2-09.md.
 
 ### M2-10 · L5 · Decide shared immutable data and pools with handles
 
@@ -397,7 +400,7 @@ or merged during review. Ids with a letter were added during review.
 - flags: none
 - done when: Tests pass: each definition kind's signature is accepted or rejected with expected and found types; built-ins come from one table.
 - why this level: Base for per-definition checking; recursive types and default values hide easy-to-miss cases.
-- note: Follows docs/decisions/M2-05.md, including its two tightened call rules.
+- note: Follows docs/decisions/M2-05.md, including its two tightened call rules. Follows docs/decisions/M2-09.md: the interface hash covers every named type a signature reaches, and no app state may hold a function type.
 
 ### M2-17 · L4 · Parse generics, function values and error-handling forms
 
@@ -405,7 +408,7 @@ or merged during review. Ids with a letter were added during review.
 - flags: none
 - done when: Parser tests with hand-written trees pass for every new form in the two decisions, including their error cases.
 - why this level: Telling generic brackets from comparison operators is a known parser trap; a mistake mis-parses silently.
-- note: Follows docs/decisions/M2-02.md: the newline, comment and nesting rules of its sections 1.5 to 1.7, the grammar of section 2 and the codes of section 5.
+- note: Follows docs/decisions/M2-02.md: the newline, comment and nesting rules of its sections 1.5 to 1.7, the grammar of section 2 and the codes of section 5. Follows docs/decisions/M2-09.md: the interface hash covers every named type a signature reaches, and no app state may hold a function type.
 
 ### M2-18 · L4 · Write the language reference from the approved decisions, within 8,000 tokens
 
@@ -444,6 +447,7 @@ or merged during review. Ids with a letter were added during review.
 - flags: none
 - done when: Decision samples pass; a test shows a generic body's result never depends on any caller.
 - why this level: Bodies must be checked against declared bounds only; a leak silently breaks pillar 4.
+- note: Follows docs/decisions/M2-09.md: the interface hash covers every named type a signature reaches, and no app state may hold a function type.
 
 ### M2-23 · L4 · Define the core form for the whole headless language
 
@@ -1406,6 +1410,7 @@ or merged during review. Ids with a letter were added during review.
 - flags: none
 - done when: Tests: editing the state type, or a type held in it through a list, an enum payload, a map, a shared value or a pool, is refused; the old version still answers clicks.
 - why this level: Types stored through lists are outside the interface hash; missing one lets old data run under a new layout.
+- note: Follows docs/decisions/M2-09.md: the interface hash covers every named type a signature reaches, and no app state may hold a function type.
 
 ### M5-29 · L3 · Apply an explicit reset when the state type changes
 
