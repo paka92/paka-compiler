@@ -21,7 +21,7 @@ const KINDS: &[(&str, bool, bool)] = &[
     ("duplicate-local", false, false),
     ("no-app", false, false),
     ("multiple-apps", false, false),
-    ("unknown-type", false, false),
+    ("unknown-type", false, true),
     ("wrong-type-arguments", false, false),
     ("unknown-name", false, true),
     ("wrong-argument-count", false, false),

@@ -962,8 +962,13 @@ impl<'a> Parser<'a> {
 
     fn arm(&mut self) -> Parse<Arm<'a>> {
         let mut patterns = vec![self.pattern()?];
-        while self.accept(Kind::Pipe)? {
+        while self.cur.kind == Kind::Pipe {
+            self.binds_nothing(&patterns)?;
+            self.advance()?;
             patterns.push(self.pattern()?);
+        }
+        if patterns.len() > 1 {
+            self.binds_nothing(&patterns)?;
         }
         self.eat(Kind::FatArrow)?;
         let first = self.cur;
@@ -981,6 +986,25 @@ impl<'a> Parser<'a> {
     }
 
     // Patterns
+
+    /// Alternatives bind no names; `patterns` ends with the one just read.
+    fn binds_nothing(&self, patterns: &[Pat<'a>]) -> Parse<()> {
+        let Some(PatKind::Variant(_, parts)) = patterns.last().map(|p| &p.kind) else {
+            return Ok(());
+        };
+        let name = parts.iter().find(|p| matches!(p.kind, PatKind::Bind(_)));
+        let message = "alternatives bind no names; write one arm per variant";
+        match name {
+            Some(p) => Err(Diagnostic::new(
+                self.path,
+                p.at,
+                p.len,
+                "unexpected-token",
+                message,
+            )),
+            None => Ok(()),
+        }
+    }
 
     fn pattern(&mut self) -> Parse<Pat<'a>> {
         let first = self.cur;
