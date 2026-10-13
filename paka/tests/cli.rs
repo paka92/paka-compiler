@@ -1,4 +1,6 @@
-use std::process::{Command, Output};
+use std::fs::File;
+use std::io::pipe;
+use std::process::{Command, Output, Stdio};
 
 const USAGE: &str = "usage: paka run <file>\n       paka build <file> -o <output>\n";
 
@@ -80,15 +82,60 @@ fn lexical_reject_is_one_diagnostic_and_exit_1() {
     }
 }
 
+const LIGHT: &str = concat!(env!("CARGO_MANIFEST_DIR"), "/../examples/light.paka");
+
 #[test]
-fn readable_file_is_silent_and_exit_0() {
-    let file = concat!(env!("CARGO_MANIFEST_DIR"), "/../examples/light.paka");
-    for args in [vec!["run", file], vec!["build", file, "-o", "unused"]] {
-        let out = paka(&args);
-        assert_eq!(out.status.code(), Some(0), "args {args:?}");
-        assert!(
-            out.stdout.is_empty() && out.stderr.is_empty(),
-            "args {args:?}"
-        );
-    }
+fn build_of_readable_file_is_silent_and_exit_0() {
+    let out = paka(&["build", LIGHT, "-o", "unused"]);
+    assert_eq!(out.status.code(), Some(0));
+    assert!(out.stdout.is_empty() && out.stderr.is_empty());
+}
+
+#[test]
+fn run_of_light_prints_the_line_and_exits_0() {
+    let out = paka(&["run", LIGHT]);
+    assert_eq!(out.status.code(), Some(0));
+    assert_eq!(out.stdout, b"let there be light\n");
+    assert!(out.stderr.is_empty());
+}
+
+/// Runs `paka run` on light.paka with the given standard output.
+fn run_light_into(stdout: Stdio) -> Output {
+    Command::new(env!("CARGO_BIN_EXE_paka"))
+        .args(["run", LIGHT])
+        .stdout(stdout)
+        .output()
+        .unwrap()
+}
+
+#[test]
+fn run_without_the_console_grant_is_refused() {
+    let source = std::fs::read_to_string(LIGHT).unwrap();
+    let file = std::env::temp_dir().join(format!("paka-no-console-{}.paka", std::process::id()));
+    std::fs::write(&file, source.replace("[Console]", "[]")).unwrap();
+    let out = paka(&["run", file.to_str().unwrap()]);
+    std::fs::remove_file(&file).unwrap();
+    assert_eq!(out.status.code(), Some(3));
+    assert!(out.stdout.is_empty());
+    let want = "light: effect Print refused: grant Console is missing\n";
+    assert_eq!(String::from_utf8_lossy(&out.stderr), want);
+}
+
+#[test]
+fn full_disk_gives_status_3_and_its_line() {
+    let full = File::options().write(true).open("/dev/full").unwrap();
+    let out = run_light_into(full.into());
+    assert_eq!(out.status.code(), Some(3));
+    let want = "light: effect Print failed: no space left on device\n";
+    assert_eq!(String::from_utf8_lossy(&out.stderr), want);
+}
+
+#[test]
+fn closed_pipe_gives_status_3_and_its_line() {
+    let (reader, writer) = pipe().unwrap();
+    drop(reader);
+    let out = run_light_into(writer.into());
+    assert_eq!(out.status.code(), Some(3), "ended by a signal?");
+    let want = "light: effect Print failed: broken pipe\n";
+    assert_eq!(String::from_utf8_lossy(&out.stderr), want);
 }

@@ -1,6 +1,8 @@
 mod ast;
 mod check;
 mod diagnostic;
+#[allow(dead_code)] // wired into `paka run` in the next commit
+mod interp;
 mod lexer;
 #[allow(dead_code)] // read by the interpreter (M1-13)
 mod lower;
