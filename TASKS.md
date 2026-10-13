@@ -408,13 +408,14 @@ or merged during review. Ids with a letter were added during review.
 
 ### M2-16 · L3 · Check signatures and type definitions into one signature table
 
+- status: done
 - needs: M2-03, M2-05, M2-13, M2-09
 - flags: none
 - done when: Tests pass: each definition kind's signature is accepted or rejected with expected and found types; built-ins come from one table.
 - why this level: Base for per-definition checking; recursive types and default values hide easy-to-miss cases.
-- note: Follows docs/decisions/M2-05.md, including its two tightened call rules. Follows docs/decisions/M2-09.md: the interface hash covers every named type a signature reaches, and no app state may hold a function type. Follows docs/decisions/M2-14.md for the built-in table. Calls the M2-13 pass and gives the built-in table of paka/src/resolve.rs its signatures.
+- note: Follows docs/decisions/M2-05.md, including its two tightened call rules. Follows docs/decisions/M2-09.md: the interface hash covers every named type a signature reaches, and no app state may hold a function type. Follows docs/decisions/M2-14.md for the built-in table. Calls the M2-13 pass and gives the built-in table of paka/src/resolve.rs its signatures. Done: the table is paka/src/sig.rs with the built-in rows in paka/src/builtins.rs; no command calls it yet, and M2-19 wires it in. It runs the finite-value test, so M2-21 does not. It holds no interface hash (M4-11) and no app rule (M2-32). The parser reads a field default as a constant.
 
-### M2-17 · L4 · Parse generics, function values and error-handling forms
+### M2-17 · L4 · Parse type arguments, function values and error-handling forms
 
 - status: done
 - needs: M2-09, M2-11, M2-12
@@ -455,12 +456,12 @@ or merged during review. Ids with a letter were added during review.
 - why this level: Overlap analysis on paths; a missed case is a silent hole release mode will trust.
 - note: Follows docs/decisions/M2-05.md, including its two tightened call rules.
 
-### M2-22 · L4 · Check generics and interfaces from signatures alone
+### M2-22 · L4 · Check each built-in use from its table row and argument types
 
 - needs: M2-09, M2-17, M2-20
 - flags: none
-- done when: Decision samples pass; a test shows a generic body's result never depends on any caller.
-- why this level: Bodies must be checked against declared bounds only; a leak silently breaks pillar 4.
+- done when: Decision samples pass; the type variables of a built-in row are taken from the arguments and the expected type, and `cannot-infer` is given when neither fixes one. A test shows a function body's result never depends on any caller.
+- why this level: The language has no user generics (M2-09), so only built-in rows carry type variables; binding them wrongly accepts or refuses programs silently.
 - note: Follows docs/decisions/M2-09.md: the interface hash covers every named type a signature reaches, and no app state may hold a function type. Follows docs/decisions/M2-12.md for Option, Result, `?` and unreachable().
 
 ### M2-23 · L4 · Define the core form for the whole headless language
