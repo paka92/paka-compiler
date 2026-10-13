@@ -416,11 +416,12 @@ or merged during review. Ids with a letter were added during review.
 
 ### M2-17 · L4 · Parse generics, function values and error-handling forms
 
+- status: done
 - needs: M2-09, M2-11, M2-12
 - flags: none
 - done when: Parser tests with hand-written trees pass for every new form in the two decisions, including their error cases.
 - why this level: Telling generic brackets from comparison operators is a known parser trap; a mistake mis-parses silently.
-- note: Follows docs/decisions/M2-02.md: the newline, comment and nesting rules of its sections 1.5 to 1.7, the grammar of section 2 and the codes of section 5. Follows docs/decisions/M2-09.md: the interface hash covers every named type a signature reaches, and no app state may hold a function type. Follows docs/decisions/M2-06.md for traps, holes and examples. Follows docs/decisions/M2-12.md for Option, Result, `?` and unreachable().
+- note: Follows docs/decisions/M2-02.md: the newline, comment and nesting rules of its sections 1.5 to 1.7, the grammar of section 2 and the codes of section 5. Follows docs/decisions/M2-09.md: the interface hash covers every named type a signature reaches, and no app state may hold a function type. Follows docs/decisions/M2-06.md for traps, holes and examples. Follows docs/decisions/M2-12.md for Option, Result, `?` and unreachable(). Done. Keeping comments in the tree (section 1.6 of M2-02) is not part of this task; it belongs to M4-15, and until then the lexer skips comments.
 
 ### M2-18 · L4 · Write the language reference from the approved decisions, within 8,000 tokens
 
