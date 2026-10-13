@@ -306,7 +306,7 @@ impl<'a> Checker<'a> {
         };
         if args.len() != arity || (called && arity == 0) {
             let message = match arity {
-                0 => format!("`{name}` takes no arguments and no parentheses"),
+                0 => format!("{name} has no fields: write {name}"),
                 _ => format!("`{name}` takes {arity} arguments"),
             };
             return Err(self.fail(e.at, name.len(), "wrong-argument-count", message));

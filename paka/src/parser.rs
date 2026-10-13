@@ -1,7 +1,7 @@
 //! Recursive descent over the lexer's tokens, one token of lookahead (docs/decisions/M2-02.md
 //! section 2, with M2-03, M2-05, M2-06 and M2-09). Tokens are pulled on demand, so the first lexical
-//! or syntax problem of a definition, in source order, is the one reported. A broken definition is
-//! skipped up to the next one.
+//! or syntax problem of a definition, in source order, is the one reported. Where asked to
+//! recover, a broken definition is skipped up to the next one.
 
 use crate::ast::*;
 use crate::diagnostic::Diagnostic;
@@ -10,8 +10,12 @@ use std::mem;
 
 type Parse<T> = Result<T, Diagnostic>;
 
-/// Most brackets open at once: `(`, `[`, `{`, a type's `<` and an interpolation's `{`.
+/// Most levels open at once: the brackets `(`, `[`, `{`, a type's `<` and an interpolation's `{`,
+/// and the forms that nest with none: an `if` or `match` in a header, a `fn` type as a result.
 const NESTING: usize = 64;
+
+/// Most links in one chain of operators, calls, fields, items, `?` or prefix operators.
+const CHAIN: usize = 1_000;
 
 const INTERFACES: [&str; 5] = ["interface", "trait", "protocol", "impl", "extension"];
 
@@ -37,26 +41,31 @@ const LEVELS: [&[(Kind, BinOp)]; 5] = [
 const COMPARE: usize = 2;
 const ADD: usize = 3;
 
-/// The first error only.
+/// The program, or the first error; the rest of the file is not read.
 pub fn parse<'a>(path: &'a str, src: &'a [u8]) -> Parse<Program<'a>> {
-    let (program, errors) = parse_all(path, src);
+    let (program, errors) = parse_all(path, src, false);
     errors.into_iter().next().map_or(Ok(program), Err)
 }
 
-/// The definitions that parsed and one error per definition that did not.
-fn parse_all<'a>(path: &'a str, src: &'a [u8]) -> (Program<'a>, Vec<Diagnostic>) {
+/// The definitions that parsed and, when `recover`, one error per definition that did not;
+/// otherwise it stops at the first error.
+fn parse_all<'a>(path: &'a str, src: &'a [u8], recover: bool) -> (Program<'a>, Vec<Diagnostic>) {
     let mut parser = Parser::new(path, src, Lexer::new(path, src), 0);
     let (mut defs, mut errors) = (vec![], vec![]);
     loop {
         match parser.next_def() {
             Ok(Some(def)) => defs.push(def),
-            Ok(None) => return (Program { defs }, errors),
+            Ok(None) => break,
             Err(error) => {
                 errors.push(error);
+                if !recover {
+                    break;
+                }
                 parser.recover();
             }
         }
     }
+    (Program { defs }, errors)
 }
 
 fn text<'a>(token: Token<'a>) -> &'a str {
@@ -87,6 +96,9 @@ fn assign_op(kind: Kind) -> Option<AssignOp> {
         _ => return None,
     })
 }
+
+const LAMBDA: &str = "no function written in place; write it at top level and pass its name: \
+    fn before(a: T, b: T) -> Bool { ... }; a local it would have used becomes a parameter or a field";
 
 fn too_deep(path: &str, at: Pos, len: usize) -> Diagnostic {
     let message = format!(
@@ -204,13 +216,11 @@ impl<'a> Parser<'a> {
 
     /// The error for the current token, which fits nowhere; `what` is what the grammar wanted.
     fn unexpected(&self, what: &str) -> Diagnostic {
-        if what == "end of line" && matches!(self.cur.kind, Kind::FatArrow | Kind::Arrow) {
-            let message = "no function written in place; write it at top level and pass its name: \
-                fn before(a: T, b: T) -> Bool { ... }; a local it would have used becomes a \
-                parameter or a field";
-            return self.error("unexpected-token", message);
-        }
-        let message = format!("expected {what}, found {}", self.describe());
+        let message = match self.cur.kind {
+            Kind::Semi => "remove the ;: a line break ends the statement".into(),
+            Kind::FatArrow | Kind::Arrow => LAMBDA.into(),
+            _ => format!("expected {what}, found {}", self.describe()),
+        };
         self.error("unexpected-token", message)
     }
 
@@ -253,9 +263,50 @@ impl<'a> Parser<'a> {
         self.eat(open)?;
         self.depth += 1;
         let inner = self.with_header(false, body)?;
-        self.eat(close)?;
+        self.close(close)?;
         self.depth -= 1;
         Ok(inner)
+    }
+
+    /// Takes the closing `kind`; the `>` of a `>=` closes a type list and leaves the `=`.
+    fn close(&mut self, kind: Kind) -> Parse<()> {
+        if kind != Kind::Gt || self.cur.kind != Kind::GtEq {
+            return self.eat(kind).map(drop);
+        }
+        let eq = Token {
+            kind: Kind::Eq,
+            text: &self.cur.text[1..],
+            col: self.cur.col + 1,
+            start: self.cur.start + 1,
+            ..self.cur
+        };
+        self.prev_end = eq.start;
+        self.cur = eq;
+        Ok(())
+    }
+
+    /// `f` one level deeper when `counted`: a form with no bracket of its own that nests in another.
+    fn nested<T>(&mut self, counted: bool, f: impl FnOnce(&mut Self) -> Parse<T>) -> Parse<T> {
+        if !counted {
+            return f(self);
+        }
+        if self.depth == NESTING {
+            return Err(too_deep(self.path, pos(self.cur), self.cur.len()));
+        }
+        self.depth += 1;
+        let inner = f(self)?;
+        self.depth -= 1;
+        Ok(inner)
+    }
+
+    /// Counts one more link of a chain, which `links` holds; the 1,001st is refused.
+    fn link(&self, links: &mut usize) -> Parse<()> {
+        *links += 1;
+        if *links > CHAIN {
+            let message = "chain longer than 1,000 links; split it with a local";
+            return Err(self.error("nesting-too-deep", message));
+        }
+        Ok(())
     }
 
     /// `[ item { "," item } ]` up to, not including, one of `closers`; no comma before it.
@@ -302,10 +353,6 @@ impl<'a> Parser<'a> {
             items.push(item(self)?);
             match self.cur.kind {
                 Kind::Newline | Kind::RBrace | Kind::End => {}
-                Kind::Semi => {
-                    let message = "remove the ;: a line break ends the statement";
-                    return Err(self.error("unexpected-token", message));
-                }
                 _ => return Err(self.unexpected("end of line")),
             }
         }
@@ -472,7 +519,8 @@ impl<'a> Parser<'a> {
         if key.kind == Kind::View {
             return Err(self.unsupported_view());
         }
-        if !matches!(key.text, b"state" | b"start" | b"update" | b"grants") {
+        let named = matches!(key.text, b"state" | b"start" | b"update" | b"grants");
+        if key.kind != Kind::Lower || !named {
             return Err(self.unexpected("state, start, update or grants"));
         }
         self.advance()?;
@@ -515,7 +563,8 @@ impl<'a> Parser<'a> {
             })
         })?;
         let result = if self.accept(Kind::Arrow)? {
-            Some(Box::new(self.ty()?))
+            let counted = self.cur.kind == Kind::Fn;
+            Some(Box::new(self.nested(counted, Self::ty)?))
         } else {
             None
         };
@@ -607,33 +656,37 @@ impl<'a> Parser<'a> {
     // Expressions
 
     fn expr(&mut self) -> Parse<Expr<'a>> {
-        self.binary(0)
+        self.binary(0, false)
     }
 
-    /// Left-associative operators of one level; comparisons do not chain.
-    fn binary(&mut self, level: usize) -> Parse<Expr<'a>> {
+    /// Left-associative operators of one level; comparisons do not chain. With `ranges`, a range
+    /// stands as an operand of a comparison.
+    fn binary(&mut self, level: usize, ranges: bool) -> Parse<Expr<'a>> {
+        if ranges && level == ADD {
+            return self.range();
+        }
         let Some(ops) = LEVELS.get(level) else {
             return self.unary();
         };
         let first = self.cur;
-        let mut left = self.binary(level + 1)?;
-        let mut folded = false;
+        let mut left = self.binary(level + 1, ranges)?;
+        let mut links = 0;
         while let Some(&(_, op)) = ops.iter().find(|(kind, _)| *kind == self.cur.kind) {
-            if level == COMPARE && folded {
+            if level == COMPARE && links > 0 {
                 let message = "comparisons do not chain; write a < b && b < c";
                 return Err(self.error("unexpected-token", message));
             }
+            self.link(&mut links)?;
             self.advance()?;
-            let right = self.binary(level + 1)?;
+            let right = self.binary(level + 1, ranges)?;
             left = self.node(first, ExprKind::Binary(op, Box::new(left), Box::new(right)));
-            folded = true;
         }
         Ok(left)
     }
 
     /// Prefix operators, applied innermost first. A `-` right before a number is part of it.
     fn unary(&mut self) -> Parse<Expr<'a>> {
-        let mut marks = vec![];
+        let (mut marks, mut links) = (vec![], 0);
         let mut operand = loop {
             let first = self.cur;
             let op = match first.kind {
@@ -641,6 +694,7 @@ impl<'a> Parser<'a> {
                 Kind::Bang => UnOp::Not,
                 _ => break self.postfix(first)?,
             };
+            self.link(&mut links)?;
             self.advance()?;
             let number = matches!(self.cur.kind, Kind::Int | Kind::Float);
             if op == UnOp::Neg && number && self.cur.start == first.start + 1 {
@@ -661,7 +715,14 @@ impl<'a> Parser<'a> {
 
     /// Calls, items, fields and `?`; a place takes only fields and items.
     fn suffixes(&mut self, first: Token<'a>, mut e: Expr<'a>, place: bool) -> Parse<Expr<'a>> {
+        let mut links = 0;
         loop {
+            if matches!(
+                self.cur.kind,
+                Kind::LParen | Kind::LBracket | Kind::Dot | Kind::Question
+            ) {
+                self.link(&mut links)?;
+            }
             let kind = match self.cur.kind {
                 Kind::LParen if !place => {
                     let args = self.between(Kind::LParen, Kind::RParen, Self::call_args)?;
@@ -752,14 +813,19 @@ impl<'a> Parser<'a> {
         })
     }
 
-    /// `a..<b` or an expression; only after `in` and inside `[ ]`.
+    /// An expression in which a range may stand; only after `in` and inside `[ ]`.
     fn range_or_expr(&mut self) -> Parse<Expr<'a>> {
+        self.binary(0, true)
+    }
+
+    /// `add_expr [ "..<" add_expr ]`, binding tighter than a comparison.
+    fn range(&mut self) -> Parse<Expr<'a>> {
         let first = self.cur;
-        let from = self.expr()?;
+        let from = self.binary(ADD, false)?;
         if !self.accept(Kind::DotDotLt)? {
             return Ok(from);
         }
-        let to = self.binary(ADD)?;
+        let to = self.binary(ADD, false)?;
         Ok(self.node(first, ExprKind::Range(Box::new(from), Box::new(to))))
     }
 
@@ -771,8 +837,9 @@ impl<'a> Parser<'a> {
                 return Ok(self.node(first, inner.kind));
             }
             Kind::LBracket => self.collection()?,
-            Kind::If => self.if_expr()?,
-            Kind::Match => self.match_expr()?,
+            Kind::If => self.nested(self.header, Self::if_expr)?,
+            Kind::Match => self.nested(self.header, Self::match_expr)?,
+            Kind::Pipe => return Err(self.error("unexpected-character", LAMBDA)),
             Kind::Str => self.string(t)?,
             Kind::Int | Kind::Float | Kind::True | Kind::False | Kind::Hole | Kind::Lower => {
                 self.advance()?;
@@ -810,22 +877,16 @@ impl<'a> Parser<'a> {
             if p.accept(Kind::Colon)? {
                 return Ok(ExprKind::Map(vec![]));
             }
+            let mut map = None;
             let rows = p.items(&[Kind::RBracket], |p| {
                 let key = p.expr()?;
-                let value = if p.accept(Kind::Colon)? {
-                    Some(p.expr()?)
-                } else {
-                    None
-                };
-                Ok((key, value))
+                if !*map.get_or_insert(p.cur.kind == Kind::Colon) {
+                    return Ok((key, None));
+                }
+                p.eat(Kind::Colon)?;
+                Ok((key, Some(p.expr()?)))
             })?;
-            let map = rows.first().is_some_and(|row| row.1.is_some());
-            if let Some((odd, _)) = rows.iter().find(|row| row.1.is_some() != map) {
-                let message = "a list item and a map row cannot mix";
-                let error = Diagnostic::new(p.path, odd.at, odd.len, "unexpected-token", message);
-                return Err(error);
-            }
-            Ok(if map {
+            Ok(if map == Some(true) {
                 let pairs = rows.into_iter().filter_map(|(k, v)| Some((k, v?)));
                 ExprKind::Map(pairs.collect())
             } else {
@@ -1690,7 +1751,7 @@ mod tests {
             depth += 1;
         }
         assert_eq!(depth, 1000);
-        let sum = ["a"; 2000].join(" + ");
+        let sum = ["a"; 1001].join(" + ");
         let src = format!("fn f() {{\n  {sum}\n}}\n");
         assert!(tree(&src).defs.len() == 1);
         let src = format!("fn f() {{\n  f{}\n}}\n", "()".repeat(1000));
@@ -1895,11 +1956,19 @@ mod tests {
             let message =
                 "nesting deeper than 64 levels; move the inner part into a named function or local";
             let list = |n: usize| format!("fn f() {{\n  {}1{}\n}}\n", "[".repeat(n), "]".repeat(n));
-            assert!(parse_all("main.paka", list(63).as_bytes()).1.is_empty());
+            assert!(
+                parse_all("main.paka", list(63).as_bytes(), true)
+                    .1
+                    .is_empty()
+            );
             fail(&list(64), (2, 66), "nesting-too-deep", message);
             let types =
                 |n: usize| format!("fn f(x: {}Int{}) {{}}\n", "L<".repeat(n), ">".repeat(n));
-            assert!(parse_all("main.paka", types(63).as_bytes()).1.is_empty());
+            assert!(
+                parse_all("main.paka", types(63).as_bytes(), true)
+                    .1
+                    .is_empty()
+            );
             fail(&types(64), (1, 136), "nesting-too-deep", message);
             let src = format!(
                 "fn f() {{\n  {}\"{{x}}\"{}\n}}\n",
@@ -1921,7 +1990,11 @@ mod tests {
                     "}".repeat(n)
                 )
             };
-            assert!(parse_all("main.paka", blocks(63).as_bytes()).1.is_empty());
+            assert!(
+                parse_all("main.paka", blocks(63).as_bytes(), true)
+                    .1
+                    .is_empty()
+            );
             fail(&blocks(64), (2, 449), "nesting-too-deep", message);
         });
     }
@@ -2070,7 +2143,8 @@ mod tests {
     fn a_chain_stops_at_1000_links() {
         deep(|| {
             let message = "chain longer than 1,000 links; split it with a local";
-            let kinds: [(fn(usize) -> String, usize); 5] = [
+            type Chain = fn(usize) -> String;
+            let kinds: [(Chain, usize); 5] = [
                 (|n| format!("{}a", "-".repeat(n)), 1003),
                 (|n| format!("a{}", "+a".repeat(n)), 2004),
                 (|n| format!("a{}", ".b".repeat(n)), 2004),
@@ -2095,7 +2169,7 @@ mod tests {
     #[test]
     fn a_broken_definition_leaves_the_others_parsed() {
         let src = "enum A { X }\nfn broken( {\nenum B { Y }\n";
-        let (program, errors) = parse_all("main.paka", src.as_bytes());
+        let (program, errors) = parse_all("main.paka", src.as_bytes(), true);
         assert_eq!(names(&program), ["A", "B"]);
         assert_eq!(errors.len(), 1);
         assert_eq!(errors[0].position, Some((2, 12)));
@@ -2105,7 +2179,7 @@ mod tests {
     #[test]
     fn a_lexical_error_in_a_body_leaves_the_next_definition() {
         let src = "fn f() {\n  \"abc\n}\nenum B { Y }\n";
-        let (program, errors) = parse_all("main.paka", src.as_bytes());
+        let (program, errors) = parse_all("main.paka", src.as_bytes(), true);
         assert_eq!(names(&program), ["B"]);
         assert_eq!(errors.len(), 1);
         assert_eq!(errors[0].code, "unterminated-string");
@@ -2114,7 +2188,7 @@ mod tests {
     #[test]
     fn a_definition_start_ends_the_broken_one() {
         let src = "enum A {\nfn f() {}\nenum {}\n";
-        let (program, errors) = parse_all("main.paka", src.as_bytes());
+        let (program, errors) = parse_all("main.paka", src.as_bytes(), true);
         assert_eq!(names(&program), ["f"]);
         let at: Vec<_> = errors.iter().map(|d| d.position).collect();
         assert_eq!(at, [Some((2, 1)), Some((3, 6))]);
@@ -2123,7 +2197,7 @@ mod tests {
     #[test]
     fn an_unclosed_bracket_ends_at_the_next_definition() {
         let src = "fn f() {\n  [1, 2\n}\nenum B { Y }\n";
-        let (program, errors) = parse_all("main.paka", src.as_bytes());
+        let (program, errors) = parse_all("main.paka", src.as_bytes(), true);
         assert_eq!(names(&program), ["B"]);
         assert_eq!(errors.len(), 1);
         assert_eq!(errors[0].position, Some((3, 1)));
