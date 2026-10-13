@@ -261,7 +261,7 @@ example reach {
 - An Option inside a Result function: `ok_or(opt, error)?`. A Result inside an Option function is
   matched.
 - Changes made through an inout parameter before a `?` returns stay made.
-- An arm that returns is a block: `None => {`, `return Err("empty")`, `}` on three lines.
+- An arm that returns, breaks or continues is a block: `None => {`, `return Err("empty")`, `}` on three lines.
 - `unreachable()` stands where a value is expected but cannot be reached; it traps `assert`.
 - There is no `unwrap`, `expect`, `is_some`, `panic` or null.
 - A program reports a failure in `update`: `[Print(why), ExitWith(20)]`.
