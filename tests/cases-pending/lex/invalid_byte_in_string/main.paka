@@ -1,0 +1,11 @@
+enum Msg { Start }
+
+fn update(m: Msg) -> List<Effect<Msg>> {
+  [Print("café"), Exit]
+}
+
+app light {
+  start:  Start
+  update: update
+  grants: [Console]
+}

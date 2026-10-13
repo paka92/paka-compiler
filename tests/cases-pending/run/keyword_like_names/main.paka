@@ -1,0 +1,11 @@
+enum Match { Type }
+
+fn grants(start: Match) -> List<Effect<Match>> {
+  [Print("let there be light"), Exit]
+}
+
+app apps {
+  start:  Type
+  update: grants
+  grants: [Console]
+}
