@@ -100,6 +100,8 @@ fn assign_op(kind: Kind) -> Option<AssignOp> {
 const LAMBDA: &str = "no function written in place; write it at top level and pass its name: \
     fn before(a: T, b: T) -> Bool { ... }; a local it would have used becomes a parameter or a field";
 
+const NO_IF_LET: &str = "Paka has no `if let` or `while let`; match it";
+
 const DEFAULT: &str = "`??` starts a hole; write `unwrap_or(e, d)`";
 
 const RETURNING_ARM: &str =
@@ -127,6 +129,8 @@ struct Parser<'a> {
     cur: Token<'a>,
     /// Byte offset just after the last token taken.
     prev_end: usize,
+    /// Byte offset just after the last expression parsed.
+    expr_end: Option<usize>,
     /// Brackets open at the current token.
     depth: usize,
     /// In an `if`, `while`, `for` or `match` header, where `Upper {` ends the header.
@@ -151,6 +155,7 @@ impl<'a> Parser<'a> {
             lexer,
             cur,
             prev_end: 0,
+            expr_end: None,
             depth,
             header: false,
             def_start: 0,
@@ -231,10 +236,15 @@ impl<'a> Parser<'a> {
     fn unexpected(&self, what: &str) -> Diagnostic {
         let message = match self.cur.kind {
             Kind::Semi => "remove the ;: a line break ends the statement".into(),
-            Kind::FatArrow | Kind::Arrow => LAMBDA.into(),
+            Kind::FatArrow | Kind::Arrow if self.in_expression(what) => LAMBDA.into(),
             _ => format!("expected {what}, found {}", self.describe()),
         };
         self.error("unexpected-token", message)
+    }
+
+    /// Whether the current token stands where an expression was wanted or just ended.
+    fn in_expression(&self, what: &str) -> bool {
+        what == "an expression" || self.expr_end == Some(self.prev_end)
     }
 
     fn unsupported_view(&self) -> Diagnostic {
@@ -643,7 +653,7 @@ impl<'a> Parser<'a> {
             }
             Kind::While => {
                 self.advance()?;
-                let cond = self.with_header(true, Self::expr)?;
+                let cond = self.condition()?;
                 let body = self.block()?;
                 StmtKind::While { cond, body }
             }
@@ -755,7 +765,10 @@ impl<'a> Parser<'a> {
                     self.no_default(mark)?;
                     ExprKind::Try(Box::new(e))
                 }
-                _ => return Ok(e),
+                _ => {
+                    self.expr_end = Some(self.prev_end);
+                    return Ok(e);
+                }
             };
             e = self.node(first, kind);
         }
@@ -955,11 +968,19 @@ impl<'a> Parser<'a> {
         Ok(e)
     }
 
+    /// The expression after `if` or `while`.
+    fn condition(&mut self) -> Parse<Expr<'a>> {
+        if self.cur.kind == Kind::Let {
+            return Err(self.error("unexpected-token", NO_IF_LET));
+        }
+        self.with_header(true, Self::expr)
+    }
+
     fn if_expr(&mut self) -> Parse<ExprKind<'a>> {
         let mut branches = vec![];
         loop {
             self.advance()?;
-            let cond = self.with_header(true, Self::expr)?;
+            let cond = self.condition()?;
             branches.push((cond, self.block()?));
             if !self.accept(Kind::Else)? {
                 return Ok(ExprKind::If {
@@ -1002,7 +1023,7 @@ impl<'a> Parser<'a> {
         }
         self.eat(Kind::FatArrow)?;
         let first = self.cur;
-        if first.kind == Kind::Return {
+        if matches!(first.kind, Kind::Return | Kind::Break | Kind::Continue) {
             return Err(self.error("unexpected-token", RETURNING_ARM));
         }
         let body = if first.kind == Kind::LBrace {
@@ -2791,6 +2812,28 @@ mod tests {
     }
 
     #[test]
+    fn an_arm_that_breaks_or_continues_is_a_block() {
+        let message =
+            "an arm that returns is a block: write `=> { return Err(...) }` over three lines";
+        for (word, col) in [("break", 13), ("continue", 13)] {
+            let src = format!("fn f() {{\n  match x {{\n    None => {word}\n  }}\n}}\n");
+            fail(&src, (3, col), "unexpected-token", message);
+        }
+    }
+
+    #[test]
+    fn a_wrong_arrow_outside_an_expression_is_a_plain_error() {
+        let arm = "fn f() {\n  match x {\n    A -> 1\n  }\n}\n";
+        fail(arm, (3, 7), "unexpected-token", "expected `=>`, found `->`");
+        let fat = "expected `=`, found `=>`";
+        unexpected("let g: fn(Int) => Int = h", 18, fat);
+        let long = "expected `=`, found `->`";
+        unexpected("let g: fn(Int) -> Int -> Int = h", 25, long);
+        let header = "expected `{`, found `=>`";
+        fail("fn f() => Int {\n}\n", (1, 8), "unexpected-token", header);
+    }
+
+    #[test]
     fn a_pattern_is_flat() {
         let src = "fn f() {\n  match x {\n    Some(Ok(v)) => v\n  }\n}\n";
         let message = "expected a name or `_`, found `Ok`";
@@ -2799,8 +2842,10 @@ mod tests {
 
     #[test]
     fn an_if_takes_no_let() {
-        let message = "expected an expression, found `let`";
+        let message = "Paka has no `if let` or `while let`; match it";
         unexpected("if let Some(v) = get(m, k) { }", 6, message);
+        unexpected("while let Some(v) = get(m, k) { }", 9, message);
+        unexpected("if a { } else if let Some(v) = g { }", 20, message);
     }
 
     #[test]
