@@ -12,6 +12,8 @@ type Check<T> = Result<T, Diagnostic>;
 pub struct Checked<'a> {
     pub app: &'a str,
     pub start: &'a str,
+    /// The name of the `update` function.
+    pub update_name: &'a str,
     /// The body of the `update` function.
     pub update: &'a Expr<'a>,
     pub grants: Vec<&'a str>,
@@ -259,6 +261,7 @@ impl<'a> Checker<'a> {
         Ok(Checked {
             app: app.text,
             start: start.text,
+            update_name: update.text,
             update: f.body,
             grants: grants.iter().map(|g| g.text).collect(),
         })

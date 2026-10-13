@@ -12,6 +12,8 @@ pub struct Core {
     /// The position of the start variant in `variants`.
     pub start: usize,
     pub grants: Vec<Grant>,
+    /// The Paka name of the update function.
+    pub update_name: String,
     /// The effects `update` returns, in order.
     pub update: Vec<Effect>,
 }
@@ -35,6 +37,7 @@ pub fn lower(program: &Program, checked: &Checked) -> Core {
         variants,
         start,
         grants: checked.grants.iter().filter_map(|g| grant(g)).collect(),
+        update_name: checked.update_name.into(),
         update: effects(checked.update),
     }
 }
@@ -92,6 +95,7 @@ mod tests {
             variants: vec!["Start".into()],
             start: 0,
             grants: vec![Grant::Console],
+            update_name: "update".into(),
             update: vec![Effect::Print("let there be light".into()), Effect::Exit],
         };
         assert_eq!(lower(&program, &checked), by_hand);

@@ -62,6 +62,7 @@ mod tests {
             variants: vec!["Start".into()],
             start: 0,
             grants,
+            update_name: "update".into(),
             update,
         }
     }
