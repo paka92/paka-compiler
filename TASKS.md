@@ -282,10 +282,12 @@ or merged during review. Ids with a letter were added during review.
 
 ### M2-03 · L5 · Decide the primitive types and the exact meaning of every operation
 
+- status: done
 - needs: M2-01
 - flags: decision, owner
 - done when: Owner approves a table: Int width, wrapping spelling, Float and the canonical NaN bits, float-to-text, String, conversions, evaluation order, and whether sin, exp and pow exist and which maths library gives them; every row gives a result or a named trap.
 - why this level: This table is the 'one meaning' promise; every back end is tested against it.
+- note: Decided: the full record, with the operation table, the exact algorithms, the escapes and the two new diagnostic codes, is docs/decisions/M2-03.md.
 
 ### M2-04 · L2 · Give every error one shape, printed as text or JSON
 
@@ -316,6 +318,7 @@ or merged during review. Ids with a letter were added during review.
 - flags: none
 - done when: Lexer tests with hand-written token lists pass for every token kind and every lexical error.
 - why this level: Token list is given by the decisions; one module, well-known technique.
+- note: Follows docs/decisions/M2-03.md; the M1 lex cases it lists as no longer holding are deleted in a commit before the code that breaks them.
 
 ### M2-08 · L3 · Implement Int, Float, Bool and String operations from the approved table
 
@@ -323,6 +326,7 @@ or merged during review. Ids with a letter were added during review.
 - flags: none
 - done when: Every row of the approved table has a hand-written vector (operation, inputs, expected result or named trap) in a data file read by a runner that does not depend on the back end; all pass in the interpreter; a test fails if a row has none. Paka Int and Float are their own Rust types exposing only the table's operations; a lint or test fails on raw arithmetic or f64 maths methods in the compiler crate; float rows are compared bit for bit.
 - why this level: Many exact edge cases: overflow, NaN, float printing, string units; errors are easy to miss.
+- note: Follows docs/decisions/M2-03.md; the M1 lex cases it lists as no longer holding are deleted in a commit before the code that breaks them.
 
 ### M2-08b · L3 · Add the approved maths functions without f64 methods
 
@@ -353,7 +357,7 @@ or merged during review. Ids with a letter were added during review.
 - flags: none
 - done when: Parser tests with hand-written trees pass; one broken definition gives an error with its offending text and leaves the others parsed.
 - why this level: Recursive descent with recovery per definition and helpful messages; details are easy to get wrong.
-- note: Follows docs/decisions/M2-02.md: the newline, comment and nesting rules of its sections 1.5 to 1.7, the grammar of section 2 and the codes of section 5.
+- note: Follows docs/decisions/M2-02.md: the newline, comment and nesting rules of its sections 1.5 to 1.7, the grammar of section 2 and the codes of section 5. Follows docs/decisions/M2-03.md; the M1 lex cases it lists as no longer holding are deleted in a commit before the code that breaks them.
 
 ### M2-12 · L5 · Decide the one error-handling mechanism
 
@@ -996,6 +1000,7 @@ or merged during review. Ids with a letter were added during review.
 - flags: native-only
 - done when: All NaN vectors from M2-08 pass bit for bit in dev mode and the interpreter.
 - why this level: Hardware and constant folding give different NaN bits; every producing operation must be covered without missing one.
+- note: M2-03 made NaN bits unobservable: compiled arithmetic emits nothing, so this task shrinks to confirming that no operation exposes Float bits.
 
 ### M4-29 · L2 · Call maths functions through private runtime names from compiled code
 

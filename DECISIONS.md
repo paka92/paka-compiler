@@ -817,6 +817,7 @@ fn show(ratio: Float) -> String {
 - Evaluation order: Strictly left to right: operands, then arguments in written order, then the call; items of a list and fields of a built record in written order; only the chosen branch of if and match runs. In an assignment the index and field parts of the left side come first, then the right side, then the read (for += and the like), the operation and the write. A check happens when its operation runs.
 - Ranges: a..<b is not a value: it is written only after the in of a for and inside [ ]. Both ends are Int and are evaluated once, before the first step. In a for, a start at or above the end runs zero times; in a slice, a start above the end traps out_of_bounds. Writing a..b or a...b is a check error whose fix is a..<b.
 - Trap names used by this table: overflow, divide_by_zero, out_of_bounds, bad_conversion. M2-06 fixes the full list and the report.
+- Changed in the final record: The full record is docs/decisions/M2-03.md. It differs from the text above in five places: NaN bits cannot be observed by any program, so compiled arithmetic does not canonicalise and test vectors match NaN as a class; the `\u{hex}` escape is dropped; a bare `}` in a string is an error with the fix `\}`; a source number literal has no leading zeros, while parse_int accepts them; an interpolation holds no `"`, `{` or `}`. Five M1 lex cases stop holding.
 
 ### M2-03 · what this changes in TASKS.md
 
