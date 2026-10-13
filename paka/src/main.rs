@@ -1,6 +1,4 @@
-#[allow(dead_code)] // the checker (M1-10) reads the tree
 mod ast;
-#[allow(dead_code)] // the checker is wired into main by the next commit
 mod check;
 mod diagnostic;
 mod lexer;
@@ -21,7 +19,7 @@ fn main() -> ExitCode {
         _ => return report(USAGE, 2),
     };
     match fs::read(file) {
-        Ok(source) => match parser::parse(file, &source) {
+        Ok(source) => match front_end(file, &source) {
             Ok(_) => ExitCode::SUCCESS,
             Err(d) => report(&format!("{d}\n"), 1),
         },
@@ -35,6 +33,10 @@ fn main() -> ExitCode {
             report(&format!("{d}\n"), 1)
         }
     }
+}
+
+fn front_end(path: &str, source: &[u8]) -> Result<(), Diagnostic> {
+    check::check(path, &parser::parse(path, source)?).map(drop)
 }
 
 /// Writes to standard error; a failed write is ignored.
