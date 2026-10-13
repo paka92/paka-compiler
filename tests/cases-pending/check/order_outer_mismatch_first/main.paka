@@ -1,0 +1,11 @@
+enum Msg { Start }
+
+fn update(m: Msg) -> String {
+  Print(Start)
+}
+
+app light {
+  start:  Start
+  update: update
+  grants: [Console]
+}
