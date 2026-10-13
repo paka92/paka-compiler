@@ -8,6 +8,7 @@
 //! contract, or by compiled code under the contract of `paka_rt1_run`.
 
 use crate::{Decoded, Refused, run};
+use std::{ptr, slice};
 
 /// The longest string: 2^63 - 1 bytes.
 const MAX_BYTES: u64 = i64::MAX.unsigned_abs();
@@ -63,40 +64,107 @@ impl Str {
     /// The string's bytes, or `None` when the string is refused: a null pointer with a length
     /// other than 0, a length above 2^63 - 1, or bytes that would run past the last address.
     pub fn bytes(&self) -> Option<&'static [u8]> {
-        todo!()
+        if self.len == 0 {
+            return Some(&[]);
+        }
+        if self.ptr.is_null() || self.len > MAX_BYTES {
+            return None;
+        }
+        let len = usize::try_from(self.len).ok()?;
+        self.ptr.addr().checked_add(len)?;
+        // SAFETY: `from_raw_parts` asks for a non-null pointer, aligned for `u8` (any pointer
+        // is), at most `isize::MAX` bytes that do not wrap around the address space, and `len`
+        // readable, initialized bytes that nothing writes or frees during `'static`. The first
+        // four are checked above. The last cannot be checked: it is the module invariant, owed
+        // by whoever made this value.
+        Some(unsafe { slice::from_raw_parts(self.ptr, len) })
     }
 }
 
 impl Effect {
     pub const EXIT: Effect = Effect {
         tag: EXIT,
-        ptr: std::ptr::null(),
+        ptr: ptr::null(),
         len: 0,
     };
 
-    pub const fn print(_text: &'static [u8]) -> Effect {
-        Effect::EXIT
+    pub const fn print(text: &'static [u8]) -> Effect {
+        let ptr = if text.is_empty() {
+            ptr::null()
+        } else {
+            text.as_ptr()
+        };
+        Effect {
+            tag: PRINT,
+            ptr,
+            len: text.len() as u64,
+        }
     }
 
     pub fn decode(&self) -> Result<Decoded, Refused> {
-        todo!()
+        match self.tag {
+            PRINT => self.text().map(Decoded::Print).ok_or(Refused::Effect),
+            EXIT if self.ptr.is_null() && self.len == 0 => Ok(Decoded::Exit),
+            EXIT => Err(Refused::Effect),
+            _ => Err(Refused::EffectTag),
+        }
+    }
+
+    fn text(&self) -> Option<&'static [u8]> {
+        Str {
+            ptr: self.ptr,
+            len: self.len,
+        }
+        .bytes()
     }
 }
 
 impl List {
     /// What the result slot holds before `update` is called; `effects` refuses it.
     pub const UNWRITTEN: List = List {
-        ptr: std::ptr::null(),
+        ptr: ptr::null(),
         count: 1,
     };
 
-    pub const fn new(_effects: &'static [Effect]) -> List {
-        List::UNWRITTEN
+    pub const fn new(effects: &'static [Effect]) -> List {
+        let ptr = if effects.is_empty() {
+            ptr::null()
+        } else {
+            effects.as_ptr()
+        };
+        List {
+            ptr,
+            count: effects.len() as u64,
+        }
     }
 
-    /// The list's effects, not yet decoded. Nothing is read through the pointer here.
+    /// The list's effects, not yet decoded. Nothing is read through the pointer here. Refused:
+    /// a pointer off an 8-byte boundary, a null pointer with a count other than 0, a count above
+    /// `MAX_EFFECTS`, or effects that would run past the last address.
     pub fn effects(&self) -> Result<&'static [Effect], Refused> {
-        todo!()
+        self.slice().ok_or(Refused::EffectList)
+    }
+
+    fn slice(&self) -> Option<&'static [Effect]> {
+        if !self.ptr.is_aligned() {
+            return None;
+        }
+        if self.count == 0 {
+            return Some(&[]);
+        }
+        if self.ptr.is_null() || self.count > MAX_EFFECTS {
+            return None;
+        }
+        let count = usize::try_from(self.count).ok()?;
+        let bytes = count.checked_mul(size_of::<Effect>())?;
+        self.ptr.addr().checked_add(bytes)?;
+        // SAFETY: `from_raw_parts` asks for a non-null pointer aligned for `Effect`, at most
+        // `isize::MAX` bytes that do not wrap around the address space, and `count` readable,
+        // initialized effects that nothing writes or frees during `'static`. The first four are
+        // checked above, and any three initialized words are a valid `Effect`. That the memory
+        // is there cannot be checked: it is the module invariant, owed by whoever made this
+        // value.
+        Some(unsafe { slice::from_raw_parts(self.ptr, count) })
     }
 }
 
@@ -107,15 +175,23 @@ unsafe extern "C" {
 }
 
 /// Sets SIGPIPE to ignored, so a write to a closed pipe fails with EPIPE.
-pub fn ignore_sigpipe() {}
+pub fn ignore_sigpipe() {
+    // SAFETY: `signal` asks for a signal whose action may be changed and a handler that is
+    // `SIG_DFL`, `SIG_IGN` or a function. 13 is SIGPIPE and 1 is `SIG_IGN` on Linux, so no code
+    // is installed. The call touches no memory of ours and may be made from any thread.
+    unsafe { signal(SIGPIPE, SIG_IGN) };
+}
 
 /// The entry `main` calls (ABI section 4).
 ///
 /// # Safety
 ///
-/// `name` and `name_len` are a string as ABI section 2 defines it. Every list `update` stores,
-/// and every effect in it, is as that section defines it: each pointer is null or points at
-/// constants that stay readable for the stated size while the process lives.
+/// `name` and `name_len` are a string as ABI section 2 defines it. `update` is null or a function
+/// that keeps ABI section 3: it writes one list through `out`, keeps no pointer and does not
+/// unwind. Every list it stores, and every effect in it, is as section 2 defines it: each pointer
+/// is null or points at constants that stay readable for the stated size while the process lives.
+// SAFETY: no other symbol of a Paka executable has this name: compiled functions are prefixed
+// `p_` (ABI section 11).
 #[unsafe(no_mangle)]
 pub unsafe extern "C" fn paka_rt1_run(
     name: *const u8,
@@ -136,7 +212,6 @@ mod tests {
     use super::*;
     use crate::INTERNAL_ERROR;
     use std::mem::transmute;
-    use std::ptr;
 
     /// One 8-byte ABI word. It is a pointer type so that a word holding an address keeps the
     /// right to read through it; a word holding a number is made by `n`.
@@ -376,7 +451,7 @@ mod tests {
         let cases = [
             [n(LAST_WORD), n(1)],
             [n(LAST_WORD - 16), n(1)],
-            [n(1 << 63), n(MAX_EFFECTS)],
+            [n((1 << 63) + 8), n(MAX_EFFECTS)],
         ];
         for words in cases {
             assert_eq!(list(words).effects().err(), Some(Refused::EffectList));

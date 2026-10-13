@@ -32,7 +32,14 @@ pub enum Refused {
 impl Refused {
     /// The `<reason>` of the internal-error line.
     pub fn reason(self) -> &'static str {
-        todo!()
+        match self {
+            Refused::AppName => "bad app name",
+            Refused::Grants => "bad grants",
+            Refused::UpdateNull => "update is null",
+            Refused::EffectList => "bad effect list",
+            Refused::EffectTag => "unknown effect tag",
+            Refused::Effect => "bad effect",
+        }
     }
 }
 
@@ -42,14 +49,18 @@ pub struct Grants {
     pub console: bool,
 }
 
-pub fn decode_grants(_word: u64) -> Result<Grants, Refused> {
-    todo!()
+pub fn decode_grants(word: u64) -> Result<Grants, Refused> {
+    match word {
+        0 => Ok(Grants { console: false }),
+        1 => Ok(Grants { console: true }),
+        _ => Err(Refused::Grants),
+    }
 }
 
 /// The run loop is M1-17's. Until it exists no run can succeed: status 4, nothing called,
 /// nothing written.
 pub fn run(_name: Str, _update: Option<Update>, _start: u64, _grants: u64) -> i32 {
-    -1
+    INTERNAL_ERROR
 }
 
 #[cfg(test)]
