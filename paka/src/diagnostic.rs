@@ -18,11 +18,12 @@ const KINDS: &[(&str, bool, bool)] = &[
     ("unsupported-view", false, false),
     ("unsupported-form", false, false),
     ("duplicate-name", false, false),
+    ("duplicate-local", false, false),
     ("no-app", false, false),
     ("multiple-apps", false, false),
     ("unknown-type", false, false),
     ("wrong-type-arguments", false, false),
-    ("unknown-name", false, false),
+    ("unknown-name", false, true),
     ("wrong-argument-count", false, false),
     ("type-mismatch", true, false),
     ("duplicate-app-entry", false, false),
@@ -230,7 +231,7 @@ mod tests {
     fn table_lists_exactly_the_spec_codes() {
         let mut table: Vec<_> = KINDS.iter().map(|k| k.0.to_string()).collect();
         let mut spec = spec_codes();
-        assert_eq!(spec.len(), 29);
+        assert_eq!(spec.len(), 30);
         table.sort();
         spec.sort();
         assert_eq!(table, spec);

@@ -10,6 +10,9 @@ mod lexer;
 mod llvm;
 mod lower;
 mod parser;
+// Used by the checker passes that follow; nothing calls it yet.
+#[allow(dead_code)]
+mod resolve;
 #[cfg(test)]
 mod vectors;
 
