@@ -1102,6 +1102,7 @@ example dec_stops_at_zero {
 - What an example is for: An example names no target. What it covers is whatever it uses, found by the who-uses-what index later (line 279). Agent-written and human-owned labels arrive in M7.
 - Endless loops: Not a trap and not a status in M2. A run that never ends is stopped by whoever started it: the M3 sandbox, later M4-39. Known gap, accepted for now.
 - Stack and memory traps across modes: Kind is reported and status is 3 as for any trap, and stack also covers a value nested too deep to copy or compare (M2-05). Whether and where they happen is not compared between back ends: only an unbounded-recursion case is shared, compared on kind and status. The exact 10,001 and size-cap tests are the interpreter's own unit tests (M2-26), outside the conformance suite.
+- Changed in the final record: The full record is docs/decisions/M2-06.md. All five picks stand. It differs from the text above in these places: a failed comparison prints `left:` and `right:` on two lines; the call-chain line is the same in every back end, though still outside meaning; `stack` and `memory` traps print the first line only; an untyped hole is `cannot-infer` and an example not ending in a Bool is `type-mismatch`, so the only new codes are the `hole` note and `hole-in-build`; example names share the one name pool; the M1 case parse/example stays a reject.
 
 ### M2-06 · what this changes in TASKS.md
 

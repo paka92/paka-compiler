@@ -309,10 +309,12 @@ or merged during review. Ids with a letter were added during review.
 
 ### M2-06 · L5 · Decide traps, holes and what an example means
 
+- status: done
 - needs: M2-02, M2-03
 - flags: decision, owner
 - done when: Owner approves trap kinds and reports, interpreter limits, hole typing, and example statuses including unfinished, with samples. It also fixes which parts of a trap report are part of the program's meaning (kind, source position) and which trap wins when two are possible.
 - why this level: Defines failure and evidence for the whole language; every later back end must copy it.
+- note: Decided: the full record, with the trap report, the limits, the hole rules and the `paka examples` output byte for byte, is docs/decisions/M2-06.md.
 
 ### M2-07 · L2 · Extend the lexer to every token in the approved grammar
 
@@ -364,7 +366,7 @@ or merged during review. Ids with a letter were added during review.
 - flags: none
 - done when: Parser tests with hand-written trees pass; one broken definition gives an error with its offending text and leaves the others parsed.
 - why this level: Recursive descent with recovery per definition and helpful messages; details are easy to get wrong.
-- note: Follows docs/decisions/M2-02.md: the newline, comment and nesting rules of its sections 1.5 to 1.7, the grammar of section 2 and the codes of section 5. Follows docs/decisions/M2-03.md; the M1 lex cases it lists as no longer holding are deleted in a commit before the code that breaks them.
+- note: Follows docs/decisions/M2-02.md: the newline, comment and nesting rules of its sections 1.5 to 1.7, the grammar of section 2 and the codes of section 5. Follows docs/decisions/M2-03.md; the M1 lex cases it lists as no longer holding are deleted in a commit before the code that breaks them. Follows docs/decisions/M2-06.md for traps, holes and examples.
 
 ### M2-12 · L5 · Decide the one error-handling mechanism
 
@@ -408,7 +410,7 @@ or merged during review. Ids with a letter were added during review.
 - flags: none
 - done when: Parser tests with hand-written trees pass for every new form in the two decisions, including their error cases.
 - why this level: Telling generic brackets from comparison operators is a known parser trap; a mistake mis-parses silently.
-- note: Follows docs/decisions/M2-02.md: the newline, comment and nesting rules of its sections 1.5 to 1.7, the grammar of section 2 and the codes of section 5. Follows docs/decisions/M2-09.md: the interface hash covers every named type a signature reaches, and no app state may hold a function type.
+- note: Follows docs/decisions/M2-02.md: the newline, comment and nesting rules of its sections 1.5 to 1.7, the grammar of section 2 and the codes of section 5. Follows docs/decisions/M2-09.md: the interface hash covers every named type a signature reaches, and no app state may hold a function type. Follows docs/decisions/M2-06.md for traps, holes and examples.
 
 ### M2-18 · L4 · Write the language reference from the approved decisions, within 8,000 tokens
 
@@ -431,7 +433,7 @@ or merged during review. Ids with a letter were added during review.
 - flags: none
 - done when: Tests pass: missing variants are listed with a fix, a hole takes its expected type, example bodies follow the decision.
 - why this level: Exhaustiveness and expected-type holes are known techniques with easy-to-miss cases.
-- note: Follows docs/decisions/M2-02.md: the newline, comment and nesting rules of its sections 1.5 to 1.7, the grammar of section 2 and the codes of section 5.
+- note: Follows docs/decisions/M2-02.md: the newline, comment and nesting rules of its sections 1.5 to 1.7, the grammar of section 2 and the codes of section 5. Follows docs/decisions/M2-06.md for traps, holes and examples.
 
 ### M2-21 · L4 · Enforce copies, inout exclusivity and borrow rules in the checker
 
@@ -455,7 +457,7 @@ or merged during review. Ids with a letter were added during review.
 - flags: none
 - done when: Core types and a written rule per node are merged, including the app, message and effect-list forms; examples/light.paka lowers to it and still passes on both back ends.
 - why this level: Contract for every future back end; evaluation order and trap points must be explicit.
-- note: M1's native comparison keeps running only the M1 run group; conformance cases are interpreter-only until M4-40.
+- note: M1's native comparison keeps running only the M1 run group; conformance cases are interpreter-only until M4-40. Follows docs/decisions/M2-06.md for traps, holes and examples.
 
 ### M2-25 · L3 · Lower checked programs to the core form
 
@@ -477,6 +479,7 @@ or merged during review. Ids with a letter were added during review.
 - flags: none
 - done when: paka examples prints hand-written expected statuses: pass, fail, trapped, and unfinished when a hole is reached.
 - why this level: Clear rules from the decision; one module mapping results to statuses.
+- note: Follows docs/decisions/M2-06.md for traps, holes and examples.
 
 ### M2-28 · L2 · Extend the golden-file runner to check and example tests
 
@@ -512,6 +515,7 @@ or merged during review. Ids with a letter were added during review.
 - flags: none
 - done when: Tests accept the approved app forms and reject a wrong state, update signature, first message or unknown grant.
 - why this level: Clear rules from the app decision; one module.
+- note: Follows docs/decisions/M2-06.md for traps, holes and examples.
 
 ### M2-33 · L2 · Implement the built-in String functions and every other built-in that is not a collection or pool function
 
@@ -995,7 +999,7 @@ or merged during review. Ids with a letter were added during review.
 - flags: native-only
 - done when: M2-08's integer and non-NaN float vectors pass in dev mode; division and shifts are guarded explicitly; a test scans emitted dev code for a banned-operation list (self-trapping divide, trapping float-to-int, trap instructions) and fails on any hit.
 - why this level: Every checked operation needs an explicit compare and branch; no instruction may fault by itself.
-- note: Targets the code generator and the machine-code crate named in M4-05's approved specification; do not choose another.
+- note: Targets the code generator and the machine-code crate named in M4-05's approved specification; do not choose another. Follows docs/decisions/M2-06.md for traps, holes and examples.
 
 ### M4-27 · L3 · Emit calls through slots with status returns and a stack-limit check
 
@@ -1003,6 +1007,7 @@ or merged during review. Ids with a letter were added during review.
 - flags: native-only
 - done when: Tests: every trap kind the M4-26 subset can raise (overflow, division, shift, failed conversion) surfaces through nested calls with its kind and source position; unbounded recursion ends in a stack trap, not a crash.
 - why this level: Every call site must test the status; deep recursion must trap cleanly instead of overflowing the real stack.
+- note: Follows docs/decisions/M2-06.md for traps, holes and examples.
 
 ### M4-28 · L3 · Canonicalise NaN in compiled floating-point code
 
