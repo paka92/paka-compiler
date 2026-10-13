@@ -316,11 +316,12 @@ or merged during review. Ids with a letter were added during review.
 
 ### M2-07 · L2 · Extend the lexer to every token in the approved grammar
 
+- status: done
 - needs: M2-02, M2-03, M2-04
 - flags: none
 - done when: Lexer tests with hand-written token lists pass for every token kind and every lexical error.
 - why this level: Token list is given by the decisions; one module, well-known technique.
-- note: Follows docs/decisions/M2-03.md; the M1 lex cases it lists as no longer holding are deleted in a commit before the code that breaks them.
+- note: Follows docs/decisions/M2-03.md; the M1 lex cases it lists as no longer holding are deleted in a commit before the code that breaks them. Merged: the lexer gives every M2 token and lexical error; the M1 parser skips what it does not use until M2-11. `literal-out-of-range` is left to the checker.
 
 ### M2-08 · L3 · Implement Int, Float, Bool and String operations from the approved table
 
