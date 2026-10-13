@@ -2410,7 +2410,8 @@ mod tests {
 
     #[test]
     fn every_interface_word_is_refused_at_a_definition_start() {
-        let message = "Paka has no interfaces; write one function per type and pass it by name";
+        let message = "Paka has no interfaces; write one function per type and pass it by name: \
+            sort_by(&xs, before)";
         for word in ["interface", "trait", "protocol", "impl", "extension"] {
             let src = format!("{word} Shape {{ fn area(s: Shape) -> Float }}\n");
             fail(&src, (1, 1), "unexpected-token", message);
@@ -2644,6 +2645,44 @@ mod tests {
     }
 
     #[test]
+    fn every_start_of_a_value_after_two_question_marks_is_refused() {
+        unexpected("let v = x ?? !b", 13, HOLE);
+        unexpected("let v = x ?? D", 13, HOLE);
+        unexpected("let v = x ?? true", 13, HOLE);
+        unexpected("let v = x ?? 1.5", 13, HOLE);
+        unexpected("let v = x ?? if c { 1 } else { 2 }", 13, HOLE);
+        unexpected("let v = x ?? match y { A => 1 }", 13, HOLE);
+        unexpected("let v = x ?? ??h", 13, HOLE);
+    }
+
+    #[test]
+    fn the_refusal_of_two_question_marks_marks_both() {
+        let src = "fn f() {\n  x ?? 0\n}\n";
+        let d = parse("main.paka", src.as_bytes()).unwrap_err();
+        assert!(d.detailed(src.as_bytes()).contains("text: \"??\""));
+    }
+
+    #[test]
+    fn two_question_marks_before_a_call_an_item_or_a_minus_are_refused() {
+        unexpected("a??(x)", 4, HOLE);
+        unexpected("a??[0]", 4, HOLE);
+        unexpected("a?? - 1", 4, HOLE);
+        unexpected("a??-1", 4, HOLE);
+    }
+
+    #[test]
+    fn two_question_marks_before_an_operator_a_field_or_in_brackets_are_accepted() {
+        let twice = |col| e(col, 3, ExprKind::Try(bx(tried(col, 2, var(col, "a")))));
+        expr("a?? + 1", bin(3, 7, BinOp::Add, twice(3), int(9, "1")).kind);
+        expr("a??.x", ExprKind::Field(bx(twice(3)), nm("x", 2, 7)));
+        let grouped = e(3, 5, ExprKind::Try(bx(tried(4, 2, var(4, "a")))));
+        expr(
+            "(a??)(x)",
+            ExprKind::Call(bx(grouped), vec![arg(var(9, "x"))]),
+        );
+    }
+
+    #[test]
     fn constructors_are_names_and_calls() {
         let option = generic("Option", 2, 10, vec![ty("Int", 2, 17)]);
         stmt(
@@ -2765,7 +2804,7 @@ mod tests {
     }
 
     #[test]
-    fn the_samples_of_the_two_decisions_parse() {
+    fn the_two_decision_samples_define_these_names() {
         let src = r#"enum Msg { Start(path: String), Loaded(text: String), Failed(why: String) }
 
 type Job { done: fn(Int) -> Msg }
