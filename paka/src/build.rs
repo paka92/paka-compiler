@@ -4,9 +4,11 @@
 use crate::diagnostic::Diagnostic;
 use crate::llvm;
 use crate::lower::Core;
+use std::env;
+use std::fs::{self, File};
+use std::io::{self, Write};
 use std::path::Path;
-use std::process::Command;
-use std::{env, fs, io};
+use std::process::{Command, Stdio};
 
 const RUNTIME: &str = "libpaka_rt.a";
 const SYSTEM_LIBS: [&str; 7] = [
@@ -32,10 +34,20 @@ pub fn build(path: &str, core: &Core, output: &str) -> Result<(), Diagnostic> {
                 format!("no {RUNTIME} next to paka"),
             )
         })?;
-    let ir = format!("{output}.{}.ll", std::process::id());
-    let result = fs::write(&ir, llvm::emit(core))
-        .map_err(|e| Diagnostic::tool(path, "clang-failed", format!("cannot write {ir}: {e}")))
-        .and_then(|()| link(path, Path::new(&ir), &runtime, output));
+    let ir = Path::new(".").join(format!("{output}.{}.ll", std::process::id()));
+    let write_failed = |e: io::Error| {
+        Diagnostic::tool(
+            path,
+            "clang-failed",
+            format!("cannot write {}: {e}", ir.display()),
+        )
+    };
+    // Only a file created here is removed; one that already had the name is never touched.
+    let mut file = File::create_new(&ir).map_err(write_failed)?;
+    let result = file
+        .write_all(llvm::emit(core).as_bytes())
+        .map_err(write_failed)
+        .and_then(|()| link(path, &ir, &runtime, output));
     let _ = fs::remove_file(&ir);
     result
 }
@@ -46,8 +58,10 @@ fn link(path: &str, ir: &Path, runtime: &Path, output: &str) -> Result<(), Diagn
         .args([ir, runtime])
         .args(SYSTEM_LIBS)
         .args(["-o", output])
-        .output()
-        .map(|out| out.status);
+        .stdin(Stdio::null())
+        .stdout(Stdio::null())
+        .stderr(Stdio::null())
+        .status();
     match status {
         Ok(status) if status.success() => Ok(()),
         Ok(status) => Err(Diagnostic::tool(
