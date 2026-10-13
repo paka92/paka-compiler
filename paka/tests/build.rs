@@ -3,7 +3,9 @@
 mod common;
 
 use common::{LIGHT, PAKA, Scratch, build_native, build_runtime};
+use std::ffi::OsStr;
 use std::fs;
+use std::os::unix::ffi::OsStrExt;
 use std::path::Path;
 use std::process::{Command, Output};
 
@@ -233,4 +235,38 @@ fn existing_temporary_name_is_never_written_through_or_removed() {
             .unwrap()
             .is_symlink()
     );
+}
+
+/// A path need not be UTF-8: it is opened as given and printed byte for byte.
+#[test]
+fn file_names_need_not_be_utf8() {
+    let dir = Scratch::new("bytes");
+    let source = dir.path("").join(OsStr::from_bytes(b"l\xFFght.paka"));
+    fs::copy(LIGHT, &source).unwrap();
+    let run = Command::new(PAKA).arg("run").arg(&source).output().unwrap();
+    assert_eq!(run.status.code(), Some(0), "{run:?}");
+    assert_eq!(run.stdout, b"let there be light\n");
+
+    let output = dir.path("").join(OsStr::from_bytes(b"\xFFout"));
+    build_runtime();
+    let args = [source.as_os_str(), OsStr::new("-o"), output.as_os_str()];
+    let build = Command::new(PAKA).arg("build").args(args).output().unwrap();
+    assert_eq!(build.status.code(), Some(0), "{build:?}");
+    assert_eq!(Command::new(&output).output().unwrap().stdout, run.stdout);
+
+    let missing = OsStr::from_bytes(b"no/such/\xFF.paka");
+    let out = Command::new(PAKA).arg("run").arg(missing).output().unwrap();
+    assert_eq!(out.status.code(), Some(1));
+    let mut prefix = missing.as_bytes().to_vec();
+    prefix.extend(b": error[file-unreadable]: ");
+    assert!(out.stderr.starts_with(&prefix), "{out:?}");
+}
+
+/// A line feed in the output path does not reach the message: the diagnostic stays one line.
+#[test]
+fn line_feed_in_output_path_keeps_one_line() {
+    let dir = Scratch::new("linefeed");
+    let out = build_native(LIGHT, &dir.path("no/such\ndir/out"));
+    assert_tool_error(&out, LIGHT, "clang-failed");
+    assert_eq!(out.stderr.iter().filter(|&&b| b == b'\n').count(), 1);
 }
