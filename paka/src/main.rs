@@ -1,5 +1,7 @@
 #[allow(dead_code)] // the checker (M1-10) reads the tree
 mod ast;
+#[allow(dead_code)] // the checker is wired into main by the next commit
+mod check;
 mod diagnostic;
 mod lexer;
 mod parser;
