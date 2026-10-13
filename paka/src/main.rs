@@ -1,13 +1,10 @@
 #[allow(dead_code)] // the checker (M1-10) reads the tree
 mod ast;
 mod diagnostic;
-#[allow(dead_code)] // the parser (M1-09) reads the token fields
 mod lexer;
-#[allow(dead_code)] // `paka run` calls the parser in the next commit
 mod parser;
 
 use diagnostic::Diagnostic;
-use lexer::{Kind, Lexer};
 use std::io::Write;
 use std::process::ExitCode;
 use std::{env, fs, io};
@@ -22,8 +19,8 @@ fn main() -> ExitCode {
         _ => return report(USAGE, 2),
     };
     match fs::read(file) {
-        Ok(source) => match lex_all(file, &source) {
-            Ok(()) => ExitCode::SUCCESS,
+        Ok(source) => match parser::parse(file, &source) {
+            Ok(_) => ExitCode::SUCCESS,
             Err(d) => report(&format!("{d}\n"), 1),
         },
         Err(e) => {
@@ -36,14 +33,6 @@ fn main() -> ExitCode {
             report(&format!("{d}\n"), 1)
         }
     }
-}
-
-/// Stand-in until the parser (M1-09) pulls the tokens: a lexical error is the first problem
-/// only when no syntax error comes before it.
-fn lex_all(path: &str, source: &[u8]) -> Result<(), Diagnostic> {
-    let mut lexer = Lexer::new(path, source);
-    while lexer.next()?.kind != Kind::End {}
-    Ok(())
 }
 
 /// Writes to standard error; a failed write is ignored.
