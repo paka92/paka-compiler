@@ -1,3 +1,5 @@
+#![deny(clippy::float_arithmetic)]
+
 mod ast;
 mod build;
 mod check;
@@ -8,6 +10,8 @@ mod lexer;
 mod llvm;
 mod lower;
 mod parser;
+#[cfg(test)]
+mod vectors;
 
 use diagnostic::Diagnostic;
 use lower::Core;
