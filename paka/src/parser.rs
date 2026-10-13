@@ -178,7 +178,9 @@ impl<'a> Parser<'a> {
     }
 
     /// An argument is an expression; a LOWER followed by `:` is a label. Only the token after
-    /// the LOWER is looked at: a lexical error there only means it is not `:`.
+    /// the LOWER is looked at: a lexical error there only means it is not `:`. The lookahead
+    /// token is dropped without updating `cur`, which is sound only because both paths return
+    /// an error.
     fn arg(&mut self) -> Parse<Expr<'a>> {
         if self.cur.kind != Kind::Lower {
             return self.expr();
@@ -209,20 +211,25 @@ impl<'a> Parser<'a> {
         if key.kind != Kind::Lower {
             return Err(self.unexpected("an app entry"));
         }
-        if !matches!(key.text, b"start" | b"update" | b"grants") {
-            return Err(self.error(
-                "unsupported-app-entry",
-                format!("the app entry `{}` is not supported", text(key)),
-            ));
-        }
+        let value: fn(&mut Self, Pos) -> Parse<Entry<'a>> = match key.text {
+            b"start" => |p, at| Ok(Entry::Start(at, p.name(Kind::Upper, "a variant name")?)),
+            b"update" => |p, at| Ok(Entry::Update(at, p.name(Kind::Lower, "a function name")?)),
+            b"grants" => |p, at| {
+                Ok(Entry::Grants(
+                    at,
+                    p.bracketed(|p| p.name(Kind::Upper, "a grant"))?,
+                ))
+            },
+            _ => {
+                return Err(self.error(
+                    "unsupported-app-entry",
+                    format!("the app entry `{}` is not supported", text(key)),
+                ));
+            }
+        };
         self.advance()?;
         self.eat(Kind::Colon, "`:`")?;
-        let at = pos(key);
-        Ok(match key.text {
-            b"start" => Entry::Start(at, self.name(Kind::Upper, "a variant name")?),
-            b"update" => Entry::Update(at, self.name(Kind::Lower, "a function name")?),
-            _ => Entry::Grants(at, self.bracketed(|p| p.name(Kind::Upper, "a grant"))?),
-        })
+        value(self, pos(key))
     }
 }
 
