@@ -1,0 +1,23 @@
+name: ci
+
+on:
+  pull_request:
+    branches: [development, main]
+
+jobs:
+  ci:
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v4
+      - name: Install clang 21
+        run: |
+          curl -fsSL https://apt.llvm.org/llvm-snapshot.gpg.key | sudo tee /etc/apt/keyrings/apt.llvm.org.asc >/dev/null
+          echo "deb [signed-by=/etc/apt/keyrings/apt.llvm.org.asc] https://apt.llvm.org/noble/ llvm-toolchain-noble-21 main" | sudo tee /etc/apt/sources.list.d/llvm-21.list
+          sudo apt-get update
+          sudo apt-get install -y clang-21
+          sudo ln -sf /usr/bin/clang-21 /usr/local/bin/clang
+          clang --version
+      - run: cargo build --release --locked --offline
+      - run: cargo test --release --locked --offline
+      - run: cargo clippy --locked --offline --all-targets -- -D warnings
+      - run: cargo fmt --check
