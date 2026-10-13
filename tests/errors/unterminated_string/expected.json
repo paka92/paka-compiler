@@ -1,0 +1,1 @@
+{"kind":"unterminated-string","definition":null,"message":"the string has no closing quote","file":"main.paka","start":70,"end":97,"line":4,"column":10,"text":"\"let there be light), Exit]","expected":null,"found":null,"fix":null}

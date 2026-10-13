@@ -1,0 +1,5 @@
+main.paka:10:12: error[unknown-grant]: `Camera` is not a grant
+  definition: light
+  bytes: 158..164
+  text: "Camera"
+  fix: replace 158..164 with "Console"

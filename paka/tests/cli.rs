@@ -2,7 +2,7 @@ use std::fs::File;
 use std::io::pipe;
 use std::process::{Command, Output, Stdio};
 
-const USAGE: &str = "usage: paka run <file>\n       paka build <file> -o <output>\n";
+const USAGE: &str = "usage: paka run <file>\n       paka build <file> -o <output>\n       paka check <file> [--json]\n";
 
 fn paka(args: &[&str]) -> Output {
     Command::new(env!("CARGO_BIN_EXE_paka"))
@@ -28,6 +28,7 @@ fn bad_arguments_print_usage_and_exit_2() {
     assert_usage(&["build", "a.paka", "out", "-o"]);
     assert_usage(&["build", "a.paka", "-o", "out", "extra"]);
     assert_usage(&["fmt", "a.paka"]);
+    assert_usage(&["check", "a.paka", "b.paka"]);
 }
 
 fn assert_unreadable(args: &[&str], path: &str) {
