@@ -87,6 +87,8 @@ Circle(1.5)                // variant fields by position; a variant without fiel
 
 - Variants are written bare, never `Shape.Dot`, and a variant name is unique in the whole program.
   An enum has at least one variant; variant fields have no defaults.
+- A default is a literal, `[]`, `[:]`, or a variant with constant arguments; anything else is
+  `unexpected-token`.
 - In the header of `if`, `while`, `for` and `match`, write a record in brackets: `(Counter {})`.
 - A type may hold itself only where a finite value exists: through `Option<T>`, a `List`, or an
   enum with another variant (`enum Expr { Num(value: Int), Add(left: Expr, right: Expr) }`).
