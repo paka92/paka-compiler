@@ -1,3 +1,23 @@
+use std::fmt;
+
+/// One reported problem. `position` is (line, column); tool errors have none.
+pub struct Diagnostic {
+    pub path: String,
+    pub position: Option<(usize, usize)>,
+    pub code: &'static str,
+    pub message: String,
+}
+
+impl fmt::Display for Diagnostic {
+    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
+        write!(f, "{}", self.path)?;
+        if let Some((line, col)) = self.position {
+            write!(f, ":{line}:{col}")?;
+        }
+        write!(f, ": error[{}]: {}", self.code, self.message)
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
