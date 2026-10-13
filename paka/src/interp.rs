@@ -1,11 +1,49 @@
 //! The reference interpreter: performs the effects `update` returns (spec/m1.md section 9).
 
-use crate::lower::Core;
-use std::io::Write;
+use crate::lower::{Core, Effect, Grant};
+use std::io::{self, ErrorKind, Write};
 
 /// Runs the program; returns its status.
-pub fn run(_core: &Core, _out: &mut impl Write, _err: &mut impl Write) -> u8 {
-    4
+pub fn run(core: &Core, out: &mut impl Write, err: &mut impl Write) -> u8 {
+    match stop(core, out) {
+        None => 0,
+        Some(reason) => {
+            let _ = err.write_all(format!("{}: {reason}\n", core.app).as_bytes());
+            3
+        }
+    }
+}
+
+/// Performs the effects in order; the reason the program stopped, or `None` after `Exit`.
+fn stop(core: &Core, out: &mut impl Write) -> Option<String> {
+    for effect in &core.update {
+        match effect {
+            Effect::Exit => return None,
+            Effect::Print(_) if !core.grants.contains(&Grant::Console) => {
+                return Some("effect Print refused: grant Console is missing".into());
+            }
+            Effect::Print(text) => {
+                if let Err(e) = print(out, text) {
+                    return Some(format!("effect Print failed: {}", reason(&e)));
+                }
+            }
+        }
+    }
+    Some("ended without Exit".into())
+}
+
+/// The text and its line feed in one buffer, then a flush.
+fn print(out: &mut impl Write, text: &str) -> io::Result<()> {
+    out.write_all(format!("{text}\n").as_bytes())?;
+    out.flush()
+}
+
+fn reason(e: &io::Error) -> &'static str {
+    match e.kind() {
+        ErrorKind::StorageFull => "no space left on device",
+        ErrorKind::BrokenPipe => "broken pipe",
+        _ => "write error",
+    }
 }
 
 #[cfg(test)]

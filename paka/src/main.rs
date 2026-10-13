@@ -1,10 +1,8 @@
 mod ast;
 mod check;
 mod diagnostic;
-#[allow(dead_code)] // wired into `paka run` in the next commit
 mod interp;
 mod lexer;
-#[allow(dead_code)] // read by the interpreter (M1-13)
 mod lower;
 mod parser;
 
@@ -25,6 +23,11 @@ fn main() -> ExitCode {
     };
     match fs::read(file) {
         Ok(source) => match front_end(file, &source) {
+            Ok(core) if args[0] == "run" => ExitCode::from(interp::run(
+                &core,
+                &mut io::stdout().lock(),
+                &mut io::stderr(),
+            )),
             Ok(_) => ExitCode::SUCCESS,
             Err(d) => report(&format!("{d}\n"), 1),
         },
