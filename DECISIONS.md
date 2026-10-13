@@ -983,6 +983,7 @@ fn eval(e: Expr) -> Int {
 - Accept and reject lines: one call: With user functions that take the marked arguments inout: swap_lists(&p.left, &p.left) and grow(&xs, xs[0..<2]) are rejected; swap_lists(&p.left, &p.right), append(&xs, len(xs)) and push(&st, pop(&st) + pop(&st)) are accepted.
 - Accept and reject lines: the order rule: merge(xs, take(&xs)) is rejected: xs is read and then changed before merge starts. let old = xs followed by merge(old, take(&xs)) is accepted.
 - Accept and reject lines: types that hold themselves: type Node { next: Node } and enum Chain { Link(next: Chain) } are rejected: no finite value. type Node { kids: List<Node> = [] } and enum Chain { End, Link(next: Chain) } are accepted.
+- Changed in the final record: The full record is docs/decisions/M2-05.md. All six picks stand. It is stricter than the text above in two places: an assignment inside a sibling `if` or `match` value counts as a write for the call rule, and the call rule also covers operators, list and map literals, record builds and interpolation parts. `&` is allowed only as a whole call argument. String is not exempt from the call rule and a `for` takes no snapshot; both can be loosened later without breaking a program.
 
 ### M2-05 · what this changes in TASKS.md
 

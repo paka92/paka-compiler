@@ -300,10 +300,12 @@ or merged during review. Ids with a letter were added during review.
 
 ### M2-05 · L5 · Decide ownership: copies, inout exclusivity, borrows, recursive types, changing items in place
 
+- status: done
 - needs: M2-02
 - flags: decision, owner
 - done when: Owner approves a proposal with alternatives, the exact overlap rule, and accept and reject samples for every rule.
 - why this level: Heart of pillar 2; the rule must be checkable at one call and is hard to loosen later.
+- note: Decided: the full record, with the overlap test, the call rule, the grammar piece and the diagnostic codes, is docs/decisions/M2-05.md.
 
 ### M2-06 · L5 · Decide traps, holes and what an example means
 
@@ -393,6 +395,7 @@ or merged during review. Ids with a letter were added during review.
 - flags: none
 - done when: Tests pass: each definition kind's signature is accepted or rejected with expected and found types; built-ins come from one table.
 - why this level: Base for per-definition checking; recursive types and default values hide easy-to-miss cases.
+- note: Follows docs/decisions/M2-05.md, including its two tightened call rules.
 
 ### M2-17 · L4 · Parse generics, function values and error-handling forms
 
@@ -431,6 +434,7 @@ or merged during review. Ids with a letter were added during review.
 - flags: none
 - done when: Every accept and reject sample from the ownership decision passes, plus own edge tests; rejections carry a fix where the error kind declares one (M2-04).
 - why this level: Overlap analysis on paths; a missed case is a silent hole release mode will trust.
+- note: Follows docs/decisions/M2-05.md, including its two tightened call rules.
 
 ### M2-22 · L4 · Check generics and interfaces from signatures alone
 
@@ -571,7 +575,7 @@ or merged during review. Ids with a letter were added during review.
 - flags: none
 - done when: Expected results merged before any run, written without access to a built paka; every decision point in scope has a case.
 - why this level: The accept and reject boundary is subtle; a wrong expectation silently blesses a wrong rule.
-- note: The caller runs this agent with no paka binary and no way to build one (no cargo, or a checkout holding only the reference, the decision records and the tests folder); the agent must not build or run paka; the cases land in a not-yet-required list. M2-41b runs them. M2-01 put graphs in by list index and pools are not built: the pool part is dropped, shared data is covered with a tree sample only, and pools are recorded as not decided.
+- note: The caller runs this agent with no paka binary and no way to build one (no cargo, or a checkout holding only the reference, the decision records and the tests folder); the agent must not build or run paka; the cases land in a not-yet-required list. M2-41b runs them. M2-01 put graphs in by list index and pools are not built: the pool part is dropped, shared data is covered with a tree sample only, and pools are recorded as not decided. Follows docs/decisions/M2-05.md, including its two tightened call rules.
 
 ### M2-41 · L3 · Write conformance tests for apps, effects, grants, traps, examples and holes
 
@@ -1687,6 +1691,7 @@ or merged during review. Ids with a letter were added during review.
 - flags: native-only
 - done when: Hand-written accept and refuse cases pass; the interpreter's run-time overlap detector finds no overlap in accepted calls across one million generated programs. The report counts accepted calls that pass an inout argument together with another argument drawn from the same value (field, list item, slice, pool node), at least 100,000 in total (the owner may change the number); with one overlap rule of the checker switched off in a test build, the same run flags an overlap.
 - why this level: Must find holes in a rule that later becomes an optimizer promise; misses are silent.
+- note: Follows docs/decisions/M2-05.md, including its two tightened call rules.
 
 ### M6-22a · L4 · Add a run-time inout overlap detector to the interpreter
 
