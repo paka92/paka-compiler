@@ -5,6 +5,7 @@ use crate::diagnostic::Diagnostic;
 use crate::llvm;
 use crate::lower::Core;
 use std::env;
+use std::ffi::OsStr;
 use std::fs::{self, File};
 use std::io::{self, Write};
 use std::path::Path;
@@ -22,7 +23,7 @@ const SYSTEM_LIBS: [&str; 7] = [
 ];
 
 /// Writes the executable for `core` to `output`; `path` is the source path for diagnostics.
-pub fn build(path: &str, core: &Core, output: &str) -> Result<(), Diagnostic> {
+pub fn build(path: &str, core: &Core, output: &OsStr) -> Result<(), Diagnostic> {
     let runtime = env::current_exe()
         .map(|exe| exe.with_file_name(RUNTIME))
         .ok()
@@ -34,12 +35,15 @@ pub fn build(path: &str, core: &Core, output: &str) -> Result<(), Diagnostic> {
                 format!("no {RUNTIME} next to paka"),
             )
         })?;
-    let ir = Path::new(".").join(format!("{output}.{}.ll", std::process::id()));
+    let mut ir = output.to_os_string();
+    ir.push(format!(".{}.ll", std::process::id()));
+    let ir = Path::new(".").join(ir);
     let write_failed = |e: io::Error| {
         Diagnostic::tool(
             path,
             "clang-failed",
-            format!("cannot write {}: {e}", ir.display()),
+            // Debug form: a line feed in the path is escaped.
+            format!("cannot write {ir:?}: {e}"),
         )
     };
     // Only a file created here is removed; one that already had the name is never touched.
@@ -52,12 +56,13 @@ pub fn build(path: &str, core: &Core, output: &str) -> Result<(), Diagnostic> {
     result
 }
 
-fn link(path: &str, ir: &Path, runtime: &Path, output: &str) -> Result<(), Diagnostic> {
+fn link(path: &str, ir: &Path, runtime: &Path, output: &OsStr) -> Result<(), Diagnostic> {
     let status = Command::new("clang")
         .arg("-O2")
         .args([ir, runtime])
         .args(SYSTEM_LIBS)
-        .args(["-o", output])
+        .arg("-o")
+        .arg(output)
         .stdin(Stdio::null())
         .stdout(Stdio::null())
         .stderr(Stdio::null())

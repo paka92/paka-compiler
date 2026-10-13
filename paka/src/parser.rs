@@ -8,6 +8,9 @@ use crate::lexer::{Kind, Lexer, Token};
 
 type Parse<T> = Result<T, Diagnostic>;
 
+/// Most brackets open at once: `(`, `[`, a type's `<` and a function body's `{`.
+const NESTING: usize = 64;
+
 pub fn parse<'a>(path: &'a str, src: &'a [u8]) -> Parse<Program<'a>> {
     let mut lexer = Lexer::new(path, src);
     let cur = lexer.next()?;
@@ -16,6 +19,7 @@ pub fn parse<'a>(path: &'a str, src: &'a [u8]) -> Parse<Program<'a>> {
         lexer,
         cur,
         prev_end: 0,
+        depth: 0,
     }
     .program()
 }
@@ -34,6 +38,8 @@ struct Parser<'a> {
     cur: Token<'a>,
     /// Byte offset just after the last token taken.
     prev_end: usize,
+    /// Brackets open at the current token.
+    depth: usize,
 }
 
 impl<'a> Parser<'a> {
@@ -74,6 +80,25 @@ impl<'a> Parser<'a> {
         self.error(code, format!("`{}` is not supported", text(self.cur)))
     }
 
+    /// Takes an opening bracket; one more than `NESTING` open at once is an error at that bracket.
+    fn open(&mut self, kind: Kind, what: &str) -> Parse<()> {
+        if self.cur.kind == kind && self.depth == NESTING {
+            let message = format!(
+                "nesting deeper than {NESTING} levels; move the inner part into a named function"
+            );
+            return Err(self.error("nesting-too-deep", message));
+        }
+        self.eat(kind, what)?;
+        self.depth += 1;
+        Ok(())
+    }
+
+    fn close(&mut self, kind: Kind, what: &str) -> Parse<()> {
+        self.eat(kind, what)?;
+        self.depth -= 1;
+        Ok(())
+    }
+
     /// `item { "," item }`
     fn comma_list<T>(&mut self, mut item: impl FnMut(&mut Self) -> Parse<T>) -> Parse<Vec<T>> {
         let mut items = vec![item(self)?];
@@ -86,12 +111,12 @@ impl<'a> Parser<'a> {
 
     /// `"[" [ item { "," item } ] "]"`
     fn bracketed<T>(&mut self, item: impl FnMut(&mut Self) -> Parse<T>) -> Parse<Vec<T>> {
-        self.eat(Kind::LBracket, "`[`")?;
+        self.open(Kind::LBracket, "`[`")?;
         let items = match self.cur.kind {
             Kind::RBracket => vec![],
             _ => self.comma_list(item)?,
         };
-        self.eat(Kind::RBracket, "`]` or `,`")?;
+        self.close(Kind::RBracket, "`]` or `,`")?;
         Ok(items)
     }
 
@@ -127,9 +152,9 @@ impl<'a> Parser<'a> {
         self.eat(Kind::RParen, "`)`")?;
         self.eat(Kind::Arrow, "`->`")?;
         let result = self.ty()?;
-        self.eat(Kind::LBrace, "`{`")?;
+        self.open(Kind::LBrace, "`{`")?;
         let body = self.expr()?;
-        self.eat(Kind::RBrace, "`}`")?;
+        self.close(Kind::RBrace, "`}`")?;
         Ok(Def::Fn {
             name,
             param,
@@ -143,9 +168,9 @@ impl<'a> Parser<'a> {
         let name = self.name(Kind::Upper, "a type name")?;
         let mut arg = None;
         if self.cur.kind == Kind::Lt {
-            self.advance()?;
+            self.open(Kind::Lt, "`<`")?;
             arg = Some(Box::new(self.ty()?));
-            self.eat(Kind::Gt, "`>`")?;
+            self.close(Kind::Gt, "`>`")?;
         }
         Ok(Type { name, arg })
     }
@@ -176,9 +201,9 @@ impl<'a> Parser<'a> {
         if self.cur.kind != Kind::LParen {
             return Ok(vec![]);
         }
-        self.advance()?;
+        self.open(Kind::LParen, "`(`")?;
         let args = self.comma_list(Self::arg)?;
-        self.eat(Kind::RParen, "`)` or `,`")?;
+        self.close(Kind::RParen, "`)` or `,`")?;
         Ok(args)
     }
 
