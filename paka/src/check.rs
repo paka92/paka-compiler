@@ -8,7 +8,6 @@ use std::collections::BTreeMap;
 type Check<T> = Result<T, Diagnostic>;
 
 /// A program that passed, reduced to what running it needs.
-#[allow(dead_code)] // the lowering (M1-12) reads it
 #[derive(Debug)]
 pub struct Checked<'a> {
     pub app: &'a str,

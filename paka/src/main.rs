@@ -7,6 +7,7 @@ mod lower;
 mod parser;
 
 use diagnostic::Diagnostic;
+use lower::Core;
 use std::io::Write;
 use std::process::ExitCode;
 use std::{env, fs, io};
@@ -37,8 +38,10 @@ fn main() -> ExitCode {
     }
 }
 
-fn front_end(path: &str, source: &[u8]) -> Result<(), Diagnostic> {
-    check::check(path, &parser::parse(path, source)?).map(drop)
+fn front_end(path: &str, source: &[u8]) -> Result<Core, Diagnostic> {
+    let program = parser::parse(path, source)?;
+    let checked = check::check(path, &program)?;
+    Ok(lower::lower(&program, &checked))
 }
 
 /// Writes to standard error; a failed write is ignored.

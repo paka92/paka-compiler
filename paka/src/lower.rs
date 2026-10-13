@@ -27,13 +27,52 @@ pub enum Effect {
     Exit,
 }
 
+/// Runs on a checked program, where every lookup below succeeds.
 pub fn lower(program: &Program, checked: &Checked) -> Core {
+    let (variants, start) = message_enum(program, checked.start);
     Core {
-        app: String::new(),
-        variants: vec![],
-        start: 0,
-        grants: vec![],
-        update: vec![],
+        app: checked.app.into(),
+        variants,
+        start,
+        grants: checked.grants.iter().filter_map(|g| grant(g)).collect(),
+        update: effects(checked.update),
+    }
+}
+
+/// The variants of the enum that holds `start`, and the position of `start` among them.
+fn message_enum(program: &Program, start: &str) -> (Vec<String>, usize) {
+    program
+        .defs
+        .iter()
+        .find_map(|def| match def {
+            Def::Enum { variants, .. } => {
+                let at = variants.iter().position(|v| v.text == start)?;
+                Some((variants.iter().map(|v| v.text.into()).collect(), at))
+            }
+            _ => None,
+        })
+        .unwrap_or_default()
+}
+
+fn grant(name: &str) -> Option<Grant> {
+    (name == "Console").then_some(Grant::Console)
+}
+
+fn effects(body: &Expr) -> Vec<Effect> {
+    match &body.kind {
+        ExprKind::List(items) => items.iter().filter_map(effect).collect(),
+        _ => vec![],
+    }
+}
+
+fn effect(e: &Expr) -> Option<Effect> {
+    match &e.kind {
+        ExprKind::Apply("Print", args) => match args.first()?.kind {
+            ExprKind::Str(text) => Some(Effect::Print(text.into())),
+            _ => None,
+        },
+        ExprKind::Apply("Exit", _) => Some(Effect::Exit),
+        _ => None,
     }
 }
 
