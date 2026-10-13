@@ -339,46 +339,76 @@ impl<'a> Checker<'a> {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::ast::{Expr, ExprKind};
+    use crate::ast::{Node, StrPart};
     use crate::parser::parse;
+
+    const LIGHT: &str = include_str!("../../examples/light.paka");
 
     fn checked<'a>(program: &'a Program<'a>) -> Check<Checked<'a>> {
         check("main.paka", program)
     }
 
-    fn expr(at: (usize, usize), len: usize, kind: ExprKind) -> Expr {
-        Expr { at, len, kind }
+    fn node(at: Pos, len: usize, kind: ExprKind) -> Expr {
+        Node { at, len, kind }
     }
 
     #[test]
     fn light_paka_checks() {
-        let path = concat!(env!("CARGO_MANIFEST_DIR"), "/../examples/light.paka");
-        let src = std::fs::read(path).unwrap();
-        let program = parse("main.paka", &src).unwrap();
+        let program = parse("main.paka", LIGHT.as_bytes()).unwrap();
         let light = checked(&program).unwrap();
         assert_eq!(light.app, "light");
         assert_eq!(light.start, "Start");
         assert_eq!(light.grants, ["Console"]);
-        let print = expr(
-            (4, 4),
-            27,
-            ExprKind::Apply(
-                "Print",
-                vec![expr((4, 10), 20, ExprKind::Str("let there be light"))],
-            ),
-        );
-        let exit = expr((4, 33), 4, ExprKind::Apply("Exit", vec![]));
-        let body = expr((4, 3), 35, ExprKind::List(vec![print, exit]));
+        let text = StrPart::Text("let there be light".into());
+        let arg = Arg {
+            label: None,
+            value: node((4, 10), 20, ExprKind::Str(vec![text])),
+        };
+        let print = node((4, 4), 5, ExprKind::Name("Print"));
+        let print = node((4, 4), 27, ExprKind::Call(Box::new(print), vec![arg]));
+        let exit = node((4, 33), 4, ExprKind::Name("Exit"));
+        let body = node((4, 3), 35, ExprKind::List(vec![print, exit]));
         assert_eq!(light.update, &body);
     }
 
     #[test]
     fn definitions_and_entries_may_come_in_any_order() {
-        let src = "app light { grants: [] update: update start: Go }
+        let src = "app light {
+              grants: []
+              update: update
+              start: Go
+            }
             fn update(m: Msg) -> List<Effect<Msg>> { [] }
             enum Msg { Stop, Go }";
         let program = parse("main.paka", src.as_bytes()).unwrap();
         let light = checked(&program).unwrap();
         assert_eq!((light.start, light.grants), ("Go", vec![]));
+    }
+
+    #[test]
+    fn forms_of_later_milestones_are_reported_at_their_text() {
+        let cases = [
+            (
+                "enum Msg { Start }",
+                "type Pt {}\nenum Msg { Start }",
+                (1, 6),
+            ),
+            ("{ Start }", "{ Start(n: Int) }", (1, 12)),
+            ("m: Msg)", "m: Msg, n: Msg)", (3, 4)),
+            ("be light", "be {m}", (4, 10)),
+            ("Print(", "Print(text: ", (4, 10)),
+            ("  start:", "  state: Msg\n  start:", (8, 3)),
+            ("Start\n", "Start()\n", (8, 11)),
+        ];
+        for (from, to, position) in cases {
+            let src = LIGHT.replacen(from, to, 1);
+            let program = parse("main.paka", src.as_bytes()).unwrap();
+            let d = checked(&program).unwrap_err();
+            assert_eq!(
+                (d.code, d.position),
+                ("unsupported-form", Some(position)),
+                "{to}"
+            );
+        }
     }
 }

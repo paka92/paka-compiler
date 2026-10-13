@@ -233,7 +233,7 @@ mod tests {
     fn table_lists_exactly_the_spec_codes() {
         let mut table: Vec<_> = KINDS.iter().map(|k| k.0.to_string()).collect();
         let mut spec = spec_codes();
-        assert_eq!(spec.len(), 32);
+        assert_eq!(spec.len(), 29);
         table.sort();
         spec.sort();
         assert_eq!(table, spec);
