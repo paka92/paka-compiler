@@ -1,0 +1,737 @@
+# Hand-written vectors for the operations of docs/decisions/M2-03.md section 2.
+# Expectations come from that record, never from running a back end.
+#
+# One vector per line:   operation | inputs | expected
+# Inputs are separated by spaces; `#` starts a comment line. A string never holds `|`.
+#
+# Values
+#   Int     decimal, or MIN / MAX for the ends of the range
+#   Float   0x and 16 hex digits (the exact bits), or decimal with a point (read as the nearest
+#           Float), or inf, -inf, nan
+#   Bool    true, false
+#   String  in double quotes; escapes \n \t \" \\ and \u{hex} (any scalar value)
+# Expected
+#   a value, `none`, `some` and a value, or `trap` and a name: overflow, divide_by_zero,
+#   out_of_bounds, bad_conversion.
+# A Float result matches bit for bit, signed zero included; any NaN matches `nan`.
+
+# ---- Int: + - * and unary - (2.1)
+int.add | 1 2 | 3
+int.add | -5 3 | -2
+int.add | MAX 0 | MAX
+int.add | MAX MIN | -1
+int.add | MIN MAX | -1
+int.add | MAX 1 | trap overflow
+int.add | 1 MAX | trap overflow
+int.add | MIN -1 | trap overflow
+int.add | -1 MIN | trap overflow
+int.add | MIN 0 | MIN
+int.sub | 5 3 | 2
+int.sub | 3 5 | -2
+int.sub | MIN MIN | 0
+int.sub | MIN -1 | -9223372036854775807
+int.sub | -1 MIN | MAX
+int.sub | MIN 1 | trap overflow
+int.sub | MAX -1 | trap overflow
+int.sub | 0 MIN | trap overflow
+int.sub | -2 MAX | trap overflow
+int.mul | 6 7 | 42
+int.mul | -3 4 | -12
+int.mul | -3 -4 | 12
+int.mul | MAX 0 | 0
+int.mul | MAX 1 | MAX
+int.mul | MIN 1 | MIN
+int.mul | 3037000499 3037000499 | 9223372030926249001
+int.mul | 4294967296 -2147483648 | MIN
+int.mul | 3037000500 3037000500 | trap overflow
+int.mul | 4294967296 4294967296 | trap overflow
+int.mul | 4294967296 2147483648 | trap overflow
+int.mul | MIN -1 | trap overflow
+int.mul | -1 MIN | trap overflow
+int.mul | MAX 2 | trap overflow
+int.neg | 5 | -5
+int.neg | -5 | 5
+int.neg | 0 | 0
+int.neg | MAX | -9223372036854775807
+int.neg | -9223372036854775807 | MAX
+int.neg | MIN | trap overflow
+
+# ---- Int: / and % truncate toward zero, % takes the sign of the dividend (2.1)
+int.div | 6 3 | 2
+int.div | 7 2 | 3
+int.div | -7 2 | -3
+int.div | 7 -2 | -3
+int.div | -7 -2 | 3
+int.div | 1 2 | 0
+int.div | -1 2 | 0
+int.div | 0 5 | 0
+int.div | MIN 1 | MIN
+int.div | MIN 2 | -4611686018427387904
+int.div | MAX -1 | -9223372036854775807
+int.div | 1 0 | trap divide_by_zero
+int.div | 0 0 | trap divide_by_zero
+int.div | MIN 0 | trap divide_by_zero
+int.div | MIN -1 | trap overflow
+int.rem | 7 2 | 1
+int.rem | -7 2 | -1
+int.rem | 7 -2 | 1
+int.rem | -7 -2 | -1
+int.rem | 5 5 | 0
+int.rem | 0 -3 | 0
+int.rem | 1 2 | 1
+int.rem | MIN 2 | 0
+int.rem | MIN 3 | -2
+int.rem | MAX MIN | MAX
+int.rem | MIN -1 | 0
+int.rem | 7 0 | trap divide_by_zero
+int.rem | 0 0 | trap divide_by_zero
+int.rem | MIN 0 | trap divide_by_zero
+
+# ---- Int: abs, min, max, comparison (2.1)
+int.abs | -5 | 5
+int.abs | 5 | 5
+int.abs | 0 | 0
+int.abs | MAX | MAX
+int.abs | -9223372036854775807 | MAX
+int.abs | MIN | trap overflow
+int.min | 1 2 | 1
+int.min | 2 1 | 1
+int.min | -1 -2 | -2
+int.min | 3 3 | 3
+int.min | MIN MAX | MIN
+int.max | 1 2 | 2
+int.max | 2 1 | 2
+int.max | -1 -2 | -1
+int.max | 3 3 | 3
+int.max | MIN MAX | MAX
+int.eq | 1 1 | true
+int.eq | 1 2 | false
+int.eq | MIN MIN | true
+int.eq | MIN MAX | false
+int.ne | 1 1 | false
+int.ne | 1 2 | true
+int.ne | MIN MAX | true
+int.lt | -1 0 | true
+int.lt | 0 -1 | false
+int.lt | 1 1 | false
+int.lt | MIN MAX | true
+int.lt | MAX MIN | false
+int.lt | MIN MIN | false
+int.le | 1 1 | true
+int.le | 1 2 | true
+int.le | 2 1 | false
+int.le | MAX MIN | false
+int.le | MIN MIN | true
+int.gt | 2 1 | true
+int.gt | 1 1 | false
+int.gt | -1 -2 | true
+int.gt | MIN MAX | false
+int.gt | MAX MIN | true
+int.ge | 1 1 | true
+int.ge | 2 1 | true
+int.ge | 1 2 | false
+int.ge | MIN MAX | false
+int.ge | MAX MAX | true
+
+# ---- Int: wrapping and bit work (2.1)
+int.wrap_add | 1 2 | 3
+int.wrap_add | MAX 1 | MIN
+int.wrap_add | MIN -1 | MAX
+int.wrap_add | MAX MAX | -2
+int.wrap_sub | 5 3 | 2
+int.wrap_sub | MIN 1 | MAX
+int.wrap_sub | MAX -1 | MIN
+int.wrap_sub | 0 MIN | MIN
+int.wrap_mul | 3 4 | 12
+int.wrap_mul | MIN -1 | MIN
+int.wrap_mul | MAX 2 | -2
+int.wrap_mul | MAX MAX | 1
+int.wrap_mul | 4294967296 4294967296 | 0
+int.wrap_mul | 4294967296 2147483648 | MIN
+int.bit_and | -1 255 | 255
+int.bit_and | 12 10 | 8
+int.bit_and | 0 MAX | 0
+int.bit_and | MIN MAX | 0
+int.bit_and | MIN -1 | MIN
+int.bit_or | 12 10 | 14
+int.bit_or | 0 0 | 0
+int.bit_or | MIN MAX | -1
+int.bit_xor | 12 10 | 6
+int.bit_xor | -1 -1 | 0
+int.bit_xor | -1 0 | -1
+int.bit_xor | MIN MAX | -1
+int.bit_not | 0 | -1
+int.bit_not | -1 | 0
+int.bit_not | 5 | -6
+int.bit_not | MAX | MIN
+int.bit_not | MIN | MAX
+int.shift_left | 1 0 | 1
+int.shift_left | 1 3 | 8
+int.shift_left | -1 1 | -2
+int.shift_left | MAX 1 | -2
+int.shift_left | 3 62 | -4611686018427387904
+int.shift_left | 1 63 | MIN
+int.shift_left | 0 63 | 0
+int.shift_left | 1 64 | trap out_of_bounds
+int.shift_left | 1 -1 | trap out_of_bounds
+int.shift_left | 1 MAX | trap out_of_bounds
+int.shift_left | 1 MIN | trap out_of_bounds
+int.shift_right | 8 1 | 4
+int.shift_right | -8 1 | -4
+int.shift_right | -7 1 | -4
+int.shift_right | 1 1 | 0
+int.shift_right | -1 0 | -1
+int.shift_right | MAX 62 | 1
+int.shift_right | MAX 63 | 0
+int.shift_right | -1 63 | -1
+int.shift_right | MIN 63 | -1
+int.shift_right | 5 64 | trap out_of_bounds
+int.shift_right | 5 -1 | trap out_of_bounds
+int.shift_right | MIN MAX | trap out_of_bounds
+int.text | 0 | "0"
+int.text | 42 | "42"
+int.text | -5 | "-5"
+int.text | 1000000 | "1000000"
+int.text | MAX | "9223372036854775807"
+int.text | MIN | "-9223372036854775808"
+
+# ---- Float: arithmetic (2.2)
+float.add | 1.5 2.25 | 3.75
+float.add | 0.1 0.2 | 0x3FD3333333333334
+float.add | -0.0 0.0 | 0.0
+float.add | 0.0 -0.0 | 0.0
+float.add | -0.0 -0.0 | -0.0
+float.add | 9007199254740992.0 1.0 | 9007199254740992.0
+float.add | 9007199254740992.0 3.0 | 9007199254740996.0
+float.add | 0x0000000000000001 0x0000000000000001 | 0x0000000000000002
+float.add | 0x7FEFFFFFFFFFFFFF 0x7FEFFFFFFFFFFFFF | inf
+float.add | inf inf | inf
+float.add | inf -inf | nan
+float.add | nan 1.0 | nan
+float.add | 1.0 nan | nan
+float.sub | 3.0 1.5 | 1.5
+float.sub | 0.0 0.0 | 0.0
+float.sub | -0.0 0.0 | -0.0
+float.sub | 0.0 -0.0 | 0.0
+float.sub | -0.0 -0.0 | 0.0
+float.sub | inf inf | nan
+float.sub | inf -inf | inf
+float.sub | 0x3FD3333333333334 0x3FD3333333333333 | 0x3C90000000000000
+float.sub | nan 0.0 | nan
+float.mul | 2.0 3.0 | 6.0
+float.mul | -0.0 1.0 | -0.0
+float.mul | 0.0 -1.0 | -0.0
+float.mul | -0.0 -0.0 | 0.0
+float.mul | 0.0 inf | nan
+float.mul | inf -1.0 | -inf
+float.mul | 0x7FEFFFFFFFFFFFFF 2.0 | inf
+float.mul | 0x0000000000000001 0.5 | 0.0
+float.mul | 0x0000000000000001 0.75 | 0x0000000000000001
+float.mul | nan 0.0 | nan
+float.div | 7.0 2.0 | 3.5
+float.div | 1.0 3.0 | 0x3FD5555555555555
+float.div | 1.0 0.0 | inf
+float.div | -1.0 0.0 | -inf
+float.div | 1.0 -0.0 | -inf
+float.div | 0.0 0.0 | nan
+float.div | inf inf | nan
+float.div | 1.0 inf | 0.0
+float.div | -1.0 inf | -0.0
+float.div | 0x0000000000000001 2.0 | 0.0
+float.div | 0x0000000000000003 2.0 | 0x0000000000000002
+float.div | nan 1.0 | nan
+float.neg | 1.5 | -1.5
+float.neg | 0.0 | -0.0
+float.neg | -0.0 | 0.0
+float.neg | inf | -inf
+float.neg | -inf | inf
+float.neg | nan | nan
+float.neg | 0xFFF8000000000000 | nan
+float.abs | -2.5 | 2.5
+float.abs | 2.5 | 2.5
+float.abs | -0.0 | 0.0
+float.abs | 0.0 | 0.0
+float.abs | -inf | inf
+float.abs | nan | nan
+float.abs | 0xFFF8000000000000 | nan
+float.sqrt | 4.0 | 2.0
+float.sqrt | 0.25 | 0.5
+float.sqrt | 1.0 | 1.0
+float.sqrt | 2.0 | 0x3FF6A09E667F3BCD
+float.sqrt | 0.0 | 0.0
+float.sqrt | -0.0 | -0.0
+float.sqrt | -1.0 | nan
+float.sqrt | -inf | nan
+float.sqrt | inf | inf
+float.sqrt | nan | nan
+
+# ---- Float: floor, ceil, trunc (2.2)
+float.floor | 2.5 | 2.0
+float.floor | -2.5 | -3.0
+float.floor | 2.0 | 2.0
+float.floor | -0.5 | -1.0
+float.floor | 0.5 | 0.0
+float.floor | -0.0 | -0.0
+float.floor | 0.0 | 0.0
+float.floor | 0x0000000000000001 | 0.0
+float.floor | 0x8000000000000001 | -1.0
+float.floor | 4503599627370495.5 | 4503599627370495.0
+float.floor | 4503599627370497.0 | 4503599627370497.0
+float.floor | 0x7FEFFFFFFFFFFFFF | 0x7FEFFFFFFFFFFFFF
+float.floor | inf | inf
+float.floor | -inf | -inf
+float.floor | nan | nan
+float.ceil | 2.5 | 3.0
+float.ceil | -2.5 | -2.0
+float.ceil | 2.0 | 2.0
+float.ceil | 0.5 | 1.0
+float.ceil | -0.5 | -0.0
+float.ceil | -0.9 | -0.0
+float.ceil | -0.0 | -0.0
+float.ceil | 0.0 | 0.0
+float.ceil | 0x0000000000000001 | 1.0
+float.ceil | 0x8000000000000001 | -0.0
+float.ceil | 4503599627370495.5 | 4503599627370496.0
+float.ceil | 4503599627370497.0 | 4503599627370497.0
+float.ceil | inf | inf
+float.ceil | -inf | -inf
+float.ceil | nan | nan
+float.trunc | 2.9 | 2.0
+float.trunc | -2.9 | -2.0
+float.trunc | 0.5 | 0.0
+float.trunc | -0.5 | -0.0
+float.trunc | -0.0 | -0.0
+float.trunc | 0.0 | 0.0
+float.trunc | 0x0000000000000001 | 0.0
+float.trunc | 0x8000000000000001 | -0.0
+float.trunc | 4503599627370495.5 | 4503599627370495.0
+float.trunc | 4503599627370497.0 | 4503599627370497.0
+float.trunc | inf | inf
+float.trunc | -inf | -inf
+float.trunc | nan | nan
+
+# ---- Float: round, ties away from zero by the algorithm of 1.3 (2.2)
+float.round | 0.5 | 1.0
+float.round | -0.5 | -1.0
+float.round | 1.5 | 2.0
+float.round | 2.5 | 3.0
+float.round | -2.5 | -3.0
+float.round | 3.5 | 4.0
+float.round | 0.4 | 0.0
+float.round | 0.6 | 1.0
+float.round | -0.6 | -1.0
+float.round | -0.4 | -0.0
+float.round | 0.49999999999999994 | 0.0
+float.round | -0.49999999999999994 | -0.0
+float.round | 1.4999999999999998 | 1.0
+float.round | 0.0 | 0.0
+float.round | -0.0 | -0.0
+float.round | 0x0000000000000001 | 0.0
+float.round | 0x8000000000000001 | -0.0
+float.round | 4503599627370495.5 | 4503599627370496.0
+float.round | -4503599627370495.5 | -4503599627370496.0
+float.round | 4503599627370496.0 | 4503599627370496.0
+float.round | 4503599627370497.0 | 4503599627370497.0
+float.round | 9007199254740992.0 | 9007199254740992.0
+float.round | 9223372036854775808.0 | 9223372036854775808.0
+float.round | 0x7FEFFFFFFFFFFFFF | 0x7FEFFFFFFFFFFFFF
+float.round | inf | inf
+float.round | -inf | -inf
+float.round | nan | nan
+
+# ---- Float: min and max by <, NaN wins, -0.0 is below 0.0 (2.2)
+float.min | 1.0 2.0 | 1.0
+float.min | 2.0 1.0 | 1.0
+float.min | -inf 1.0 | -inf
+float.min | inf 1.0 | 1.0
+float.min | -0.0 0.0 | -0.0
+float.min | 0.0 -0.0 | -0.0
+float.min | 0.0 0.0 | 0.0
+float.min | -0.0 -0.0 | -0.0
+float.min | nan 1.0 | nan
+float.min | 1.0 nan | nan
+float.min | nan nan | nan
+float.min | 0xFFF8000000000000 1.0 | nan
+float.max | 1.0 2.0 | 2.0
+float.max | 2.0 1.0 | 2.0
+float.max | inf 1.0 | inf
+float.max | -inf 1.0 | 1.0
+float.max | -0.0 0.0 | 0.0
+float.max | 0.0 -0.0 | 0.0
+float.max | 0.0 0.0 | 0.0
+float.max | -0.0 -0.0 | -0.0
+float.max | nan 1.0 | nan
+float.max | 1.0 nan | nan
+float.max | nan nan | nan
+float.max | 0xFFF8000000000000 1.0 | nan
+
+# ---- Float: comparison, IEEE (2.2)
+float.eq | 1.0 1.0 | true
+float.eq | 1.0 2.0 | false
+float.eq | -0.0 0.0 | true
+float.eq | inf inf | true
+float.eq | inf -inf | false
+float.eq | 0x3FD3333333333334 0.3 | false
+float.eq | nan nan | false
+float.eq | nan 1.0 | false
+float.eq | 1.0 nan | false
+float.eq | nan inf | false
+float.ne | 1.0 1.0 | false
+float.ne | 1.0 2.0 | true
+float.ne | -0.0 0.0 | false
+float.ne | inf inf | false
+float.ne | nan nan | true
+float.ne | nan 1.0 | true
+float.ne | 1.0 nan | true
+float.lt | 1.0 2.0 | true
+float.lt | 2.0 1.0 | false
+float.lt | 1.0 1.0 | false
+float.lt | -0.0 0.0 | false
+float.lt | 0.0 -0.0 | false
+float.lt | -inf 0x7FEFFFFFFFFFFFFF | true
+float.lt | 0.0 0x0000000000000001 | true
+float.lt | nan 1.0 | false
+float.lt | 1.0 nan | false
+float.lt | nan nan | false
+float.le | 1.0 2.0 | true
+float.le | 1.0 1.0 | true
+float.le | 2.0 1.0 | false
+float.le | -0.0 0.0 | true
+float.le | 0.0 -0.0 | true
+float.le | nan 1.0 | false
+float.le | 1.0 nan | false
+float.le | nan nan | false
+float.gt | 2.0 1.0 | true
+float.gt | 1.0 2.0 | false
+float.gt | 1.0 1.0 | false
+float.gt | 0.0 -0.0 | false
+float.gt | inf 0x7FEFFFFFFFFFFFFF | true
+float.gt | 0x0000000000000001 0.0 | true
+float.gt | nan 1.0 | false
+float.gt | 1.0 nan | false
+float.gt | nan nan | false
+float.ge | 2.0 1.0 | true
+float.ge | 1.0 1.0 | true
+float.ge | 1.0 2.0 | false
+float.ge | -0.0 0.0 | true
+float.ge | 0.0 -0.0 | true
+float.ge | nan 1.0 | false
+float.ge | 1.0 nan | false
+float.ge | nan nan | false
+
+# ---- Conversions (2.3)
+to_float | 0 | 0.0
+to_float | 1 | 1.0
+to_float | -1 | -1.0
+to_float | 9007199254740992 | 9007199254740992.0
+to_float | 9007199254740993 | 9007199254740992.0
+to_float | 9007199254740994 | 9007199254740994.0
+to_float | 9007199254740995 | 9007199254740996.0
+to_float | -9007199254740993 | -9007199254740992.0
+to_float | MAX | 9223372036854775808.0
+to_float | MIN | 0xC3E0000000000000
+to_int | 2.9 | 2
+to_int | -2.9 | -2
+to_int | 0.9 | 0
+to_int | -0.9 | 0
+to_int | 0.0 | 0
+to_int | -0.0 | 0
+to_int | 4503599627370497.0 | 4503599627370497
+to_int | -4503599627370495.5 | -4503599627370495
+to_int | 9223372036854774784.0 | 9223372036854774784
+to_int | -9223372036854775808.0 | MIN
+to_int | 9223372036854775807.0 | trap bad_conversion
+to_int | 9223372036854775808.0 | trap bad_conversion
+to_int | -9223372036854777856.0 | trap bad_conversion
+to_int | 10000000000000000000.0 | trap bad_conversion
+to_int | 0x7FEFFFFFFFFFFFFF | trap bad_conversion
+to_int | inf | trap bad_conversion
+to_int | -inf | trap bad_conversion
+to_int | nan | trap bad_conversion
+to_int | 0xFFF8000000000000 | trap bad_conversion
+
+# ---- parse_int: accepts -?digits that fit (2.3)
+parse_int | "0" | some 0
+parse_int | "7" | some 7
+parse_int | "007" | some 7
+parse_int | "00000000000000000000009" | some 9
+parse_int | "-0" | some 0
+parse_int | "-007" | some -7
+parse_int | "123" | some 123
+parse_int | "9223372036854775807" | some MAX
+parse_int | "-9223372036854775808" | some MIN
+parse_int | "9223372036854775808" | none
+parse_int | "-9223372036854775809" | none
+parse_int | "99999999999999999999" | none
+parse_int | "+7" | none
+parse_int | " 7" | none
+parse_int | "7 " | none
+parse_int | "7\n" | none
+parse_int | "\n7" | none
+parse_int | "" | none
+parse_int | "-" | none
+parse_int | "--1" | none
+parse_int | "- 1" | none
+parse_int | "1.0" | none
+parse_int | "1e3" | none
+parse_int | "0x10" | none
+parse_int | "1_000" | none
+parse_int | "abc" | none
+parse_int | "\u{663}" | none
+parse_int | "\u{FF11}\u{FF12}" | none
+
+# ---- parse_float: accepts -?digits[.digits], correctly rounded, ties to even (2.3)
+parse_float | "7" | some 7.0
+parse_float | "0" | some 0.0
+parse_float | "-0" | some -0.0
+parse_float | "-0.0" | some -0.0
+parse_float | "0.0" | some 0.0
+parse_float | "1.5" | some 1.5
+parse_float | "-1.5" | some -1.5
+parse_float | "007.50" | some 7.5
+parse_float | "0.1" | some 0x3FB999999999999A
+parse_float | "0.3" | some 0x3FD3333333333333
+parse_float | "0.30000000000000004" | some 0x3FD3333333333334
+parse_float | "2.675" | some 0x4005666666666666
+parse_float | "9223372036854775808" | some 9223372036854775808.0
+parse_float | "9007199254740993" | some 9007199254740992.0
+parse_float | "9007199254740995" | some 9007199254740996.0
+parse_float | "9007199254740993.0001" | some 9007199254740994.0
+parse_float | "179769313486231570000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000" | some 0x7FEFFFFFFFFFFFFF
+parse_float | "179769313486231580000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000" | some 0x7FEFFFFFFFFFFFFF
+parse_float | "179769313486231590000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000" | some inf
+parse_float | "." | none
+parse_float | "1." | none
+parse_float | ".5" | none
+parse_float | "-.5" | none
+parse_float | "1.2.3" | none
+parse_float | "1.-2" | none
+parse_float | "1e3" | none
+parse_float | "1.5e3" | none
+parse_float | "inf" | none
+parse_float | "NaN" | none
+parse_float | "nan" | none
+parse_float | "1,5" | none
+parse_float | " 1" | none
+parse_float | "1 " | none
+parse_float | "+1.5" | none
+parse_float | "" | none
+parse_float | "-" | none
+parse_float | "--1" | none
+parse_float | "0x10" | none
+parse_float | "1_0" | none
+parse_float | "\u{663}" | none
+
+# ---- fixed: exact decimal, ties away from zero (2.4, 2.6)
+fixed | 0.125 2 | "0.13"
+fixed | 2.5 0 | "3"
+fixed | -2.5 0 | "-3"
+fixed | 1.005 2 | "1.00"
+fixed | 2.675 2 | "2.67"
+fixed | 0.1 20 | "0.10000000000000000555"
+fixed | 0x3FD3333333333334 17 | "0.30000000000000004"
+fixed | 0x4040AAAAAAAAAAAB 2 | "33.33"
+fixed | 0.49999999999999994 0 | "0"
+fixed | -0.001 2 | "-0.00"
+fixed | -0.0 1 | "-0.0"
+fixed | 0.0 0 | "0"
+fixed | 0.0 2 | "0.00"
+fixed | 10000000000000000000000.0 0 | "10000000000000000000000"
+fixed | 100000000000000000000000.0 0 | "99999999999999991611392"
+fixed | nan 3 | "NaN"
+fixed | 0xFFF8000000000000 3 | "NaN"
+fixed | inf 3 | "inf"
+fixed | -inf 3 | "-inf"
+fixed | 1.5 21 | trap out_of_bounds
+fixed | 1.5 -1 | trap out_of_bounds
+fixed | 1.5 20 | "1.50000000000000000000"
+fixed | 1.5 0 | "2"
+fixed | 0.5 0 | "1"
+fixed | -0.5 0 | "-1"
+fixed | 3.5 0 | "4"
+fixed | 0.5 1 | "0.5"
+fixed | 0.25 1 | "0.3"
+fixed | -0.25 1 | "-0.3"
+fixed | 0.35 1 | "0.3"
+fixed | 0.375 2 | "0.38"
+fixed | 1.0 3 | "1.000"
+fixed | 123.456 1 | "123.5"
+fixed | 999.9999 2 | "1000.00"
+fixed | 0.999 2 | "1.00"
+fixed | 0.995 2 | "0.99"
+fixed | 9.995 2 | "9.99"
+fixed | 0.005 2 | "0.01"
+fixed | 0.00001 20 | "0.00001000000000000000"
+fixed | 0.00001 2 | "0.00"
+fixed | 0.000000000000000000000000000001 20 | "0.00000000000000000000"
+fixed | 0x3BC0000000000000 20 | "0.00000000000000000001"
+fixed | 0x3BB0000000000000 20 | "0.00000000000000000000"
+fixed | 0x3BA0000000000000 20 | "0.00000000000000000000"
+fixed | 0x0000000000000001 20 | "0.00000000000000000000"
+fixed | 0x0000000000000001 0 | "0"
+fixed | 0x8000000000000001 0 | "-0"
+fixed | 4503599627370495.5 0 | "4503599627370496"
+fixed | 4503599627370495.5 1 | "4503599627370495.5"
+fixed | 9007199254740992.0 0 | "9007199254740992"
+fixed | 9223372036854775808.0 0 | "9223372036854775808"
+fixed | 9223372036854775808.0 2 | "9223372036854775808.00"
+fixed | -9223372036854775808.0 1 | "-9223372036854775808.0"
+fixed | 10000000000000000000000.0 3 | "10000000000000000000000.000"
+fixed | 0x7FEFFFFFFFFFFFFF 0 | "179769313486231570814527423731704356798070567525844996598917476803157260780028538760589558632766878171540458953514382464234321326889464182768467546703537516986049910576551282076245490090389328944075868508455133942304583236903222948165808559332123348274797826204144723168738177180919299881250404026184124858368"
+
+# ---- String: length, index and slice count code points (2.5)
+string.len | "" | 0
+string.len | "abc" | 3
+string.len | "caf\u{E9}" | 4
+string.len | "e\u{301}" | 2
+string.len | "日本語" | 3
+string.len | "😀" | 1
+string.len | "a😀b" | 3
+string.len | "\n" | 1
+string.index | "abc" 0 | "a"
+string.index | "abc" 2 | "c"
+string.index | "café" 3 | "é"
+string.index | "日本語" 1 | "本"
+string.index | "a😀b" 1 | "😀"
+string.index | "a😀b" 2 | "b"
+string.index | "e\u{301}" 1 | "\u{301}"
+string.index | "abc" 3 | trap out_of_bounds
+string.index | "abc" -1 | trap out_of_bounds
+string.index | "abc" MAX | trap out_of_bounds
+string.index | "" 0 | trap out_of_bounds
+string.index | "日本語" 3 | trap out_of_bounds
+string.slice | "abc" 0 3 | "abc"
+string.slice | "abc" 1 2 | "b"
+string.slice | "abc" 1 1 | ""
+string.slice | "abc" 0 0 | ""
+string.slice | "abc" 3 3 | ""
+string.slice | "" 0 0 | ""
+string.slice | "café" 2 4 | "fé"
+string.slice | "日本語" 1 3 | "本語"
+string.slice | "a😀b" 1 2 | "😀"
+string.slice | "a😀b" 0 2 | "a😀"
+string.slice | "a😀b" 2 3 | "b"
+string.slice | "abc" 2 1 | trap out_of_bounds
+string.slice | "abc" 0 4 | trap out_of_bounds
+string.slice | "abc" -1 2 | trap out_of_bounds
+string.slice | "abc" 4 4 | trap out_of_bounds
+string.slice | "日本語" 0 4 | trap out_of_bounds
+
+# ---- String: equality and order by code point value, proper prefix first (2.5)
+string.eq | "" "" | true
+string.eq | "abc" "abc" | true
+string.eq | "abc" "abd" | false
+string.eq | "a" "A" | false
+string.eq | "é" "é" | true
+string.eq | "\u{E9}" "e\u{301}" | false
+string.ne | "" "" | false
+string.ne | "abc" "abd" | true
+string.ne | "\u{E9}" "e\u{301}" | true
+string.ne | "é" "é" | false
+string.lt | "Z" "a" | true
+string.lt | "a" "Z" | false
+string.lt | "é" "z" | false
+string.lt | "" "a" | true
+string.lt | "ab" "abc" | true
+string.lt | "abc" "ab" | false
+string.lt | "a" "a" | false
+string.lt | "a" "b" | true
+string.lt | "😀" "\u{FFFF}" | false
+string.lt | "\u{FFFF}" "😀" | true
+string.lt | "\u{10000}" "\u{E000}" | false
+string.le | "a" "a" | true
+string.le | "ab" "abc" | true
+string.le | "abc" "ab" | false
+string.le | "" "" | true
+string.le | "é" "z" | false
+string.le | "😀" "\u{FFFF}" | false
+string.gt | "é" "z" | true
+string.gt | "a" "Z" | true
+string.gt | "abc" "ab" | true
+string.gt | "ab" "abc" | false
+string.gt | "a" "a" | false
+string.gt | "😀" "\u{FFFF}" | true
+string.ge | "é" "z" | true
+string.ge | "a" "a" | true
+string.ge | "" "a" | false
+string.ge | "ab" "abc" | false
+string.ge | "😀" "\u{FFFF}" | true
+
+# ---- String: join, min, max, text, code_at, from_code (2.3, 2.5)
+string.add | "" "" | ""
+string.add | "a" "b" | "ab"
+string.add | "" "x" | "x"
+string.add | "x" "" | "x"
+string.add | "café" "😀" | "café😀"
+string.min | "a" "b" | "a"
+string.min | "b" "a" | "a"
+string.min | "é" "z" | "z"
+string.min | "" "a" | ""
+string.min | "ab" "abc" | "ab"
+string.min | "x" "x" | "x"
+string.max | "a" "b" | "b"
+string.max | "b" "a" | "b"
+string.max | "é" "z" | "é"
+string.max | "" "a" | "a"
+string.max | "ab" "abc" | "abc"
+string.max | "x" "x" | "x"
+string.text | "hi" | "hi"
+string.text | "" | ""
+string.text | "café 😀" | "café 😀"
+code_at | "abc" 0 | 97
+code_at | "abc" 2 | 99
+code_at | "é" 0 | 233
+code_at | "日" 0 | 26085
+code_at | "😀" 0 | 128512
+code_at | "\u{10FFFF}" 0 | 1114111
+code_at | "e\u{301}" 1 | 769
+code_at | "abc" 3 | trap out_of_bounds
+code_at | "abc" -1 | trap out_of_bounds
+code_at | "" 0 | trap out_of_bounds
+from_code | 97 | "a"
+from_code | 10 | "\n"
+from_code | 0 | "\u{0}"
+from_code | 233 | "é"
+from_code | 128512 | "😀"
+from_code | 55295 | "\u{D7FF}"
+from_code | 57344 | "\u{E000}"
+from_code | 1114111 | "\u{10FFFF}"
+from_code | 55296 | trap bad_conversion
+from_code | 57343 | trap bad_conversion
+from_code | 1114112 | trap bad_conversion
+from_code | -1 | trap bad_conversion
+from_code | MAX | trap bad_conversion
+from_code | MIN | trap bad_conversion
+
+# ---- Bool (1.13, 2.3)
+bool.not | true | false
+bool.not | false | true
+bool.and | true true | true
+bool.and | true false | false
+bool.and | false true | false
+bool.and | false false | false
+bool.or | true true | true
+bool.or | true false | true
+bool.or | false true | true
+bool.or | false false | false
+bool.eq | true true | true
+bool.eq | true false | false
+bool.eq | false true | false
+bool.eq | false false | true
+bool.ne | true true | false
+bool.ne | true false | true
+bool.ne | false true | true
+bool.ne | false false | false
+bool.text | true | "true"
+bool.text | false | "false"
+
+# ---- parse_float: too large and too small (2.3)
+parse_float | "10000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000" | some inf
+parse_float | "-10000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000" | some -inf
+parse_float | "10000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000.5" | some inf
+parse_float | "0.00000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000001" | some 0.0
+parse_float | "-0.00000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000001" | some -0.0
+parse_float | "0.000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000002" | some 0.0
+parse_float | "0.000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000003" | some 0x0000000000000001
+parse_float | "0.000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000005" | some 0x0000000000000001
+parse_float | "-0.000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000005" | some 0x8000000000000001

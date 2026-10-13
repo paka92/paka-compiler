@@ -1,0 +1,83 @@
+# Every row of the operation table in docs/decisions/M2-03.md section 2 that a back end computes.
+# Each needs at least one line in ops.vec. Rows that only the checker decides (compound assignment,
+# `%` or text on a Float, assignment to a String index) are not operations and are not listed.
+
+# 2.1 Int
+int.add
+int.sub
+int.mul
+int.neg
+int.div
+int.rem
+int.abs
+int.min
+int.max
+int.eq
+int.ne
+int.lt
+int.le
+int.gt
+int.ge
+int.wrap_add
+int.wrap_sub
+int.wrap_mul
+int.bit_and
+int.bit_or
+int.bit_xor
+int.bit_not
+int.shift_left
+int.shift_right
+int.text
+
+# 2.2 Float
+float.add
+float.sub
+float.mul
+float.div
+float.neg
+float.abs
+float.sqrt
+float.floor
+float.ceil
+float.trunc
+float.round
+float.min
+float.max
+float.eq
+float.ne
+float.lt
+float.le
+float.gt
+float.ge
+
+# 2.3 Conversions and parsing, 2.4 fixed
+to_float
+to_int
+parse_int
+parse_float
+fixed
+
+# 2.5 String
+string.len
+string.index
+string.slice
+string.eq
+string.ne
+string.lt
+string.le
+string.gt
+string.ge
+string.add
+string.min
+string.max
+string.text
+code_at
+from_code
+
+# 1.13 and 2.3 Bool
+bool.not
+bool.and
+bool.or
+bool.eq
+bool.ne
+bool.text
