@@ -2,6 +2,8 @@ mod ast;
 mod check;
 mod diagnostic;
 mod lexer;
+#[allow(dead_code)] // read by the interpreter (M1-13)
+mod lower;
 mod parser;
 
 use diagnostic::Diagnostic;
