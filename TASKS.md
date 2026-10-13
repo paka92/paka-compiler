@@ -381,10 +381,12 @@ or merged during review. Ids with a letter were added during review.
 
 ### M2-13 · L3 · Resolve names across a program
 
+- status: done
 - needs: M2-02, M2-11
 - flags: none
 - done when: Tests pass for every name kind, duplicates, and unknown names with a suggested fix.
 - why this level: Name resolver over several definition kinds.
+- note: Done: the pass is paka/src/resolve.rs and no command calls it yet; M2-16 wires it in. It gives declaration errors first, then one result per definition, and app entry errors per entry, so the checker keeps the order of spec/m1.md section 8. The nearest-name rule is in docs/decisions/M2-02.md.
 
 ### M2-14 · L5 · Decide the built-in types and functions a headless program may call
 
@@ -410,7 +412,7 @@ or merged during review. Ids with a letter were added during review.
 - flags: none
 - done when: Tests pass: each definition kind's signature is accepted or rejected with expected and found types; built-ins come from one table.
 - why this level: Base for per-definition checking; recursive types and default values hide easy-to-miss cases.
-- note: Follows docs/decisions/M2-05.md, including its two tightened call rules. Follows docs/decisions/M2-09.md: the interface hash covers every named type a signature reaches, and no app state may hold a function type. Follows docs/decisions/M2-14.md for the built-in table.
+- note: Follows docs/decisions/M2-05.md, including its two tightened call rules. Follows docs/decisions/M2-09.md: the interface hash covers every named type a signature reaches, and no app state may hold a function type. Follows docs/decisions/M2-14.md for the built-in table. Calls the M2-13 pass and gives the built-in table of paka/src/resolve.rs its signatures.
 
 ### M2-17 · L4 · Parse generics, function values and error-handling forms
 
