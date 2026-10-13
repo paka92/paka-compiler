@@ -1,9 +1,14 @@
 //! The signature table of a parsed and resolved program: the type of every definition's interface
-//! and the built-in rows, one entry per definition (docs/decisions/M2-05.md, M2-09.md, M2-14.md,
-//! M2-15.md). Bodies, patterns and expressions are not looked at but for the defaults of fields,
-//! where only the shape and the outermost type are (what a default holds is left to the
-//! expression checker). Each definition's result depends on its own text and on the signatures it
-//! names, so one definition's error never changes another's result.
+//! and the built-in rows (docs/decisions/M2-05.md, M2-09.md, M2-14.md, M2-15.md). Bodies, patterns
+//! and expressions are not looked at but for the defaults of fields, where only the shape and the
+//! outermost type are (what a default holds is left to the expression checker; so is a bare
+//! variant that has fields).
+//!
+//! A definition has an `item`, which holds its well-formed parts (a type with an error is `_`),
+//! and an `error`, the earliest in source order of its name errors, signature errors and, for a
+//! type, a missing finite value. An error does not make the signature unknown. An item depends on
+//! the text of its definition and the names it uses; an error also, for a finite value, on the
+//! types it holds.
 
 use crate::ast::{self, Def, Entry, Pos, Program, Type};
 use crate::builtins::{self, Kind};
@@ -14,12 +19,9 @@ use std::collections::BTreeMap;
 mod check;
 mod default;
 mod graph;
-mod hash;
 mod row;
 #[cfg(test)]
 mod tests;
-
-type Res<T = ()> = Result<T, Diagnostic>;
 
 /// A type, as an id into `Types`: equal types have equal ids, so comparing costs one compare.
 #[derive(Clone, Copy, Debug, PartialEq, Eq, PartialOrd, Ord)]
@@ -36,7 +38,7 @@ pub enum Node {
     Var(char),
 }
 
-/// Every type met, once. `Ty(i)` is the user type of definition `i`.
+/// Every type met, once.
 pub struct Types<'a> {
     names: Vec<&'a str>,
     nodes: Vec<Node>,
@@ -57,14 +59,16 @@ fn join<T>(
 }
 
 impl<'a> Types<'a> {
-    fn new(names: Vec<&'a str>) -> Types<'a> {
+    fn new(defs: &'a [Def<'a>]) -> Types<'a> {
         let mut types = Types {
-            names,
+            names: defs.iter().map(|d| d.name().text).collect(),
             nodes: Vec::new(),
             ids: BTreeMap::new(),
         };
-        for i in 0..types.names.len() {
-            types.intern(Node::User(i));
+        for (i, def) in defs.iter().enumerate() {
+            if matches!(def, Def::Type { .. } | Def::Enum { .. }) {
+                types.intern(Node::User(i));
+            }
         }
         types
     }
@@ -87,24 +91,28 @@ impl<'a> Types<'a> {
         &self.nodes[ty.0 as usize]
     }
 
-    pub fn user(&self, def: usize) -> Ty {
-        Ty(u32::try_from(def).expect("fewer than 2^32 definitions"))
+    /// The type definition `def` declares; none for a definition of any other kind.
+    pub fn user(&self, def: usize) -> Option<Ty> {
+        self.ids.get(&Node::User(def)).copied()
+    }
+
+    /// The unknown type, which stands for a part with an error.
+    fn unknown(&mut self) -> Ty {
+        self.intern(Node::Var('_'))
     }
 
     /// The spelling of a signature: `fn(A, B) -> R`, `Map<K, V>`.
     pub fn show(&self, ty: Ty) -> String {
         let mut out = String::new();
-        self.render(ty, &mut out, &|i, out| out.push_str(self.names[i]));
+        self.render(ty, &mut out);
         out
     }
 
-    /// Writes `ty` with each user type written by `user`.
-    fn render(&self, ty: Ty, out: &mut String, user: &dyn Fn(usize, &mut String)) {
-        let list =
-            |out: &mut String, tys: &[Ty]| join(out, tys, |out, &t| self.render(t, out, user));
+    fn render(&self, ty: Ty, out: &mut String) {
+        let list = |out: &mut String, tys: &[Ty]| join(out, tys, |out, &t| self.render(t, out));
         match self.node(ty) {
             Node::Var(c) => out.push(*c),
-            Node::User(i) => user(*i, out),
+            Node::User(i) => out.push_str(self.names[*i]),
             Node::Name(name, args) => {
                 out.push_str(name);
                 if !args.is_empty() {
@@ -119,37 +127,25 @@ impl<'a> Types<'a> {
                 out.push(')');
                 if let Some(r) = result {
                     out.push_str(" -> ");
-                    self.render(*r, out, user);
+                    self.render(*r, out);
                 }
             }
         }
     }
 
-    /// The types of the program `ty` mentions, each with whether it is held by value: not behind
-    /// a List, Map, Option, Effect or function type.
-    fn refs(&self, ty: Ty, by_value: bool, out: &mut Vec<(usize, bool)>) {
+    /// Pushes the types of the program a value of `ty` holds by value: those it names, looking
+    /// through a Result and nothing else. True when a value exists whatever they are: a part is
+    /// an empty List, a `None`, a function or an Int; a Result needs one side to be.
+    fn needs(&self, ty: Ty, out: &mut Vec<usize>) -> bool {
         match self.node(ty) {
-            Node::User(i) => out.push((*i, by_value)),
-            Node::Name(name, args) => {
-                let inside = by_value && *name == "Result";
-                args.iter().for_each(|&a| self.refs(a, inside, out));
+            Node::User(i) => {
+                out.push(*i);
+                false
             }
-            Node::Fn(params, result) => {
-                params
-                    .iter()
-                    .chain(result)
-                    .for_each(|&a| self.refs(a, false, out));
-            }
-            Node::Var(_) => {}
-        }
-    }
-
-    /// Whether a function type stands in `ty`, not looking into the types of the program.
-    fn has_fn(&self, ty: Ty) -> bool {
-        match self.node(ty) {
-            Node::Fn(..) => true,
-            Node::Name(_, args) => args.iter().any(|&a| self.has_fn(a)),
-            _ => false,
+            Node::Name("Result", args) => (args.iter())
+                .map(|&a| self.needs(a, out))
+                .fold(false, |x, y| x | y),
+            _ => true,
         }
     }
 
@@ -200,7 +196,8 @@ pub enum Item<'a> {
     Enum(Vec<Variant<'a>>),
     Fn(Sig<'a>),
     Example,
-    /// The type named after `state:` and the function named after `update:`, when they name any.
+    /// The type after the first `state:` and the function after the first `update:`, when those
+    /// name any; the rules of an app are the app task's (M2-32).
     App {
         state: Option<Ty>,
         update: Option<usize>,
@@ -212,24 +209,42 @@ impl<'a> Item<'a> {
         matches!(self, Item::Record(_) | Item::Enum(_))
     }
 
-    /// The fields of a record, or of every variant in order.
-    fn each_field(&self) -> impl Iterator<Item = &Field<'a>> {
+    /// The field lists a value of the type picks one of: the record's, or one for each variant.
+    fn alternatives(&self) -> impl Iterator<Item = &[Field<'a>]> {
         let (record, variants) = match self {
-            Item::Record(fields) => (&fields[..], &[][..]),
-            Item::Enum(variants) => (&[][..], &variants[..]),
-            _ => (&[][..], &[][..]),
+            Item::Record(fields) => (Some(&fields[..]), &[][..]),
+            Item::Enum(variants) => (None, &variants[..]),
+            _ => (None, &[][..]),
         };
-        record.iter().chain(variants.iter().flat_map(|v| &v.fields))
+        record
+            .into_iter()
+            .chain(variants.iter().map(|v| &v.fields[..]))
     }
+
+    fn each_field(&self) -> impl Iterator<Item = &Field<'a>> {
+        self.alternatives().flatten()
+    }
+}
+
+/// A definition's `item` and its `error`, if any.
+pub struct Checked<'a> {
+    pub item: Item<'a>,
+    pub error: Option<Diagnostic>,
 }
 
 /// One entry per definition of the program, in order, and the built-in rows.
 pub struct Table<'a> {
     pub types: Types<'a>,
-    pub defs: Vec<Res<Item<'a>>>,
+    pub defs: Vec<Checked<'a>>,
     pub fns: BTreeMap<&'static str, Vec<Sig<'static>>>,
     pub variants: BTreeMap<&'static str, Sig<'static>>,
-    hashes: Vec<Option<u64>>,
+}
+
+/// Keeps `d` in `slot` when it comes before what is there in the source.
+fn earliest(slot: &mut Option<Diagnostic>, d: Diagnostic) {
+    if slot.as_ref().is_none_or(|e| d.position < e.position) {
+        *slot = Some(d);
+    }
 }
 
 type BuiltIns = (
@@ -255,39 +270,44 @@ fn built_ins(types: &mut Types) -> BuiltIns {
 
 impl<'a> Table<'a> {
     pub fn build(path: &str, program: &'a Program<'a>, resolved: &Resolved) -> Table<'a> {
-        let mut types = Types::new(program.defs.iter().map(|d| d.name().text).collect());
+        let mut types = Types::new(&program.defs);
         let (fns, variants) = built_ins(&mut types);
         let mut convert = Convert {
             path,
             program,
             resolved,
+            named: type_names(program),
             variants: &variants,
             types: &mut types,
             def: 0,
+            lost: 0,
+            error: None,
         };
         let mut defs: Vec<_> = (program.defs.iter().enumerate())
             .map(|(i, d)| convert.def(i, d))
             .collect();
-        let comps = graph::components(&check::edges(&types, &defs));
-        let hashes = hash::all(program, &types, &defs, &comps);
-        let mut rejected = check::finite_values(path, program, &types, &defs, &comps);
-        rejected.extend(check::state_functions(path, program, &types, &defs));
-        for (i, d) in rejected {
-            defs[i] = Err(d);
+        for (i, d) in check::finite_values(path, program, &types, &defs) {
+            earliest(&mut defs[i].error, d);
         }
         Table {
             types,
             defs,
             fns,
             variants,
-            hashes,
         }
     }
+}
 
-    /// The interface hash of definition `def`; none for an example or a rejected definition.
-    pub fn hash(&self, def: usize) -> Option<u64> {
-        self.defs[def].as_ref().ok().and(self.hashes[def])
-    }
+/// What each name of a type stands for. A name is looked up here, not in the resolver's uses,
+/// because the resolver binds no name after its first error in a definition.
+fn type_names<'a>(program: &'a Program<'a>) -> BTreeMap<&'a str, Binding> {
+    let built_in = (builtins::ROWS.iter())
+        .filter(|r| r.0 == Kind::Type)
+        .map(|r| (builtins::name(r.1), Binding::Builtin(builtins::name(r.1))));
+    let declared = (program.defs.iter().enumerate())
+        .filter(|(_, d)| matches!(d, Def::Type { .. } | Def::Enum { .. }))
+        .map(|(i, d)| (d.name().text, Binding::Def(i)));
+    built_in.chain(declared).collect()
 }
 
 /// Turns the definitions' signatures into table entries.
@@ -295,14 +315,16 @@ struct Convert<'t, 'a> {
     path: &'t str,
     program: &'a Program<'a>,
     resolved: &'t Resolved,
+    named: BTreeMap<&'a str, Binding>,
     variants: &'t BTreeMap<&'static str, Sig<'static>>,
     types: &'t mut Types<'a>,
     /// The definition being converted.
     def: usize,
+    /// How many types so far have an error and are taken for the unknown type.
+    lost: usize,
+    /// The earliest error found in the definition, the resolver's apart.
+    error: Option<Diagnostic>,
 }
-
-const NOT_CONSTANT: &str =
-    "a default is a constant: a literal, [], [:], a variant or a record built from constants";
 
 impl<'a> Convert<'_, 'a> {
     fn error(&self, at: Pos, len: usize, code: &'static str, message: impl ToString) -> Diagnostic {
@@ -310,121 +332,125 @@ impl<'a> Convert<'_, 'a> {
         Diagnostic::new(self.path, at, len, code, message).in_definition(name)
     }
 
-    /// The resolver's error for the definition: it names the first unknown name or wrong count.
-    fn rejected(&self) -> Diagnostic {
-        self.resolved.defs[self.def]
-            .clone()
-            .expect_err("the resolver rejected the definition")
-    }
-
-    fn def(&mut self, i: usize, def: &'a Def<'a>) -> Res<Item<'a>> {
-        self.def = i;
-        match def {
-            Def::Type { fields, .. } => Ok(Item::Record(self.fields(fields)?)),
-            Def::Enum { variants, .. } => {
-                let variant = |v: &'a ast::Variant<'a>| {
-                    Ok(Variant {
+    fn def(&mut self, i: usize, def: &'a Def<'a>) -> Checked<'a> {
+        (self.def, self.error) = (i, None);
+        let item = match def {
+            Def::Type { fields, .. } => Item::Record(self.fields(fields)),
+            Def::Enum { variants, .. } => Item::Enum(
+                (variants.iter())
+                    .map(|v| Variant {
                         name: v.name.text,
-                        fields: self.fields(&v.fields)?,
+                        fields: self.fields(&v.fields),
                     })
-                };
-                Ok(Item::Enum(
-                    variants.iter().map(variant).collect::<Res<_>>()?,
-                ))
-            }
-            Def::Fn { params, result, .. } => self.sig(params, result.as_ref()).map(Item::Fn),
-            Def::Example { .. } => Ok(Item::Example),
-            Def::App { entries, .. } => Ok(self.app(entries)),
+                    .collect(),
+            ),
+            Def::Fn { params, result, .. } => Item::Fn(self.sig(params, result.as_ref())),
+            Def::Example { .. } => Item::Example,
+            Def::App { entries, .. } => self.app(entries),
+        };
+        if let Err(d) = &self.resolved.defs[i] {
+            earliest(&mut self.error, d.clone());
+        }
+        Checked {
+            item,
+            error: self.error.take(),
         }
     }
 
     fn app(&self, entries: &[Entry]) -> Item<'a> {
-        let named = |n: &ast::Name| match self.resolved.get(n.at) {
+        let def_of = |n: &ast::Name| match self.resolved.get(n.at) {
             Some(Binding::Def(i)) => Some(i),
             _ => None,
         };
-        let (mut state, mut update) = (None, None);
-        for entry in entries {
-            match entry {
-                Entry::State(_, n) => state = named(n).map(|i| self.types.user(i)),
-                Entry::Update(_, n) => update = named(n),
-                _ => {}
-            }
+        let state = entries.iter().find_map(|e| match e {
+            Entry::State(_, n) => Some(n),
+            _ => None,
+        });
+        let update = entries.iter().find_map(|e| match e {
+            Entry::Update(_, n) => Some(n),
+            _ => None,
+        });
+        Item::App {
+            state: state.and_then(def_of).and_then(|i| self.types.user(i)),
+            update: update.and_then(def_of),
         }
-        Item::App { state, update }
     }
 
-    fn sig(&mut self, params: &[ast::Param<'a>], result: Option<&Type<'a>>) -> Res<Sig<'a>> {
-        let param = |p: &ast::Param<'a>| {
-            Ok(Param {
-                name: p.name.text,
-                inout: p.inout,
-                labelled: p.labelled,
-                ty: self.ty(&p.ty)?,
-            })
+    fn sig(&mut self, params: &[ast::Param<'a>], result: Option<&Type<'a>>) -> Sig<'a> {
+        let param = |p: &ast::Param<'a>| Param {
+            name: p.name.text,
+            inout: p.inout,
+            labelled: p.labelled,
+            ty: self.ty(&p.ty),
         };
-        let params = params.iter().map(param).collect::<Res<_>>()?;
-        Ok(Sig {
-            params,
-            result: result.map(|t| self.ty(t)).transpose()?,
-        })
+        Sig {
+            params: params.iter().map(param).collect(),
+            result: result.map(|t| self.ty(t)),
+        }
     }
 
-    fn fields(&mut self, fields: &[ast::Field<'a>]) -> Res<Vec<Field<'a>>> {
-        self.resolved.defs[self.def].clone()?;
+    fn fields(&mut self, fields: &[ast::Field<'a>]) -> Vec<Field<'a>> {
         let field = |f: &ast::Field<'a>| {
-            let ty = self.ty(&f.ty)?;
-            f.default
-                .iter()
-                .try_for_each(|d| self.default(f.name.text, ty, d))?;
-            Ok(Field {
+            let ty = self.ty(&f.ty);
+            if let Some(d) = &f.default {
+                self.default(f.name.text, ty, d);
+            }
+            Field {
                 name: f.name.text,
                 ty,
                 default: f.default.is_some(),
-            })
+            }
         };
         fields.iter().map(field).collect()
     }
 
-    fn tys(&mut self, types: &[Type<'a>]) -> Res<Box<[Ty]>> {
-        types.iter().map(|t| self.ty(t)).collect()
-    }
-
-    /// The type `t` names. A name the resolver did not bind, or bound with the wrong number of
-    /// arguments, is the resolver's error for the definition.
-    fn ty(&mut self, t: &Type<'a>) -> Res<Ty> {
+    /// The type `t` names, or the unknown type when it has an error of its own.
+    fn ty(&mut self, t: &Type<'a>) -> Ty {
+        let lost = self.lost;
         let node = match t {
-            Type::Name { name, args } => match self.resolved.get(name.at) {
-                Some(Binding::Def(i)) if args.is_empty() => Node::User(i),
-                Some(Binding::Builtin(b)) if args.len() == builtins::arity(b) => {
-                    let tys = self.tys(args)?;
-                    if b == "Map" {
-                        self.key(tys[0], &args[0])?;
+            Type::Name { name, args } => match self.named.get(name.text) {
+                Some(&Binding::Def(i)) if args.is_empty() => Node::User(i),
+                Some(&Binding::Builtin(b)) if args.len() == builtins::arity(b) => {
+                    let mut tys = Vec::new();
+                    for arg in args {
+                        let before = self.lost;
+                        let ty = self.ty(arg);
+                        if b == "Map" && tys.is_empty() && self.lost == before {
+                            self.key(ty, arg);
+                        }
+                        tys.push(ty);
                     }
-                    Node::Name(b, tys)
+                    Node::Name(b, tys.into())
                 }
-                _ => return Err(self.rejected()),
+                _ => {
+                    self.lost += 1;
+                    return self.types.unknown();
+                }
             },
-            Type::Fn { params, result, .. } => {
-                let params = self.tys(params)?;
-                Node::Fn(params, result.as_deref().map(|r| self.ty(r)).transpose()?)
-            }
+            Type::Fn { params, result, .. } => Node::Fn(
+                params.iter().map(|p| self.ty(p)).collect(),
+                result.as_deref().map(|r| self.ty(r)),
+            ),
         };
-        Ok(self.types.intern(node))
+        if self.lost > lost {
+            return self.types.unknown();
+        }
+        self.types.intern(node)
     }
 
     /// A Map key is an Int or a String (M2-14 section 1.1).
-    fn key(&self, key: Ty, written: &Type) -> Res {
+    fn key(&mut self, key: Ty, written: &Type) {
         if matches!(self.types.node(key), Node::Name("Int" | "String", _)) {
-            return Ok(());
+            return;
         }
         let (at, len) = match written {
             Type::Name { name, .. } => (name.at, name.text.len()),
             Type::Fn { at, .. } => (*at, 2),
         };
         let message = "a Map key is an Int or a String";
-        Err(self
-            .error(at, len, "type-mismatch", message)
-            .with_types(&"Int or String", &self.types.show(key)))
+        let d = (self.error(at, len, "type-mismatch", message))
+            .with_types(&"Int or String", &self.types.show(key));
+        earliest(&mut self.error, d);
+        self.lost += 1;
     }
 }

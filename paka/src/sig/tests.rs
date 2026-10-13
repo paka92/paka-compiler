@@ -332,14 +332,14 @@ fn an_unknown_type_is_the_resolvers_error_and_stops_that_definition() {
 
 #[test]
 fn a_name_error_in_a_default_is_the_resolvers_error() {
-    let lines = ["type A { n: Int = missing }"];
+    let lines = ["type A { n: Int = Missing }"];
     assert_error(
         &lines,
         0,
         "unknown-name",
         1,
-        "= ^missing",
-        "missing is not defined here",
+        "= ^Missing",
+        "Missing is not defined here",
     );
 }
 
@@ -512,7 +512,7 @@ fn a_bare_variant_with_fields_is_left_to_the_expression_checker() {
 
 #[test]
 fn what_a_constant_holds_is_left_to_the_expression_checker() {
-    accepted(&["type A { xs: List<Int> = [\"a\"], o: Option<Int> = Some(\"a\") }"]);
+    accepted(&["type A { o: Option<Int> = Some(\"a\") }"]);
 }
 
 // Recursive types

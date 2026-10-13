@@ -13,7 +13,6 @@ pub enum Kind {
     Other,
 }
 
-/// Types first: `arity` looks them up.
 pub const ROWS: &[(Kind, &str)] = &[
     (Kind::Type, "Int"),
     (Kind::Type, "Float"),
@@ -43,11 +42,11 @@ pub const ROWS: &[(Kind, &str)] = &[
     (Kind::Grant, "ReadFiles"),
     (Kind::Grant, "WriteFiles"),
     (Kind::Fn, "len(x: String) -> Int"),
-    (Kind::Fn, "len(xs: List<T>) -> Int"),
-    (Kind::Fn, "len(m: Map<K, V>) -> Int"),
+    (Kind::Fn, "len(x: List<T>) -> Int"),
+    (Kind::Fn, "len(x: Map<K, V>) -> Int"),
     (Kind::Fn, "is_empty(x: String) -> Bool"),
-    (Kind::Fn, "is_empty(xs: List<T>) -> Bool"),
-    (Kind::Fn, "is_empty(m: Map<K, V>) -> Bool"),
+    (Kind::Fn, "is_empty(x: List<T>) -> Bool"),
+    (Kind::Fn, "is_empty(x: Map<K, V>) -> Bool"),
     (Kind::Fn, "contains(text: String, part: String) -> Bool"),
     (Kind::Fn, "contains(xs: List<T>, item: T) -> Bool"),
     (Kind::Fn, "find(text: String, part: String) -> Option<Int>"),
@@ -134,11 +133,9 @@ pub fn name(row: &'static str) -> &'static str {
 
 /// How many type arguments a built-in type takes; a type of the program takes none.
 pub fn arity(type_name: &str) -> usize {
-    let row = ROWS
-        .iter()
-        .find(|r| r.0 == Kind::Type && name(r.1) == type_name);
-    row.map_or(0, |r| {
-        let args = &r.1[name(r.1).len()..];
-        args.chars().filter(char::is_ascii_uppercase).count()
-    })
+    match type_name {
+        "List" | "Option" | "Effect" => 1,
+        "Map" | "Result" => 2,
+        _ => 0,
+    }
 }

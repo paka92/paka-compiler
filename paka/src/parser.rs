@@ -452,7 +452,7 @@ impl<'a> Parser<'a> {
         self.eat(Kind::Colon)?;
         let ty = self.ty()?;
         let default = if with_default && self.accept(Kind::Eq)? {
-            Some(self.expr()?)
+            Some(self.constant()?)
         } else {
             None
         };
@@ -748,7 +748,8 @@ impl<'a> Parser<'a> {
             }
             let kind = match self.cur.kind {
                 Kind::LParen if !place => {
-                    let args = self.between(Kind::LParen, Kind::RParen, Self::call_args)?;
+                    let args =
+                        self.between(Kind::LParen, Kind::RParen, |p| p.call_args(Self::arg))?;
                     ExprKind::Call(Box::new(e), args)
                 }
                 Kind::LBracket => {
@@ -774,11 +775,11 @@ impl<'a> Parser<'a> {
         }
     }
 
-    /// Bare arguments, then labelled ones.
-    fn call_args(&mut self) -> Parse<Vec<Arg<'a>>> {
+    /// Bare arguments, then labelled ones, each read by `arg`.
+    fn call_args(&mut self, arg: fn(&mut Self) -> Parse<Arg<'a>>) -> Parse<Vec<Arg<'a>>> {
         let mut labelled = false;
         self.items(&[Kind::RParen], |p| {
-            let arg = p.arg()?;
+            let arg = arg(p)?;
             labelled |= arg.label.is_some();
             if arg.label.is_none() && labelled {
                 let (at, len) = (arg.value.at, arg.value.len);
@@ -829,14 +830,76 @@ impl<'a> Parser<'a> {
         Ok(self.node(amp, ExprKind::Inout(Box::new(place))))
     }
 
-    /// A record field: `LOWER ":" expr`.
-    fn field_init(&mut self) -> Parse<Arg<'a>> {
+    /// A record field: `LOWER ":" value`.
+    fn field_init(&mut self, value: fn(&mut Self) -> Parse<Expr<'a>>) -> Parse<Arg<'a>> {
         let label = self.name(Kind::Lower, "field")?;
         self.eat(Kind::Colon)?;
-        let value = self.expr()?;
+        let value = value(self)?;
         Ok(Arg {
             label: Some(label),
             value,
+        })
+    }
+
+    /// A `constant` of the grammar (M2-02 section 2): the default of a field.
+    fn constant(&mut self) -> Parse<Expr<'a>> {
+        let first = self.cur;
+        let kind = match first.kind {
+            Kind::Int | Kind::Float | Kind::True | Kind::False => return self.primary(first),
+            Kind::Str if first.parts().iter().all(|p| matches!(p, Part::Text(_))) => {
+                return self.primary(first);
+            }
+            Kind::Minus => {
+                self.advance()?;
+                if !matches!(self.cur.kind, Kind::Int | Kind::Float) {
+                    return Err(self.unexpected("a number"));
+                }
+                if self.cur.start == first.start + 1 {
+                    return self.primary(first);
+                }
+                ExprKind::Unary(UnOp::Neg, Box::new(self.primary(self.cur)?))
+            }
+            Kind::LBracket => self.between(Kind::LBracket, Kind::RBracket, |p| {
+                Ok(match p.accept(Kind::Colon)? {
+                    true => ExprKind::Map(vec![]),
+                    false => ExprKind::List(vec![]),
+                })
+            })?,
+            Kind::Upper => {
+                self.advance()?;
+                let name = text(first);
+                match self.cur.kind {
+                    Kind::LBrace => {
+                        let fields = self.between(Kind::LBrace, Kind::RBrace, |p| {
+                            p.items(&[Kind::RBrace], |p| p.field_init(Self::constant))
+                        })?;
+                        ExprKind::Record(name, fields)
+                    }
+                    Kind::LParen => {
+                        let callee = Box::new(self.node(first, ExprKind::Name(name)));
+                        let args = self.between(Kind::LParen, Kind::RParen, |p| {
+                            p.call_args(Self::constant_arg)
+                        })?;
+                        ExprKind::Call(callee, args)
+                    }
+                    _ => ExprKind::Name(name),
+                }
+            }
+            _ => return Err(self.unexpected("a constant")),
+        };
+        Ok(self.node(first, kind))
+    }
+
+    /// A variant argument of a constant: `[ LOWER ":" ] constant`.
+    fn constant_arg(&mut self) -> Parse<Arg<'a>> {
+        let name = self.cur;
+        let after = &self.src[name.start + name.len()..];
+        if name.kind == Kind::Lower && after.trim_ascii_start().starts_with(b":") {
+            return self.field_init(Self::constant);
+        }
+        Ok(Arg {
+            label: None,
+            value: self.constant()?,
         })
     }
 
@@ -898,7 +961,7 @@ impl<'a> Parser<'a> {
                 self.advance()?;
                 if self.cur.kind == Kind::LBrace && !self.header {
                     let fields = self.between(Kind::LBrace, Kind::RBrace, |p| {
-                        p.items(&[Kind::RBrace], Self::field_init)
+                        p.items(&[Kind::RBrace], |p| p.field_init(Self::expr))
                     })?;
                     ExprKind::Record(text(t), fields)
                 } else {
