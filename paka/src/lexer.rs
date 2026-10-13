@@ -33,6 +33,15 @@ pub struct Token<'a> {
     pub text: &'a [u8],
     pub line: usize,
     pub col: usize,
+    /// Byte offset of the first byte, including an opening quote.
+    pub start: usize,
+}
+
+impl Token<'_> {
+    /// Bytes in the source, including a string's quotes.
+    pub fn len(&self) -> usize {
+        self.text.len() + if self.kind == Kind::Str { 2 } else { 0 }
+    }
 }
 
 /// Hands out one token at a time, so the parser can stop at the first error.
@@ -92,14 +101,10 @@ impl<'a> Lexer<'a> {
         self.src.get(self.at + ahead).copied()
     }
 
-    /// The error for the byte at `index`, on the current line.
-    fn fail(&self, index: usize, code: &'static str, message: &str) -> Diagnostic {
-        Diagnostic {
-            path: self.path.into(),
-            position: Some((self.line, index - self.line_start + 1)),
-            code,
-            message: message.into(),
-        }
+    /// The error for the `len` bytes at `index`, on the current line.
+    fn fail(&self, index: usize, len: usize, code: &'static str, message: &str) -> Diagnostic {
+        let position = (self.line, index - self.line_start + 1);
+        Diagnostic::new(self.path, position, len, code, message)
     }
 
     /// The error for a byte that no rule accepts at `index`.
@@ -107,12 +112,14 @@ impl<'a> Lexer<'a> {
         if printable(self.src[index]) {
             self.fail(
                 index,
+                1,
                 "unexpected-character",
                 "no token starts with this byte",
             )
         } else {
             self.fail(
                 index,
+                1,
                 "invalid-byte",
                 "only printable ASCII and line feed are allowed",
             )
@@ -138,6 +145,7 @@ impl<'a> Lexer<'a> {
             text,
             line,
             col,
+            start,
         };
         let Some(first) = self.peek(0) else {
             return Ok(token(Kind::End, &[]));
@@ -164,13 +172,26 @@ impl<'a> Lexer<'a> {
                 Kind::Arrow
             }
             (b'/', Some(b'/')) => {
-                return Err(self.fail(start, "unsupported-comment", "comments are not supported"));
+                return Err(self.fail(
+                    start,
+                    2,
+                    "unsupported-comment",
+                    "comments are not supported",
+                ));
             }
             (b'?', Some(b'?')) => {
-                return Err(self.fail(start, "unsupported-hole", "holes are not supported"));
+                return Err(self.fail(start, 2, "unsupported-hole", "holes are not supported"));
             }
             (b'0'..=b'9', _) => {
-                return Err(self.fail(start, "unsupported-integer", "integers are not supported"));
+                let len = (self.src[start..].iter())
+                    .take_while(|b| b.is_ascii_digit())
+                    .count();
+                return Err(self.fail(
+                    start,
+                    len,
+                    "unsupported-integer",
+                    "integers are not supported",
+                ));
             }
             _ => match punctuation(first) {
                 Some(kind) => kind,
@@ -192,11 +213,12 @@ impl<'a> Lexer<'a> {
                 }
                 b'\n' => break,
                 b'\\' => {
-                    return Err(self.fail(i, "unsupported-escape", "escapes are not supported"));
+                    return Err(self.fail(i, 1, "unsupported-escape", "escapes are not supported"));
                 }
                 b'{' | b'}' => {
                     return Err(self.fail(
                         i,
+                        1,
                         "unsupported-interpolation",
                         "braces are not supported in strings",
                     ));
@@ -205,8 +227,10 @@ impl<'a> Lexer<'a> {
                 _ => {}
             }
         }
+        let line_end = (self.src[open..].iter().position(|&b| b == b'\n')).map(|n| open + n);
         Err(self.fail(
             open,
+            line_end.unwrap_or(self.src.len()) - open,
             "unterminated-string",
             "the string has no closing quote",
         ))

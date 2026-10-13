@@ -11,7 +11,13 @@ type Parse<T> = Result<T, Diagnostic>;
 pub fn parse<'a>(path: &'a str, src: &'a [u8]) -> Parse<Program<'a>> {
     let mut lexer = Lexer::new(path, src);
     let cur = lexer.next()?;
-    Parser { path, lexer, cur }.program()
+    Parser {
+        path,
+        lexer,
+        cur,
+        prev_end: 0,
+    }
+    .program()
 }
 
 fn text<'a>(token: Token<'a>) -> &'a str {
@@ -26,11 +32,14 @@ struct Parser<'a> {
     path: &'a str,
     lexer: Lexer<'a>,
     cur: Token<'a>,
+    /// Byte offset just after the last token taken.
+    prev_end: usize,
 }
 
 impl<'a> Parser<'a> {
     /// Takes the current token and lexes the next one.
     fn advance(&mut self) -> Parse<Token<'a>> {
+        self.prev_end = self.cur.start + self.cur.len();
         Ok(std::mem::replace(&mut self.cur, self.lexer.next()?))
     }
 
@@ -50,12 +59,7 @@ impl<'a> Parser<'a> {
     }
 
     fn error(&self, code: &'static str, message: String) -> Diagnostic {
-        Diagnostic {
-            path: self.path.into(),
-            position: Some(pos(self.cur)),
-            code,
-            message,
-        }
+        Diagnostic::new(self.path, pos(self.cur), self.cur.len(), code, message)
     }
 
     /// The error for the current token, which fits nowhere; `what` is what the grammar wanted.
@@ -162,6 +166,7 @@ impl<'a> Parser<'a> {
         };
         Ok(Expr {
             at: pos(first),
+            len: self.prev_end - first.start,
             kind,
         })
     }
@@ -254,9 +259,10 @@ mod tests {
         }
     }
 
-    fn apply<'a>(text: &'a str, col: usize, args: Vec<Expr<'a>>) -> Expr<'a> {
+    fn apply<'a>(text: &'a str, col: usize, len: usize, args: Vec<Expr<'a>>) -> Expr<'a> {
         Expr {
             at: (4, col),
+            len,
             kind: ExprKind::Apply(text, args),
         }
     }
@@ -265,13 +271,15 @@ mod tests {
     fn light() -> Program<'static> {
         let print_arg = Expr {
             at: (4, 10),
+            len: 20,
             kind: ExprKind::Str("let there be light"),
         };
         let effects = Expr {
             at: (4, 3),
+            len: 35,
             kind: ExprKind::List(vec![
-                apply("Print", 4, vec![print_arg]),
-                apply("Exit", 33, vec![]),
+                apply("Print", 4, 27, vec![print_arg]),
+                apply("Exit", 33, 4, vec![]),
             ]),
         };
         let msg = ty("Msg", 3, 34, None);

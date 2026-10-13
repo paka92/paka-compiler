@@ -3,6 +3,7 @@ mod build;
 mod check;
 mod diagnostic;
 mod interp;
+mod json;
 mod lexer;
 mod llvm;
 mod lower;
@@ -14,7 +15,7 @@ use std::io::Write;
 use std::process::ExitCode;
 use std::{env, fs, io};
 
-const USAGE: &str = "usage: paka run <file>\n       paka build <file> -o <output>\n";
+const USAGE: &str = "usage: paka run <file>\n       paka build <file> -o <output>\n       paka check <file> [--json]\n";
 
 fn main() -> ExitCode {
     let args: Vec<_> = env::args_os().skip(1).collect();
@@ -22,6 +23,8 @@ fn main() -> ExitCode {
     let (file, output) = match args[..] {
         ["run", file] => (file, None),
         ["build", file, "-o", output] => (file, Some(output)),
+        ["check", file] => return check_file(file, false),
+        ["check", file, "--json"] => return check_file(file, true),
         _ => return report(USAGE, 2),
     };
     let result = load(file).and_then(|core| match output {
@@ -38,9 +41,33 @@ fn main() -> ExitCode {
     }
 }
 
+fn read(file: &str) -> Result<Vec<u8>, Diagnostic> {
+    fs::read(file).map_err(|e| Diagnostic::tool(file, "file-unreadable", e))
+}
+
 fn load(file: &str) -> Result<Core, Diagnostic> {
-    let source = fs::read(file).map_err(|e| Diagnostic::tool(file, "file-unreadable", e))?;
-    front_end(file, &source)
+    front_end(file, &read(file)?)
+}
+
+/// `paka check`: the diagnostic `run` would print, with its fields as extra lines or as JSON.
+fn check_file(file: &str, json: bool) -> ExitCode {
+    let source = match read(file) {
+        Ok(source) => source,
+        Err(d) => return report_fields(&d, &[], json),
+    };
+    let result = parser::parse(file, &source).and_then(|p| check::check(file, &p).map(drop));
+    result.map_or_else(|d| report_fields(&d, &source, json), |()| ExitCode::SUCCESS)
+}
+
+fn report_fields(d: &Diagnostic, source: &[u8], json: bool) -> ExitCode {
+    report(
+        &if json {
+            d.json(source)
+        } else {
+            d.detailed(source)
+        },
+        1,
+    )
 }
 
 fn front_end(path: &str, source: &[u8]) -> Result<Core, Diagnostic> {

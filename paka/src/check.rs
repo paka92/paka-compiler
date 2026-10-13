@@ -59,32 +59,18 @@ pub fn check<'a>(path: &'a str, program: &'a Program<'a>) -> Check<Checked<'a>> 
         pool: builtins(),
     };
     for def in &program.defs {
-        checker.declare_def(def)?;
+        let declared = checker.declare_def(def);
+        declared.map_err(|d| d.in_definition(def.name().text))?;
     }
     checker.single_app(&program.defs)?;
     let mut checked = None;
     for def in &program.defs {
-        match def {
-            Def::Enum { .. } => {}
-            Def::Fn {
-                param_type,
-                result,
-                body,
-                ..
-            } => checker.check_fn(Func {
-                param_type,
-                result,
-                body,
-            })?,
-            Def::App { name, entries } => checked = Some(checker.check_app(name, entries)?),
-        }
+        let result = checker.check_def(def);
+        checked = result
+            .map_err(|d| d.in_definition(def.name().text))?
+            .or(checked);
     }
-    checked.ok_or_else(|| Diagnostic {
-        path: path.into(),
-        position: None,
-        code: "no-app",
-        message: "the program has no app".into(),
-    })
+    checked.ok_or_else(|| Diagnostic::tool(path, "no-app", "the program has no app"))
 }
 
 fn builtins<'a>() -> BTreeMap<&'a str, Item<'a>> {
@@ -126,23 +112,41 @@ struct Checker<'a> {
 }
 
 impl<'a> Checker<'a> {
-    fn fail(&self, at: Pos, code: &'static str, message: String) -> Diagnostic {
-        Diagnostic {
-            path: self.path.into(),
-            position: Some(at),
-            code,
-            message,
+    fn fail(&self, at: Pos, len: usize, code: &'static str, message: String) -> Diagnostic {
+        Diagnostic::new(self.path, at, len, code, message)
+    }
+
+    fn fail_at(&self, name: &Name, code: &'static str, message: String) -> Diagnostic {
+        self.fail(name.at, name.text.len(), code, message)
+    }
+
+    fn check_def(&self, def: &'a Def<'a>) -> Check<Option<Checked<'a>>> {
+        match def {
+            Def::Enum { .. } => Ok(None),
+            Def::Fn {
+                param_type,
+                result,
+                body,
+                ..
+            } => {
+                let func = Func {
+                    param_type,
+                    result,
+                    body,
+                };
+                self.check_fn(func).map(|()| None)
+            }
+            Def::App { name, entries } => self.check_app(name, entries).map(Some),
         }
     }
 
     fn declare(&mut self, name: &Name<'a>, item: Item<'a>) -> Check<()> {
         match self.pool.insert(name.text, item) {
             None => Ok(()),
-            Some(_) => Err(self.fail(
-                name.at,
-                "duplicate-name",
-                format!("`{}` is already declared", name.text),
-            )),
+            Some(_) => {
+                let message = format!("`{}` is already declared", name.text);
+                Err(self.fail_at(name, "duplicate-name", message))
+            }
         }
     }
 
@@ -179,7 +183,10 @@ impl<'a> Checker<'a> {
         });
         match apps.nth(1) {
             Some(second) => {
-                Err(self.fail(second.at, "multiple-apps", "a program holds one app".into()))
+                let message = "a program holds one app".into();
+                Err(self
+                    .fail_at(second, "multiple-apps", message)
+                    .in_definition(second.text))
             }
             None => Ok(()),
         }
@@ -192,12 +199,12 @@ impl<'a> Checker<'a> {
             Some(Item::Enum) => 0,
             _ => {
                 let message = format!("`{}` is not a type", t.name.text);
-                return Err(self.fail(t.name.at, "unknown-type", message));
+                return Err(self.fail_at(&t.name, "unknown-type", message));
             }
         };
         if arity != usize::from(t.arg.is_some()) {
             let message = format!("`{}` takes {arity} type arguments", t.name.text);
-            return Err(self.fail(t.name.at, "wrong-type-arguments", message));
+            return Err(self.fail_at(&t.name, "wrong-type-arguments", message));
         }
         t.arg.as_deref().map_or(Ok(()), |a| self.well_formed(a))
     }
@@ -211,31 +218,32 @@ impl<'a> Checker<'a> {
     /// Checks `e` against the well formed type `want`.
     fn expr(&self, e: &Expr, want: &Type) -> Check<()> {
         let mismatch = |found: &str| {
-            let message = format!("expected `{}`, found {found}", want.name.text);
-            self.fail(e.at, "type-mismatch", message)
+            let message = format!("expected `{want}`, found `{found}`");
+            let d = self.fail(e.at, e.len, "type-mismatch", message);
+            d.with_types(want, &found)
         };
         match &e.kind {
             ExprKind::Str(_) if want.name.text == "String" => Ok(()),
-            ExprKind::Str(_) => Err(mismatch("a string")),
+            ExprKind::Str(_) => Err(mismatch("String")),
             ExprKind::List(items) => {
-                let elem = inner(want, "List").ok_or_else(|| mismatch("a list"))?;
+                let elem = inner(want, "List").ok_or_else(|| mismatch("List<_>"))?;
                 items.iter().try_for_each(|i| self.expr(i, elem))
             }
             ExprKind::Apply(name, args) => {
-                let (arity, fits) = match self.pool.get(name) {
-                    Some(Item::Variant(en)) => (0, want.name.text == *en),
-                    Some(Item::Effect(n)) => (*n, inner(want, "Effect").is_some()),
+                let (arity, fits, found) = match self.pool.get(name) {
+                    Some(Item::Variant(en)) => (0, want.name.text == *en, *en),
+                    Some(Item::Effect(n)) => (*n, inner(want, "Effect").is_some(), "Effect<_>"),
                     _ => {
                         let message = format!("`{name}` is not a variant or an effect");
-                        return Err(self.fail(e.at, "unknown-name", message));
+                        return Err(self.fail(e.at, name.len(), "unknown-name", message));
                     }
                 };
                 if args.len() != arity {
                     let message = format!("`{name}` takes {arity} arguments");
-                    return Err(self.fail(e.at, "wrong-argument-count", message));
+                    return Err(self.fail(e.at, name.len(), "wrong-argument-count", message));
                 }
                 if !fits {
-                    return Err(mismatch(&format!("`{name}`")));
+                    return Err(mismatch(found));
                 }
                 args.iter().try_for_each(|a| self.expr(a, &STRING))
             }
@@ -250,11 +258,11 @@ impl<'a> Checker<'a> {
         } = self.keys(app, entries)?;
         let Some(Item::Fn(f)) = self.pool.get(update.text) else {
             let message = format!("`{}` is not a function", update.text);
-            return Err(self.fail(update.at, "unknown-name", message));
+            return Err(self.fail_at(update, "unknown-name", message));
         };
         let Some(message) = self.message_enum(f) else {
             let message = format!("`{}` is not `(x: M) -> List<Effect<M>>`", update.text);
-            return Err(self.fail(update.at, "bad-update-signature", message));
+            return Err(self.fail_at(update, "bad-update-signature", message));
         };
         self.check_start(start, message)?;
         self.check_grants(grants)?;
@@ -279,10 +287,10 @@ impl<'a> Checker<'a> {
             if repeated {
                 let (at, key) = key(entry);
                 let message = format!("`{key}` is written twice");
-                return Err(self.fail(at, "duplicate-app-entry", message));
+                return Err(self.fail(at, key.len(), "duplicate-app-entry", message));
             }
         }
-        let missing = |code, key| self.fail(app.at, code, format!("the app has no `{key}`"));
+        let missing = |code, key| self.fail_at(app, code, format!("the app has no `{key}`"));
         Ok(Keys {
             start: start.ok_or_else(|| missing("missing-start", "start"))?,
             update: update.ok_or_else(|| missing("missing-update", "update"))?,
@@ -303,11 +311,11 @@ impl<'a> Checker<'a> {
             Some(Item::Variant(en)) if *en == message => Ok(()),
             Some(Item::Variant(_) | Item::Effect(_)) => {
                 let text = format!("`{}` is not a variant of `{message}`", start.text);
-                Err(self.fail(start.at, "bad-start", text))
+                Err(self.fail_at(start, "bad-start", text))
             }
             _ => {
                 let text = format!("`{}` is not a variant or an effect", start.text);
-                Err(self.fail(start.at, "unknown-name", text))
+                Err(self.fail_at(start, "unknown-name", text))
             }
         }
     }
@@ -316,11 +324,12 @@ impl<'a> Checker<'a> {
         for (i, grant) in grants.iter().enumerate() {
             if !matches!(self.pool.get(grant.text), Some(Item::Grant)) {
                 let message = format!("`{}` is not a grant", grant.text);
-                return Err(self.fail(grant.at, "unknown-grant", message));
+                let fix = self.fail_at(grant, "unknown-grant", message);
+                return Err(fix.with_fix("Console"));
             }
             if grants[..i].iter().any(|g| g.text == grant.text) {
                 let message = format!("`{}` is listed twice", grant.text);
-                return Err(self.fail(grant.at, "duplicate-grant", message));
+                return Err(self.fail_at(grant, "duplicate-grant", message));
             }
         }
         Ok(())
@@ -337,8 +346,8 @@ mod tests {
         check("main.paka", program)
     }
 
-    fn expr(at: (usize, usize), kind: ExprKind) -> Expr {
-        Expr { at, kind }
+    fn expr(at: (usize, usize), len: usize, kind: ExprKind) -> Expr {
+        Expr { at, len, kind }
     }
 
     #[test]
@@ -352,13 +361,14 @@ mod tests {
         assert_eq!(light.grants, ["Console"]);
         let print = expr(
             (4, 4),
+            27,
             ExprKind::Apply(
                 "Print",
-                vec![expr((4, 10), ExprKind::Str("let there be light"))],
+                vec![expr((4, 10), 20, ExprKind::Str("let there be light"))],
             ),
         );
-        let exit = expr((4, 33), ExprKind::Apply("Exit", vec![]));
-        let body = expr((4, 3), ExprKind::List(vec![print, exit]));
+        let exit = expr((4, 33), 4, ExprKind::Apply("Exit", vec![]));
+        let body = expr((4, 3), 35, ExprKind::List(vec![print, exit]));
         assert_eq!(light.update, &body);
     }
 

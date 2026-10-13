@@ -61,7 +61,7 @@ fn first_text_line_is_what_run_prints() {
 
 #[test]
 fn accepted_program_prints_nothing_and_exits_0() {
-    let dir = Path::new(ROOT).parent().unwrap().join("examples");
+    let dir = Path::new(env!("CARGO_MANIFEST_DIR")).join("../examples");
     for args in [
         &["check", "light.paka"][..],
         &["check", "light.paka", "--json"],
