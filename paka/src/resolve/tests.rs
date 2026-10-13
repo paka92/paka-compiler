@@ -4,6 +4,8 @@ use super::*;
 use crate::parser::parse;
 use std::collections::BTreeSet;
 
+const SPEC: &str = include_str!("../../../spec/paka.md");
+
 fn program(lines: &[&str]) -> String {
     lines.join("\n") + "\n"
 }
@@ -16,14 +18,38 @@ fn at(src: &str, line: usize, pattern: &str) -> Pos {
     (line, found + before.len() + 1)
 }
 
-fn resolved(src: &str) -> Resolved {
+/// Every name error: a declaration error alone, else each definition's own, then the app entries'.
+fn errors(src: &str) -> Vec<Diagnostic> {
     let program = parse("main.paka", src.as_bytes()).unwrap();
-    resolve("main.paka", &program).unwrap()
+    match resolve("main.paka", &program) {
+        Err(d) => vec![d],
+        Ok(r) => {
+            assert_eq!(r.defs.len(), program.defs.len());
+            let (defs, entries) = (r.defs.into_iter(), r.entries.into_values());
+            defs.filter_map(Result::err).chain(entries).collect()
+        }
+    }
 }
 
-fn rejection(src: &str) -> Diagnostic {
+fn resolved(src: &str) -> Resolved {
     let program = parse("main.paka", src.as_bytes()).unwrap();
-    resolve("main.paka", &program).unwrap_err()
+    let r = resolve("main.paka", &program).unwrap();
+    assert!(
+        r.defs.iter().all(Result::is_ok) && r.entries.is_empty(),
+        "{src}"
+    );
+    r
+}
+
+/// The first of `errors`.
+fn rejection(src: &str) -> Diagnostic {
+    errors(src).into_iter().next().expect("no error")
+}
+
+/// The code and the position of each error.
+fn found(src: &str) -> Vec<(&'static str, Pos)> {
+    let all = errors(src);
+    all.iter().map(|d| (d.code, d.position.unwrap())).collect()
 }
 
 /// The code, the position and the replacement of the fix, if any.
@@ -116,9 +142,9 @@ fn every_kind_of_name_is_bound() {
     assert_eq!(bound(11, "[^Exit]"), builtin("Exit"));
     assert_eq!(bound(12, "^Move"), Binding::Variant(1, 1));
     assert_eq!(bound(12, "[^Print"), builtin("Print"));
-    // records and their field labels
+    // records; their labels are the checker's
     assert_eq!(bound(8, "= ^Point"), Binding::Def(0));
-    assert_eq!(bound(8, "{ ^x:"), Binding::Field(0, 0));
+    assert_eq!(r.get(at(&src, 8, "{ ^x:")), None);
     // app keys and grants
     assert_eq!(bound(17, "start: ^Start"), Binding::Variant(1, 0));
     assert_eq!(bound(18, "update: ^update"), Binding::Def(3));
@@ -221,32 +247,76 @@ fn a_user_definition_of_a_built_in_name_says_so() {
     }
 }
 
+/// The part of the language reference between two headings.
+fn spec_section(from: &str, to: &str) -> &'static str {
+    SPEC.split(from).nth(1).unwrap().split(to).next().unwrap()
+}
+
+/// The leading name of each backticked span in `text`, if it starts with `first`.
+fn spans(text: &str, first: fn(char) -> bool) -> Vec<&str> {
+    let spans = text.split('`').skip(1).step_by(2);
+    let words = spans.filter_map(|s| s.split(|c: char| !c.is_ascii_alphanumeric()).next());
+    words.filter(|w| w.starts_with(first)).collect()
+}
+
+/// The built-in names of the language reference, by kind: sections 3, 9 and 10.
+fn spec_builtins() -> Vec<(Kind, Vec<&'static str>)> {
+    let rows = |section: &'static str| section.lines().filter(|l| l.starts_with("| `"));
+    let types = spec_section("## 3.", "## 4.");
+    let cell = |row: &'static str, i| row.split('|').nth(i).unwrap();
+    let first_cells: Vec<_> = rows(types).map(|r| cell(r, 1)).collect();
+    let written: Vec<_> = rows(types).map(|r| cell(r, 2)).collect();
+    let effects = spec_section("## 10.", "## 11.");
+    let effect_cells: Vec<_> = rows(effects).map(|r| cell(r, 1)).collect();
+    let upper: fn(char) -> bool = |c| c.is_ascii_uppercase();
+    let type_names = first_cells.iter().flat_map(|c| spans(c, upper));
+    let variants = written
+        .iter()
+        .chain(&effect_cells)
+        .flat_map(|c| spans(c, upper));
+    let grants = effects.lines().find(|l| l.contains("grants: [")).unwrap();
+    let grants = grants.rsplit_once(": ").unwrap().1.split(", ").collect();
+    let code = spec_section("## 9.", "## 10.").split("```").nth(1).unwrap();
+    let calls = code.match_indices('(').map(|(i, _)| {
+        let head = &code[..i];
+        let start = head.rfind(|c: char| !(c.is_ascii_alphanumeric() || c == '_'));
+        &head[start.map_or(0, |p| p + 1)..]
+    });
+    let fns = calls.filter(|w| w.starts_with(|c: char| c.is_ascii_lowercase()) && *w != "fn");
+    vec![
+        (
+            Kind::Type,
+            type_names.filter(|n| *n != "Effect<Msg>").collect(),
+        ),
+        (Kind::Variant, variants.collect()),
+        (Kind::Grant, grants),
+        (Kind::Fn, fns.collect::<BTreeSet<_>>().into_iter().collect()),
+    ]
+}
+
 #[test]
 fn every_built_in_name_is_taken() {
-    let words = |kind| {
-        let rows = BUILTINS.iter().filter(move |b| b.0 == kind);
-        rows.flat_map(|b| b.1.split_whitespace())
-            .collect::<Vec<_>>()
-    };
-    let (types, variants) = (words(Kind::Type), words(Kind::Variant));
-    let (grants, fns) = (words(Kind::Grant), words(Kind::Fn));
-    assert_eq!(
-        (types.len(), variants.len(), grants.len(), fns.len()),
-        (9, 9, 3, 63)
-    );
-    let all: BTreeSet<_> = [&types, &variants, &grants, &fns]
-        .into_iter()
-        .flatten()
-        .collect();
+    let spec = spec_builtins();
+    let mut all = BTreeSet::new();
+    for (kind, words) in &spec {
+        let table: Vec<_> = (BUILTINS.iter().filter(|b| b.0 == *kind))
+            .flat_map(|b| b.1.split_whitespace())
+            .collect();
+        let (mut table, mut words) = (table, words.clone());
+        table.sort_unstable();
+        words.sort_unstable();
+        assert_eq!(table, words, "{kind:?}");
+        all.extend(table);
+    }
     assert_eq!(all.len(), 84);
     let sources = [
-        (&types, "type @ {}"),
-        (&variants, "enum Msg { @ }"),
-        (&grants, "enum Msg { @ }"),
-        (&fns, "fn @() {}"),
+        (Kind::Type, "type @ {}"),
+        (Kind::Variant, "enum Msg { @ }"),
+        (Kind::Grant, "enum Msg { @ }"),
+        (Kind::Fn, "fn @() {}"),
     ];
-    for (names, template) in sources {
-        for name in names {
+    for (kind, template) in sources {
+        for name in spec.iter().find(|s| s.0 == kind).map(|s| &s.1).unwrap() {
             let src = program(&[&template.replace('@', name)]);
             let d = rejection(&src);
             assert_eq!(d.code, "duplicate-name", "{src}");
@@ -308,8 +378,22 @@ fn an_unknown_name_gets_the_nearest_known_name_as_its_fix() {
 
 #[test]
 fn the_nearest_name_is_the_first_in_byte_order_on_a_tie() {
-    let lines = ["fn ac() {}", "fn aa() {}", "fn f() {", "  ab", "}"];
-    assert_rejected(&lines, "unknown-name", 4, "^ab", Some("aa"));
+    let lines = ["fn abx() {}", "fn abc() {}", "fn f() {", "  abd", "}"];
+    assert_rejected(&lines, "unknown-name", 4, "^abd", Some("abc"));
+}
+
+#[test]
+fn a_name_farther_than_a_third_of_its_length_has_no_fix() {
+    let fix = |name: &str| {
+        let lines = ["fn target() {}".to_string(), format!("fn f() {{ {name} }}")];
+        let src = program(&[&lines[0], &lines[1]]);
+        rejected(&src).2
+    };
+    assert_eq!(fix("tarxxt"), Some("target".into()));
+    assert_eq!(fix("tarxyt"), Some("target".into()));
+    assert_eq!(fix("taxxyt"), None);
+    assert_eq!(fix("tar"), None);
+    assert_eq!(fix("Target"), None);
 }
 
 #[test]
@@ -323,14 +407,14 @@ fn only_values_are_names_in_an_expression() {
 }
 
 #[test]
-fn a_record_names_a_record_type_and_its_fields() {
+fn a_record_names_a_record_type_and_leaves_its_labels_to_the_checker() {
     let lines = [
         "type Point { x: Int }",
         "fn f() {",
         "  _ = Pont { x: 1 }",
         "}",
     ];
-    assert_rejected(&lines, "unknown-type", 3, "= ^Pont", None);
+    assert_rejected(&lines, "unknown-type", 3, "= ^Pont", Some("Point"));
     let lines = ["enum Msg { Start }", "fn f() {", "  _ = Msg {}", "}"];
     assert_rejected(&lines, "unknown-type", 3, "= ^Msg", None);
     let lines = [
@@ -339,20 +423,36 @@ fn a_record_names_a_record_type_and_its_fields() {
         "  _ = Size { width: 1, widht: 2 }",
         "}",
     ];
-    assert_rejected(&lines, "unknown-name", 3, "^widht", Some("width"));
+    resolved(&program(&lines));
 }
 
 #[test]
 fn an_unknown_type_is_found_anywhere_a_type_stands() {
-    let cases: [(&[&str], usize, &str); 5] = [
-        (&["fn f(m: Message) {}"], 1, "m: ^Message"),
-        (&["enum Msg { Start }", "fn f(m: Start) {}"], 2, "m: ^Start"),
-        (&["fn f(xs: List<Strng>) {}"], 1, "List<^Strng>"),
-        (&["fn f(g: fn(Int) -> Nope) {}"], 1, "-> ^Nope"),
-        (&["fn f() { let x: Nope = 1 }"], 1, "x: ^Nope"),
+    let cases: [(&[&str], usize, &str, Option<&str>); 6] = [
+        (&["fn f(m: Message) {}"], 1, "m: ^Message", None),
+        (
+            &["enum Msg { Start }", "fn f(m: Start) {}"],
+            2,
+            "m: ^Start",
+            None,
+        ),
+        (
+            &["fn f(xs: List<Strng>) {}"],
+            1,
+            "List<^Strng>",
+            Some("String"),
+        ),
+        (&["fn f(g: fn(Int) -> Nope) {}"], 1, "-> ^Nope", None),
+        (&["fn f() { let x: Nope = 1 }"], 1, "x: ^Nope", None),
+        (
+            &["type Point { x: Int }", "fn f(p: Pont) {}"],
+            2,
+            "p: ^Pont",
+            Some("Point"),
+        ),
     ];
-    for (lines, line, pattern) in cases {
-        assert_rejected(lines, "unknown-type", line, pattern, None);
+    for (lines, line, pattern, fix) in cases {
+        assert_rejected(lines, "unknown-type", line, pattern, fix);
     }
 }
 
@@ -362,11 +462,11 @@ fn an_unknown_pattern_variant_gets_a_fix() {
         "enum Msg { Start }",
         "fn f(m: Msg) -> Int {",
         "  match m {",
-        "    Strat => 1",
+        "    Stat => 1",
         "  }",
         "}",
     ];
-    assert_rejected(&lines, "unknown-name", 4, "^Strat", Some("Start"));
+    assert_rejected(&lines, "unknown-name", 4, "^Stat", Some("Start"));
 }
 
 const APP: [&str; 6] = [
@@ -393,8 +493,8 @@ fn app_keys_name_functions_variants_and_grants() {
     assert_rejected(&lines, "unknown-name", 5, "^len", None);
     let lines = app_with(4, "  update: a");
     assert_rejected(&lines, "unknown-name", 5, "update: ^a", None);
-    let lines = app_with(3, "  start: Strat");
-    assert_rejected(&lines, "unknown-name", 4, "^Strat", Some("Start"));
+    let lines = app_with(3, "  start: Stat");
+    assert_rejected(&lines, "unknown-name", 4, "^Stat", Some("Start"));
     let lines = app_with(5, "  grants: [Consol]");
     assert_rejected(&lines, "unknown-grant", 6, "^Consol", Some("Console"));
     let lines = app_with(5, "  grants: [Camera]");
@@ -406,24 +506,88 @@ fn app_keys_name_functions_variants_and_grants() {
 }
 
 #[test]
-fn the_first_problem_is_found_in_a_fixed_order() {
-    // declarations before any use, wherever they stand
+fn declarations_come_first_then_each_definition_in_source_order() {
     let lines = ["fn f() -> Strng {}", "fn f() {}"];
     assert_rejected(&lines, "duplicate-name", 2, "fn ^f", None);
-    // definitions in source order
     let lines = ["fn f() {", "  nothing", "}", "fn g(m: Bad) {}"];
-    assert_rejected(&lines, "unknown-name", 2, "^nothing", None);
-    // a parameter's type before the result's
-    let lines = ["fn f(m: Bad) -> Worse {}"];
+    let src = program(&lines);
+    assert_eq!(
+        found(&src),
+        [("unknown-name", (2, 3)), ("unknown-type", (4, 9))]
+    );
+}
+
+#[test]
+fn a_type_is_tested_outside_in() {
+    let lines = ["enum Msg { Start }", "fn f(m: Msg<Bad>) {}"];
+    assert_rejected(&lines, "wrong-type-arguments", 2, "m: ^Msg", None);
+    let lines = ["fn f(m: List<Bad, Int>) {}"];
+    assert_rejected(&lines, "wrong-type-arguments", 1, "m: ^List", None);
+    let lines = ["fn f(m: Bad<Worse>) {}"];
     assert_rejected(&lines, "unknown-type", 1, "m: ^Bad", None);
-    // update, then start, then grants, whatever the written order
-    let lines = app_with(3, "  start: Begin");
+    let lines = ["fn f(m: Int, n: Bad) -> Worse {}"];
+    assert_rejected(&lines, "unknown-type", 1, "n: ^Bad", None);
+}
+
+#[test]
+fn each_app_entry_keeps_its_own_error() {
     let lines = [
-        lines[..4].to_vec(),
-        vec!["  update: nothing", "  grants: [Camera]", "}"],
-    ]
-    .concat();
-    assert_rejected(&lines, "unknown-name", 5, "^nothing", None);
+        "enum Msg { Start }",
+        "fn handle(m: Msg) -> List<Effect<Msg>> { [] }",
+        "app a {",
+        "  state: Nope",
+        "  start: Begin",
+        "  update: nothing",
+        "  grants: [Camera, Console, Mic]",
+        "}",
+    ];
+    let src = program(&lines);
+    let program = parse("main.paka", src.as_bytes()).unwrap();
+    let r = resolve("main.paka", &program).unwrap();
+    assert!(r.defs.iter().all(Result::is_ok));
+    let entry = |line, pattern| r.entry_error(at(&src, line, pattern)).unwrap();
+    assert_eq!(entry(4, "state: ^Nope").code, "unknown-type");
+    assert_eq!(entry(5, "start: ^Begin").code, "unknown-name");
+    assert_eq!(entry(6, "update: ^nothing").code, "unknown-name");
+    assert_eq!(entry(7, "[^Camera").code, "unknown-grant");
+    assert_eq!(entry(7, "Console, ^Mic").code, "unknown-grant");
+    assert!(r.entry_error(at(&src, 7, "Camera, ^Console")).is_none());
+    assert!(
+        entry(4, "state: ^Nope")
+            .detailed(src.as_bytes())
+            .contains("  definition: a\n")
+    );
+}
+
+/// Runs `f` on the 8 MiB of a program's main thread; a debug test thread has only 2 MiB.
+fn deep(f: impl FnOnce() + Send) {
+    std::thread::scope(|s| {
+        let run = std::thread::Builder::new().stack_size(8 << 20);
+        run.spawn_scoped(s, f).unwrap().join().unwrap();
+    });
+}
+
+/// 62 levels of brackets, each holding a chain of 1,000 links, with the next level at the chain's
+/// end or its head.
+fn nested_chains(head: bool) -> String {
+    let links = " + x".repeat(999);
+    let wrap = |inner: String| match head {
+        true => format!("({inner}{links} + x)"),
+        false => format!("(x{links} + {inner})"),
+    };
+    let expr = (0..62).fold("x".to_string(), |inner, _| wrap(inner));
+    program(&["fn f(x: Int) -> Int {", &format!("  {expr}"), "}"])
+}
+
+#[test]
+fn the_deepest_allowed_chains_fit_the_stack() {
+    for head in [false, true] {
+        deep(|| {
+            let src = nested_chains(head);
+            let r = resolved(&src);
+            assert!(r.get(at(&src, 2, "(^x")).is_some());
+        });
+    }
 }
 
 #[test]

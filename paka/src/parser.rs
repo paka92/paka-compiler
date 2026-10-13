@@ -1679,6 +1679,25 @@ mod tests {
     }
 
     #[test]
+    fn alternatives_bind_no_names() {
+        let message = "alternatives bind no names; write one arm per variant";
+        let in_arm = |pattern: &str, name: &str| {
+            let src = format!("fn f() {{\n  match x {{\n    {pattern} => 1\n  }}\n}}\n");
+            let col = pattern.find(name).unwrap() + 5;
+            fail(&src, (3, col), "unexpected-token", message);
+        };
+        in_arm("A(n) | B", "n");
+        in_arm("A | B(n)", "n");
+        in_arm("A(_, n) | B(m)", "n");
+        in_arm("A | B | C(n, m)", "n");
+        // the name comes before a later syntax error
+        in_arm("A(n) | )", "n");
+        let fine =
+            "fn f() {\n  match x {\n    A(_) | B(_, _) | C | 1 => 1\n    D(n) => n\n  }\n}\n";
+        assert!(parse("main.paka", fine.as_bytes()).is_ok());
+    }
+
+    #[test]
     fn an_upper_name_before_a_brace_ends_a_header() {
         let cond = e(
             6,
