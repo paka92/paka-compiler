@@ -2203,6 +2203,617 @@ mod tests {
         });
     }
 
+    // Generic types, function values and error handling (docs/decisions/M2-09.md, M2-12.md)
+
+    fn call<'a>(col: usize, len: usize, name: &'a str, args: Vec<Arg<'a>>) -> Expr<'a> {
+        e(col, len, ExprKind::Call(bx(var(col, name)), args))
+    }
+
+    fn tried(col: usize, len: usize, of: Expr) -> Expr {
+        e(col, len, ExprKind::Try(bx(of)))
+    }
+
+    fn bin<'a>(col: usize, len: usize, op: BinOp, l: Expr<'a>, r: Expr<'a>) -> Expr<'a> {
+        e(col, len, ExprKind::Binary(op, bx(l), bx(r)))
+    }
+
+    fn string(col: usize, text: &str) -> Expr<'static> {
+        let part = StrPart::Text(text.into());
+        e(col, text.len() + 2, ExprKind::Str(vec![part]))
+    }
+
+    fn fn_type<'a>(at: Pos, params: Vec<Type<'a>>, result: Option<Type<'a>>) -> Type<'a> {
+        let result = result.map(Box::new);
+        Type::Fn { at, params, result }
+    }
+
+    /// `let NAME[: TYPE] = value`, the name in column 7.
+    fn let_of<'a>(name: &'a str, ty: Option<Type<'a>>, value: Expr<'a>) -> StmtKind<'a> {
+        StmtKind::Let {
+            var: false,
+            name: nm(name, 2, 7),
+            ty,
+            value,
+        }
+    }
+
+    const CHAINED: &str = "comparisons do not chain; write a < b && b < c";
+    const HOLE: &str = "`??` starts a hole; write `unwrap_or(e, d)`";
+
+    #[test]
+    fn nested_type_arguments_close_one_bracket_each() {
+        let lists = |col| {
+            let inner = generic("List", 2, col + 5, vec![ty("Int", 2, col + 10)]);
+            generic("List", 2, col, vec![inner])
+        };
+        let map = generic("Map", 2, 10, vec![ty("String", 2, 14), lists(22)]);
+        let value = e(41, 3, ExprKind::Map(vec![]));
+        stmt(
+            "let g: Map<String, List<List<Int>>> = [:]",
+            let_of("g", Some(map), value),
+        );
+        let value = e(27, 2, ExprKind::List(vec![]));
+        stmt(
+            "let g: List<List<Int>>= []",
+            let_of("g", Some(lists(10)), value),
+        );
+    }
+
+    #[test]
+    fn option_and_result_types() {
+        let src = "fn f(a: Option<Int>) -> Result<Int, String> {}\n";
+        let option = generic("Option", 1, 9, vec![ty("Int", 1, 16)]);
+        let result = generic("Result", 1, 25, vec![ty("Int", 1, 32), ty("String", 1, 37)]);
+        let want = Def::Fn {
+            name: nm("f", 1, 4),
+            params: vec![param(nm("a", 1, 6), option)],
+            result: Some(result),
+            body: empty(1, 46),
+        };
+        assert_eq!(tree(src).defs, vec![want]);
+    }
+
+    #[test]
+    fn a_function_type_as_a_field() {
+        let src = "type Job { done: fn(Int) -> Msg }\n\
+                   enum Msg { Later(then: fn(String) -> Msg) }\n";
+        let done = fn_type((1, 18), vec![ty("Int", 1, 21)], Some(ty("Msg", 1, 29)));
+        let then = fn_type((2, 24), vec![ty("String", 2, 27)], Some(ty("Msg", 2, 38)));
+        let want = vec![
+            Def::Type {
+                name: nm("Job", 1, 6),
+                fields: vec![plain(nm("done", 1, 12), done)],
+            },
+            Def::Enum {
+                name: nm("Msg", 2, 6),
+                variants: vec![Variant {
+                    name: nm("Later", 2, 12),
+                    fields: vec![plain(nm("then", 2, 18), then)],
+                }],
+            },
+        ];
+        assert_eq!(tree(src).defs, want);
+    }
+
+    #[test]
+    fn a_function_type_as_a_list_item_and_a_map_value() {
+        let item = fn_type((2, 16), vec![ty("Int", 2, 19)], Some(ty("Int", 2, 27)));
+        let value = e(34, 2, ExprKind::List(vec![]));
+        stmt(
+            "let fs: List<fn(Int) -> Int> = []",
+            StmtKind::Let {
+                var: false,
+                name: nm("fs", 2, 7),
+                ty: Some(generic("List", 2, 11, vec![item])),
+                value,
+            },
+        );
+        let args = vec![ty("String", 2, 14), fn_type((2, 22), vec![], None)];
+        let value = e(30, 3, ExprKind::Map(vec![]));
+        stmt(
+            "let m: Map<String, fn()> = [:]",
+            let_of("m", Some(generic("Map", 2, 10, args)), value),
+        );
+    }
+
+    #[test]
+    fn function_types_inside_function_types() {
+        let src = "fn pick(k: fn(fn(Int) -> Bool, List<Int>) -> fn()) -> fn(Int) -> Int {}\n";
+        let test = fn_type((1, 15), vec![ty("Int", 1, 18)], Some(ty("Bool", 1, 26)));
+        let list = generic("List", 1, 32, vec![ty("Int", 1, 37)]);
+        let k = fn_type(
+            (1, 12),
+            vec![test, list],
+            Some(fn_type((1, 46), vec![], None)),
+        );
+        let result = fn_type((1, 55), vec![ty("Int", 1, 58)], Some(ty("Int", 1, 66)));
+        let want = Def::Fn {
+            name: nm("pick", 1, 4),
+            params: vec![param(nm("k", 1, 9), k)],
+            result: Some(result),
+            body: empty(1, 71),
+        };
+        assert_eq!(tree(src).defs, vec![want]);
+    }
+
+    #[test]
+    fn types_print_in_the_canonical_spelling() {
+        let src =
+            "fn f(a: fn(Int,String)->Bool, b: fn(Int), c: fn(), d: Map<String,List<Int>>) {}\n";
+        let program = tree(src);
+        let Def::Fn { params, .. } = &program.defs[0] else {
+            panic!("not a fn")
+        };
+        let spelled: Vec<_> = params.iter().map(|p| p.ty.to_string()).collect();
+        let want = [
+            "fn(Int, String) -> Bool",
+            "fn(Int)",
+            "fn()",
+            "Map<String, List<Int>>",
+        ];
+        assert_eq!(spelled, want);
+    }
+
+    #[test]
+    fn a_broken_type_list_is_an_error_at_its_token() {
+        unexpected("let x: List<> = []", 15, "expected type, found `>`");
+        unexpected("let x: List<Int,> = []", 19, "remove the comma before >");
+        unexpected("let x: List<Int = []", 19, "expected `>`, found `=`");
+        unexpected("let x: List<Int>> = []", 19, "expected `=`, found `>`");
+        let case = "type names start with an upper-case letter: write Int";
+        unexpected("let x: List<int> = []", 15, case);
+        unexpected("let f: fn<T>(T) = g", 12, "expected `(`, found `<`");
+        let src = "fn f() {\n  let x: List<Int\n  > = []\n}\n";
+        let message = "expected `>`, found end of line";
+        fail(src, (2, 18), "unexpected-token", message);
+    }
+
+    #[test]
+    fn no_inout_anywhere_in_a_function_type() {
+        let src = "fn f(g: fn(Int, inout Int)) {}\n";
+        let message = "no inout in a function type";
+        fail(src, (1, 17), "unexpected-token", message);
+    }
+
+    #[test]
+    fn every_interface_word_is_refused_at_a_definition_start() {
+        let message = "Paka has no interfaces; write one function per type and pass it by name";
+        for word in ["interface", "trait", "protocol", "impl", "extension"] {
+            let src = format!("{word} Shape {{ fn area(s: Shape) -> Float }}\n");
+            fail(&src, (1, 1), "unexpected-token", message);
+        }
+        let value = int(15, "1");
+        stmt("let trait = 1", let_of("trait", None, value));
+    }
+
+    #[test]
+    fn a_refused_interface_leaves_the_next_definition() {
+        let src = "interface Shape {\n  fn area(s: Shape) -> Float\n}\nfn f() {}\n";
+        let (program, errors) = parse_all("main.paka", src.as_bytes(), true);
+        assert_eq!(names(&program), ["f"]);
+        assert_eq!(errors.len(), 1);
+    }
+
+    #[test]
+    fn type_parameters_are_refused_at_the_bracket() {
+        let message =
+            "Paka has no type parameters; write it for one type: fn first(xs: List<Int>) -> Int";
+        let src = "fn first<T>(xs: List<T>) -> T { xs[0] }\n";
+        fail(src, (1, 9), "unexpected-token", message);
+        fail("fn first <T>() {}\n", (1, 10), "unexpected-token", message);
+        fail(
+            "type Pair<A, B> { a: A }\n",
+            (1, 10),
+            "unexpected-token",
+            message,
+        );
+    }
+
+    #[test]
+    fn a_bracket_in_an_expression_is_a_comparison() {
+        let lt = |col| bin(col, 5, BinOp::Lt, var(col, "a"), var(col + 4, "b"));
+        let gt = |col, d| bin(col, d - col + 1, BinOp::Gt, var(col, "c"), var(d, "d"));
+        let args = vec![arg(lt(5)), arg(gt(12, 16))];
+        expr("f(a < b, c > d)", ExprKind::Call(bx(var(3, "f")), args));
+        expr("[a < b, c > d]", ExprKind::List(vec![lt(4), gt(11, 15)]));
+        let grouped = e(16, 3, ExprKind::Name("d"));
+        let wide = bin(12, 7, BinOp::Gt, var(12, "c"), grouped);
+        let args = vec![arg(lt(5)), arg(wide)];
+        expr("f(a < b, c > (d))", ExprKind::Call(bx(var(3, "f")), args));
+    }
+
+    #[test]
+    fn type_arguments_in_an_expression_are_refused() {
+        unexpected("f<Int>(x)", 8, CHAINED);
+        unexpected("a < b > c", 9, CHAINED);
+        unexpected("Some<Int>(3)", 11, CHAINED);
+        unexpected("f<List<Int>>(x)", 9, CHAINED);
+        unexpected("if a < b > c { 1 }", 12, CHAINED);
+        unexpected("a >> b", 6, "expected an expression, found `>`");
+        unexpected("f::<Int>(x)", 4, "expected end of line, found `:`");
+        let comma = "expected end of line, found `,`";
+        unexpected("let e = Err<Int, String>(\"no\")", 18, comma);
+    }
+
+    #[test]
+    fn a_comparison_stands_in_a_header_without_brackets() {
+        let block = |col| Block {
+            stmts: vec![node(2, col, 1, StmtKind::Expr(int(col, "1")))],
+            close: (2, col + 2),
+        };
+        let cond = bin(6, 5, BinOp::Lt, var(6, "a"), var(10, "b"));
+        let kind = ExprKind::If {
+            branches: vec![(cond, block(14))],
+            otherwise: None,
+        };
+        expr("if a < b { 1 }", kind);
+        let cond = bin(6, 9, BinOp::Gt, var(6, "n"), var(10, "Limit"));
+        let kind = ExprKind::If {
+            branches: vec![(cond, block(18))],
+            otherwise: None,
+        };
+        expr("if n > Limit { 1 }", kind);
+        let len = call(13, 7, "len", vec![arg(var(17, "xs"))]);
+        let cond = bin(9, 11, BinOp::Lt, var(9, "i"), len);
+        let body = empty(2, 23);
+        stmt("while i < len(xs) { }", StmtKind::While { cond, body });
+    }
+
+    #[test]
+    fn a_comparison_and_a_try_stand_in_an_interpolation() {
+        let lt = |col| bin(col, 5, BinOp::Lt, var(col, "a"), var(col + 4, "b"));
+        expr(r#""{a < b}""#, ExprKind::Str(vec![StrPart::Expr(lt(5))]));
+        let gt = bin(14, 5, BinOp::Gt, var(14, "c"), var(18, "d"));
+        let f = call(5, 15, "f", vec![arg(lt(7)), arg(gt)]);
+        expr(
+            r#""{f(a < b, c > d)}""#,
+            ExprKind::Str(vec![StrPart::Expr(f)]),
+        );
+        let get = call(5, 9, "get", vec![arg(var(9, "m")), arg(var(12, "k"))]);
+        let part = StrPart::Expr(tried(5, 10, get));
+        expr(r#""{get(m, k)?}""#, ExprKind::Str(vec![part]));
+        unexpected(r#""{f<Int>(x)}""#, 10, CHAINED);
+        unexpected(r#""{a ?? 0}""#, 7, HOLE);
+    }
+
+    #[test]
+    fn a_trailing_comparison_continues_the_line_and_a_leading_one_does_not() {
+        let src = "fn f() {\n  a <\n    b\n}\n";
+        let b = node(3, 5, 1, ExprKind::Name("b"));
+        let less = ExprKind::Binary(BinOp::Lt, bx(var(3, "a")), bx(b));
+        let want = node(2, 3, 9, StmtKind::Expr(node(2, 3, 9, less)));
+        let program = tree(src);
+        let Def::Fn { body, .. } = &program.defs[0] else {
+            panic!("not a fn")
+        };
+        assert_eq!(body.stmts, vec![want]);
+        let src = "fn f() {\n  a\n  < b\n}\n";
+        let message = "expected an expression, found `<`";
+        fail(src, (3, 3), "unexpected-token", message);
+    }
+
+    #[test]
+    fn a_function_value_is_a_bare_name() {
+        let out = e(11, 4, ExprKind::Inout(bx(var(12, "out"))));
+        let args = vec![arg(out), arg(var(17, "shorter"))];
+        expr(
+            "sort_by(&out, shorter)",
+            ExprKind::Call(bx(var(3, "sort_by")), args),
+        );
+        let args = vec![
+            arg(var(12, "p")),
+            labelled("then", 15, var(21, "Loaded")),
+            labelled("or", 29, var(33, "Failed")),
+        ];
+        expr(
+            "ReadFile(p, then: Loaded, or: Failed)",
+            ExprKind::Call(bx(var(3, "ReadFile")), args),
+        );
+        stmt("let f = by_length", let_of("f", None, var(11, "by_length")));
+        let same = bin(3, 16, BinOp::Eq, var(3, "Loaded"), var(13, "Failed"));
+        expr("Loaded == Failed", same.kind);
+        let list = ExprKind::List(vec![var(4, "Print"), var(11, "Exit")]);
+        expr("[Print, Exit]", list);
+    }
+
+    #[test]
+    fn a_call_through_an_item_or_a_field() {
+        let item = e(3, 5, ExprKind::Index(bx(var(3, "xs")), bx(int(6, "0"))));
+        expr("xs[0](y)", ExprKind::Call(bx(item), vec![arg(var(9, "y"))]));
+        let field = ExprKind::Field(bx(var(3, "s")), nm("on_done", 2, 5));
+        let args = vec![arg(var(13, "x"))];
+        expr("s.on_done(x)", ExprKind::Call(bx(e(3, 9, field)), args));
+    }
+
+    #[test]
+    fn a_function_written_in_place_is_refused_at_its_first_mark() {
+        fail_in("let f = |x| x", 11, "unexpected-character", LAMBDA);
+        fail_in("|x| x", 3, "unexpected-character", LAMBDA);
+        let src = "fn f() {\n  sort_by(&ps, |a, b|\n    a.score > b.score)\n}\n";
+        fail(src, (2, 16), "unexpected-character", LAMBDA);
+        let src = "fn f() {\n  let f = x =>\n    x\n}\n";
+        fail(src, (2, 13), "unexpected-token", LAMBDA);
+    }
+
+    #[test]
+    fn try_binds_with_calls_items_and_fields() {
+        let parse_int = |col| call(col, 12, "parse_int", vec![arg(var(col + 10, "s"))]);
+        expr("parse_int(s)?", tried(3, 13, parse_int(3)).kind);
+        let item = e(3, 5, ExprKind::Index(bx(var(3, "xs")), bx(var(6, "i"))));
+        expr("xs[i]?", ExprKind::Try(bx(item)));
+        let f = tried(3, 5, call(3, 4, "f", vec![arg(var(5, "x"))]));
+        expr("f(x)?.field", ExprKind::Field(bx(f), nm("field", 2, 9)));
+        let p = tried(3, 2, var(3, "p"));
+        expr("p?.x", ExprKind::Field(bx(p), nm("x", 2, 6)));
+        let h = tried(5, 5, call(5, 4, "h", vec![arg(var(7, "x"))]));
+        expr("g(h(x)?)?", tried(3, 9, call(3, 8, "g", vec![arg(h)])).kind);
+        let ok = call(3, 17, "Ok", vec![arg(tried(6, 13, parse_int(6)))]);
+        expr("Ok(parse_int(s)?)", ok.kind);
+        expr("a??", ExprKind::Try(bx(tried(3, 2, var(3, "a")))));
+    }
+
+    #[test]
+    fn try_binds_tighter_than_every_operator() {
+        let a = |col| tried(col, 2, var(col, "a"));
+        expr("-a?", ExprKind::Unary(UnOp::Neg, bx(a(4))));
+        expr("!a?", ExprKind::Unary(UnOp::Not, bx(a(4))));
+        let b = tried(8, 2, var(8, "b"));
+        expr("a? + b?", bin(3, 7, BinOp::Add, a(3), b).kind);
+        let parsed = call(16, 12, "parse_int", vec![arg(var(26, "f"))]);
+        let args = vec![arg(parsed), arg(string(30, "no"))];
+        let value = tried(10, 26, call(10, 25, "ok_or", args));
+        let (target, op) = (var(3, "sum"), AssignOp::Add);
+        stmt(
+            "sum += ok_or(parse_int(f), \"no\")?",
+            StmtKind::Assign { target, op, value },
+        );
+    }
+
+    #[test]
+    fn a_try_at_a_line_end_ends_the_statement() {
+        let args = vec![arg(var(17, "a")), arg(var(20, "b"))];
+        let ratio = tried(11, 12, call(11, 11, "ratio", args));
+        let half = ExprKind::Binary(
+            BinOp::Div,
+            bx(node(3, 6, 1, ExprKind::Name("r"))),
+            bx(node(3, 10, 1, ExprKind::Int("2"))),
+        );
+        let ok = ExprKind::Call(
+            bx(node(3, 3, 2, ExprKind::Name("Ok"))),
+            vec![arg(node(3, 6, 5, half))],
+        );
+        let want = vec![
+            node(2, 3, 20, let_of("r", None, ratio)),
+            node(3, 3, 9, StmtKind::Expr(node(3, 3, 9, ok))),
+        ];
+        stmts("let r = ratio(a, b)?\n  Ok(r / 2)", want);
+        unexpected("a? b", 6, "expected end of line, found `b`");
+        let src = "fn f() {\n  f()?\n  .x\n}\n";
+        let message = "expected an expression, found `.`";
+        fail(src, (3, 3), "unexpected-token", message);
+    }
+
+    #[test]
+    fn a_question_mark_is_not_an_expression() {
+        unexpected("let x = ?", 11, "expected an expression, found `?`");
+    }
+
+    #[test]
+    fn two_question_marks_between_two_values_are_refused() {
+        unexpected("let v = get(m, k) ?? 0", 21, HOLE);
+        unexpected("let v = x ?? d", 13, HOLE);
+        unexpected("let v = x ?? (a + b)", 13, HOLE);
+        unexpected("let v = x ?? []", 13, HOLE);
+        unexpected("let v = x ?? -1", 13, HOLE);
+        unexpected("let v = x ?? \"none\"", 13, HOLE);
+        unexpected("let v = x??0", 12, HOLE);
+        unexpected("let v = x ??d", 13, "expected end of line, found `??d`");
+    }
+
+    #[test]
+    fn constructors_are_names_and_calls() {
+        let option = generic("Option", 2, 10, vec![ty("Int", 2, 17)]);
+        stmt(
+            "let a: Option<Int> = None",
+            let_of("a", Some(option), var(24, "None")),
+        );
+        let err = call(10, 21, "Err", vec![arg(string(14, "divide by zero"))]);
+        stmt(
+            "return Err(\"divide by zero\")",
+            StmtKind::Return(Some(err)),
+        );
+        let ratio = bin(6, 5, BinOp::Div, var(6, "a"), var(10, "b"));
+        expr("Ok(a / b)", call(3, 9, "Ok", vec![arg(ratio)]).kind);
+        let block = |col, value: Expr<'static>, close| Block {
+            stmts: vec![node(2, col, value.len, StmtKind::Expr(value))],
+            close: (2, close),
+        };
+        let some = call(19, 7, "Some", vec![arg(var(24, "n"))]);
+        let kind = ExprKind::If {
+            branches: vec![(var(14, "ok"), block(19, some, 27))],
+            otherwise: Some(block(36, var(36, "None"), 41)),
+        };
+        stmt(
+            "let b = if ok { Some(n) } else { None }",
+            let_of("b", None, e(11, 31, kind)),
+        );
+    }
+
+    #[test]
+    fn unreachable_is_a_call() {
+        expr("unreachable()", call(3, 13, "unreachable", vec![]).kind);
+        let args = vec![arg(string(15, "why"))];
+        expr(
+            "unreachable(\"why\")",
+            call(3, 18, "unreachable", args).kind,
+        );
+    }
+
+    #[test]
+    fn a_match_on_an_option_or_a_result() {
+        let src = "fn f() {
+  match get(m, k) {
+    Some(v) => v
+    None => {
+      return Err(\"missing\")
+    }
+    Err(_) => unreachable()
+  }
+}
+";
+        let name =
+            |line, col, text: &'static str| node(line, col, text.len(), ExprKind::Name(text));
+        let line = |value: Expr<'static>| {
+            ArmBody::Line(node(
+                value.at.0,
+                value.at.1,
+                value.len,
+                StmtKind::Expr(value),
+            ))
+        };
+        let variant = |line, len, name, binds| node(line, 5, len, PatKind::Variant(name, binds));
+        let arm = |pattern, body| Arm {
+            patterns: vec![pattern],
+            body,
+        };
+        let missing = node(
+            5,
+            18,
+            9,
+            ExprKind::Str(vec![StrPart::Text("missing".into())]),
+        );
+        let err = ExprKind::Call(bx(name(5, 14, "Err")), vec![arg(missing)]);
+        let leave = Block {
+            stmts: vec![node(5, 7, 21, StmtKind::Return(Some(node(5, 14, 14, err))))],
+            close: (6, 5),
+        };
+        let unreachable = ExprKind::Call(bx(name(7, 15, "unreachable")), vec![]);
+        let arms = vec![
+            arm(
+                variant(3, 7, "Some", vec![node(3, 10, 1, PatKind::Bind("v"))]),
+                line(name(3, 16, "v")),
+            ),
+            arm(variant(4, 4, "None", vec![]), ArmBody::Block(leave)),
+            arm(
+                variant(7, 6, "Err", vec![node(7, 9, 1, PatKind::Wild)]),
+                line(node(7, 15, 13, unreachable)),
+            ),
+        ];
+        let args = vec![arg(name(2, 13, "m")), arg(name(2, 16, "k"))];
+        let subject = bx(node(2, 9, 9, ExprKind::Call(bx(name(2, 9, "get")), args)));
+        let kind = ExprKind::Match { subject, arms };
+        let want = node(2, 3, 114, StmtKind::Expr(node(2, 3, 114, kind)));
+        let program = tree(src);
+        let Def::Fn { body, .. } = &program.defs[0] else {
+            panic!("not a fn")
+        };
+        assert_eq!(body.stmts, vec![want]);
+    }
+
+    #[test]
+    fn an_arm_that_returns_is_a_block() {
+        let src = "fn f() {\n  match x {\n    None => return Err(\"missing\")\n  }\n}\n";
+        let message =
+            "an arm that returns is a block: write `=> { return Err(...) }` over three lines";
+        fail(src, (3, 13), "unexpected-token", message);
+    }
+
+    #[test]
+    fn a_pattern_is_flat() {
+        let src = "fn f() {\n  match x {\n    Some(Ok(v)) => v\n  }\n}\n";
+        let message = "expected a name or `_`, found `Ok`";
+        fail(src, (3, 10), "unexpected-token", message);
+    }
+
+    #[test]
+    fn an_if_takes_no_let() {
+        let message = "expected an expression, found `let`";
+        unexpected("if let Some(v) = get(m, k) { }", 6, message);
+    }
+
+    #[test]
+    fn the_samples_of_the_two_decisions_parse() {
+        let src = r#"enum Msg { Start(path: String), Loaded(text: String), Failed(why: String) }
+
+type Job { done: fn(Int) -> Msg }
+
+fn run(j: Job) -> Msg { j.done(3) }
+
+fn shorter(a: String, b: String) -> Bool { len(a) < len(b) || len(a) == len(b) && a < b }
+
+fn by_length(ws: List<String>) -> List<String> {
+  var out = ws
+  sort_by(&out, shorter)
+  out
+}
+
+fn ratio(a: Int, b: Int) -> Result<Int, String> {
+  if b == 0 {
+    return Err("divide by zero")
+  }
+  Ok(a / b)
+}
+
+fn half_ratio(a: Int, b: Int) -> Result<Int, String> {
+  let r = ratio(a, b)?
+  Ok(r / 2)
+}
+
+fn total(fields: List<String>) -> Result<Int, String> {
+  var sum = 0
+  for f in fields {
+    sum += ok_or(parse_int(f), "not a number: {f}")?
+  }
+  Ok(sum)
+}
+
+fn sign_name(n: Int) -> String {
+  assert(n >= -1 && n <= 1)
+  match n {
+    -1 => "minus"
+    0 => "zero"
+    1 => "plus"
+    _ => unreachable()
+  }
+}
+
+fn update(m: Msg) -> List<Effect<Msg>> {
+  match m {
+    Start(path) => [ReadFile(path, then: Loaded, or: Failed)]
+    Loaded(text) => match total(records(text)) {
+      Ok(sum) => [Print("{sum}"), Exit]
+      Err(why) => [Print(why), ExitWith(20)]
+    }
+    Failed(why) => [Print("cannot read: {why}"), ExitWith(20)]
+  }
+}
+
+fn count_words(words: List<String>) -> Map<String, Int> {
+  var counts: Map<String, Int> = [:]
+  for w in words {
+    counts[w] = unwrap_or(get(counts, w), 0) + 1
+  }
+  counts
+}
+
+fn first_two(words: List<String>) -> Option<String> {
+  let a = first_word(words)?
+  let b = first_word(words[1..<len(words)])?
+  Some("{a} {b}")
+}
+
+example total_rejects_bad_score {
+  total([["a", "3"], ["b", "x"]]) == Err("line 2: bad score x")
+}
+"#;
+        let program = tree(src);
+        let want = ["Msg", "Job", "run", "shorter", "by_length", "ratio"];
+        let rest = ["half_ratio", "total", "sign_name", "update", "count_words"];
+        let last = ["first_two", "total_rejects_bad_score"];
+        let all: Vec<_> = want.into_iter().chain(rest).chain(last).collect();
+        assert_eq!(names(&program), all);
+    }
+
     // Recovery
 
     fn names<'a>(program: &'a Program<'a>) -> Vec<&'a str> {
