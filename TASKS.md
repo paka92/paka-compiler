@@ -395,11 +395,12 @@ or merged during review. Ids with a letter were added during review.
 
 ### M2-15 · L5 · Decide headless apps: first message, effects, grants, ending, effect failure, standard input and handler traps
 
+- status: done
 - needs: M2-01, M2-06, M2-09, M2-12, M1-06
 - flags: decision, owner
 - done when: Owner approves the app form, the effect list, refusal and failure behaviour, standard input, rollback visibility, sequencing and concurrency rulings, and wc rewritten under the rules; each provisional M1-06 start, end and missing-grant rule is named as kept or changed, with the new expected output and status of each affected M1 case stated in the decision.
 - why this level: Fixes the program model and permission boundary; settles or defers sequential notation and concurrency.
-- note: Follows docs/decisions/M2-12.md for Option, Result, `?` and unreachable().
+- note: Follows docs/decisions/M2-12.md for Option, Result, `?` and unreachable(). Decided: the full record, with the run loop, the effect and reason tables, wc rewritten and the nine re-expected M1 cases, is docs/decisions/M2-15.md.
 
 ### M2-16 · L3 · Check signatures and type definitions into one signature table
 
@@ -423,7 +424,7 @@ or merged during review. Ids with a letter were added during review.
 - flags: none
 - done when: Reference merged; the size test passes under the one counting rule (bytes divided by 3, at most 8,000, until M3 records real tokens); a checklist maps every decision point to a line; samples are marked for later testing; the reference replaces the M1-06 spec, and each M1 case affected by M2-15 gets a re-expected copy under tests/cases-pending with the decision cited; tests/cases is not touched.
 - why this level: Must be exact, complete and tiny; one wrong sentence silently misleads every model reading it.
-- note: The same counting rule is reused by M4-18, M5-41 and M7-13.
+- note: The same counting rule is reused by M4-18, M5-41 and M7-13. Follows docs/decisions/M2-15.md for the app form, effects, grants and ending.
 
 ### M2-19 · L3 · Check statements and expressions against signatures only
 
@@ -543,7 +544,7 @@ or merged during review. Ids with a letter were added during review.
 - flags: none
 - done when: paka run tests pass for start, ending and exit codes. Where M2-15 changed the provisional start or end rule, the interpreter and paka-rt's run loop change in this pull request, and M2-18's re-expected copy is moved from tests/cases-pending over the old case with git mv and passes on both back ends.
 - why this level: The care is in message and effect ordering.
-- note: State rollback after a trapping handler is tested here only if M2-15 lets a headless app survive a trap; otherwise it arrives with M5-25b. The paka-rt change adds no unsafe beyond the one call into compiled code.
+- note: State rollback after a trapping handler is tested here only if M2-15 lets a headless app survive a trap; otherwise it arrives with M5-25b. The paka-rt change adds no unsafe beyond the one call into compiled code. Follows docs/decisions/M2-15.md for the app form, effects, grants and ending. Print moves to the raw standard-output descriptor in the interpreter and paka-rt, and docs/abi/m1.md sections 5 and 6 are corrected to match.
 
 ### M2-37 · L3 · Perform console, file, argument and exit effects only when granted
 
@@ -551,7 +552,7 @@ or merged during review. Ids with a letter were added during review.
 - flags: none
 - done when: Golden tests over an in-memory world, plus one on real files, pass for each effect, failure, and effect refused without its grant. Where M2-15 changed the provisional missing-grant rule, the interpreter and paka-rt's run loop change in this pull request, and M2-18's re-expected copy is moved from tests/cases-pending over the old case with git mv and passes on both back ends.
 - why this level: Several effects, fixed failure values, and a grant check with no way around it.
-- note: The paka-rt change adds no unsafe beyond the one call into compiled code.
+- note: The paka-rt change adds no unsafe beyond the one call into compiled code. Follows docs/decisions/M2-15.md for the app form, effects, grants and ending.
 
 ### M2-38 · L3 · Write conformance tests for values, expressions, control flow and functions
 
@@ -559,7 +560,7 @@ or merged during review. Ids with a letter were added during review.
 - flags: none
 - done when: Expected results merged before any run, written without access to a built paka; every decision point in scope has a case.
 - why this level: Hand-computing exact results from the reference.
-- note: The caller runs this agent with no paka binary and no way to build one (no cargo, or a checkout holding only the reference, the decision records and the tests folder); the agent must not build or run paka; the cases land in a not-yet-required list. M2-41b runs them.
+- note: The caller runs this agent with no paka binary and no way to build one (no cargo, or a checkout holding only the reference, the decision records and the tests folder); the agent must not build or run paka; the cases land in a not-yet-required list. M2-41b runs them. Follows docs/decisions/M2-15.md for the app form, effects, grants and ending.
 
 ### M2-39 · L3 · Write conformance tests for types, match, generics, function values and errors
 

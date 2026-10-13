@@ -1818,7 +1818,7 @@ light: effect Print failed: no space left on device
 
 ### M2-15.6 How does a program end, and how does it choose its exit status?
 
-**Exit and ExitWith(status)** (recommended). Exit ends the program with status 0, as now; ExitWith(n) ends it with status n, which must be 0 or 4 to 255, since 1 and 2 belong to the paka tool and 3 to traps and stops. Costs one more effect name.
+**Exit and ExitWith(status)** (recommended). Exit ends the program with status 0, as now; ExitWith(n) ends it with status n, which must be 0 or 5 to 255, since 1 and 2 belong to the paka tool and 3 to traps and stops. Costs one more effect name.
 
 ```
 fn finish(errors: Int) -> List<Effect<Msg>> {
@@ -1831,7 +1831,7 @@ fn finish(errors: Int) -> List<Effect<Msg>> {
 ```
 
 - Why: It keeps the paper and every M1 case as written and adds one row. Under M2-09 one variant name cannot be both a bare value and a call, so a second name is the only way to keep Exit.
-- Locks: The two names, and that status 3 always means a trap or a stop. An ExitWith status outside 0 and 4 to 255 ends the program as a failed effect, status 3. 101 is legal here; M3-11 never uses it, as M3-04 ruled.
+- Locks: The two names, and that status 3 always means a trap or a stop. An ExitWith status outside 0 and 5 to 255 ends the program as a failed effect, status 3. 101 is legal here; M3-11 never uses it, as M3-04 ruled.
 - Not chosen: Exit(status) always (One effect that always carries its status. One name, but light.paka, its M1 cases and the paper's samples must all be rewritten to Exit(0).) · Exit only, status 0 (A program cannot choose a status. Nothing to add, but M3-04's error status cannot be given and tasks could not tell an error from success.)
 - Look again when: A real program after 'go' must exit with status 1, as many command-line tools do; the range can be widened for free.
 
@@ -1918,6 +1918,7 @@ app wc {
 - M1-06.1 missing-grant rule: Kept unchanged. Case run/light_no_console: empty standard output, the line 'light: effect Print refused: grant Console is missing' on standard error, status 3, as before.
 - M1-06.2 failed Print rule: Kept unchanged. The /dev/full run and the closed-pipe run each give one line on standard error and status 3, as before, on both back ends.
 - M1's narrowing on arguments: Lifted: arguments are now delivered. light takes none, so running it with an argument gives the usage line and status 2. No M1 case passes an argument, so none changes.
+- Changed in the final record: All eight picks stand. Changed or added: the ExitWith range is 0 or 5 to 255, because 4 is the internal-error status; a literal status outside it is refused at check time as literal-out-of-range; the 'ended without Exit' line names no message; an answer's then: or or: function is applied when the answer reaches the front of the queue; Print writes straight to standard output with no flush step, and the file-size signal is ignored like the broken-pipe one; one new code, bad-state. Nine M1 cases are re-expected, not five; run/no_exit, run/empty_list and check/order_no_app_bad_type do not change. The full record is docs/decisions/M2-15.md.
 
 ### M2-15 · what this changes in TASKS.md
 
