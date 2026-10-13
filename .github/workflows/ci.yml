@@ -1,0 +1,15 @@
+name: ci
+
+on:
+  pull_request:
+    branches: [development, main]
+
+jobs:
+  ci:
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v4
+      - run: cargo build --release --locked --offline
+      - run: cargo test --release --locked --offline
+      - run: cargo clippy --locked --offline --all-targets -- -D warnings
+      - run: cargo fmt --check
