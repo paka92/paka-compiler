@@ -518,7 +518,7 @@ example initials_ascii {
 - Clock, random numbers, network, environment variables, directory listing, foreign code: Out. They break same-input-same-output tests across three languages, and each would add a grant.
 - Concurrency: Out. Every task is single-threaded; the paper leaves concurrency open (line 356) and M2-15 records it as deferred.
 - GUI tasks: Out. The experiment is headless (line 368); pillar 3 is not measured and the list says so.
-- Program size and files: One file per program, matching M3's rule that one edit replaces the whole file. Packages stay undecided (line 358).
+- Program size and files: One file per M3 submission, matching M3's rule that one edit replaces the whole file. M2-02 section 1.3 later also lets a program be a directory of `.paka` files. Packages stay undecided (line 358).
 - Speed, input size and recursion depth: No class is about speed. Inputs stay small enough for the slow interpreter and within the call-depth limit M2-06 sets.
 - Big integers: Out. No task needs more than one machine Int; its width is M2-03's.
 - Holes and examples inside task solutions: Not a task class. Both are built regardless (M2-06); whether a run may use them is M3-01's ruling.
