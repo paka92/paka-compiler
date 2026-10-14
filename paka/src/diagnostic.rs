@@ -76,8 +76,6 @@ pub struct Diagnostic {
     pub position: Option<(usize, usize)>,
     pub code: &'static str,
     pub message: String,
-    /// `error`, or `note` for a hole (M2-06 section 5).
-    level: &'static str,
     len: usize,
     more: Box<More>,
 }
@@ -103,7 +101,6 @@ impl Diagnostic {
             position: Some(position),
             code,
             message: message.to_string(),
-            level: "error",
             len,
             more: Box::default(),
         }
@@ -115,11 +112,6 @@ impl Diagnostic {
             position: None,
             ..Diagnostic::new(path, (0, 0), 0, code, message)
         }
-    }
-
-    pub fn note(mut self) -> Diagnostic {
-        self.level = "note";
-        self
     }
 
     pub fn in_definition(mut self, name: &str) -> Diagnostic {
@@ -215,7 +207,9 @@ impl fmt::Display for Diagnostic {
         if let Some((line, col)) = self.position {
             write!(f, ":{line}:{col}")?;
         }
-        write!(f, ": {}[{}]: {}", self.level, self.code, self.message)
+        // A hole is the one note (M2-06 section 1.5).
+        let level = if self.code == "hole" { "note" } else { "error" };
+        write!(f, ": {level}[{}]: {}", self.code, self.message)
     }
 }
 

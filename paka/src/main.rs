@@ -160,7 +160,7 @@ fn holes(
         let finish = format!("a release build has no holes; finish ??{name}");
         let refusal = Diagnostic::new(path, at, len, "hole-in-build", finish);
         Hole {
-            note: note.in_definition(program.defs[def].name().text).note(),
+            note: note.in_definition(program.defs[def].name().text),
             refusal: (!matches!(program.defs[def], Def::Example { .. })).then_some(refusal),
         }
     };

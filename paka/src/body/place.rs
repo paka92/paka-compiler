@@ -1,7 +1,7 @@
 //! What may stand left of an assignment or after `&`.
 
-use super::text::{assign_op, fit, render};
-use super::{Cx, How, Res, Ty, span};
+use super::text::{assign_op, fit, plain, render};
+use super::{Cx, How, Res, Span, Ty, span};
 use crate::ast::{AssignOp, Expr, ExprKind as K};
 use crate::resolve::Binding;
 
@@ -13,6 +13,15 @@ enum Why<'x> {
     Text,
     /// The root name is a `let`, a parameter or a `for` name.
     Fixed(&'x Expr<'x>, How, Ty),
+}
+
+/// The first token of `e`: the root of a place, the name a call names (M2-05 section 5).
+fn first_token(e: &Expr) -> Span {
+    let mut head = e;
+    while let K::Call(x, _) | K::Field(x, _) | K::Index(x, _) | K::Try(x, _) = &head.kind {
+        head = x;
+    }
+    plain(head)
 }
 
 fn kind(how: How) -> &'static str {
@@ -80,7 +89,7 @@ impl Cx<'_, '_> {
                 "only a var local, an inout parameter or their fields and items can be passed with &".to_string()
             }
         };
-        Err(self.fail_at(x, "bad-inout-target", message))
+        Err(self.fail(first_token(x), "bad-inout-target", message))
     }
 
     /// The place a `for` name walks, as written, when it walks one.
