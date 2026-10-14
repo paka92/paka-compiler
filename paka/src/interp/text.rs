@@ -117,11 +117,13 @@ fn pad(t: &Text, width: Int, front: bool, site: Site) -> Out {
 }
 
 /// One piece per code point for an empty `sep`, which cannot pass the cap; otherwise a `cap`-th
-/// match would make one piece too many.
+/// match would make one piece too many, and only a text of `cap` copies of `sep` can hold one.
 fn split(t: &str, sep: &str, cap: usize, site: Site) -> Out {
     match sep {
         "" => strings(t.chars()),
-        _ if t.matches(sep).nth(cap - 1).is_some() => Err(Trap::bare(Kind::Memory, site)),
+        _ if t.len() / sep.len() >= cap && t.matches(sep).nth(cap - 1).is_some() => {
+            Err(Trap::bare(Kind::Memory, site))
+        }
         _ => strings(t.split(sep)),
     }
 }

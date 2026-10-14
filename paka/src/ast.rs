@@ -26,9 +26,11 @@ pub type Expr<'a> = Node<ExprKind<'a>>;
 pub type Stmt<'a> = Node<StmtKind<'a>>;
 pub type Pat<'a> = Node<PatKind<'a>>;
 
-#[derive(Debug, PartialEq)]
+#[derive(Debug, Default, PartialEq)]
 pub struct Program<'a> {
     pub defs: Vec<Def<'a>>,
+    /// Each file's first line, in program order; positions count lines across the files.
+    pub lines: Vec<usize>,
 }
 
 #[derive(Debug, PartialEq)]

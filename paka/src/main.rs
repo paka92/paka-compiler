@@ -24,7 +24,7 @@ use std::os::unix::ffi::OsStrExt;
 use std::process::ExitCode;
 use std::{env, io};
 
-const USAGE: &str = "usage: paka run <file> [argument...]\n       paka build <file> -o <output>\n       paka check <file> [--json]\n       paka examples <file>\n";
+const USAGE: &str = "usage: paka run <path> [argument...]\n       paka build <path> -o <output>\n       paka check <path> [--json]\n       paka examples <path>\n";
 
 fn main() -> ExitCode {
     let args: Vec<_> = env::args_os().skip(1).collect();
@@ -38,7 +38,7 @@ fn main() -> ExitCode {
         _ => return report(USAGE.as_bytes(), 2),
     };
     let path = &file.to_string_lossy();
-    let (source, found) = read_and_check(file, path);
+    let (source, found) = read_and_check(file);
     let result = load(path, found).and_then(|(core, holes)| match output {
         None => {
             abi::ignore_signals();
@@ -51,7 +51,7 @@ fn main() -> ExitCode {
         }
         Some(_) if holes.iter().any(|h| h.refusal.is_some()) => {
             for d in holes.into_iter().filter_map(|h| h.refusal) {
-                report_at(file, &format!("{}\n", source.locate(d).0));
+                reject(&source, d);
             }
             Ok(1)
         }
@@ -59,19 +59,15 @@ fn main() -> ExitCode {
     });
     match result {
         Ok(status) => ExitCode::from(status),
-        Err(d) => report_at(file, &format!("{}\n", source.locate(d).0)),
+        Err(d) => reject(&source, d),
     }
 }
 
 /// The program at `file` and what checking it gives.
-fn read_and_check(file: &OsStr, path: &str) -> (Source, Checked) {
-    match read(file, path) {
-        Err(d) => (Source::default(), Err(d)),
-        Ok(source) => {
-            let found = check(path, &source);
-            (source, found)
-        }
-    }
+fn read_and_check(file: &OsStr) -> (Source, Checked) {
+    let (source, read) = read(file);
+    let found = read.and_then(|()| check(&file.to_string_lossy(), &source));
+    (source, found)
 }
 
 /// The core form of a checked program that holds an app, and its holes.
@@ -85,12 +81,12 @@ fn load(path: &str, found: Checked) -> Result<(Program, Vec<Hole>), Diagnostic> 
 
 /// `paka examples`: the program needs no app, since each example starts with a fresh world.
 fn examples_file(file: &OsStr) -> ExitCode {
-    match read_and_check(file, &file.to_string_lossy()) {
+    match read_and_check(file) {
         (_, Ok((core, ..))) => {
             let (mut out, mut err) = (io::stdout().lock(), io::stderr());
             ExitCode::from(interp::examples(&core, &mut out, &mut err))
         }
-        (source, Err(d)) => report_at(file, &format!("{}\n", source.locate(d).0)),
+        (source, Err(d)) => reject(&source, d),
     }
 }
 
@@ -98,7 +94,7 @@ fn examples_file(file: &OsStr) -> ExitCode {
 /// name in position order, with their fields as extra lines or as JSON (M2-06 section 1.5, M2-02
 /// section 5).
 fn check_file(file: &OsStr, json: bool) -> ExitCode {
-    let (source, found) = read_and_check(file, &file.to_string_lossy());
+    let (source, found) = read_and_check(file);
     let (shown, status) = match found {
         Ok((_, holes, unused)) => {
             let mut shown: Vec<_> = holes.into_iter().map(|h| h.note).chain(unused).collect();
@@ -108,11 +104,11 @@ fn check_file(file: &OsStr, json: bool) -> ExitCode {
         Err(d) => (vec![d], 1),
     };
     for d in shown {
-        let (d, text) = source.locate(d);
+        let (d, path, text) = source.locate(d);
         if json {
             report(d.json(text).as_bytes(), status);
         } else {
-            report_at(file, &d.detailed(text));
+            report_at(path, &d.detailed(text));
         }
     }
     ExitCode::from(status)
@@ -131,7 +127,7 @@ type Checked = Result<(Program, Vec<Hole>, Vec<Diagnostic>), Diagnostic>;
 /// Parses and checks a program, then lowers it to the core form. Positions count lines across
 /// the files until `Source::locate` places them.
 fn check(path: &str, source: &Source) -> Checked {
-    let files = source.files.iter().map(|f| f.bytes.clone());
+    let files = source.files.iter().map(|f| (f.bytes.clone(), f.line));
     let program = parser::parse_files(path, &source.text, files)?;
     let resolved = resolve::resolve(path, &program)?;
     let mut table = sig::Table::build(path, &program, &resolved);
@@ -193,7 +189,13 @@ fn second_app(path: &str, program: &ast::Program) -> Option<Diagnostic> {
     Some(d.in_definition(second.text))
 }
 
-/// Reports a diagnostic, which starts with the shown path, with the file argument's own bytes there.
+/// Reports `d` in the file it is in, as one line.
+fn reject(source: &Source, d: Diagnostic) -> ExitCode {
+    let (d, path, _) = source.locate(d);
+    report_at(path, &format!("{d}\n"))
+}
+
+/// Reports a diagnostic, which starts with the shown path, with the path's own bytes there.
 fn report_at(file: &OsStr, diagnostic: &str) -> ExitCode {
     let rest = &diagnostic[file.to_string_lossy().len()..];
     report(&[file.as_bytes(), rest.as_bytes()].concat(), 1)

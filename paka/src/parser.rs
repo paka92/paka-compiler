@@ -44,30 +44,26 @@ const ADD: usize = 3;
 
 /// The program, or the first error; the rest of the file is not read.
 pub fn parse<'a>(path: &'a str, src: &'a [u8]) -> Parse<Program<'a>> {
-    parse_files(path, src, std::iter::once(0..src.len()))
+    parse_files(path, src, std::iter::once((0..src.len(), 1)))
 }
 
-/// The files of one program, which `src` holds at `files`, each followed by a line feed so the
-/// next starts a line: their definitions in that order, or the first error.
+/// The files of one program, which `src` holds at the given bytes, each on its given first line:
+/// their definitions in that order, or the first error.
 pub fn parse_files<'a>(
     path: &'a str,
     src: &'a [u8],
-    files: impl IntoIterator<Item = Range<usize>>,
+    files: impl IntoIterator<Item = (Range<usize>, usize)>,
 ) -> Parse<Program<'a>> {
-    let (mut defs, mut line, mut counted) = (vec![], 1, 0);
-    for file in files {
-        line += src[counted..file.start]
-            .iter()
-            .filter(|&&b| b == b'\n')
-            .count();
-        counted = file.start;
-        let (program, errors) = parse_all(path, &src[..file.end], (file.start, line), false);
+    let mut program = Program::default();
+    for (bytes, line) in files {
+        let (file, errors) = parse_all(path, &src[..bytes.end], (bytes.start, line), false);
         if let Some(error) = errors.into_iter().next() {
             return Err(error);
         }
-        defs.extend(program.defs);
+        program.defs.extend(file.defs);
+        program.lines.push(line);
     }
-    Ok(Program { defs })
+    Ok(program)
 }
 
 /// The definitions from byte `start`, on `line`, that parsed and, when `recover`, one error per
@@ -94,7 +90,8 @@ fn parse_all<'a>(
             }
         }
     }
-    (Program { defs }, errors)
+    let lines = vec![line];
+    (Program { defs, lines }, errors)
 }
 
 fn text<'a>(token: Token<'a>) -> &'a str {
