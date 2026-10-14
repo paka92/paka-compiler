@@ -52,6 +52,9 @@ const KINDS: &[(&str, bool, bool)] = &[
     ("bad-inout-target", false, false),
     ("not-a-value", false, false),
     ("literal-out-of-range", false, false),
+    ("missing-arm", false, false),
+    ("duplicate-arm", false, false),
+    ("wildcard-on-enum", false, false),
 ];
 
 fn declared(code: &str) -> &'static (&'static str, bool, bool) {
@@ -246,7 +249,7 @@ mod tests {
     }
 
     /// Codes of the second milestone, until the spec lists them.
-    const M2: [&str; 17] = [
+    const M2: [&str; 20] = [
         "no-finite-value",
         "unused-result",
         "nothing-to-discard",
@@ -264,6 +267,9 @@ mod tests {
         "bad-inout-target",
         "not-a-value",
         "literal-out-of-range",
+        "missing-arm",
+        "duplicate-arm",
+        "wildcard-on-enum",
     ];
 
     #[test]

@@ -5,6 +5,8 @@ use super::*;
 use crate::parser::parse;
 use crate::resolve::resolve;
 
+mod pattern;
+
 /// Definitions the cases use; they follow the function under test, so a mark finds the test first.
 const PRELUDE: &[&str] = &[
     "type Counter { count: Int = 0, name: String }",
