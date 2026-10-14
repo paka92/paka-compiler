@@ -35,7 +35,7 @@ const KINDS: &[(&str, bool, bool)] = &[
     ("bad-state", false, false),
     ("unknown-grant", false, true),
     ("duplicate-grant", false, false),
-    // The second milestone's codes; the spec lists them once it covers that milestone.
+    ("hole-in-build", false, false),
     ("no-finite-value", false, false),
     ("unused-result", false, false),
     ("nothing-to-discard", false, false),
@@ -76,6 +76,8 @@ pub struct Diagnostic {
     pub position: Option<(usize, usize)>,
     pub code: &'static str,
     pub message: String,
+    /// `error`, or `note` for a hole (M2-06 section 5).
+    level: &'static str,
     len: usize,
     more: Box<More>,
 }
@@ -101,6 +103,7 @@ impl Diagnostic {
             position: Some(position),
             code,
             message: message.to_string(),
+            level: "error",
             len,
             more: Box::default(),
         }
@@ -112,6 +115,11 @@ impl Diagnostic {
             position: None,
             ..Diagnostic::new(path, (0, 0), 0, code, message)
         }
+    }
+
+    pub fn note(mut self) -> Diagnostic {
+        self.level = "note";
+        self
     }
 
     pub fn in_definition(mut self, name: &str) -> Diagnostic {
@@ -207,7 +215,7 @@ impl fmt::Display for Diagnostic {
         if let Some((line, col)) = self.position {
             write!(f, ":{line}:{col}")?;
         }
-        write!(f, ": error[{}]: {}", self.code, self.message)
+        write!(f, ": {}[{}]: {}", self.level, self.code, self.message)
     }
 }
 
@@ -252,38 +260,10 @@ mod tests {
         section.lines().filter_map(cell).collect()
     }
 
-    /// Codes of the second milestone, until the spec lists them.
-    const M2: [&str; 22] = [
-        "no-finite-value",
-        "unused-result",
-        "nothing-to-discard",
-        "missing-value",
-        "unreachable-code",
-        "break-outside-loop",
-        "if-needs-else",
-        "return-last",
-        "assign-to-let",
-        "bad-assignment-target",
-        "cannot-infer",
-        "wrong-label",
-        "not-a-function",
-        "missing-inout-mark",
-        "bad-inout-target",
-        "not-a-value",
-        "missing-arm",
-        "duplicate-arm",
-        "wildcard-on-enum",
-        "inout-overlap",
-        "changed-while-read",
-        "changed-while-walked",
-    ];
-
     #[test]
     fn table_lists_exactly_the_spec_codes() {
         let mut table: Vec<_> = KINDS.iter().map(|k| k.0.to_string()).collect();
         let mut spec = spec_codes();
-        assert_eq!(spec.len(), 32);
-        spec.extend(M2.map(String::from));
         table.sort();
         spec.sort();
         assert_eq!(table, spec);

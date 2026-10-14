@@ -423,6 +423,9 @@ impl<'a> Lexer<'a> {
                 Kind::Hole,
                 2 + rest[2..].iter().take_while(|&&b| name_byte(b)).count(),
             ),
+            [b'.', b'0'..=b'9', ..] => {
+                return Err(self.fail(start, 1, "unexpected-character", "write 0.5"));
+            }
             [b'.', b'.', ..] if !rest.starts_with(b"..<") => {
                 return Err(self.fail(start, 1, "unexpected-character", "write a..<b"));
             }
@@ -458,10 +461,21 @@ impl<'a> Lexer<'a> {
             return Err(self.fail(self.at + 1, 1, "unexpected-character", message));
         }
         let point = self.at + whole;
-        match self.src.get(point..point + 2) {
-            Some([b'.', b'0'..=b'9']) => Ok((Kind::Float, whole + 1 + digits(point + 1))),
-            _ => Ok((Kind::Int, whole)),
-        }
+        let (kind, len) = match self.src.get(point..point + 2) {
+            Some([b'.', b'0'..=b'9']) => (Kind::Float, whole + 1 + digits(point + 1)),
+            _ => (Kind::Int, whole),
+        };
+        let end = self.at + len;
+        let message = match (self.src.get(end), &self.src[self.at..end]) {
+            (Some(b'x' | b'X'), b"0") => "no hex: write 16",
+            (Some(b'e' | b'E'), _) => "no exponent: write 1000.0",
+            (Some(b'_'), _) => "write 1000",
+            (Some(b'.'), _) if kind == Kind::Int && self.src.get(end + 1) != Some(&b'.') => {
+                "write 1.0"
+            }
+            _ => return Ok((kind, len)),
+        };
+        Err(self.fail(end, 1, "unexpected-character", message))
     }
 
     fn unterminated(&self, open: usize) -> Diagnostic {
@@ -709,13 +723,24 @@ mod tests {
         assert_eq!(texts("0 10 1.50")[..3], ["0", "10", "1.50"]);
         // The sign is a separate token; the parser folds it.
         assert_eq!(kinds("(-7 -1.5"), [LParen, Minus, Int, Minus, Float, End]);
-        // No `1.`, `.5`, exponent, hex or underscore: the rest is other tokens.
-        assert_eq!(kinds("(1."), [LParen, Int, Dot, End]);
-        assert_eq!(kinds("(.5"), [LParen, Dot, Int, End]);
-        assert_eq!(kinds("(1.x"), [LParen, Int, Dot, Lower, End]);
-        assert_eq!(kinds("(1.5.5"), [LParen, Float, Dot, Int, End]);
-        assert_eq!(kinds("(1e3"), [LParen, Int, Lower, End]);
-        assert_eq!(kinds("(0x1"), [LParen, Int, Lower, End]);
+        assert_eq!(kinds("(1..<2"), [LParen, Int, DotDotLt, Int, End]);
+    }
+
+    #[test]
+    fn other_number_spellings_fail_at_the_breaking_byte() {
+        let fail = |src: &str| {
+            let d = lex(src.as_bytes()).unwrap_err();
+            (d.position.unwrap().1, d.code, d.message)
+        };
+        let at = |col, message: &str| (col, "unexpected-character", message.to_string());
+        assert_eq!(fail("(1."), at(3, "write 1.0"));
+        assert_eq!(fail("(1.x"), at(3, "write 1.0"));
+        assert_eq!(fail("(.5"), at(2, "write 0.5"));
+        assert_eq!(fail("(1.5.5"), at(5, "write 0.5"));
+        assert_eq!(fail("(1e3"), at(3, "no exponent: write 1000.0"));
+        assert_eq!(fail("(1.5e3"), at(5, "no exponent: write 1000.0"));
+        assert_eq!(fail("(0x10"), at(3, "no hex: write 16"));
+        assert_eq!(fail("(1_000"), at(3, "write 1000"));
     }
 
     #[test]

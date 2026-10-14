@@ -51,7 +51,7 @@ impl Cx<'_, '_> {
                     cx.pattern(sp, ty, p, key, &mut seen)?;
                 }
             }
-            cx.arm(&arms[i].body, u)
+            cx.arm(&arms[i], u)
         })?;
         Ok(match (used, joined) {
             (_, Joined { leaves: true, .. }) => Out::Never,
@@ -156,8 +156,8 @@ impl Cx<'_, '_> {
         Some(format!("{noun}{heads}; add {adds}"))
     }
 
-    fn arm(&mut self, body: &ArmBody, used: Use) -> Res<Out> {
-        let line = match (body, used) {
+    fn arm(&mut self, arm: &Arm, used: Use) -> Res<Out> {
+        let line = match (&arm.body, used) {
             (ArmBody::Block(b), _) => return self.block(b, used),
             (
                 ArmBody::Line(Stmt {
@@ -171,7 +171,7 @@ impl Cx<'_, '_> {
         match (out, used) {
             (Out::Unit, Use::Value(_)) => {
                 let message = "this arm must give a value";
-                Err(self.fail((line.at, line.len), "missing-value", message))
+                Err(self.fail(span(&arm.patterns[0]), "missing-value", message))
             }
             _ => Ok(out),
         }

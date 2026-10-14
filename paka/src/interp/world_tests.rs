@@ -100,7 +100,9 @@ const ALL: &str = "Console, ReadFiles, WriteFiles";
 
 /// The standard error and the status of a run of `source` in `world`.
 fn play(source: &str, args: &[&str], world: &mut Memory) -> (String, u8) {
-    let core = crate::check("main.paka", source.as_bytes()).unwrap_or_else(|d| panic!("{d}"));
+    let core = crate::check("main.paka", source.as_bytes())
+        .unwrap_or_else(|d| panic!("{d}"))
+        .0;
     let args: Vec<OsString> = args.iter().map(OsString::from).collect();
     let mut err = vec![];
     let status = run_in(&core, &args, world, &mut err);

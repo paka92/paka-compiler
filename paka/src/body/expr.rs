@@ -1,6 +1,6 @@
 //! Expressions: literals, operators and the chains they form.
 
-use super::text::{article, float_fix, render};
+use super::text::{article, float_fix, plain, render};
 use super::{Cx, Out, Res, Span, Use, span};
 use crate::ast::{BinOp, Def, Expr, ExprKind as K, Name, Pos, StrPart, UnOp};
 use crate::diagnostic::Diagnostic;
@@ -99,14 +99,14 @@ impl Cx<'_, '_> {
         let ty = match &e.kind {
             K::Int(text) => {
                 if Int::parse(text).is_none() {
-                    return Err(self.out_of_range(span(e), "Int", text));
+                    return Err(self.out_of_range(plain(e), "Int", text));
                 }
                 self.int()
             }
             K::Float(text) => {
                 let finite = Float::parse(text).is_some_and(|f| (f.bits() >> 52) & 0x7ff != 0x7ff);
                 if !finite {
-                    return Err(self.out_of_range(span(e), "Float", text));
+                    return Err(self.out_of_range(plain(e), "Float", text));
                 }
                 self.prim("Float")
             }

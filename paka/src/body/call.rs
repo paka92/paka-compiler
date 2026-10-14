@@ -556,25 +556,36 @@ impl<'a> Cx<'_, 'a> {
         let Item::Record(fields) = &defs[i].item else {
             return Ok(Out::Val(self.unknown()));
         };
-        let mut slots: Vec<usize> = Vec::new();
-        for arg in args {
-            let next = slots.last().map_or(0, |s| s + 1);
-            let (at, message, slot) = match &arg.label {
-                None => {
-                    let field = fields.get(next).map_or("NAME", |f| f.name);
-                    (span(&arg.value), format!("write {field}: value"), None)
+        let found: Vec<_> = (args.iter())
+            .map(|a| {
+                a.label
+                    .as_ref()
+                    .and_then(|l| fields.iter().position(|f| f.name == l.text))
+            })
+            .collect();
+        for (k, arg) in args.iter().enumerate() {
+            // As in a call, the first label that stands before one it should follow is wrong.
+            let ordered = |s| {
+                !found[..k].contains(&Some(s)) && found[k + 1..].iter().flatten().all(|&t| t >= s)
+            };
+            let (at, message) = match (&arg.label, found[k]) {
+                (Some(_), Some(s)) if ordered(s) => continue,
+                (Some(l), None) => (
+                    (l.at, l.text.len()),
+                    format!("{name} has no field {}", l.text),
+                ),
+                (Some(l), Some(_)) => {
+                    ((l.at, l.text.len()), "labels come in declared order".into())
                 }
-                Some(l) => {
-                    let found = fields.iter().position(|f| f.name == l.text);
-                    let message = match found {
-                        None => format!("{name} has no field {}", l.text),
-                        Some(_) => "labels come in declared order".to_string(),
-                    };
-                    ((l.at, l.text.len()), message, found.filter(|&s| s >= next))
+                (None, _) => {
+                    let next = k.checked_sub(1).and_then(|j| found[j]).map_or(0, |s| s + 1);
+                    let field = fields.get(next).map_or("NAME", |f| f.name);
+                    (span(&arg.value), format!("write {field}: value"))
                 }
             };
-            slots.push(slot.ok_or_else(|| self.fail(at, "wrong-label", message))?);
+            return Err(self.fail(at, "wrong-label", message));
         }
+        let slots: Vec<usize> = found.into_iter().flatten().collect();
         let mut given = slots.iter().peekable();
         for (k, f) in fields.iter().enumerate() {
             if given.next_if(|&&s| s == k).is_none() && !f.default {

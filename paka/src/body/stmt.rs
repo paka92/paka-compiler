@@ -296,7 +296,7 @@ impl Cx<'_, '_> {
     fn ret(&mut self, s: &Stmt, value: Option<&Expr>) -> Res<Out> {
         if self.tails.contains(&s.at) {
             let message = "return on the last line; drop return: the last line is the value";
-            return Err(self.fail(span_of(s), "return-last", message));
+            return Err(self.fail((s.at, "return".len()), "return-last", message));
         }
         match (value, self.result) {
             (Some(v), Some(r)) => {
@@ -335,7 +335,11 @@ impl Cx<'_, '_> {
         used: Use,
     ) -> Res<Out> {
         if matches!(used, Use::Value(_)) && otherwise.is_none() {
-            return Err(self.fail_at(e, "if-needs-else", "an if used as a value needs an else"));
+            return Err(self.fail(
+                (e.at, "if".len()),
+                "if-needs-else",
+                "an if used as a value needs an else",
+            ));
         }
         let bool = self.prim("Bool");
         let joined = self.branches(e, &ends(e), used, |cx, i, u, again| match branches.get(i) {

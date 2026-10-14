@@ -936,11 +936,36 @@ impl<'a> Parser<'a> {
         Ok(())
     }
 
+    /// At the first `,` of `(a, b) => ...`: the lambda error at its arrow (M2-09 section 2).
+    fn tuple_lambda(&self) -> Option<Diagnostic> {
+        let t = self.cur;
+        let mut lexer = Lexer::at(self.path, self.src, t.start, t.line, t.start + 1 - t.col);
+        let mut token = lexer.next().ok()?;
+        while token.kind == Kind::Comma {
+            (lexer.next().ok()?.kind == Kind::Lower).then_some(())?;
+            token = lexer.next().ok()?;
+        }
+        let arrow = lexer.next().ok()?;
+        let lambda = t.kind == Kind::Comma
+            && token.kind == Kind::RParen
+            && matches!(arrow.kind, Kind::FatArrow | Kind::Arrow);
+        lambda.then(|| {
+            Diagnostic::new(
+                self.path,
+                pos(arrow),
+                arrow.len(),
+                "unexpected-token",
+                LAMBDA,
+            )
+        })
+    }
+
     fn primary(&mut self, first: Token<'a>) -> Parse<Expr<'a>> {
         let t = self.cur;
         let kind = match t.kind {
             Kind::LParen => {
-                let inner = self.between(Kind::LParen, Kind::RParen, Self::expr)?;
+                let inner = self.between(Kind::LParen, Kind::RParen, Self::expr);
+                let inner = inner.map_err(|e| self.tuple_lambda().unwrap_or(e))?;
                 return Ok(self.node(first, inner.kind));
             }
             Kind::LBracket => self.collection()?,
@@ -2147,6 +2172,9 @@ mod tests {
         let bar = "sort_by(&ps, |a, b| a.score > b.score)";
         fail_in(bar, 16, "unexpected-character", LAMBDA);
         unexpected("sort_by(&ps, a => a)", 18, LAMBDA);
+        unexpected("sort_by(&ps, (a, b) => a)", 23, LAMBDA);
+        unexpected("let f = (a, b, c) -> a", 21, LAMBDA);
+        unexpected("let f = (a, 1) => a", 13, "expected `)`, found `,`");
     }
 
     #[test]

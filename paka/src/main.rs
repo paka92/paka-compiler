@@ -41,7 +41,7 @@ fn main() -> ExitCode {
         _ => return report(USAGE.as_bytes(), 2),
     };
     let path = &file.to_string_lossy();
-    let result = load(file, path).and_then(|core| match output {
+    let result = load(file, path).and_then(|(core, holes)| match output {
         None => {
             abi::ignore_signals();
             Ok(interp::run(
@@ -50,6 +50,12 @@ fn main() -> ExitCode {
                 &mut Fd1::default(),
                 &mut io::stderr(),
             ))
+        }
+        Some(_) if holes.iter().any(|h| h.refusal.is_some()) => {
+            for d in holes.iter().filter_map(|h| h.refusal.as_ref()) {
+                report_at(file, &format!("{d}\n"));
+            }
+            Ok(1)
         }
         Some(output) => build::build(path, &core, output).map(|()| 0),
     });
@@ -64,11 +70,11 @@ fn read(file: &OsStr, path: &str) -> Result<Vec<u8>, Diagnostic> {
     fs::read(file).map_err(|e| Diagnostic::tool(path, "file-unreadable", e))
 }
 
-/// The core form of a checked program that holds an app.
-fn load(file: &OsStr, path: &str) -> Result<Program, Diagnostic> {
-    let core = check(path, &read(file, path)?)?;
+/// The core form of a checked program that holds an app, and its holes.
+fn load(file: &OsStr, path: &str) -> Result<(Program, Vec<Hole>), Diagnostic> {
+    let (core, holes) = check(path, &read(file, path)?)?;
     match core.app {
-        Some(_) => Ok(core),
+        Some(_) => Ok((core, holes)),
         None => Err(Diagnostic::tool(path, "no-app", "the program has no app")),
     }
 }
@@ -77,7 +83,7 @@ fn load(file: &OsStr, path: &str) -> Result<Program, Diagnostic> {
 fn examples_file(file: &OsStr) -> ExitCode {
     let path = &file.to_string_lossy();
     match read(file, path).and_then(|source| check(path, &source)) {
-        Ok(core) => {
+        Ok((core, _)) => {
             let (mut out, mut err) = (io::stdout().lock(), io::stderr());
             ExitCode::from(interp::examples(&core, &mut out, &mut err))
         }
@@ -85,25 +91,37 @@ fn examples_file(file: &OsStr) -> ExitCode {
     }
 }
 
-/// `paka check`: the diagnostic `run` would print, with its fields as extra lines or as JSON.
+/// `paka check`: the diagnostic `run` would print, or a note per hole, with their fields as extra
+/// lines or as JSON (M2-06 section 1.5).
 fn check_file(file: &OsStr, json: bool) -> ExitCode {
     let path = &file.to_string_lossy();
-    let (d, source) = match read(file, path) {
-        Err(d) => (d, vec![]),
-        Ok(source) => match check(path, &source) {
-            Ok(_) => return ExitCode::SUCCESS,
-            Err(d) => (d, source),
-        },
+    let (found, source) = match read(file, path) {
+        Err(d) => (Err(d), vec![]),
+        Ok(source) => (check(path, &source), source),
     };
-    if json {
-        report(d.json(&source).as_bytes(), 1)
-    } else {
-        report_at(file, &d.detailed(&source))
+    let (shown, status) = match found {
+        Ok((_, holes)) => (holes.into_iter().map(|h| h.note).collect(), 0),
+        Err(d) => (vec![d], 1),
+    };
+    for d in &shown {
+        if json {
+            report(d.json(&source).as_bytes(), status);
+        } else {
+            report_at(file, &d.detailed(&source));
+        }
     }
+    ExitCode::from(status)
+}
+
+/// A hole in a checked program: `paka check` notes it, `paka build` refuses it unless an example
+/// holds it (M2-06 section 1.5).
+struct Hole {
+    note: Diagnostic,
+    refusal: Option<Diagnostic>,
 }
 
 /// Parses and checks a program, then lowers it to the core form.
-fn check(path: &str, source: &[u8]) -> Result<Program, Diagnostic> {
+fn check(path: &str, source: &[u8]) -> Result<(Program, Vec<Hole>), Diagnostic> {
     let program = parser::parse(path, source)?;
     let resolved = resolve::resolve(path, &program)?;
     let mut table = sig::Table::build(path, &program, &resolved);
@@ -114,9 +132,39 @@ fn check(path: &str, source: &[u8]) -> Result<Program, Diagnostic> {
     if let Some(d) = bodies.defs.iter().flatten().next() {
         return Err(d.clone());
     }
-    Ok(lower::lower(
-        path, source, &program, &resolved, &table, &bodies,
-    ))
+    let core = lower::lower(path, source, &program, &resolved, &table, &bodies);
+    let holes = holes(path, &program, &table, &bodies, &core);
+    Ok((core, holes))
+}
+
+/// The holes of a checked program, in position order.
+fn holes(
+    path: &str,
+    program: &ast::Program,
+    table: &sig::Table,
+    bodies: &body::Bodies,
+    core: &Program,
+) -> Vec<Hole> {
+    let mut sites: Vec<_> = (core.sites.iter())
+        .filter_map(|s| Some(((s.line, s.col), s.hole.as_deref()?)))
+        .collect();
+    sites.sort();
+    sites.dedup();
+    let hole = |(at, name): (ast::Pos, &str)| {
+        let def = program.defs.iter().rposition(|d| d.name().at <= at);
+        let def = def.expect("a hole stands in a definition");
+        let len = name.len() + 2;
+        let takes =
+            (bodies.types[def].get(&(at, len))).map_or("no value".into(), |&t| table.types.show(t));
+        let note = Diagnostic::new(path, at, len, "hole", format!("??{name} takes {takes}"));
+        let finish = format!("a release build has no holes; finish ??{name}");
+        let refusal = Diagnostic::new(path, at, len, "hole-in-build", finish);
+        Hole {
+            note: note.in_definition(program.defs[def].name().text).note(),
+            refusal: (!matches!(program.defs[def], Def::Example { .. })).then_some(refusal),
+        }
+    };
+    sites.into_iter().map(hole).collect()
 }
 
 fn second_app(path: &str, program: &ast::Program) -> Option<Diagnostic> {
