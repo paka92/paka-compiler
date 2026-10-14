@@ -782,7 +782,7 @@ or merged during review. Ids with a letter were added during review.
 - flags: repeat
 - done when: Task loader accepts the batch; each expected result has written hand working; a second-agent review finds no behaviour a statement leaves to the language. Each statement defines at least one error condition with an exact message and the one error status.
 - why this level: A vague statement or one wrong hand-derived answer silently corrupts every run of that task.
-- note: One task per batch; M3-04's list fixes how many (four for 20 tasks).
+- note: One task per batch; M3-04's list fixes how many (four for 20 tasks). Tasks live in experiment/tasks/<ID>/, with the hand working in working.md. Batch 1 (X1, X2, T1, T2, P1) is done; the harness appends the visible cases to the prompt.
 
 ### M3-14 · L3 · Write Rust reference solutions for ten tasks and list every test they dispute
 
