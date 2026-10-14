@@ -1,0 +1,5 @@
+web: api ui
+api: db log
+ui: log
+db:
+cli: api

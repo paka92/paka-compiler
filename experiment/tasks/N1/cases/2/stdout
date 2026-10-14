@@ -1,0 +1,5 @@
+shoe: gross -60.00 discount -9.00 net -51.00 tax -2.81 total -53.81
+sock: gross 3.10 discount 0.00 net 3.10 tax 0.17 total 3.27
+net -47.90
+tax -2.64
+refund 50.54

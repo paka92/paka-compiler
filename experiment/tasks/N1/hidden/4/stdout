@@ -1,0 +1,6 @@
+clip: gross -0.25 discount -0.03 net -0.22 tax 0.00 total -0.22
+tag: gross 0.25 discount 0.03 net 0.22 tax 0.00 total 0.22
+pin: gross -0.45 discount 0.00 net -0.45 tax -0.23 total -0.68
+net -0.45
+tax -0.23
+refund 0.68
