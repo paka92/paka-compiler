@@ -1,2 +1,2 @@
 {"event":"start","run":"B-TypeScript-1","model":"claude-sonnet-5-5","effort":"medium","system":"...","at":1000}
-{"event":"end","passed":true,"first_try":false,"submissions":4,"edits":3,"input":5000,"output":250,"cut_off":0,"at":3000}
+{"event":"end","passed":false,"first_try":false,"submissions":8,"edits":8,"input":5000,"output":250,"cut_off":1,"at":3000}

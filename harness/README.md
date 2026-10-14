@@ -114,10 +114,10 @@ void, and the run goes on with its next attempt.
 
 ## Metrics
 
-`cargo run --release -p harness --bin metrics -- <runs-root> <rulings-file>` turns the logs under
-a runs root (the folders of "Trial loop") and a rulings file into the three metrics and the
-verdict of M3-02. A run counts through the `end` line of its last attempt that ended; void
-attempts and runs with no ended attempt are ignored, and the latter are listed at the end. Per
+`cargo run --release -p harness --bin metrics -- <runs-root> <rulings-file> [reference-tokens]`
+turns the logs under a runs root (the folders of "Trial loop") and a rulings file into the three
+metrics and the verdict of M3-02. A run counts through the `end` line of its last attempt that
+ended; void attempts are ignored, and runs with no ended attempt are listed at the end. Per
 language, over all counted runs not ruled out and not in a dropped task:
 
 ```
@@ -126,15 +126,33 @@ edits      mean edits per run (8 for a run that never passed, as the log says)
 output     sum of output tokens
 ```
 
-It prints these per language, per task (every task, dropped ones included), the verdict, and
-two tables marked "not the verdict": nothing dropped, and tagged runs removed. The verdict
-compares Paka with Rust: first-try gap held up to 10 points, close up to 20, lost above; edits
-gap 0.5 and 1.0; token ratio 1.7 and 2.0. More than 2 dropped tasks gives `inconclusive`; else
-any metric lost gives `stop`, all three held `go`, anything else `inconclusive`. Comparisons
-use whole numbers, so a gap exactly on a line is held or close, never decided by rounding.
+It prints these per language, the table `not the verdict: by task` (every task, dropped ones
+marked `dropped`), the verdict, and more tables marked "not the verdict": nothing dropped, tagged
+runs removed, solve rate with cut-off and refused replies, input tokens, and Paka against
+TypeScript with the same gaps and bands. Refused replies are the void attempts whose reason is the
+refusal. Input tokens are shown with and without the Paka reference, which goes with every call
+(one per submission); the second needs the optional `reference-tokens`, else it says `needs the
+reference token count`.
 
-The rulings file has one ruling per line, blank lines allowed; the words after the third are a
-free reason:
+The verdict compares Paka with Rust: first-try gap held up to 10 points, close up to 20, lost
+above; edits gap 0.5 and 1.0; token ratio 1.7 and 2.0. More than 2 dropped tasks gives
+`inconclusive`; else any metric lost gives `stop`, all three held `go`, anything else
+`inconclusive`. Comparisons use whole numbers, so a gap exactly on a line is held or close, never
+decided by rounding; points print with 2 decimals, the edits gap and the ratio with 3.
+
+The verdict needs a complete run set: every kept task has the same number of ended runs in the
+three languages, and no kept run is unfinished. Otherwise the tables are printed, then
+`no verdict: incomplete run set` with the differing counts and the unfinished runs, and the
+command exits with status 20. A run that is lost to a fault is ruled `void` and rerun in a new rep
+folder (B-Rust-2 void, rerun as B-Rust-3), so the counts meet again.
+
+Every entry of the runs root must be a run folder `<task>-<language>-<rep>`, language `Paka`,
+`Rust` or `TypeScript`. Anything else is an error, practice runs `X1` and `X2` included; tasks
+are not checked against the frozen counted list yet (M3-18). A log whose `end` line disagrees
+with itself (edits, first-try and submissions) is an error naming the run.
+
+The rulings file has one ruling per line, blank lines allowed; the words after the third are the
+reason, which is required:
 
 ```
 run G2-Rust-1 void harness: sandbox failure
@@ -146,5 +164,5 @@ task F1 dropped tools and reference disagree
 - `tagged`: the run counts in the verdict and is left out of the tagged table.
 - `dropped`: every run of the task, in all languages, is left out of the verdict tables.
 
-A run is named by its folder, `<task>-<language>-<rep>`. A ruling naming no run or task, or any
-other line, is an error. The fixture is in `tests/metrics`.
+A ruling naming no run or task, a ruling without a reason, or any other line is an error. The
+fixture is in `tests/metrics`; the edge cases are built on the fly by `tests/metrics.rs`.
