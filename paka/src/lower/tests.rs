@@ -34,7 +34,7 @@ fn lowered(lines: &[&str]) -> Program {
         "the program checks"
     );
     lower(
-        "main.paka",
+        vec![("main.paka".into(), 1)],
         source.as_bytes(),
         &program,
         &resolved,
@@ -157,7 +157,7 @@ fn light_paka_lowers() {
         ..func(0, &[0], &[0], Some(2), valued(vec![], list))
     };
     let by_hand = Program {
-        file: "main.paka".into(),
+        files: vec![("main.paka".into(), 1)],
         types: vec![Type::Enum(0), Type::Effect(0), Type::List(1), Type::String],
         records: vec![],
         enums: vec![Enum {
@@ -1002,7 +1002,7 @@ fn an_app_with_state_an_inout_handler_and_an_example() {
         grants: BTreeSet::from([Grant::Console, Grant::ReadFiles]),
     };
     let by_hand = Program {
-        file: "main.paka".into(),
+        files: vec![("main.paka".into(), 1)],
         types: vec![
             Type::Int,
             Type::String,

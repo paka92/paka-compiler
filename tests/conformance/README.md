@@ -620,6 +620,7 @@ full in the folder. `(Rn)` marks a case that follows a reading in the Settled re
 |---|---|
 | the four statuses and the summary; exit 3 when any is not a pass | `examples_counter`, `examples_counter_fixed` (R2), `examples_trapped` (R6), `examples_unfinished` |
 | output is in byte order of the names; no examples | `examples_order_by_name_bytes`, `examples_none` |
+| a directory is one program; places name the file they are in and count lines in it | `examples_directory_program` |
 | `fail` is at the comparison operator with `left:` and `right:` in the value text form | `examples_fail_comparisons`, `examples_fail_value_text` |
 | a non-comparison fails at its first token, with no help lines; an `&&` chain reports the last operand evaluated | `examples_fail_not_a_comparison`, `examples_fail_and_chain` |
 | a false `assert` is `trapped`, not `fail` | `examples_assert_is_trapped` |

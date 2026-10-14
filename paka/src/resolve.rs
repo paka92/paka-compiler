@@ -9,6 +9,7 @@ use crate::ast::{
 };
 use crate::builtins::{self, Kind};
 use crate::diagnostic::Diagnostic;
+use crate::source::in_file;
 use std::collections::{BTreeMap, BTreeSet};
 
 type Res<T = ()> = Result<T, Diagnostic>;
@@ -393,7 +394,8 @@ impl<'a> Resolver<'a> {
     /// A local may not reuse a name visible at that point (M2-02.3).
     fn bind(&mut self, name: &'a str, at: Pos) -> Res {
         if let Some(&(_, first)) = self.locals.iter().find(|l| l.0 == name) {
-            let message = format!("{name} is already bound at line {}", first.0);
+            let (_, line) = in_file(&self.program.lines, |&l| l, first.0);
+            let message = format!("{name} is already bound at line {line}");
             return Err(self.fail(at, name.len(), "duplicate-local", message));
         }
         self.locals.push((name, at));

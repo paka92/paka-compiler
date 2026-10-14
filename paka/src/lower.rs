@@ -38,7 +38,7 @@ struct Cx<'t, 'a> {
 
 /// Runs on a program that `body::check` accepted: every lookup succeeds.
 pub fn lower<'a>(
-    path: &str,
+    files: Vec<(String, usize)>,
     source: &[u8],
     program: &ast::Program<'a>,
     resolved: &Resolved,
@@ -48,7 +48,7 @@ pub fn lower<'a>(
     let newlines = source.iter().enumerate().filter(|&(_, &b)| b == b'\n');
     let mut cx = Cx {
         core: Program {
-            file: path.into(),
+            files,
             types: vec![],
             records: vec![],
             enums: vec![],

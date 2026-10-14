@@ -3,6 +3,7 @@
 
 use crate::core_form::{App, Field, Program, Type};
 use crate::core_form::{Fn as Func, Site};
+use crate::source::in_file;
 use effects::{End, Host, Queued, World, perform};
 use eval::{Done, Kind, Machine, Stop, Trap};
 use show::show;
@@ -180,11 +181,11 @@ fn report(core: &Program, app: &str, trap: &Trap) -> String {
     )
 }
 
-/// `file:line:col` of a site; the file without its directory.
+/// `file:line:col` of a site, in the file that holds it.
 fn place(core: &Program, site: Site) -> String {
     let at = &core.sites[site];
-    let file = core.file.rsplit('/').next().unwrap_or_default();
-    format!("{file}:{}:{}", at.line, at.col)
+    let ((file, _), line) = in_file(&core.files, |f| f.1, at.line);
+    format!("{file}:{line}:{}", at.col)
 }
 
 /// A trap's detail line and call chain, which `assert`, `stack` and `memory` do not have.

@@ -1,0 +1,8 @@
+twice_as_index trapped at main.paka:3:29
+  trap out_of_bounds
+  index 2, length 1
+  in example twice_as_index
+twice_doubles pass
+twice_of_zero fail at a.paka:5:34
+  left: 0
+  right: 1

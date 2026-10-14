@@ -15,7 +15,8 @@ pub type Local = usize;
 
 #[derive(Debug, PartialEq)]
 pub struct Program {
-    pub file: String,
+    /// Each file's own name and the line it starts on, in program order (M2-02 section 1.3).
+    pub files: Vec<(String, usize)>,
     pub types: Vec<Type>,
     pub records: Vec<Record>,
     pub enums: Vec<Enum>,
@@ -128,7 +129,7 @@ pub enum Effect {
     ExitWith,
 }
 
-/// Where a trap is reported; the file is the program's, the kind travels with the trap.
+/// Where a trap is reported; `line` counts across the files, the kind travels with the trap.
 #[derive(Debug, PartialEq)]
 pub struct TrapSite {
     pub line: usize,
@@ -315,7 +316,7 @@ mod tests {
     #[test]
     fn equal_types_share_one_number() {
         let mut p = Program {
-            file: "main.paka".into(),
+            files: vec![("main.paka".into(), 1)],
             types: vec![],
             records: vec![],
             enums: vec![],

@@ -74,7 +74,7 @@ impl<'a> Cx<'_, 'a> {
         let Some((ty, Item::Record(fields))) = record else {
             return Err(self.bad_state(n));
         };
-        if let Some(field) = self.function_field(ty, "", &mut BTreeSet::new()) {
+        if let Some(field) = self.function_field(ty) {
             let message = format!(
                 "state {} holds a function type in field {field}; keep a message value instead \
                  and match on it in update",
@@ -97,25 +97,24 @@ impl<'a> Cx<'_, 'a> {
         self.fail((n.at, name.len()), "bad-state", message)
     }
 
-    /// The field that holds the first function type `ty` reaches, `field` being the one it is in.
-    fn function_field(
-        &self,
-        ty: Ty,
-        field: &'a str,
-        seen: &mut BTreeSet<usize>,
-    ) -> Option<&'a str> {
-        match self.types.node(ty) {
-            Node::Fn(..) => Some(field),
-            Node::Name(_, args) => args
-                .iter()
-                .find_map(|&a| self.function_field(a, field, seen)),
-            Node::User(i) if seen.insert(*i) => {
-                let held = self.defs[*i].item.each_field();
-                held.into_iter()
-                    .find_map(|f| self.function_field(f.ty, f.name, seen))
+    /// The field that holds the first function type `ty` reaches, depth first, in field order. A
+    /// stack of (type, field it is in) instead of recursion, so a long chain of types fits.
+    fn function_field(&self, ty: Ty) -> Option<&'a str> {
+        let (mut todo, mut seen) = (vec![(ty, "")], BTreeSet::new());
+        while let Some((ty, field)) = todo.pop() {
+            let next = todo.len();
+            match self.types.node(ty) {
+                Node::Fn(..) => return Some(field),
+                Node::Name(_, args) => todo.extend(args.iter().map(|&a| (a, field))),
+                Node::User(i) if seen.insert(*i) => {
+                    let held = self.defs[*i].item.each_field();
+                    todo.extend(held.map(|f| (f.ty, f.name)));
+                }
+                _ => {}
             }
-            _ => None,
+            todo[next..].reverse();
         }
+        None
     }
 
     /// The message enum of `update`, when it is known.
