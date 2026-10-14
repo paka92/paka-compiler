@@ -535,13 +535,13 @@ mod tests {
     }
 
     fn set_action(signum: i32, handler: usize) -> usize {
-        // SAFETY: 13 and 25 are signals whose action may be changed, and the two handlers the
+        // SAFETY: SIGPIPE and SIGXFSZ may have their action changed, and the two handlers the
         // test passes, 0 (`SIG_DFL`) and 1 (`SIG_IGN`), install no code.
         unsafe { signal(signum, handler) }
     }
 
     fn set_sigpipe(handler: usize) -> usize {
-        set_action(13, handler)
+        set_action(SIGPIPE, handler)
     }
 
     /// The error of a write to a pipe whose read end is closed. With SIGPIPE at its default the
@@ -567,13 +567,13 @@ mod tests {
         assert_eq!(status, INTERNAL_ERROR);
     }
 
-    // Own test and own signal: the file-size signal's action is also process-wide, but no other
-    // test touches it. 25 is SIGXFSZ, written out as above.
+    // The file-size signal's action is process-wide too, and the test above also leaves it
+    // ignored, so this one starts from the default and reads the action back.
     #[test]
     fn the_wrapper_sets_sigxfsz_to_ignored() {
-        set_action(25, 0);
+        set_action(SIGXFSZ, 0);
         ignore_signals();
-        assert_eq!(set_action(25, 0), 1);
+        assert_eq!(set_action(SIGXFSZ, 0), 1);
     }
 
     // The limits, at their edges. `span` forms no slice, so no memory has to be there.

@@ -102,15 +102,9 @@ impl Stop {
 /// closed descriptor a success. Closed at start, this holds the error and every write fails.
 pub struct Fd1(io::Result<File>);
 
-impl Fd1 {
-    pub fn new() -> Fd1 {
-        Fd1(io::stdout().as_fd().try_clone_to_owned().map(File::from))
-    }
-}
-
 impl Default for Fd1 {
     fn default() -> Fd1 {
-        Fd1::new()
+        Fd1(io::stdout().as_fd().try_clone_to_owned().map(File::from))
     }
 }
 
@@ -129,9 +123,9 @@ impl Write for Fd1 {
 
 /// Runs on descriptor 1 and standard error, with the arguments the process was started with.
 pub fn run(name: Str, update: Option<Update>, start: u64, grants: u64) -> i32 {
-    let args = std::env::args_os().count().saturating_sub(1);
+    let args = std::env::args_os().len().saturating_sub(1);
     run_with(
-        &mut Fd1::new(),
+        &mut Fd1::default(),
         &mut io::stderr(),
         name.bytes(),
         update,

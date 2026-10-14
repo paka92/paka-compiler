@@ -39,7 +39,12 @@ const EXIT_WITH: usize = Effect::ExitWith as usize;
 type End = (u8, String);
 
 /// Runs the program with the command-line arguments after its file; returns its status.
-pub fn run(core: &Program, args: &[OsString], out: &mut impl Write, err: &mut impl Write) -> u8 {
+pub fn run(
+    core: &Program,
+    args: &[OsString],
+    out: &mut (impl Write + Send),
+    err: &mut impl Write,
+) -> u8 {
     let app = core.app.as_ref().expect("a program with an app");
     let (status, line) = match start_message(core, app, args) {
         Ok(start) => serve(core, app, start, out),
@@ -79,26 +84,21 @@ fn start_message(core: &Program, app: &App, args: &[OsString]) -> Result<Value, 
 }
 
 /// The message loop: the handler answers each message in turn and its effects are performed.
-fn serve(core: &Program, app: &App, start: Value, out: &mut impl Write) -> End {
-    let mut state = match guest(core, app, |machine| machine.state(app)) {
-        Ok(state) => state,
-        Err(end) => return end,
-    };
-    let mut queue = VecDeque::from([start]);
-    while let Some(message) = queue.pop_front() {
-        match guest(core, app, move |machine| {
-            machine.update(app, state, message)
-        }) {
-            Ok((effects, next)) => {
-                state = next;
-                if let Some(end) = perform(app, &effects, out) {
-                    return end;
-                }
+/// The whole loop runs on one big-stack thread.
+fn serve(core: &Program, app: &App, start: Value, out: &mut (impl Write + Send)) -> End {
+    let run = guest(core, app, |machine| {
+        let mut state = machine.state(app)?;
+        let mut queue = VecDeque::from([start]);
+        while let Some(message) = queue.pop_front() {
+            let (effects, next) = machine.update(app, state, message)?;
+            state = next;
+            if let Some(end) = perform(app, &effects, out) {
+                return Ok(end);
             }
-            Err(end) => return end,
         }
-    }
-    (3, format!("{}: ended without Exit\n", app.name))
+        Ok((3, format!("{}: ended without Exit\n", app.name)))
+    });
+    run.unwrap_or_else(|end| end)
 }
 
 /// Runs `f` on a machine with room for the deepest call chain; a trap or fault ends the run.

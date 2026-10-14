@@ -47,7 +47,7 @@ fn main() -> ExitCode {
             Ok(interp::run(
                 &core,
                 &args[2..],
-                &mut Fd1::new(),
+                &mut Fd1::default(),
                 &mut io::stderr(),
             ))
         }

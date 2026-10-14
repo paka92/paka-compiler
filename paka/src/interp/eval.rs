@@ -234,10 +234,12 @@ impl<'a> Machine<'a> {
         message: Value,
     ) -> Done<(Value, Option<Value>)> {
         let site = self.core.fns[app.update].site;
-        let owned = state.is_some();
-        let args = state.into_iter().chain([message]).collect();
-        let (effects, locals) = self.invoke(app.update, args, site)?;
-        Ok((effects, locals.into_iter().next().filter(|_| owned)))
+        let Some(state) = state else {
+            let (effects, _) = self.invoke(app.update, vec![message], site)?;
+            return Ok((effects, None));
+        };
+        let (effects, locals) = self.invoke(app.update, vec![state, message], site)?;
+        Ok((effects, locals.into_iter().next()))
     }
 
     /// Runs an example at depth 1: `None` when its Bool is true, else why it is false.

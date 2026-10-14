@@ -4,7 +4,7 @@
 
 use super::text::{article, float_fix, render};
 use super::{Cx, Out, Res, span};
-use crate::ast::{Arg, Expr, ExprKind as K, UnOp};
+use crate::ast::{Arg, Expr, ExprKind as K};
 use crate::diagnostic::Diagnostic;
 use crate::resolve::Binding;
 use crate::sig::{Item, Node, Param, Sig, Ty};
@@ -200,21 +200,15 @@ impl<'a> Cx<'_, 'a> {
         let [Arg { value, .. }] = args else {
             return Ok(());
         };
-        let (sign, text) = match &value.kind {
-            K::Int(text) => ("", text),
-            K::Unary(UnOp::Neg, x) => match x.kind {
-                K::Int(ref text) => ("-", text),
-                _ => return Ok(()),
-            },
-            _ => return Ok(()),
+        let K::Int(text) = value.kind else {
+            return Ok(());
         };
-        let shown = format!("{sign}{text}");
         let chosen = |n| n == Int::new(0) || (Int::new(5)..=Int::new(255)).contains(&n);
-        if Int::parse(&shown).is_some_and(chosen) {
+        if Int::parse(text).is_some_and(chosen) {
             return Ok(());
         }
         let message =
-            format!("{shown} is not an exit status a program may choose; write 0 or 5 to 255");
+            format!("{text} is not an exit status a program may choose; write 0 or 5 to 255");
         Err(self.fail_at(value, "literal-out-of-range", message))
     }
 
