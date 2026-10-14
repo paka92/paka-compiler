@@ -632,14 +632,16 @@ or merged during review. Ids with a letter were added during review.
 - flags: open-ended, owner
 - done when: All cases pass with none skipped under `cargo test --workspace --locked --offline`; the not-yet-required list is empty; each change to code or expectation cites the decision line that settles it; a mismatch no line settles goes to the owner as an amendment to that decision before either side changes. A test proves every error kind has a case, and a test applies each expected fix and the result passes paka check. A kind found without a case gets one from an agent without the paka binary, as in M2-42.
 - why this level: Choosing which side is wrong silently sets the language's meaning.
+- note: Settle while running tests/conformance/errors: the span length where no record states it (bad-escape, changed-while-walked, inout-overlap, bad-assignment-target, marked * in the README table); spec/m1.md section 10 still puts type-mismatch at the first token and gives no-app the stage check, while later records put a mixed operand at the operator and only run and build raise no-app; spec/m1.md section 10 lists 31 of the 54 kinds; the lex cases M2-03 cites (string_close_brace, escape_before_line_end) do not exist.
 
 ### M2-42 · L3 · Write a rejected program for every error kind
 
+- status: done
 - needs: M2-18, M2-21, M2-30, M2-31, M2-32
 - flags: none
 - done when: Every error kind has a rejected program with its kind id, position, offending text, and the types and fix where the kind declares them, all written by hand and merged before any run, by an agent without the paka binary; message wording is not compared.
 - why this level: Needs a minimal trigger for each error across all checks, with exact expected output.
-- note: The caller runs this agent with no paka binary and no way to build one (no cargo); the agent may read the compiler source for the list of error kinds and what each declares, and must not build or run paka; the cases land in a not-yet-required list. M2-41b runs them.
+- note: The caller runs this agent with no paka binary and no way to build one (no cargo); the agent may read the compiler source for the list of error kinds and what each declares, and must not build or run paka; the cases land in a not-yet-required list. M2-41b runs them. Done: 53 cases in tests/conformance/errors cover 50 of the 54 kinds; file-unreadable, clang-missing, clang-failed and runtime-missing need a broken environment and stay with the spec/m1.md section 13 tests. Format: expect.json holds a subset of the paka check --json object; via run or build for no-app and unsupported-form.
 
 ### M2-43 · L2 · Add the paper's wc and counter samples as tests
 
