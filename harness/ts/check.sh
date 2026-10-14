@@ -8,7 +8,7 @@ tsc="$dir/node_modules/.bin/tsc"
 "$tsc" --version
 out=$(mktemp -d)
 trap 'rm -rf "$out"' EXIT
-"$tsc" --strict --target es2022 --module nodenext --types node \
+"$tsc" --strict --target es2022 --module commonjs --types node \
   --typeRoots "$dir/node_modules/@types" --noEmitOnError --skipLibCheck \
   --rootDir "$dir" --outDir "$out" "$dir/hello.ts"
 echo world | node "$out/hello.js"

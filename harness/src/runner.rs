@@ -60,7 +60,7 @@ impl Lang {
             Lang::TypeScript => {
                 cmd = Command::new(TSC);
                 cmd.args([
-                    "--strict", "--target", "es2022", "--module", "nodenext", "--types", "node",
+                    "--strict", "--target", "es2022", "--module", "commonjs", "--types", "node",
                 ])
                 .args(["--typeRoots", TS_TYPES, "--noEmitOnError", "--skipLibCheck"])
                 .arg("--rootDir")
@@ -83,7 +83,7 @@ impl Lang {
             }
             Lang::Rust => Command::new(dir.join("main")),
             Lang::TypeScript => {
-                let mut cmd = Command::new("node");
+                let mut cmd = Command::new(&runner.node);
                 cmd.arg(dir.join("out/main.js"));
                 cmd
             }
@@ -109,6 +109,8 @@ impl Default for Limits {
 pub struct Runner {
     /// The `paka` binary.
     pub paka: PathBuf,
+    /// Absolute path of `node`, found once on PATH: cases run without a PATH.
+    pub node: PathBuf,
     pub limits: Limits,
 }
 
@@ -146,6 +148,19 @@ impl Report {
 }
 
 impl Runner {
+    pub fn new(paka: PathBuf) -> io::Result<Runner> {
+        let path = env::var_os("PATH").unwrap_or_default();
+        let node = env::split_paths(&path)
+            .map(|dir| dir.join("node"))
+            .find(|node| node.is_file())
+            .ok_or_else(|| io::Error::new(io::ErrorKind::NotFound, "node is not on PATH"))?;
+        Ok(Runner {
+            paka,
+            node,
+            limits: Limits::default(),
+        })
+    }
+
     /// Builds `source` and runs every visible and hidden case of `task` against it.
     pub fn judge(&self, lang: Lang, source: &str, task: &Task) -> Result<Report, Error> {
         let build = Scratch::new()?;
@@ -191,7 +206,7 @@ impl Runner {
     }
 
     /// The one place a submitted program runs: in a fresh directory holding the case's input
-    /// files, with an empty environment but PATH, TZ=UTC and the C locale.
+    /// files, with an empty environment but TZ=UTC and the C locale.
     fn run_case(&self, lang: Lang, build: &Path, case: &Case) -> Result<CaseResult, Error> {
         let work = Scratch::new()?;
         for (name, bytes) in &case.input {
@@ -202,7 +217,6 @@ impl Runner {
             .current_dir(&work.0)
             .env_clear()
             .envs([("TZ", "UTC"), ("LC_ALL", "C")]);
-        cmd.envs(env::var_os("PATH").map(|path| ("PATH", path)));
         let run = exec(&mut cmd, self.limits.case)?;
         let files_match = case
             .output

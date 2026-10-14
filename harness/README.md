@@ -27,14 +27,16 @@ malformed, and the whole task is refused. Standard error is not compared.
 ## Build and run
 
 Every file is `main.<ext>`. Each case runs in a fresh directory holding its `in/` files, with the
-environment cleared except `PATH`, `TZ=UTC` and `LC_ALL=C`. Limits: 120 seconds to build, 10 seconds
+environment cleared except `TZ=UTC` and `LC_ALL=C`. Limits: 120 seconds to build, 10 seconds
 per case.
 
 | Language | Build | Run |
 |---|---|---|
 | Paka | `paka check main.paka` | `paka run main.paka <args>` |
 | Rust | `rustc --edition 2024 -C debug-assertions=on -C overflow-checks=on -o main main.rs` | `./main <args>` |
-| TypeScript | `tsc --strict --target es2022 --module nodenext --types node --typeRoots ts/node_modules/@types --noEmitOnError --skipLibCheck --rootDir . --outDir out main.ts` | `node out/main.js <args>` |
+| TypeScript | `tsc --strict --target es2022 --module commonjs --types node --typeRoots ts/node_modules/@types --noEmitOnError --skipLibCheck --rootDir . --outDir out main.ts` | `node out/main.js <args>` |
+
+The build lines follow M3-01 plus the flags for the local install (`--typeRoots`, `--skipLibCheck`, `--rootDir`, `--outDir`).
 
 Install `tsc` once with `ts/check.sh`.
 
