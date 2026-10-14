@@ -1,0 +1,17 @@
+enum Msg { Start }
+
+fn plus(a: Int, b: Int) -> Int {
+  a + b
+}
+
+fn update(msg: Msg) -> List<Effect<Msg>> {
+  var xs = [0, 1]
+  let n = plus(xs[pop(&xs)], 1)
+  [Print("not reached"), Exit]
+}
+
+app ownership {
+  start: Start
+  update: update
+  grants: [Console]
+}

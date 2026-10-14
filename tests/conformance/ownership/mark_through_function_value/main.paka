@@ -1,0 +1,21 @@
+enum Msg { Start }
+
+fn lt(a: Int, b: Int) -> Bool {
+  a < b
+}
+
+fn pick(less: fn(Int, Int) -> Bool) -> Bool {
+  var a = 1
+  less(&a, 2)
+}
+
+fn update(msg: Msg) -> List<Effect<Msg>> {
+  let r = pick(lt)
+  [Print("done"), Exit]
+}
+
+app ownership {
+  start: Start
+  update: update
+  grants: [Console]
+}

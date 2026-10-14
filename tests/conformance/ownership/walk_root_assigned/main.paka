@@ -1,0 +1,19 @@
+enum Msg { Start }
+
+type S { items: List<Int> = [], total: Int = 0 }
+
+fn clear(s: inout S) {
+  for x in s.items { s = S {} }
+}
+
+fn update(msg: Msg) -> List<Effect<Msg>> {
+  var s = S { items: [1] }
+  clear(&s)
+  [Print("done"), Exit]
+}
+
+app ownership {
+  start: Start
+  update: update
+  grants: [Console]
+}

@@ -1,0 +1,16 @@
+enum Msg { Start }
+
+fn update(msg: Msg) -> List<Effect<Msg>> {
+  let a = [1, 2, 3]
+  var b = a
+  append(&b, 4)
+  var c = b
+  c[0] = 9
+  [Print("{len(a)} {len(b)} {b[0]} {c[0]}"), Exit]
+}
+
+app ownership {
+  start: Start
+  update: update
+  grants: [Console]
+}

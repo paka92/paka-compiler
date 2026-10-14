@@ -1,0 +1,17 @@
+enum Msg { Start }
+
+fn mark(g: inout List<List<Int>>) {
+  for row in g { row[0] = 1 }
+}
+
+fn update(msg: Msg) -> List<Effect<Msg>> {
+  var g = [[0], [0]]
+  mark(&g)
+  [Print("done"), Exit]
+}
+
+app ownership {
+  start: Start
+  update: update
+  grants: [Console]
+}

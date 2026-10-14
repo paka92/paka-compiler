@@ -1,0 +1,17 @@
+enum Msg { Start }
+
+fn drain(xs: inout List<Int>) {
+  for x in xs { _ = pop(&xs) }
+}
+
+fn update(msg: Msg) -> List<Effect<Msg>> {
+  var xs = [1, 2]
+  drain(&xs)
+  [Print("done"), Exit]
+}
+
+app ownership {
+  start: Start
+  update: update
+  grants: [Console]
+}

@@ -1,0 +1,25 @@
+enum Msg { Start }
+
+fn take(xs: inout List<Int>) -> List<Int> {
+  let out = xs
+  xs = []
+  out
+}
+
+fn merge(a: List<Int>, b: List<Int>) -> List<Int> {
+  var out = a
+  for x in b { append(&out, x) }
+  out
+}
+
+fn update(msg: Msg) -> List<Effect<Msg>> {
+  var xs = [1]
+  let both = merge(take(&xs), xs)
+  [Print("done"), Exit]
+}
+
+app ownership {
+  start: Start
+  update: update
+  grants: [Console]
+}

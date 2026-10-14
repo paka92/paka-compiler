@@ -1,0 +1,42 @@
+enum Msg { Start }
+
+fn show(xs: List<Int>) -> String {
+  var parts: List<String> = []
+  for x in xs { append(&parts, "{x}") }
+  "[" + join(parts, ", ") + "]"
+}
+
+fn id(xs: List<Int>) -> List<Int> {
+  xs
+}
+
+fn grow(xs: inout List<Int>, more: List<Int>) {
+  for x in more { append(&xs, x) }
+}
+
+fn add_len(xs: inout List<Int>, o: Option<List<Int>>) {
+  match o {
+    Some(v) => append(&xs, len(v))
+    None => {}
+  }
+}
+
+fn update(msg: Msg) -> List<Effect<Msg>> {
+  var xs = [1, 2]
+  append(&xs, len(xs))
+  grow(&xs, id(xs))
+  var names = ["a", "b"]
+  append(&names, names[0] + "!")
+  append(&names, "{names[1]}?")
+  var m: Map<String, List<Int>> = ["a": [1], "b": [2, 3]]
+  add_len(&m["a"], get(m, "b"))
+  let joined = join(names, ",")
+  let in_map = show(m["a"])
+  [Print("{show(xs)} {joined} {in_map}"), Exit]
+}
+
+app ownership {
+  start: Start
+  update: update
+  grants: [Console]
+}

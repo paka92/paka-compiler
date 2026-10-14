@@ -1,0 +1,19 @@
+enum Msg { Start }
+
+fn add_all(xs: inout List<Int>, more: List<Int>) {
+  for x in more { append(&xs, x) }
+}
+
+fn update(msg: Msg) -> List<Effect<Msg>> {
+  var m: Map<String, List<Int>> = ["a": [1], "b": [2]]
+  let a = "a"
+  let b = "b"
+  add_all(&m[a], m[b])
+  [Print("done"), Exit]
+}
+
+app ownership {
+  start: Start
+  update: update
+  grants: [Console]
+}

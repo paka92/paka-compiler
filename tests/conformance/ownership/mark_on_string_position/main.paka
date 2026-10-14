@@ -1,0 +1,17 @@
+enum Msg { Start }
+
+fn shout(s: inout String) {
+  s += "!"
+}
+
+fn update(msg: Msg) -> List<Effect<Msg>> {
+  var text = "ab"
+  shout(&text[0])
+  [Print("done"), Exit]
+}
+
+app ownership {
+  start: Start
+  update: update
+  grants: [Console]
+}

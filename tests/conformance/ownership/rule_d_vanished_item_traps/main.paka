@@ -1,0 +1,21 @@
+enum Msg { Start }
+
+fn setv(x: inout Int, v: Int) {
+  x = v
+}
+
+fn drop_last(xs: inout List<Int>) -> Int {
+  pop(&xs)
+}
+
+fn update(msg: Msg) -> List<Effect<Msg>> {
+  var xs = [1, 2]
+  setv(&xs[1], drop_last(&xs))
+  [Print("not reached"), Exit]
+}
+
+app ownership {
+  start: Start
+  update: update
+  grants: [Console]
+}

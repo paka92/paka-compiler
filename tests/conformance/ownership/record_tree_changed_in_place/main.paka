@@ -1,0 +1,27 @@
+enum Msg { Start }
+
+type TNode { val: Int = 0, kids: List<TNode> = [] }
+
+fn add_all(n: inout TNode, d: Int) {
+  n.val += d
+  for i in 0..<len(n.kids) { add_all(&n.kids[i], d) }
+}
+
+fn tree_sum(n: TNode) -> Int {
+  var s = n.val
+  for k in n.kids { s += tree_sum(k) }
+  s
+}
+
+fn update(msg: Msg) -> List<Effect<Msg>> {
+  var t = TNode { val: 1, kids: [TNode { val: 2 }, TNode { val: 3, kids: [TNode { val: 4 }] }] }
+  let before = t
+  add_all(&t, 10)
+  [Print("{tree_sum(before)} {tree_sum(t)} {t.kids[1].kids[0].val}"), Exit]
+}
+
+app ownership {
+  start: Start
+  update: update
+  grants: [Console]
+}

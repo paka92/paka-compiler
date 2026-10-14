@@ -1,0 +1,73 @@
+enum Msg { Start }
+
+enum Shape { Dot, Rect(w: Int, h: Int) }
+
+enum Expr { Num(value: Int), Add(left: Expr, right: Expr) }
+
+enum Kind { Small, Big(n: Int) }
+
+type Stat { kind: Kind = Small, count: Int = 0 }
+
+fn width(s: Shape) -> Int {
+  match s {
+    Dot => 0
+    Rect(w, h) => w
+  }
+}
+
+fn value_of(e: Expr) -> Int {
+  match e {
+    Num(v) => v
+    Add(l, r) => value_of(l) + value_of(r)
+  }
+}
+
+fn widen(s: inout Shape) {
+  match s {
+    Dot => {}
+    Rect(w, h) => s = Rect(w + 1, h)
+  }
+}
+
+fn left_of(e: inout Expr) {
+  match e {
+    Num(v) => {}
+    Add(left, right) => e = left
+  }
+}
+
+fn settle(s: inout Stat) {
+  match s.kind {
+    Small => {}
+    Big(n) => s.count = n
+  }
+}
+
+fn reset_keep(s: inout Shape) -> Int {
+  match s {
+    Dot => 0
+    Rect(w, h) => {
+      s = Dot
+      let a = w
+      a
+    }
+  }
+}
+
+fn update(msg: Msg) -> List<Effect<Msg>> {
+  var sh = Rect(2, 3)
+  widen(&sh)
+  var e = Add(Add(Num(1), Num(2)), Num(5))
+  left_of(&e)
+  var st = Stat { kind: Big(4) }
+  settle(&st)
+  var r = Rect(6, 1)
+  let kept = reset_keep(&r)
+  [Print("{width(sh)} {value_of(e)} {st.count} {kept} {width(r)}"), Exit]
+}
+
+app ownership {
+  start: Start
+  update: update
+  grants: [Console]
+}

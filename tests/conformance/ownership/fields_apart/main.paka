@@ -1,0 +1,41 @@
+enum Msg { Start }
+
+type Pair { left: List<Int> = [], right: List<Int> = [] }
+
+type Item { price: Int = 0 }
+
+type Cart { items: List<Item> = [], total: Int = 0 }
+
+fn show(xs: List<Int>) -> String {
+  var parts: List<String> = []
+  for x in xs { append(&parts, "{x}") }
+  "[" + join(parts, ", ") + "]"
+}
+
+fn grow(xs: inout List<Int>, more: List<Int>) {
+  for x in more { append(&xs, x) }
+}
+
+fn swap_lists(a: inout List<Int>, b: inout List<Int>) {
+  let t = a
+  a = b
+  b = t
+}
+
+fn update(msg: Msg) -> List<Effect<Msg>> {
+  var p = Pair { left: [1], right: [2, 3] }
+  grow(&p.left, p.right)
+  swap_lists(&p.left, &p.right)
+  var xs = [1]
+  let ys = [4]
+  grow(&xs, ys)
+  var s = Cart { items: [Item { price: 2 }, Item { price: 5 }] }
+  for it in s.items { s.total += it.price }
+  [Print("{show(p.left)} {show(p.right)} {show(xs)} {s.total}"), Exit]
+}
+
+app ownership {
+  start: Start
+  update: update
+  grants: [Console]
+}

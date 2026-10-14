@@ -1,0 +1,13 @@
+enum Msg { Start }
+
+fn update(msg: Msg) -> List<Effect<Msg>> {
+  let rows = [[1], [2]]
+  for x in rows { append(&x, 1) }
+  [Print("done"), Exit]
+}
+
+app ownership {
+  start: Start
+  update: update
+  grants: [Console]
+}

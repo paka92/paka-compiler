@@ -1,0 +1,25 @@
+enum Msg { Start }
+
+type Pool { items: List<Int> = [] }
+
+type Handle { at: Int = 0 }
+
+enum Shared { One, Two(n: Int) }
+
+fn update(msg: Msg) -> List<Effect<Msg>> {
+  var p = Pool {}
+  append(&p.items, 3)
+  let h = Handle { at: 0 }
+  let s = Two(p.items[h.at])
+  let n = match s {
+    One => 0
+    Two(k) => k
+  }
+  [Print("{n}"), Exit]
+}
+
+app ownership {
+  start: Start
+  update: update
+  grants: [Console]
+}

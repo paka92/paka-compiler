@@ -1,0 +1,68 @@
+enum Msg { Start }
+
+enum Shape { Dot, Rect(w: Int, h: Int) }
+
+type Cell { shape: Shape = Dot, hits: Int = 0 }
+
+type Account { balance: Int = 0 }
+
+type Row { count: Int = 0 }
+
+type Sheet { items: List<Row> = [] }
+
+type Links { next: List<List<Int>> = [] }
+
+fn show(xs: List<Int>) -> String {
+  var parts: List<String> = []
+  for x in xs { append(&parts, "{x}") }
+  "[" + join(parts, ", ") + "]"
+}
+
+fn width(s: Shape) -> Int {
+  match s {
+    Dot => 0
+    Rect(w, h) => w
+  }
+}
+
+fn touch(c: inout Cell, grid: inout List<List<Int>>, m: inout Map<String, Cell>) {
+  c.hits += 1
+  grid[0][1] = 7
+  m["a"].hits += 1
+  m["b"] = Cell {}
+  match c.shape {
+    Dot => c.shape = Rect(1, 1)
+    Rect(w, h) => c.shape = Rect(w * 2, h)
+  }
+}
+
+fn transfer(m: inout Map<String, Account>, a: String, b: String, n: Int) {
+  m[a].balance -= n
+  m[b].balance += n
+}
+
+fn update(msg: Msg) -> List<Effect<Msg>> {
+  var c = Cell {}
+  var grid = [[0, 0], [0, 0]]
+  var cells: Map<String, Cell> = ["a": Cell {}]
+  touch(&c, &grid, &cells)
+  touch(&c, &grid, &cells)
+  var accounts: Map<String, Account> = ["x": Account { balance: 10 }, "y": Account {}]
+  transfer(&accounts, "x", "y", 4)
+  var sheet = Sheet { items: [Row {}, Row {}] }
+  sheet.items[1].count += 1
+  var links = Links { next: [[1], [0]] }
+  append(&links.next[0], 2)
+  var both = [3, 1, 2]
+  swap(&both, 0, 2)
+  let a_hits = cells["a"].hits
+  let x_balance = accounts["x"].balance
+  let y_balance = accounts["y"].balance
+  [Print("{c.hits} {width(c.shape)} {grid[0][1]} {a_hits} {len(cells)} {x_balance} {y_balance} {sheet.items[1].count} {show(links.next[0])} {show(both)}"), Exit]
+}
+
+app ownership {
+  start: Start
+  update: update
+  grants: [Console]
+}
