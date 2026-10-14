@@ -469,11 +469,12 @@ or merged during review. Ids with a letter were added during review.
 
 ### M2-23 · L4 · Define the core form for the whole headless language
 
+- status: done
 - needs: M2-05, M2-06, M2-09, M2-12, M2-20, M2-15
 - flags: none
 - done when: Core types and a written rule per node are merged, including the app, message and effect-list forms; examples/light.paka lowers to it and still passes on both back ends.
 - why this level: Contract for every future back end; evaluation order and trap points must be explicit.
-- note: M1's native comparison keeps running only the M1 run group; conformance cases are interpreter-only until M4-40. Follows docs/decisions/M2-06.md for traps, holes and examples. Follows docs/decisions/M2-12.md for Option, Result, `?` and unreachable().
+- note: M1's native comparison keeps running only the M1 run group; conformance cases are interpreter-only until M4-40. Follows docs/decisions/M2-06.md for traps, holes and examples. Follows docs/decisions/M2-12.md for Option, Result, `?` and unreachable(). Done: docs/core.md is the contract for the core form. lower.rs still bridges to the M1 back end through m1(); M2-26 removes the bridge. Callee::Builtin indexes builtins::ROWS; locals are numbered with parameters first.
 
 ### M2-25 · L3 · Lower checked programs to the core form
 
