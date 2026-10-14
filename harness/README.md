@@ -118,6 +118,14 @@ void, and the run goes on with its next attempt.
 the commit tagged `run` and `git status --porcelain` is empty. The error is one line and its
 `status()` is 20. `Setup.repo` of `None` skips the check; the tests use it.
 
+## Batch
+
+`cargo run --release -p harness --bin batch -- <runs-root> <reps> <task>...` runs each task in
+Paka, Rust and TypeScript, reps 1 to `<reps>`, with the model, effort and call limit of
+`experiment/protocol.md` and `spec/paka.md` as the Paka reference. The same command resumes. The
+token ledger is `<runs-root>/usage.json`. Only each attempt's `log` is kept in the repository; the
+`claude/` folder beside it holds the command line's own stream and stays local.
+
 ## Metrics
 
 `cargo run --release -p harness --bin metrics -- <runs-root> <rulings-file> [reference-tokens]`
