@@ -1,8 +1,11 @@
 //! Lowering a checked M1 program into the core form, and the view of it the M1 back ends run.
 
-use crate::ast;
+use crate::ast::{self, Def, StmtKind, StrPart};
 use crate::check::Checked;
-use crate::core_form::{self, Program};
+use crate::core_form::{
+    self, App, Block, Enum, Expr, ExprKind, Fn, Grant, Param, Program, Tag, TrapSite, Ty, Type,
+    Variant,
+};
 
 /// What the M1 back ends run: the effects of an `update` whose body is a constant list.
 #[derive(Debug, PartialEq)]
@@ -25,14 +28,216 @@ pub enum Effect {
 
 /// Runs on a checked program, where every lookup succeeds and every node is of the M1 subset.
 pub fn lower(path: &str, program: &ast::Program, checked: &Checked) -> Program {
-    let _ = (path, program, checked);
-    todo!()
+    let mut core = Program {
+        file: path.into(),
+        types: vec![],
+        records: vec![],
+        enums: vec![],
+        fns: vec![],
+        examples: vec![],
+        app: None,
+        sites: vec![],
+    };
+    for def in &program.defs {
+        if let Def::Enum { name, variants } = def {
+            let variants = variants.iter().map(|v| Variant {
+                name: v.name.text.into(),
+                fields: vec![], // M1 variants have none.
+            });
+            core.enums.push(Enum {
+                name: name.text.into(),
+                variants: variants.collect(),
+            });
+        }
+    }
+    for def in &program.defs {
+        if let Def::Fn {
+            name,
+            params,
+            result,
+            body,
+        } = def
+        {
+            let f = function(&mut core, name, params, result.as_ref(), body);
+            core.fns.push(f);
+        }
+    }
+    core.app = Some(app(&core, checked));
+    core
+}
+
+/// An M1 function: one parameter, a result and a body of one expression.
+fn function(
+    core: &mut Program,
+    name: &ast::Name,
+    params: &[ast::Param],
+    result: Option<&ast::Type>,
+    body: &ast::Block,
+) -> Fn {
+    let (line, col) = name.at;
+    core.sites.push(TrapSite {
+        line,
+        col,
+        hole: None,
+    });
+    let site = core.sites.len() - 1;
+    let params = params.iter().map(|p| Param {
+        ty: ty(core, &p.ty),
+        inout: p.inout,
+    });
+    let params = params.collect();
+    let result = ty(core, result.expect("an M1 function has a result"));
+    let [ast::Node { kind, .. }] = body.stmts.as_slice() else {
+        unreachable!("an M1 body is one statement");
+    };
+    let StmtKind::Expr(e) = kind else {
+        unreachable!("an M1 statement is an expression");
+    };
+    let value = Some(Box::new(expr(core, e, result)));
+    Fn {
+        name: name.text.into(),
+        site,
+        params,
+        result: Some(result),
+        body: Block {
+            stmts: vec![],
+            value,
+        },
+    }
+}
+
+fn ty(core: &mut Program, t: &ast::Type) -> Ty {
+    let ast::Type::Name { name, args } = t else {
+        unreachable!("M1 has no function types");
+    };
+    let t = match (name.text, args.as_slice()) {
+        ("String", []) => Type::String,
+        ("List", [item]) => Type::List(ty(core, item)),
+        ("Effect", [message]) => Type::Effect(ty(core, message)),
+        (name, []) => Type::Enum(enum_id(core, name)),
+        _ => unreachable!("M1 has no other types"),
+    };
+    core.ty(t)
+}
+
+/// `e` lowered as a value of type `want`, the type the checker held it to.
+fn expr(core: &mut Program, e: &ast::Expr, want: Ty) -> Expr {
+    let kind = match &e.kind {
+        ast::ExprKind::Str(parts) => ExprKind::Str(text(parts)),
+        ast::ExprKind::List(items) => {
+            let Type::List(item) = core.types[want] else {
+                unreachable!("a list is checked against a List type");
+            };
+            ExprKind::List(items.iter().map(|i| expr(core, i, item)).collect())
+        }
+        ast::ExprKind::Name(name) => ExprKind::Variant(tag(core, name, want), vec![]),
+        ast::ExprKind::Call(callee, args) => {
+            let ast::ExprKind::Name(name) = callee.kind else {
+                unreachable!("M1 calls only names");
+            };
+            let string = core.ty(Type::String);
+            let fields = args.iter().map(|a| expr(core, &a.value, string)).collect();
+            ExprKind::Variant(tag(core, name, want), fields)
+        }
+        _ => unreachable!("M1 has no other expressions"),
+    };
+    Expr {
+        ty: Some(want),
+        kind,
+    }
+}
+
+/// The variant `name` of the enum or effect type `want`.
+fn tag(core: &Program, name: &str, want: Ty) -> Tag {
+    match core.types[want] {
+        Type::Effect(_) if name == "Print" => Tag::Effect(core_form::Effect::Print),
+        Type::Effect(_) => Tag::Effect(core_form::Effect::Exit),
+        Type::Enum(e) => Tag::User(e, variant_id(&core.enums[e], name)),
+        _ => unreachable!("M1 variants are of an enum or an effect"),
+    }
+}
+
+/// The text of a string without interpolations, which is all the M1 checker accepts.
+fn text(parts: &[StrPart]) -> String {
+    let texts = parts.iter().filter_map(|p| match p {
+        StrPart::Text(t) => Some(t.as_str()),
+        StrPart::Expr(_) => None,
+    });
+    texts.collect()
+}
+
+fn app(core: &Program, checked: &Checked) -> App {
+    let update = core.fns.iter().position(|f| f.name == checked.update_name);
+    let update = update.expect("the update function is defined");
+    let message = core.fns[update]
+        .params
+        .last()
+        .expect("update has a message");
+    let Type::Enum(message) = core.types[message.ty] else {
+        unreachable!("the message type is an enum");
+    };
+    App {
+        name: checked.app.into(),
+        state: None,
+        start: variant_id(&core.enums[message], checked.start),
+        update,
+        grants: checked.grants.iter().map(|g| grant(g)).collect(),
+    }
+}
+
+fn grant(name: &str) -> Grant {
+    match name {
+        "Console" => Grant::Console,
+        "ReadFiles" => Grant::ReadFiles,
+        "WriteFiles" => Grant::WriteFiles,
+        _ => unreachable!("the checker knows no other grant"),
+    }
+}
+
+fn enum_id(core: &Program, name: &str) -> usize {
+    let at = core.enums.iter().position(|e| e.name == name);
+    at.expect("a checked type name is an enum")
+}
+
+fn variant_id(e: &Enum, name: &str) -> usize {
+    let at = e.variants.iter().position(|v| v.name == name);
+    at.expect("a checked variant is in its enum")
 }
 
 /// The M1 view of `core`, or `None` when it holds what the M1 back ends cannot run.
 pub fn m1(core: &Program) -> Option<M1> {
-    let _ = core;
-    todo!()
+    let app = core.app.as_ref()?;
+    let update = &core.fns[app.update];
+    let only_console = app.grants.iter().all(|g| *g == Grant::Console);
+    if app.state.is_some() || !only_console || !update.body.stmts.is_empty() {
+        return None;
+    }
+    let ExprKind::List(items) = &update.body.value.as_ref()?.kind else {
+        return None;
+    };
+    Some(M1 {
+        app: app.name.clone(),
+        start: app.start,
+        console: app.grants.contains(&Grant::Console),
+        update_name: update.name.clone(),
+        update: items.iter().map(effect).collect::<Option<_>>()?,
+    })
+}
+
+fn effect(e: &Expr) -> Option<Effect> {
+    match &e.kind {
+        ExprKind::Variant(Tag::Effect(core_form::Effect::Exit), _) => Some(Effect::Exit),
+        ExprKind::Variant(Tag::Effect(core_form::Effect::Print), fields) => match &fields[..] {
+            [
+                Expr {
+                    kind: ExprKind::Str(text),
+                    ..
+                },
+            ] => Some(Effect::Print(text.clone())),
+            _ => None,
+        },
+        _ => None,
+    }
 }
 
 #[cfg(test)]

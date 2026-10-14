@@ -108,7 +108,6 @@ pub struct App {
 }
 
 #[derive(Debug, PartialEq, Eq, PartialOrd, Ord)]
-#[allow(dead_code)] // M2-25 lowers the rest.
 pub enum Grant {
     Console,
     ReadFiles,

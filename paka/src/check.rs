@@ -16,7 +16,8 @@ pub struct Checked<'a> {
     pub start: &'a str,
     /// The name of the `update` function.
     pub update_name: &'a str,
-    /// The body of the `update` function.
+    /// The body of the `update` function; lowering takes it from the function itself.
+    #[allow(dead_code)]
     pub update: &'a Expr<'a>,
     pub grants: Vec<&'a str>,
 }
