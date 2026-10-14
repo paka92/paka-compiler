@@ -599,11 +599,12 @@ or merged during review. Ids with a letter were added during review.
 
 ### M2-40 · L4 · Write conformance tests for ownership, shared data and pools
 
+- status: done
 - needs: M2-18, M2-21
 - flags: none
 - done when: Expected results merged before any run, written without access to a built paka; every decision point in scope has a case.
 - why this level: The accept and reject boundary is subtle; a wrong expectation silently blesses a wrong rule.
-- note: The caller runs this agent with no paka binary and no way to build one (no cargo, or a checkout holding only the reference, the decision records and the tests folder); the agent must not build or run paka; the cases land in a not-yet-required list. M2-41b runs them. M2-01 put graphs in by list index and pools are not built: the pool part is dropped, shared data is covered with a tree sample only, and pools are recorded as not decided. Follows docs/decisions/M2-05.md, including its two tightened call rules. Follows docs/decisions/M2-10.md: runs its tree and graph samples and one case showing a value used twice in a tree is two independent copies. M2-35 is dropped. Follows docs/decisions/M2-14.md for the built-in table.
+- note: The caller runs this agent with no paka binary and no way to build one (no cargo, or a checkout holding only the reference, the decision records and the tests folder); the agent must not build or run paka; the cases land in a not-yet-required list. M2-41b runs them. M2-01 put graphs in by list index and pools are not built: the pool part is dropped, shared data is covered with a tree sample only, and pools are recorded as not decided. Follows docs/decisions/M2-05.md, including its two tightened call rules. Follows docs/decisions/M2-10.md: runs its tree and graph samples and one case showing a value used twice in a tree is two independent copies. M2-35 is dropped. Follows docs/decisions/M2-14.md for the built-in table. Done: 94 cases in tests/conformance/ownership, written from the reference and records only; tests/conformance/README.md gives the pass rules, the decision-point table and the settled readings. No runner reads them yet; M2-41b runs them. A read of a function type now counts as fresh (M2-05 section 1.2), matching M2-09.
 
 ### M2-41 · L3 · Write conformance tests for apps, effects, grants, traps, examples and holes
 
