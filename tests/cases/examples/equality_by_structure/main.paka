@@ -7,7 +7,7 @@ fn update(s: inout Tally, m: Msg) -> List<Effect<Msg>> {
   match m {
     Start(path) => [ReadFile(path, then: Loaded, or: Failed)]
     Loaded(text) => [Print(text)]
-    Failed(why) => [ExitWith(1)]
+    Failed(why) => [ExitWith(5)]
   }
 }
 
