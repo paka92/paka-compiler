@@ -6,19 +6,24 @@ use super::*;
 use common::tokens;
 use paka::coverage::{self, Uses};
 use paka::parser::parse;
+use std::sync::atomic::{AtomicUsize, Ordering};
 
 const BUDGET: usize = 8000;
 const REFERENCE: &str = include_str!("../../../spec/paka.md");
 
 /// The blocks fenced as `paka`, each ended by a line feed.
 fn samples(reference: &str) -> Vec<String> {
+    let reference = format!("\n{reference}");
     let blocks = reference.split("\n```paka\n").skip(1);
-    blocks.map(|b| b.split("\n```").next().unwrap().to_string() + "\n").collect()
+    blocks
+        .map(|b| b.split("\n```").next().unwrap().to_string() + "\n")
+        .collect()
 }
 
 /// `paka check` and `paka examples` exit 0; a sample with an app is also run on a file.
-fn sample_runs(number: usize, source: &str) -> Result<(), String> {
-    let scratch = Scratch::new(&format!("sample-{number}"));
+fn sample_runs(source: &str) -> Result<(), String> {
+    static RUNS: AtomicUsize = AtomicUsize::new(0);
+    let scratch = Scratch::new(&format!("sample-{}", RUNS.fetch_add(1, Ordering::Relaxed)));
     let dir = scratch.path("");
     fs::write(dir.join("main.paka"), source).unwrap();
     fs::write(dir.join("words.txt"), "a b c").unwrap();
@@ -59,27 +64,35 @@ fn problems(reference: &str, kinds: &[&str], builtins: &[&str], used: &Uses) -> 
         problems.push(format!("the reference is {size} tokens, limit {BUDGET}"));
     }
     for (i, source) in samples(reference).iter().enumerate() {
-        if let Err(e) = sample_runs(i + 1, source) {
+        if let Err(e) = sample_runs(source) {
             problems.push(format!("reference sample {} fails: {e}", i + 1));
         }
     }
     let unused: Vec<_> = kinds.iter().filter(|k| !used.kinds.contains(**k)).collect();
     if !unused.is_empty() {
-        problems.push(format!("{} node kinds in no passing case: {unused:?}", unused.len()));
+        problems.push(format!(
+            "{} node kinds in no passing case: {unused:?}",
+            unused.len()
+        ));
     }
-    let unused: Vec<_> = builtins.iter().filter(|b| !used.names.contains(**b)).collect();
+    let unused: Vec<_> = builtins
+        .iter()
+        .filter(|b| !used.names.contains(**b))
+        .collect();
     if !unused.is_empty() {
-        problems.push(format!("{} built-ins in no passing case: {unused:?}", unused.len()));
+        problems.push(format!(
+            "{} built-ins in no passing case: {unused:?}",
+            unused.len()
+        ));
     }
     problems
 }
 
-/// The gate. Ignored until M2-45 closes the gaps it reports; then the attribute goes.
+/// The gate: fails with every problem listed.
 #[test]
-#[ignore = "reports gaps until M2-45 closes them"]
 fn exit_gate() {
-    let passing: Vec<_> = results().iter().filter(|(_, r)| r.is_ok()).collect();
-    let passing: Vec<_> = passing.iter().map(|(case, _)| case.as_path()).collect();
+    let passed = results().iter().filter(|(_, result)| result.is_ok());
+    let passing: Vec<_> = passed.map(|(case, _)| case.as_path()).collect();
     let problems = problems(
         REFERENCE,
         coverage::NODE_KINDS,
@@ -102,7 +115,12 @@ mod self_test {
 
     #[test]
     fn a_complete_small_gate_passes() {
-        let found = problems(GOOD, &["Def::Fn", "ExprKind::Call"], &["len", "String"], &used());
+        let found = problems(
+            GOOD,
+            &["Def::Fn", "ExprKind::Call"],
+            &["len", "String"],
+            &used(),
+        );
         assert_eq!(found, Vec::<String>::new());
     }
 
@@ -124,7 +142,10 @@ mod self_test {
     fn a_failing_sample_fails() {
         let found = problems(BAD, &[], &[], &used());
         assert_eq!(found.len(), 1);
-        assert!(found[0].starts_with("reference sample 1 fails"), "{found:?}");
+        assert!(
+            found[0].starts_with("reference sample 1 fails"),
+            "{found:?}"
+        );
     }
 
     #[test]
@@ -159,7 +180,11 @@ mod self_test {
         assert!(coverage::NODE_KINDS.contains(&"ExprKind::Call"));
         assert!(coverage::NODE_KINDS.contains(&"Def::App"));
         let names = coverage::builtin_names();
-        assert!(["len", "Console", "Option", "ExitWith"].iter().all(|n| names.contains(n)));
+        assert!(
+            ["len", "Console", "Option", "ExitWith"]
+                .iter()
+                .all(|n| names.contains(n))
+        );
         assert_eq!(names.iter().filter(|n| **n == "len").count(), 1);
     }
 }
