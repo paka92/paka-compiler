@@ -153,4 +153,12 @@ mod tests {
         assert!(join(&parts, &Text::from(""), 7).is_ok());
         assert!(memory(join(&parts, &Text::from("c".repeat(CAP)), 7)));
     }
+
+    #[test]
+    fn split_stops_one_past_the_cap() {
+        let pieces = |out| matches!(out, Ok(Value::List(xs)) if xs.0.len() == 3);
+        assert!(pieces(split("a,b,", ",", 3, 7)));
+        assert!(memory(split("a,b,,", ",", 3, 7)));
+        assert!(memory(split(&",".repeat(CAP), ",", CAP, 7)));
+    }
 }

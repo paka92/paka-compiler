@@ -190,6 +190,29 @@ fn rejects_a_wrong_state() {
     ]);
 }
 
+/// A state over a chain of 5,000 record types, each holding the next, the last with `end`.
+fn chain(end: &str) -> String {
+    let links = (0..4_999).map(|i| format!("type R{i} {{ next: R{} }}", i + 1));
+    let types: Vec<_> = links.chain([format!("type R4999 {{ {end} }}")]).collect();
+    let types: Vec<_> = types.iter().map(String::as_str).collect();
+    state(
+        &[&types[..], &["type S { rs: List<R0> = [] }"]].concat(),
+        "S",
+    )
+}
+
+#[test]
+fn walks_a_long_chain_of_state_types() {
+    accepts(&[chain("n: Int = 0")]);
+    let held = "keep a message value instead and match on it in update";
+    says(&[(
+        "type-mismatch",
+        "state: ^S",
+        &format!("state S holds a function type in field f; {held}"),
+        chain("f: fn(Int) -> Int"),
+    )]);
+}
+
 #[test]
 fn rejects_a_wrong_update_signature() {
     let shape = "update must be fn(s: inout Tally, m: Msg) -> List<Effect<Msg>>";

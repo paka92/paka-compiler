@@ -57,10 +57,69 @@ fn arguments_after_the_file_are_not_files() {
     assert_unreadable(&["run", "no/such/file.paka", "b.paka"], "no/such/file.paka");
 }
 
+/// A folder under the temporary directory holding `files`, each a relative path and its text.
+fn program_dir(name: &str, files: &[(&str, &str)]) -> std::path::PathBuf {
+    let dir = std::env::temp_dir().join(format!("paka-{name}-{}", std::process::id()));
+    let _ = std::fs::remove_dir_all(&dir);
+    std::fs::create_dir_all(&dir).unwrap();
+    for (file, text) in files {
+        let path = dir.join(file);
+        std::fs::create_dir_all(path.parent().unwrap()).unwrap();
+        std::fs::write(path, text).unwrap();
+    }
+    dir
+}
+
+const HELLO: &str = "enum Msg { Start }\nfn update(m: Msg) -> List<Effect<Msg>> {\n  \
+    [Print(greeting()), Exit]\n}\napp hi {\n  start: Start\n  update: update\n  grants: [Console]\n}\n";
+
 #[test]
-fn directory_is_unreadable() {
-    let dir = env!("CARGO_MANIFEST_DIR");
-    assert_unreadable(&["run", dir], dir);
+fn directory_is_one_program_of_the_paka_files_directly_in_it() {
+    let dir = program_dir(
+        "dir-run",
+        &[
+            ("a.paka", "fn greeting() -> String {\n  \"hello\"\n}\n"),
+            ("b.paka", HELLO),
+            ("notes.txt", "not paka"),
+            ("sub/c.paka", "not paka"),
+            ("d.paka/e.paka", "not paka"),
+        ],
+    );
+    let out = paka(&["run", dir.to_str().unwrap()]);
+    std::fs::remove_dir_all(&dir).unwrap();
+    assert_eq!(stderr_of(&out), "");
+    assert_eq!(
+        (out.status.code(), &out.stdout[..]),
+        (Some(0), &b"hello\n"[..])
+    );
+}
+
+#[test]
+fn directory_diagnostic_names_its_file_and_counts_in_it() {
+    // Byte order reads `Z.paka` first, so the later `f` is the one in `a.paka`.
+    let files = [
+        ("a.paka", "\nfn f() -> Int { 2 }\n"),
+        ("Z.paka", "fn f() -> Int { 1 }\n"),
+    ];
+    let dir = program_dir("dir-duplicate", &files);
+    let path = format!("{}/", dir.display());
+    let (text, json) = (paka(&["check", &path]), paka(&["check", &path, "--json"]));
+    std::fs::remove_dir_all(&dir).unwrap();
+    assert_eq!((text.status.code(), json.status.code()), (Some(1), Some(1)));
+    let want = format!("{path}a.paka:2:4: error[duplicate-name]: ");
+    assert!(stderr_of(&text).starts_with(&want), "{}", stderr_of(&text));
+    let want = format!("\"file\":\"{path}a.paka\",\"start\":4,\"end\":5,\"line\":2,\"column\":4,");
+    assert!(stderr_of(&json).contains(&want), "{}", stderr_of(&json));
+}
+
+#[test]
+fn directory_without_paka_files_has_no_app() {
+    let dir = program_dir("dir-empty", &[("notes.txt", "not paka")]);
+    let out = paka(&["run", dir.to_str().unwrap()]);
+    std::fs::remove_dir_all(&dir).unwrap();
+    assert_eq!(out.status.code(), Some(1));
+    let want = format!("{}: error[no-app]: ", dir.display());
+    assert!(stderr_of(&out).starts_with(&want), "{}", stderr_of(&out));
 }
 
 #[test]
