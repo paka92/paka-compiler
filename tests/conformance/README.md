@@ -819,6 +819,7 @@ builds the core form.
 | Point | Case(s) |
 |---|---|
 | arm forms: block, single line, alternatives, `_`, nested patterns | `match_arm_forms`, `match_enum_arms`, `match_int_string_bool` |
+| a single-line arm `_ = e`, its `?` passing an error on | `match_arm_discard` |
 | `Option` and `Result` subjects | `match_option_result` |
 | an arm that leaves: bare after `=>` is refused at the keyword; as a block it runs | `match_arm_return`, `match_arm_break`, `match_arm_continue`, `match_arms_that_leave` |
 | arm types differ | `match_arm_type_differs` |
@@ -827,7 +828,7 @@ builds the core form.
 | name in an alternatives arm | `match_alternative_binds_name` |
 | subject type: Float, List, record | `match_subject_float`, `match_subject_list`, `match_subject_record` |
 | `missing-arm` at `match`: Int, String, Bool, user enum (one, several), Option, Result | `match_missing_int_wildcard`, `match_missing_string_wildcard`, `match_missing_bool_arm`, `match_missing_one_variant`, `match_missing_several_variants`, `match_missing_option_arm`, `match_missing_result_arm` |
-| `wildcard-on-enum` at `_`: user enum, Option, Result, `_` alone | `wildcard_on_user_enum`, `wildcard_on_option`, `wildcard_on_result`, `wildcard_only_arm_on_enum` |
+| `wildcard-on-enum` at `_`: user enum, Option, Result, `_` alone, an arm written as `_ = e` | `wildcard_on_user_enum`, `wildcard_on_option`, `wildcard_on_result`, `wildcard_only_arm_on_enum`, `wildcard_on_enum_discard_arm` |
 | `duplicate-arm` at the later pattern: Int, String, Bool, variant, in alternatives | `duplicate_arm_int`, `duplicate_arm_string`, `duplicate_arm_bool`, `duplicate_arm_variant`, `duplicate_arm_in_alternatives` |
 | `duplicate-arm`: arm after `_`; `_` after both Bool arms | `duplicate_arm_after_wildcard`, `duplicate_arm_wildcard_after_both_bools` |
 | pattern type: Int on Bool, String on Int, variant of another enum | `pattern_int_on_bool`, `pattern_string_on_int`, `pattern_variant_of_other_enum` |
