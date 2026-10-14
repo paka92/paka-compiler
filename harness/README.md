@@ -120,9 +120,12 @@ the commit tagged `run` and `git status --porcelain` is empty. The error is one 
 
 ## Batch
 
-`cargo run --release -p harness --bin batch -- <runs-root> <reps> <task>...` runs each task in
-Paka, Rust and TypeScript, reps 1 to `<reps>`, with the model, effort and call limit of
-`experiment/protocol.md` and `spec/paka.md` as the Paka reference. The same command resumes. The
+`cargo run --release -p harness --bin batch -- [--calibrate] <runs-root> <langs> <reps> <task>...`
+runs each task in each language of `<langs>` (comma-separated: `Paka,Rust,TypeScript`), reps 1 to
+`<reps>`, with the model, effort and call limit of `experiment/protocol.md` and `spec/paka.md` as
+the Paka reference. The same command resumes. Each run's first call is guarded against the first
+call of an earlier run of the same task and language. `--calibrate` skips the commit check for the
+calibration pass before the `run` tag and refuses Paka. The
 token ledger is `<runs-root>/usage.json`. Only each attempt's `log` is kept in the repository; the
 `claude/` folder beside it holds the command line's own stream and stays local.
 

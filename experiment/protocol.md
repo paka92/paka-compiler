@@ -2,7 +2,7 @@
 
 Frozen at the `protocol` tag. It collects what DECISIONS.md M3-01 to M3-04 already settled and
 adds no decision. Reasons live there. Counted runs start only from the commit tagged `run`, with a
-clean tree (`harness/src/commit.rs`). The numbers in the `Open` list at the end are not settled.
+clean tree (`harness/src/commit.rs`). The last two sections settle the numbers the decisions left open.
 
 ## What a run is (M3-01)
 
@@ -199,10 +199,11 @@ Numbers the decisions left open, set by the owner with this file:
 - Batch order: the 14 batches run in the order of the `counted:` line. Reps are numbered 1 to 4 per
   task and language; a rerun takes the next free number (M3-03).
 
-## Open
+## Measured in the dry run (M3-19)
 
-Measured in the dry run (M3-19), not settled by this file:
-
-- The model id as the replies report it (M3-02 names `claude-sonnet-5-5`).
-- The fixed CLI text, in tokens, for the first-call guard (within 50 tokens; M3-01.7).
-- The Paka reference text and its token count (trimmed to 8,000 tokens if over).
+- Model id the replies report: `claude-sonnet-5-5`.
+- Fixed CLI text: 784 input tokens per first call. The first-call guard compares each run's first
+  call with the first call of an earlier run of the same task and language, within 50 tokens.
+- Paka reference: `spec/paka.md` whole, about 9,400 tokens (Paka first call minus Rust first call
+  on X1). Amendment: it is sent whole, not trimmed to 8,000 tokens, because M3-01 sends the whole
+  reference and input tokens are outside the verdict.
