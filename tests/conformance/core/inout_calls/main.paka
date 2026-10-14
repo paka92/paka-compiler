@@ -1,0 +1,40 @@
+enum Msg { Start }
+
+fn bump(n: inout Int) { n += 1 }
+
+fn add_to(total: inout Int, step: Int) { total += step }
+
+fn swap_ints(a: inout Int, b: inout Int) {
+  let t = a
+  a = b
+  b = t
+}
+
+fn bump_twice(n: inout Int) {
+  bump(&n)
+  bump(&n)
+}
+
+fn shout(s: inout String) { s += "!" }
+
+fn update(msg: Msg) -> List<Effect<Msg>> {
+  var a = 1
+  var b = 2
+  bump(&a)
+  add_to(&a, 10)
+  swap_ints(&a, &b)
+  bump_twice(&a)
+  var s = "hey"
+  shout(&s)
+  shout(&s)
+  [
+    Print("{a} {b} {s}"),
+    Exit
+  ]
+}
+
+app core {
+  start: Start
+  update: update
+  grants: [Console]
+}

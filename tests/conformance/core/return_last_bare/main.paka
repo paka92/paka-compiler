@@ -1,0 +1,16 @@
+enum Msg { Start }
+
+fn bump(n: inout Int) {
+  n += 1
+  return
+}
+
+fn update(msg: Msg) -> List<Effect<Msg>> {
+  [Exit]
+}
+
+app core {
+  start: Start
+  update: update
+  grants: [Console]
+}

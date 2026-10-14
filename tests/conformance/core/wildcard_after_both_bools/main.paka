@@ -1,0 +1,17 @@
+enum Msg { Start }
+
+fn update(msg: Msg) -> List<Effect<Msg>> {
+  let b = true
+  let s = match b {
+    true => "a"
+    false => "b"
+    _ => "c"
+  }
+  [Exit]
+}
+
+app core {
+  start: Start
+  update: update
+  grants: [Console]
+}

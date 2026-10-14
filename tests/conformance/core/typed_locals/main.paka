@@ -1,0 +1,20 @@
+enum Msg { Start }
+
+fn update(msg: Msg) -> List<Effect<Msg>> {
+  let a: Int = 5
+  let b: Float = 2.5
+  let c: Bool = true
+  let d: String = "s"
+  var e: Int = 0
+  e += a
+  [
+    Print("{a} {fixed(b, digits: 1)} {c} {d} {e}"),
+    Exit
+  ]
+}
+
+app core {
+  start: Start
+  update: update
+  grants: [Console]
+}

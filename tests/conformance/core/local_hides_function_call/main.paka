@@ -1,0 +1,15 @@
+enum Msg { Start }
+
+fn total(a: Int, b: Int) -> Int { a + b }
+
+fn update(msg: Msg) -> List<Effect<Msg>> {
+  let total = 10
+  let x = total(1, 2)
+  [Exit]
+}
+
+app core {
+  start: Start
+  update: update
+  grants: [Console]
+}

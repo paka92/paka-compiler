@@ -1,0 +1,16 @@
+enum Msg { Start }
+
+fn update(msg: Msg) -> List<Effect<Msg>> {
+  var t = 0
+  let v = match t {
+    0 => 1
+    _ => t = 1
+  }
+  [Exit]
+}
+
+app core {
+  start: Start
+  update: update
+  grants: [Console]
+}

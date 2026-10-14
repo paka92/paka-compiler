@@ -1,0 +1,29 @@
+enum Msg { Start }
+
+fn word(b: Bool) -> String {
+  match b {
+    true => "yes"
+    false => "no"
+  }
+}
+
+fn only_true(b: Bool) -> Int {
+  match b {
+    true => 1
+    _ => 0
+  }
+}
+
+fn update(msg: Msg) -> List<Effect<Msg>> {
+  [
+    Print("{word(true)} {word(1 < 0)}"),
+    Print("{only_true(true)} {only_true(false)}"),
+    Exit
+  ]
+}
+
+app core {
+  start: Start
+  update: update
+  grants: [Console]
+}

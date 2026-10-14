@@ -1,0 +1,28 @@
+enum Msg { Start }
+
+fn update(msg: Msg) -> List<Effect<Msg>> {
+  var found = ""
+  for i in 1..<4 {
+    for j in 1..<4 {
+      if j == 2 { continue }
+      if i == 3 { break }
+      found += "{i}{j} "
+    }
+  }
+  var n = 0
+  while true {
+    n += 1
+    if n * n > 50 { break }
+  }
+  [
+    Print("[{found}]"),
+    Print("{n}"),
+    Exit
+  ]
+}
+
+app core {
+  start: Start
+  update: update
+  grants: [Console]
+}

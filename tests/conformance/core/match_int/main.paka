@@ -1,0 +1,23 @@
+enum Msg { Start }
+
+fn describe(n: Int) -> String {
+  match n {
+    0 => "zero"
+    -1 => "minus"
+    1 | 2 | 3 => "few"
+    _ => "many"
+  }
+}
+
+fn update(msg: Msg) -> List<Effect<Msg>> {
+  [
+    Print("{describe(0)} {describe(2)} {describe(3)} {describe(99)} {describe(-5)} {describe(-1)}"),
+    Exit
+  ]
+}
+
+app core {
+  start: Start
+  update: update
+  grants: [Console]
+}

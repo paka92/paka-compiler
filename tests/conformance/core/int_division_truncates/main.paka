@@ -1,0 +1,20 @@
+enum Msg { Start }
+
+fn update(msg: Msg) -> List<Effect<Msg>> {
+  let p = 7
+  let q = -7
+  let r = 2
+  let s = -2
+  [
+    Print("{p / r} {q / r} {p / s} {q / s}"),
+    Print("{p % r} {q % r} {p % s} {q % s}"),
+    Print("{(q / r) * r + q % r}"),
+    Exit
+  ]
+}
+
+app core {
+  start: Start
+  update: update
+  grants: [Console]
+}

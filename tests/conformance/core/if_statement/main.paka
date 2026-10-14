@@ -1,0 +1,25 @@
+enum Msg { Start }
+
+fn update(msg: Msg) -> List<Effect<Msg>> {
+  let n = 7
+  var s = ""
+  if n > 5 { s += "big " }
+  if n > 10 {
+    s += "huge "
+  } else if n > 6 {
+    s += "mid "
+  } else {
+    s += "small "
+  }
+  if n % 2 == 0 { s += "even" } else { s += "odd" }
+  [
+    Print(s),
+    Exit
+  ]
+}
+
+app core {
+  start: Start
+  update: update
+  grants: [Console]
+}

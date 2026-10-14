@@ -1,0 +1,19 @@
+enum Msg { Start }
+
+fn early(n: Int) -> Int {
+  if n > 0 {
+    return 1
+    let y = 3
+  }
+  2
+}
+
+fn update(msg: Msg) -> List<Effect<Msg>> {
+  [Exit]
+}
+
+app core {
+  start: Start
+  update: update
+  grants: [Console]
+}

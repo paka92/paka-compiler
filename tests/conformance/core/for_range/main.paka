@@ -1,0 +1,26 @@
+enum Msg { Start }
+
+fn update(msg: Msg) -> List<Effect<Msg>> {
+  var total = 0
+  for i in 0..<5 { total += i }
+  var empty = 0
+  for i in 5..<5 { empty += 1 }
+  for i in 7..<3 { empty += 1 }
+  var neg = 0
+  for i in -2..<2 { neg += i }
+  let n = 3
+  var upto = 0
+  for i in 0..<n + 1 { upto += i }
+  var seq = ""
+  for i in 1..<4 { seq += "{i}," }
+  [
+    Print("{total} {empty} {neg} {upto} {seq}"),
+    Exit
+  ]
+}
+
+app core {
+  start: Start
+  update: update
+  grants: [Console]
+}
