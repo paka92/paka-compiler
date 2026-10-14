@@ -750,11 +750,12 @@ or merged during review. Ids with a letter were added during review.
 
 ### M3-08 · L3 · Build the model client: send request, read reply, count tokens
 
+- status: done
 - needs: M3-01, M3-02
 - flags: none
 - done when: Against a fake `claude` command: the reply and its token counts are read correctly from the JSON output, retries are not double counted, and the usage cap stops calls.
 - why this level: Own JSON reader, retry accounting and the usage cap; each is easy to get wrong.
-- note: Runs the installed `claude -p` as a process with a pinned model, a fixed system prompt, no tools and no user settings; M3-01 fixes the exact flags and M3-18 freezes them. No key is involved. M3-01 sets one open `claude -p` process per run with stream-json in and out, and a check that the first call carries no outside text. Token caps: 16M input and 9.5M output, which the owner may lower; per-batch use is reported.
+- note: Runs the installed `claude -p` as a process with a pinned model, a fixed system prompt, no tools and no user settings; M3-01 fixes the exact flags and M3-18 freezes them. No key is involved. Lives in the harness crate. A failed, refused, compacted or wrong-model turn voids the run and its spent tokens still count toward the caps. The stream-json shapes and whether usage is per turn are confirmed in the M3-19 dry run; a hung process is left to M3-09. M3-01 sets one open `claude -p` process per run with stream-json in and out, and a check that the first call carries no outside text. Token caps: 16M input and 9.5M output, which the owner may lower; per-batch use is reported.
 
 ### M3-09 · L4 · Build the trial loop: prompt, edits, checks, raw logs and resume
 
