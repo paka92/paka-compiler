@@ -1,0 +1,144 @@
+enum Msg {
+  Start(old_path: String, new_path: String, context: String),
+  OldLoaded(text: String),
+  NewLoaded(text: String),
+  Failed(why: String)
+}
+
+type Diff { new_path: String = "", context: Int = 0, old: List<String> = [] }
+
+// One entry of the walk: its mark (" ", "-" or "+"), its line, and the old and new lines used
+// before it.
+type Entry { mark: String, text: String, old: Int, new: Int }
+
+// One or more digits and nothing else, with a value from 0 to 10.
+fn context_size(s: String) -> Option<Int> {
+  if is_empty(s) { return None }
+  var n = 0
+  for c in chars(s) {
+    if c < "0" || c > "9" { return None }
+    n = min(n * 10 + parse_int(c)?, 11)
+  }
+  if n > 10 { None } else { Some(n) }
+}
+
+// common[i][j] is L(i, j) of the statement.
+fn common_table(a: List<String>, b: List<String>) -> List<List<Int>> {
+  let n = len(a)
+  let m = len(b)
+  var common: List<List<Int>> = list_of(list_of(0, count: m + 1), count: n + 1)
+  var i = n - 1
+  while i >= 0 {
+    var j = m - 1
+    while j >= 0 {
+      if a[i] == b[j] {
+        common[i][j] = common[i + 1][j + 1] + 1
+      } else {
+        common[i][j] = max(common[i + 1][j], common[i][j + 1])
+      }
+      j -= 1
+    }
+    i -= 1
+  }
+  common
+}
+
+fn walk(a: List<String>, b: List<String>) -> List<Entry> {
+  let common = common_table(a, b)
+  let n = len(a)
+  let m = len(b)
+  var entries: List<Entry> = []
+  var i = 0
+  var j = 0
+  while i < n || j < m {
+    if i < n && j < m && a[i] == b[j] {
+      append(&entries, Entry { mark: " ", text: a[i], old: i, new: j })
+      i += 1
+      j += 1
+    } else if j == m || i < n && common[i + 1][j] >= common[i][j + 1] {
+      append(&entries, Entry { mark: "-", text: a[i], old: i, new: j })
+      i += 1
+    } else {
+      append(&entries, Entry { mark: "+", text: b[j], old: i, new: j })
+      j += 1
+    }
+  }
+  entries
+}
+
+fn hunk(entries: List<Entry>, first: Int, last: Int) -> List<String> {
+  var old_count = 0
+  var new_count = 0
+  for k in first..<last + 1 {
+    let mark = entries[k].mark
+    if mark != "+" { old_count += 1 }
+    if mark != "-" { new_count += 1 }
+  }
+  let start = entries[first]
+  let a = if old_count > 0 { start.old + 1 } else { start.old }
+  let d = if new_count > 0 { start.new + 1 } else { start.new }
+  var out = ["@@ -{a},{old_count} +{d},{new_count} @@"]
+  for k in first..<last + 1 {
+    append(&out, entries[k].mark + entries[k].text)
+  }
+  out
+}
+
+fn diff(a: List<String>, b: List<String>, context: Int) -> List<String> {
+  let entries = walk(a, b)
+  var changes: List<Int> = []
+  for k in 0..<len(entries) {
+    if entries[k].mark != " " { append(&changes, k) }
+  }
+  if is_empty(changes) { return ["no differences"] }
+  var out: List<String> = []
+  var group_start = changes[0]
+  for c in 0..<len(changes) {
+    let at = changes[c]
+    let ends_group = c + 1 == len(changes) || changes[c + 1] - at - 1 > 2 * context
+    if ends_group {
+      let first = max(group_start - context, 0)
+      let last = min(at + context, len(entries) - 1)
+      extend(&out, hunk(entries, first, last))
+      if c + 1 < len(changes) { group_start = changes[c + 1] }
+    }
+  }
+  out
+}
+
+fn printed(out: List<String>) -> List<Effect<Msg>> {
+  var effects: List<Effect<Msg>> = []
+  for line in out {
+    append(&effects, Print(line))
+  }
+  append(&effects, Exit)
+  effects
+}
+
+fn update(s: inout Diff, m: Msg) -> List<Effect<Msg>> {
+  match m {
+    Start(old_path, new_path, context) => {
+      match context_size(context) {
+        Some(c) => {
+          s.new_path = new_path
+          s.context = c
+          [ReadFile(old_path, then: OldLoaded, or: Failed)]
+        }
+        None => [Print("error: bad context"), ExitWith(20)]
+      }
+    }
+    OldLoaded(text) => {
+      s.old = lines(text)
+      [ReadFile(s.new_path, then: NewLoaded, or: Failed)]
+    }
+    NewLoaded(text) => printed(diff(s.old, lines(text), s.context))
+    Failed(why) => [Print("error: cannot read file: {why}"), ExitWith(20)]
+  }
+}
+
+app line_diff {
+  state: Diff
+  start: Start
+  update: update
+  grants: [Console, ReadFiles]
+}
