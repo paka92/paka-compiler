@@ -1,0 +1,4 @@
+fn double(n: Int) -> Int { n * 2 }
+
+example double_two { double(2) == 4 }
+example double_zero { double(0) == 1 }
