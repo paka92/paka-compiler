@@ -669,11 +669,12 @@ or merged during review. Ids with a letter were added during review.
 
 ### M2-45 · L4 · Close every gap the gate reports, in the reference and the conformance cases
 
+- status: done
 - needs: M2-44
 - flags: open-ended
 - done when: The gate command passes with nothing missing; every reference or case change cites its decision; size stays within budget. A new case is written by an agent without the paka binary, as in M2-38. The gate runs as a required test under `cargo test --workspace --locked --offline`.
 - why this level: Edits must stay exact and in budget; one wrong sentence silently misleads every model.
-- note: The unused-name warning (M2-02 section 2 and section 5) is decided but no task implements it; close it here if no earlier task does. Left open after M2-41b: no conformance case for hole notes under --json; no host test for a closed or full standard output or a file over the String limit; no case for an open joined list type such as [None, None]; text routines are not native in paka-rt yet. The gate already runs under cargo test --workspace and passes with nothing missing at M2-44; what remains is the list above.
+- note: The unused-name warning (M2-02 section 2 and section 5) is decided but no task implements it; close it here if no earlier task does. Left open after M2-41b: no conformance case for hole notes under --json; no host test for a closed or full standard output or a file over the String limit; no case for an open joined list type such as [None, None]; text routines are not native in paka-rt yet. The gate already runs under cargo test --workspace and passes with nothing missing at M2-44; what remains is the list above. Done: the unused-name warning (M2-02 sections 1.3 and 5), host tests for a full or closed output and a file over the limit (M2-15 section 1.7), open list and map literals reported at their [ (M2-02 section 5), and the --json stream rule (M2-06 section 1.5). Native text routines in paka-rt are left to the compiled back ends. Untested: a FIFO swapped in between the metadata look and the open.
 
 ## M3 — The experiment: go or stop
 
