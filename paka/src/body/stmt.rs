@@ -143,8 +143,8 @@ impl Cx<'_, '_> {
             S::Break | S::Continue => Ok(Out::Never),
             S::For { name, list, body } => {
                 let elem = self.elements(list)?;
-                if self.rooted(list).is_some() {
-                    self.walks.insert(name.at, render(list));
+                if let Some(walk) = self.position_walk(list) {
+                    self.walks.insert(name.at, walk);
                 }
                 self.locals.insert(
                     name.at,

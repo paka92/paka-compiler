@@ -1,6 +1,6 @@
 //! What may stand left of an assignment or after `&`.
 
-use super::text::{assign_op, render};
+use super::text::{assign_op, fit, render};
 use super::{Cx, How, Res, Ty, span};
 use crate::ast::{AssignOp, Expr, ExprKind as K};
 use crate::resolve::Binding;
@@ -56,6 +56,11 @@ impl Cx<'_, '_> {
         }
     }
 
+    /// Whether `e` may stand after `&` or left of an assignment.
+    pub(super) fn is_target(&self, e: &Expr) -> bool {
+        self.place(e).is_ok()
+    }
+
     pub(super) fn inout_target(&self, x: &Expr) -> Res {
         let Err(why) = self.place(x) else {
             return Ok(());
@@ -105,16 +110,14 @@ impl Cx<'_, '_> {
         match self.place(target) {
             Err(Why::Fixed(root, how, _)) => {
                 let name = render(root);
-                let message = match self.walked(root) {
-                    Some(w) => {
-                        let rest = render(target);
-                        let (rest, op) = (&rest[name.len()..], assign_op(op));
-                        let value = render(value);
+                let message = match (self.walked(root), fit(target), fit(value)) {
+                    (Some(w), Some(t), Some(v)) => {
+                        let (rest, op) = (&t[name.len()..], assign_op(op));
                         format!(
-                            "{name} is a for name; write {w}[i]{rest} {op} {value} walking by position"
+                            "{name} is a for name; write {w}[i]{rest} {op} {v} walking by position"
                         )
                     }
-                    None => format!("{name} is {}; declare it with var", kind(how)),
+                    _ => format!("{name} is {}; declare it with var", kind(how)),
                 };
                 return Err(self.fail_at(root, "assign-to-let", message));
             }
