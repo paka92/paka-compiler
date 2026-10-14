@@ -1,3 +1,7 @@
+main.paka:3:11: warning[unused-name]: m is never used
+  definition: update
+  bytes: 30..31
+  text: "m"
 main.paka:4:3: note[hole]: ??later takes no value
   definition: update
   bytes: 63..70

@@ -64,17 +64,17 @@ fn first_text_line_is_what_run_prints() {
     }
 }
 
+/// An accepted program with no hole and no unused name.
 #[test]
 fn accepted_program_prints_nothing_and_exits_0() {
-    let root = Path::new(env!("CARGO_MANIFEST_DIR")).join("..");
-    for (dir, file) in [
-        ("tests/cases/check/no_app", "main.paka"),
-        ("tests/cases/check/empty_file", "main.paka"),
-    ] {
+    let used = "enum Msg { Start }\n\nfn update(m: Msg) -> List<Effect<Msg>> {\n  match m {\n    \
+                Start => [Exit]\n  }\n}\n";
+    for (name, source) in [("empty", ""), ("used", used)] {
+        let dir = program_in(name, source);
         for flags in [&[][..], &["--json"]] {
-            let out = paka(&root.join(dir), &[&["check", file], flags].concat());
-            assert_eq!(out.status.code(), Some(0), "{dir}");
-            assert!(out.stdout.is_empty() && out.stderr.is_empty(), "{dir}");
+            let out = paka(&dir.path(""), &[&["check", "main.paka"], flags].concat());
+            assert_eq!(out.status.code(), Some(0), "{name}");
+            assert!(out.stdout.is_empty() && out.stderr.is_empty(), "{name}");
         }
     }
 }
@@ -96,7 +96,8 @@ fn light_warns_that_m_is_never_used() {
     }
 }
 
-/// Unused names around a hole: `pick`'s `unused` and `spare`, then the hole, then `update`'s `m`.
+/// Unused names around a hole that is never reached: `pick`'s `unused` and `spare`, then the hole,
+/// then `update`'s `m`.
 const UNUSED: &str = "enum Msg { Start }
 
 fn pick(n: Int, unused: Int) -> Int {
@@ -105,7 +106,6 @@ fn pick(n: Int, unused: Int) -> Int {
 }
 
 fn update(m: Msg) -> List<Effect<Msg>> {
-  _ = pick(1, 2)
   [Exit]
 }
 
@@ -116,7 +116,7 @@ app t {
 }
 ";
 
-fn unused_program(name: &str, source: &str) -> Scratch {
+fn program_in(name: &str, source: &str) -> Scratch {
     let dir = Scratch::new(name);
     fs::write(dir.path("main.paka"), source).unwrap();
     dir
@@ -124,7 +124,7 @@ fn unused_program(name: &str, source: &str) -> Scratch {
 
 #[test]
 fn warnings_and_notes_come_in_position_order() {
-    let dir = unused_program("unused-order", UNUSED);
+    let dir = program_in("unused-order", UNUSED);
     let out = paka(&dir.path(""), &["check", "main.paka"]);
     assert_eq!(out.status.code(), Some(0));
     let heads: Vec<_> = (stderr(&out).lines())
@@ -149,7 +149,7 @@ fn warnings_and_notes_come_in_position_order() {
 
 #[test]
 fn only_check_prints_warnings() {
-    let dir = unused_program("unused-run", UNUSED);
+    let dir = program_in("unused-run", UNUSED);
     for command in ["run", "examples"] {
         let out = paka(&dir.path(""), &[command, "main.paka"]);
         assert_eq!(out.status.code(), Some(0), "{command}");
@@ -160,7 +160,7 @@ fn only_check_prints_warnings() {
 #[test]
 fn an_error_hides_every_warning() {
     let source = UNUSED.replace("let spare = 1", "let spare = nope");
-    let dir = unused_program("unused-error", &source);
+    let dir = program_in("unused-error", &source);
     let out = paka(&dir.path(""), &["check", "main.paka"]);
     assert_eq!(out.status.code(), Some(1));
     let text = stderr(&out);
