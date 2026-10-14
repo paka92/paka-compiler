@@ -1,4 +1,3 @@
-archive 1
+archive 2
 entry y.txt 1
 Y
-extra

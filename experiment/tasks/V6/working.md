@@ -79,6 +79,7 @@ feed (L5 empty). L6 `entry b.txt 2`: content `xy`, then `z`, not a line feed:
 
 ## hidden/8 (`unpack`, `w.arc`, `zz.txt`)
 
-`zz.txt` is a name. L1 `archive 1`. L2 `entry y.txt 1`: content `Y`, then the line feed. The one
-entry is done, but `extra` follows, starting after 3 line feeds: `error: archive line 4: trailing
-data`, status 20. No entry is named `zz.txt` either, but the archive check comes first.
+`zz.txt` is a name. L1 `archive 2`. L2 `entry y.txt 1`: content `Y`, then the line feed. The second
+entry should start on line 4, but the archive has only 3 lines, so K is 3 + 1:
+`error: archive line 4: bad entry`, status 20. No entry is named `zz.txt` either, but the archive
+check comes first.

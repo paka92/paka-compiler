@@ -28,9 +28,9 @@ records, 5 keys: `split 7 records into 5 files`.
 are written in that order. The index `out/idx` names the folder `out`, which does not exist:
 `error: cannot write out/idx`, status 20. The two key files stay.
 
-## hidden/1 (`x.csv`, `0`, `idx`)
+## hidden/1 (`x.csv`, `010`, `idx`)
 
-`0` has the value 0, not 1 to 9: `error: bad field`, status 20. The input does not exist, but it is
+`010` is all digits with the value 10, not 1 to 9: `error: bad field`, status 20. The input does not exist, but it is
 never read.
 
 ## hidden/2 (`missing.csv`, `001`, `idx`)
