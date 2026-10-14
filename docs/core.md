@@ -239,10 +239,8 @@ Each is the smallest reading consistent with M2-03, M2-05 and M2-06.
     `to_int(1000000000000000000000000000000.0)`.
 16. The 256-byte cut applies to the detail text without its two-space indent, at the last char
     boundary at or before byte 256.
-17. Expression nesting counts toward the `stack` limit, so a legal program never exhausts the
-    native stack. Each expression or block under evaluation adds one to a count that calls do not
-    reset; past 50,000 live levels it traps `stack` at the function's site. The call-depth limit
-    stays 10,000.
+17. Expression nesting never traps on its own; the interpreter continues deep evaluation on a
+    fresh stack segment, so only the call depth limit gives `stack`.
 
 ## 10. Recorded text this page changes
 
