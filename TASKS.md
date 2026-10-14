@@ -556,15 +556,16 @@ or merged during review. Ids with a letter were added during review.
 - flags: none
 - done when: Every function in the approved list outside M2-34 has hand-written golden tests (String functions for normal, empty and non-ASCII input); all pass; a test fails if an entry of the built-in table has no golden test.
 - why this level: Each function is small with a clear spec; routine code.
-- note: Follows docs/decisions/M2-14.md for the built-in table. M2-31 checks the parse_int samples and the M2-12 section 1.7 app but cannot run them; add run cases for them once parse_int and ReadFile run.
+- note: Follows docs/decisions/M2-14.md for the built-in table. M2-31 checks the parse_int samples and the M2-12 section 1.7 app but cannot run them; add run cases for them once parse_int and ReadFile run. When min runs, make tests/cases/run-interp/sample_grid_path_sum use min as in M2-14 section 4 (it uses a local lesser today); add M2-14 section 4 samples 1 and 4 word for word; make the read_own_source effect case count characters with len.
 
 ### M2-34 · L3 · Implement the built-in collection types and their functions
 
+- status: done
 - needs: M2-14, M2-21, M2-30, M2-31
 - flags: none
 - done when: Every collection function in the approved list has hand-written golden tests, including bounds traps and iteration order; all pass.
 - why this level: Generic signatures, function arguments and in-place change meet here; several modules.
-- note: Follows docs/decisions/M2-14.md for the built-in table.
+- note: Follows docs/decisions/M2-14.md for the built-in table. Done: the List, Map and Option rows and sort/sort_by were in place; added the Map key message, the for fix texts, the += count idiom on a missing key (Int += only, M2-14 sections 1.11 and 10, M2-06 section 1.2), cap checks taking the cap as a parameter, and golden cases in tests/cases/run-interp and check-text.
 
 ### M2-36 · L3 · Run a headless app: first message, message loop, exit
 
@@ -634,7 +635,7 @@ or merged during review. Ids with a letter were added during review.
 - flags: open-ended, owner
 - done when: All cases pass with none skipped under `cargo test --workspace --locked --offline`; the not-yet-required list is empty; each change to code or expectation cites the decision line that settles it; a mismatch no line settles goes to the owner as an amendment to that decision before either side changes. A test proves every error kind has a case, and a test applies each expected fix and the result passes paka check. A kind found without a case gets one from an agent without the paka binary, as in M2-42.
 - why this level: Choosing which side is wrong silently sets the language's meaning.
-- note: Settle while running tests/conformance/errors: the span length where no record states it (bad-escape, changed-while-walked, inout-overlap, bad-assignment-target, marked * in the README table); spec/m1.md section 10 still puts type-mismatch at the first token and gives no-app the stage check, while later records put a mixed operand at the operator and only run and build raise no-app; spec/m1.md section 10 lists 31 of the 54 kinds; the lex cases M2-03 cites (string_close_brace, escape_before_line_end) do not exist. Rule on the types/ Case reading table: a wrong field count in a pattern is wrong-argument-count at the variant name; max(1, 2.0) is at the second argument; a record literal in an if header fails at the colon; a field default fails at the first token not part of a constant. Two types/ gaps the README calls unpinned are now settled by later records: missing-value at the arm first token (M2-02 section 5) and a state with a function field giving type-mismatch before bad-state (M2-09); add their cases.
+- note: Settle while running tests/conformance/errors: the span length where no record states it (bad-escape, changed-while-walked, inout-overlap, bad-assignment-target, marked * in the README table); spec/m1.md section 10 still puts type-mismatch at the first token and gives no-app the stage check, while later records put a mixed operand at the operator and only run and build raise no-app; spec/m1.md section 10 lists 31 of the 54 kinds; the lex cases M2-03 cites (string_close_brace, escape_before_line_end) do not exist. Rule on the types/ Case reading table: a wrong field count in a pattern is wrong-argument-count at the variant name; max(1, 2.0) is at the second argument; a record literal in an if header fails at the colon; a field default fails at the first token not part of a constant. Two types/ gaps the README calls unpinned are now settled by later records: missing-value at the arm first token (M2-02 section 5) and a state with a function field giving type-mismatch before bad-state (M2-09); add their cases. M2-34 amended the missing-key detail for Int += (M2-14 sections 1.11 and 10): check tests/conformance/builtins plus_equals_on_new_key against it.
 
 ### M2-42 · L3 · Write a rejected program for every error kind
 
