@@ -7,6 +7,7 @@ use crate::ast::*;
 use crate::diagnostic::Diagnostic;
 use crate::lexer::{Kind, Lexer, Part, Token, symbol};
 use std::mem;
+use std::ops::Range;
 
 type Parse<T> = Result<T, Diagnostic>;
 
@@ -43,14 +44,42 @@ const ADD: usize = 3;
 
 /// The program, or the first error; the rest of the file is not read.
 pub fn parse<'a>(path: &'a str, src: &'a [u8]) -> Parse<Program<'a>> {
-    let (program, errors) = parse_all(path, src, false);
-    errors.into_iter().next().map_or(Ok(program), Err)
+    parse_files(path, src, std::iter::once(0..src.len()))
 }
 
-/// The definitions that parsed and, when `recover`, one error per definition that did not;
-/// otherwise it stops at the first error.
-fn parse_all<'a>(path: &'a str, src: &'a [u8], recover: bool) -> (Program<'a>, Vec<Diagnostic>) {
-    let mut parser = Parser::new(path, src, Lexer::new(path, src), 0);
+/// The files of one program, which `src` holds at `files`, each followed by a line feed so the
+/// next starts a line: their definitions in that order, or the first error.
+pub fn parse_files<'a>(
+    path: &'a str,
+    src: &'a [u8],
+    files: impl IntoIterator<Item = Range<usize>>,
+) -> Parse<Program<'a>> {
+    let (mut defs, mut line, mut counted) = (vec![], 1, 0);
+    for file in files {
+        line += src[counted..file.start]
+            .iter()
+            .filter(|&&b| b == b'\n')
+            .count();
+        counted = file.start;
+        let (program, errors) = parse_all(path, &src[..file.end], (file.start, line), false);
+        if let Some(error) = errors.into_iter().next() {
+            return Err(error);
+        }
+        defs.extend(program.defs);
+    }
+    Ok(Program { defs })
+}
+
+/// The definitions from byte `start`, on `line`, that parsed and, when `recover`, one error per
+/// definition that did not; otherwise it stops at the first error.
+fn parse_all<'a>(
+    path: &'a str,
+    src: &'a [u8],
+    (start, line): (usize, usize),
+    recover: bool,
+) -> (Program<'a>, Vec<Diagnostic>) {
+    let lexer = Lexer::at(path, src, start, line, start);
+    let mut parser = Parser::new(path, src, lexer, 0);
     let (mut defs, mut errors) = (vec![], vec![]);
     loop {
         match parser.next_def() {
@@ -2215,7 +2244,7 @@ mod tests {
                 "nesting deeper than 64 levels; move the inner part into a named function or local";
             let list = |n: usize| format!("fn f() {{\n  {}1{}\n}}\n", "[".repeat(n), "]".repeat(n));
             assert!(
-                parse_all("main.paka", list(63).as_bytes(), true)
+                parse_all("main.paka", list(63).as_bytes(), (0, 1), true)
                     .1
                     .is_empty()
             );
@@ -2223,7 +2252,7 @@ mod tests {
             let types =
                 |n: usize| format!("fn f(x: {}Int{}) {{}}\n", "L<".repeat(n), ">".repeat(n));
             assert!(
-                parse_all("main.paka", types(63).as_bytes(), true)
+                parse_all("main.paka", types(63).as_bytes(), (0, 1), true)
                     .1
                     .is_empty()
             );
@@ -2249,7 +2278,7 @@ mod tests {
                 )
             };
             assert!(
-                parse_all("main.paka", blocks(63).as_bytes(), true)
+                parse_all("main.paka", blocks(63).as_bytes(), (0, 1), true)
                     .1
                     .is_empty()
             );
@@ -2601,7 +2630,7 @@ mod tests {
     #[test]
     fn a_refused_interface_leaves_the_next_definition() {
         let src = "interface Shape {\n  fn area(s: Shape) -> Float\n}\nfn f() {}\n";
-        let (program, errors) = parse_all("main.paka", src.as_bytes(), true);
+        let (program, errors) = parse_all("main.paka", src.as_bytes(), (0, 1), true);
         assert_eq!(names(&program), ["f"]);
         assert_eq!(errors.len(), 1);
     }
@@ -3098,7 +3127,7 @@ example total_rejects_bad_score {
     #[test]
     fn a_broken_definition_leaves_the_others_parsed() {
         let src = "enum A { X }\nfn broken( {\nenum B { Y }\n";
-        let (program, errors) = parse_all("main.paka", src.as_bytes(), true);
+        let (program, errors) = parse_all("main.paka", src.as_bytes(), (0, 1), true);
         assert_eq!(names(&program), ["A", "B"]);
         assert_eq!(errors.len(), 1);
         assert_eq!(errors[0].position, Some((2, 12)));
@@ -3108,7 +3137,7 @@ example total_rejects_bad_score {
     #[test]
     fn a_lexical_error_in_a_body_leaves_the_next_definition() {
         let src = "fn f() {\n  \"abc\n}\nenum B { Y }\n";
-        let (program, errors) = parse_all("main.paka", src.as_bytes(), true);
+        let (program, errors) = parse_all("main.paka", src.as_bytes(), (0, 1), true);
         assert_eq!(names(&program), ["B"]);
         assert_eq!(errors.len(), 1);
         assert_eq!(errors[0].code, "unterminated-string");
@@ -3117,7 +3146,7 @@ example total_rejects_bad_score {
     #[test]
     fn a_definition_start_ends_the_broken_one() {
         let src = "enum A {\nfn f() {}\nenum {}\n";
-        let (program, errors) = parse_all("main.paka", src.as_bytes(), true);
+        let (program, errors) = parse_all("main.paka", src.as_bytes(), (0, 1), true);
         assert_eq!(names(&program), ["f"]);
         let at: Vec<_> = errors.iter().map(|d| d.position).collect();
         assert_eq!(at, [Some((2, 1)), Some((3, 6))]);
@@ -3126,7 +3155,7 @@ example total_rejects_bad_score {
     #[test]
     fn an_unclosed_bracket_ends_at_the_next_definition() {
         let src = "fn f() {\n  [1, 2\n}\nenum B { Y }\n";
-        let (program, errors) = parse_all("main.paka", src.as_bytes(), true);
+        let (program, errors) = parse_all("main.paka", src.as_bytes(), (0, 1), true);
         assert_eq!(names(&program), ["B"]);
         assert_eq!(errors.len(), 1);
         assert_eq!(errors[0].position, Some((3, 1)));

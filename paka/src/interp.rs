@@ -180,11 +180,11 @@ fn report(core: &Program, app: &str, trap: &Trap) -> String {
     )
 }
 
-/// `file:line:col` of a site; the file without its directory.
+/// `file:line:col` of a site, in the file that holds it.
 fn place(core: &Program, site: Site) -> String {
     let at = &core.sites[site];
-    let file = core.file.rsplit('/').next().unwrap_or_default();
-    format!("{file}:{}:{}", at.line, at.col)
+    let (file, first) = (core.files.iter().rfind(|f| f.1 <= at.line)).expect("a site is in a file");
+    format!("{file}:{}:{}", at.line + 1 - first, at.col)
 }
 
 /// A trap's detail line and call chain, which `assert`, `stack` and `memory` do not have.

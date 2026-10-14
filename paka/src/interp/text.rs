@@ -48,10 +48,7 @@ pub fn call(name: &str, args: &[Value], site: Site) -> Option<Out> {
             .map_err(|_| out_of_bounds(site, format!("index {}, length {}", i.int(), t.len()))),
         ("from_code", [Value::Int(n)]) => (Text::from_code(*n).map(Value::Str))
             .map_err(|k| Trap::new(k, site, format!("from_code({n})"))),
-        ("split", [Value::Str(t), Value::Str(sep)]) => match sep.as_str() {
-            "" => strings(t.as_str().chars()),
-            sep => strings(t.as_str().split(sep)),
-        },
+        ("split", [Value::Str(t), Value::Str(sep)]) => split(t.as_str(), sep.as_str(), CAP, site),
         ("chars", [Value::Str(t)]) => strings(t.as_str().chars()),
         ("lines", [Value::Str(t)]) => {
             let mut parts: Vec<_> = t.as_str().split('\n').collect();
@@ -117,6 +114,16 @@ fn pad(t: &Text, width: Int, front: bool, site: Site) -> Out {
         true => spaces + t.as_str(),
         false => t.as_str().to_owned() + &spaces,
     }))
+}
+
+/// One piece per code point for an empty `sep`, which cannot pass the cap; otherwise a `cap`-th
+/// match would make one piece too many.
+fn split(t: &str, sep: &str, cap: usize, site: Site) -> Out {
+    match sep {
+        "" => strings(t.chars()),
+        _ if t.matches(sep).nth(cap - 1).is_some() => Err(Trap::bare(Kind::Memory, site)),
+        _ => strings(t.split(sep)),
+    }
 }
 
 /// Every match of `old`, found as `split` finds them, becomes `new`; an empty `old` matches nothing.

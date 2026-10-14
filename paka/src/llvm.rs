@@ -160,7 +160,14 @@ mod tests {
 
     /// The view of a program the front end accepts and the back end can build.
     fn accepted(file: &Path) -> Option<M1> {
-        view(&crate::check("main.paka", &fs::read(file).unwrap()).ok()?.0)
+        view(
+            &crate::check(
+                "main.paka",
+                &crate::source::Source::file("main.paka", fs::read(file).unwrap()),
+            )
+            .ok()?
+            .0,
+        )
     }
 
     /// The IR of every runnable case the front end accepts.
@@ -232,7 +239,12 @@ app light {
 ";
 
     fn lowered(source: &str) -> Program {
-        crate::check("main.paka", source.as_bytes()).unwrap().0
+        crate::check(
+            "main.paka",
+            &crate::source::Source::file("main.paka", source.into()),
+        )
+        .unwrap()
+        .0
     }
 
     fn typed(ty: usize, kind: ExprKind) -> Expr {

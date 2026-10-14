@@ -252,7 +252,7 @@ fn program(mut fns: Vec<Func>, mut update: Func) -> Program {
     sites[TODO].hole = Some("todo".into());
     sites[LATER].hole = Some("later".into());
     Program {
-        file: "dir/main.paka".into(),
+        files: vec![("main.paka".into(), 1)],
         types: vec![
             Type::Int,
             Type::Float,
