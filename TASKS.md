@@ -808,7 +808,7 @@ or merged during review. Ids with a letter were added during review.
 - flags: repeat
 - done when: Every task has a Paka solution the interpreter runs, or a filed defect report; each failed case has a reason; the diff touches no test.
 - why this level: No Paka code exists to copy; author must tell own error from interpreter or reference defect.
-- note: One task per ten experiment tasks (two for 20 tasks). For each filed defect the caller adds one level 4 task: done when a regression case written before the fix passes, the M2 exit check still passes, any reference change follows M3-03's rule, and the blocked Paka solution is added. All merge before M3-17. Confirm or correct the five counted tags and the two reserve tags (T3, V6) against the approved M2 rules.
+- note: One task per ten experiment tasks (two for 20 tasks). For each filed defect the caller adds one level 4 task: done when a regression case written before the fix passes, the M2 exit check still passes, any reference change follows M3-03's rule, and the blocked Paka solution is added. All merge before M3-17. First ten tasks (F1 to R1) pass every case with no dispute. Tag check: all five counted tags and both reserve tags stand; F2 writes one file per answer rather than all at once, so a failed write can be named. P1 at the stated nesting of 100 reaches about 400 call frames, not under 200. Open parser gap: the match arm `Text(t) => _ = f(t)?` is refused although the spec allows an assignment as an arm. Confirm or correct the five counted tags and the two reserve tags (T3, V6) against the approved M2 rules.
 
 ### M3-17 · L4 · Settle every disputed test from the statement text alone
 
