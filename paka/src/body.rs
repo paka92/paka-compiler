@@ -4,9 +4,9 @@
 //!
 //! Ownership and overlap (M2-05) are checked after the types, in `own`.
 //!
-//! Not here: function values (M2-30) and the error forms (M2-31), which are left unchecked.
+//! Not here: the error forms (M2-31), which are left unchecked.
 
-use crate::ast::{self, Block, Def, Expr, Pos, Program};
+use crate::ast::{self, Block, Def, Expr, ExprKind as K, Pos, Program};
 use crate::diagnostic::Diagnostic;
 use crate::resolve::Resolved;
 use crate::sig::{Checked, Item, Node, Sig, Table, Ty, Types};
@@ -231,12 +231,26 @@ impl<'t, 'a> Cx<'t, 'a> {
     /// `e` has type `found` where `want` is needed; an Int and a Float name the other's repair.
     fn mismatch_at(&self, e: &Expr, want: Ty, found: Ty) -> Diagnostic {
         let (want, found) = (self.types.show(want), self.types.show(found));
+        if want.starts_with("fn(") {
+            return self.function_mismatch(e, &want, &found);
+        }
         let repair = match (want.as_str(), found.as_str()) {
             ("Float", "Int") => float_fix(e),
             ("Int", "Float") => format!("write to_int({})", render(e)),
             _ => String::new(),
         };
         self.mismatch(span(e), &want, &found, &repair)
+    }
+
+    /// A function type was needed (M2-09 section 5): the types are not quoted, and a function that
+    /// is named is named again.
+    fn function_mismatch(&self, e: &Expr, want: &str, found: &str) -> Diagnostic {
+        let by = match e.kind {
+            K::Name(name) if found.starts_with("fn(") => format!(" ({name})"),
+            _ => String::new(),
+        };
+        let message = format!("expected {want}, found {found}{by}");
+        (self.fail_at(e, "type-mismatch", message)).with_types(&want, &found)
     }
 
     fn no_value(&self, e: &Expr, want: Option<Ty>) -> Diagnostic {

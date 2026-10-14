@@ -929,6 +929,31 @@ fn rejects_calls_by_count_label_and_type() {
 }
 
 #[test]
+fn rejects_function_values_of_the_wrong_shape() {
+    rejects(&[
+        st(
+            MISMATCH,
+            "sort_by(&xs, ^inc)",
+            Some(("fn(Int, Int) -> Bool", "fn(Int) -> Int")),
+            &["var xs = [1]", "sort_by(&xs, inc)"],
+        ),
+        st(
+            MISMATCH,
+            "sort_by(&xs, ^Dot)",
+            Some(("fn(Shape, Shape) -> Bool", "Shape")),
+            &["var xs = [Dot]", "sort_by(&xs, Dot)"],
+        ),
+        st(
+            MISMATCH,
+            "= ^Circle",
+            Some(("fn(Int) -> Int", "fn(Float) -> Shape")),
+            &["let f: fn(Int) -> Int = Circle"],
+        ),
+        st("not-a-value", "= ^bump", None, &["let f = bump"]),
+    ]);
+}
+
+#[test]
 fn rejects_records_by_label_and_type() {
     rejects(&[
         st(

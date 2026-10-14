@@ -667,6 +667,37 @@ fn function_values_call_functions_and_constructors() {
     assert_eq!(trapped(call_value(hole(TODO), vec![hole(LATER)])), want);
 }
 
+#[test]
+fn sort_by_asks_with_the_right_item_first() {
+    let fns = || {
+        let less = func(
+            "less",
+            &[false; 2],
+            2,
+            block(vec![], Some(lt(var(0), var(1)))),
+        );
+        let always = func("always", &[false; 2], 2, block(vec![], Some(flag(true))));
+        vec![less, always]
+    };
+    let row = ROWS
+        .iter()
+        .position(|(_, r)| builtins::name(r) == "sort_by");
+    let sorted_by = |id| {
+        let before = e(ExprKind::FnValue(FnRef::Fn(id)));
+        let args = vec![io(6, vec![]), Arg::Value(before)];
+        let sort = e(ExprKind::Call(Callee::Builtin(row.unwrap()), args, CALL));
+        let list = list(vec![int(3), int(1), int(2)]);
+        let items = (0..3).map(|i| at(6, vec![item(i)])).collect();
+        said_with(
+            fns(),
+            vec![Stmt::Let(6, list), Stmt::Expr(sort)],
+            csv(items),
+        )
+    };
+    assert_eq!(sorted_by(0), "1,2,3");
+    assert_eq!(sorted_by(1), "2,1,3");
+}
+
 // Blocks and statements
 
 #[test]

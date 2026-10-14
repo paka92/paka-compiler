@@ -711,6 +711,7 @@ impl<'a> Machine<'a> {
         // A trap skips `give_back`; the loaned slots stay `Unit`, which nothing can see once the run ends.
         let value = match target {
             Target::Ctor(v) => return Ok(Value::Variant(v, Items(params))),
+            Target::Builtin(row) if generic::calls_back(row) => self.sort_by(&mut params, site)?,
             Target::Builtin(row) => builtin::call(row, &mut params, site)?,
             Target::User(id) => {
                 let (value, locals) = self.invoke(id, params, site)?;
@@ -720,6 +721,23 @@ impl<'a> Machine<'a> {
         };
         give_back(fr, loans, &mut params);
         Ok(value)
+    }
+
+    /// `sort_by(&xs, before)`: M2-14 section 1.13's procedure, `before` called through its id. An
+    /// item moves into the call and back, since `before` only reads it.
+    fn sort_by(&mut self, args: &mut [Value], site: Site) -> Done {
+        let [Value::List(xs), Value::Fn(FnKey::Fn(before))] = args else {
+            unreachable!("a checked sort_by");
+        };
+        let mut ask = |right: &mut Value, left: &mut Value| -> Done<bool> {
+            let given = vec![mem::take(right), mem::take(left)];
+            let (answer, mut kept) = self.invoke(*before, given, site)?;
+            (*left, *right) = (mem::take(&mut kept[1]), mem::take(&mut kept[0]));
+            Ok(answer.bool())
+        };
+        let mut scratch = Vec::with_capacity(xs.0.len());
+        generic::merge_sort(&mut xs.0, &mut scratch, &mut ask)?;
+        Ok(Value::Unit)
     }
 
     fn given(&mut self, fr: &mut Frame, arg: &Arg, lend: bool, earlier: &[Given]) -> Done<Given> {

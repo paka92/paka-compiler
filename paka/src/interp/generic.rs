@@ -7,6 +7,7 @@ use super::value::{Items, Key, Value, equals, number, position};
 use crate::builtins::{ROWS, name};
 use crate::core_form::{Cmp, Site, Tag};
 use paka_rt::ops::Int;
+use std::convert::Infallible;
 use std::mem;
 use std::sync::OnceLock;
 
@@ -19,6 +20,11 @@ pub fn keeps(row: usize, arg: usize) -> bool {
     static KEPT: OnceLock<Vec<u8>> = OnceLock::new();
     let kept = KEPT.get_or_init(|| ROWS.iter().map(|r| kept_by(name(r.1))).collect());
     kept[row] >> arg & 1 == 1
+}
+
+/// Whether the routine of row `row` calls a function value, which only the machine can run.
+pub fn calls_back(row: usize) -> bool {
+    name(ROWS[row].1) == "sort_by"
 }
 
 /// A bit per argument.
@@ -64,7 +70,9 @@ pub fn call(name: &str, args: &mut [Value], site: Site) -> Option<Out> {
         }
         ("sort", [Value::List(xs)]) => {
             let mut scratch = Vec::with_capacity(xs.0.len());
-            sort(&mut xs.0, &mut scratch);
+            let mut less = |a: &mut Value, b: &mut Value| Ok(compare(&Cmp::Lt, a, b));
+            merge_sort::<Infallible>(&mut xs.0, &mut scratch, &mut less)
+                .unwrap_or_else(|e| match e {});
             Ok(Value::Unit)
         }
         ("list_of", [item, n]) => list_of(item, n.int(), site),
@@ -159,28 +167,32 @@ fn list_of(item: &mut Value, n: Int, site: Site) -> Out {
     Ok(list(items))
 }
 
-/// M2-14 section 1.13's procedure with `<` as `before`; `scratch` is the range merged into.
-fn sort(xs: &mut [Value], scratch: &mut Vec<Value>) {
+/// M2-14 section 1.13's procedure. `before(right, left)` says whether the right item must come
+/// first; the left one is taken on `false`. `scratch` is the range merged into.
+pub fn merge_sort<E>(
+    xs: &mut [Value],
+    scratch: &mut Vec<Value>,
+    before: &mut impl FnMut(&mut Value, &mut Value) -> Result<bool, E>,
+) -> Result<(), E> {
     if xs.len() < 2 {
-        return;
+        return Ok(());
     }
-    let mid = xs.len() / 2;
-    let (left, right) = xs.split_at_mut(mid);
-    sort(left, scratch);
-    sort(right, scratch);
-    let (mut i, mut j) = (0, mid);
-    while i < mid && j < xs.len() {
-        let from = if compare(&Cmp::Lt, &xs[j], &xs[i]) {
-            &mut j
-        } else {
-            &mut i
+    let (left, right) = xs.split_at_mut(xs.len() / 2);
+    merge_sort(left, scratch, before)?;
+    merge_sort(right, scratch, before)?;
+    let (mut i, mut j) = (0, 0);
+    while i < left.len() && j < right.len() {
+        let (side, at) = match before(&mut right[j], &mut left[i])? {
+            true => (&mut *right, &mut j),
+            false => (&mut *left, &mut i),
         };
-        scratch.push(mem::take(&mut xs[*from]));
-        *from += 1;
+        scratch.push(mem::take(&mut side[*at]));
+        *at += 1;
     }
-    scratch.extend(xs[i..mid].iter_mut().map(mem::take));
-    scratch.extend(xs[j..].iter_mut().map(mem::take));
+    scratch.extend(left[i..].iter_mut().map(mem::take));
+    scratch.extend(right[j..].iter_mut().map(mem::take));
     for (slot, item) in xs.iter_mut().zip(scratch.drain(..)) {
         *slot = item;
     }
+    Ok(())
 }
