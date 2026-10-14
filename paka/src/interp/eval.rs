@@ -13,6 +13,9 @@ use std::mem;
 
 /// The call depth no call may pass; the handler is at depth 1.
 const DEPTH: usize = 10_000;
+/// The most expressions and blocks under evaluation at once, over all calls. It keeps the host
+/// stack from running out, which the call depth alone does not: each level takes stack too.
+const LEVELS: usize = 50_000;
 /// The most bytes in a String, and the most items or entries in a List or Map.
 pub const CAP: usize = 16_777_216;
 /// Frame names a trap keeps: the report shows eight, one more says there were others.
@@ -91,6 +94,8 @@ impl Trap {
 /// Why an evaluation did not give its value.
 pub enum Stop {
     Trap(Box<Trap>),
+    /// A fault of the interpreter itself, with its reason; the run ends with status 4.
+    Internal(String),
     Return(Value),
     Break,
     Continue,
@@ -102,16 +107,7 @@ impl From<Trap> for Stop {
     }
 }
 
-impl Stop {
-    fn into_trap(self) -> Trap {
-        match self {
-            Stop::Trap(trap) => *trap,
-            _ => unreachable!("a trap leaves every function"),
-        }
-    }
-}
-
-type Done<T = Value> = Result<T, Stop>;
+pub type Done<T = Value> = Result<T, Stop>;
 
 /// The locals of one call.
 pub struct Frame {
@@ -119,6 +115,30 @@ pub struct Frame {
     params: usize,
     /// The function's name in its definition, where a copy that nests too deep is reported.
     site: Site,
+}
+
+/// What a place holds: a value in storage, or a fresh one made by reading it (a slice, a String
+/// item), which a caller that wants a copy can keep as it is.
+enum Seen<'v> {
+    Held(&'v Value),
+    Made(Value),
+}
+
+impl Seen<'_> {
+    fn value(&self) -> &Value {
+        match self {
+            Seen::Held(v) => v,
+            Seen::Made(v) => v,
+        }
+    }
+
+    /// An owned copy, or `None` when it nests too deep.
+    fn copy(self) -> Option<Value> {
+        match self {
+            Seen::Held(v) => v.copy(),
+            Seen::Made(v) => Some(v),
+        }
+    }
 }
 
 /// A step of a place with its operands evaluated.
@@ -148,15 +168,21 @@ enum Target {
 pub struct Machine<'a> {
     core: &'a Program,
     depth: usize,
+    levels: usize,
 }
 
 impl<'a> Machine<'a> {
     pub fn new(core: &'a Program) -> Machine<'a> {
-        Machine { core, depth: 0 }
+        Machine {
+            core,
+            depth: 0,
+            levels: 0,
+        }
     }
 
-    /// The state built once, then the handler's answer to the start message.
-    pub fn handle(&mut self, app: &App) -> Result<Value, Trap> {
+    /// The state built once, then the handler's answer to the start message; it ends in a trap or
+    /// an internal fault.
+    pub fn handle(&mut self, app: &App) -> Done {
         let site = self.core.fns[app.update].site;
         let mut fr = Frame {
             locals: vec![],
@@ -165,13 +191,10 @@ impl<'a> Machine<'a> {
         };
         let mut args = vec![];
         if let Some(state) = &app.state {
-            args.push(self.eval(&mut fr, state).map_err(Stop::into_trap)?);
+            args.push(self.eval(&mut fr, state)?);
         }
         args.push(Value::Variant(app.start, Items::default()));
-        let (answer, _) = self
-            .invoke(app.update, args, site)
-            .map_err(Stop::into_trap)?;
-        Ok(answer)
+        Ok(self.invoke(app.update, args, site)?.0)
     }
 
     /// Runs function `id` on its parameters; gives its value and its final locals, whose first
@@ -201,6 +224,7 @@ impl<'a> Machine<'a> {
                 trap.leave(&f.name);
                 Err(Stop::Trap(trap))
             }
+            Err(internal @ Stop::Internal(_)) => Err(internal),
             Err(_) => unreachable!("a loop holds its break"),
         }
     }
@@ -217,6 +241,13 @@ impl<'a> Machine<'a> {
     }
 
     fn block(&mut self, fr: &mut Frame, b: &Block) -> Done {
+        self.enter(fr)?;
+        let done = self.statements(fr, b);
+        self.levels -= 1;
+        done
+    }
+
+    fn statements(&mut self, fr: &mut Frame, b: &Block) -> Done {
         for s in &b.stmts {
             self.stmt(fr, s)?;
         }
@@ -224,6 +255,16 @@ impl<'a> Machine<'a> {
             Some(e) => self.eval(fr, e),
             None => Ok(Value::Unit),
         }
+    }
+
+    /// Counts one more level under evaluation, which the caller takes off again; past `LEVELS`
+    /// it traps `stack`.
+    fn enter(&mut self, fr: &Frame) -> Result<(), Trap> {
+        if self.levels >= LEVELS {
+            return Err(Trap::bare(Kind::Stack, fr.site));
+        }
+        self.levels += 1;
+        Ok(())
     }
 
     /// The value a function leaves with: a local that is not a parameter moves.
@@ -252,7 +293,7 @@ impl<'a> Machine<'a> {
             Stmt::Continue => return Err(Stop::Continue),
             Stmt::For(x, walk, body) => self.each(fr, *x, walk, body)?,
             Stmt::While(c, body) => while self.truth(fr, c)? && !self.run_body(fr, body)? {},
-            Stmt::Expr(e) => drop(self.eval(fr, e)?),
+            Stmt::Expr(e) => self.lend(fr, e, |_| ())?,
         }
         Ok(())
     }
@@ -298,32 +339,48 @@ impl<'a> Machine<'a> {
     }
 
     pub fn eval(&mut self, fr: &mut Frame, e: &Expr) -> Done {
-        Ok(match &e.kind {
-            ExprKind::Int(n) => Value::Int(*n),
-            ExprKind::Float(x) => Value::Float(*x),
-            ExprKind::Bool(b) => Value::Bool(*b),
-            ExprKind::Str(s) => Value::Str(Text::from(s.as_str())),
-            ExprKind::Interp(parts, site) => self.interpolate(fr, parts, *site)?,
-            ExprKind::Hole(site) => return Err(self.hole(*site).into()),
-            ExprKind::Place(p) => self.read(fr, p)?,
-            ExprKind::Record(_, fields) => Value::Record(Items(self.all(fr, fields)?)),
-            ExprKind::List(items) => Value::List(Items(self.all(fr, items)?)),
-            ExprKind::Map(pairs) => self.map(fr, pairs)?,
+        self.enter(fr)?;
+        let done = self.node(fr, e);
+        self.levels -= 1;
+        done
+    }
+
+    /// One arm each, so that this frame stays small: it is on the stack once per nesting level.
+    fn node(&mut self, fr: &mut Frame, e: &Expr) -> Done {
+        match &e.kind {
+            ExprKind::Int(n) => Ok(Value::Int(*n)),
+            ExprKind::Float(x) => Ok(Value::Float(*x)),
+            ExprKind::Bool(b) => Ok(Value::Bool(*b)),
+            ExprKind::Str(s) => Ok(Value::Str(Text::from(s.as_str()))),
+            ExprKind::Interp(parts, site) => self.interpolate(fr, parts, *site),
+            ExprKind::Hole(site) => Err(self.hole(*site).into()),
+            ExprKind::Place(p) => self.read(fr, p),
+            ExprKind::Record(_, fields) => self.items(fr, fields, Value::Record),
+            ExprKind::List(items) => self.items(fr, items, Value::List),
+            ExprKind::Map(pairs) => self.map(fr, pairs),
             ExprKind::Variant(tag, fields) => {
-                Value::Variant(number(tag), Items(self.all(fr, fields)?))
+                self.items(fr, fields, |items| Value::Variant(number(tag), items))
             }
-            ExprKind::FnValue(FnRef::Fn(id)) => Value::Fn(FnKey::Fn(*id)),
-            ExprKind::FnValue(FnRef::Variant(e, v)) => Value::Fn(FnKey::Ctor(*e, *v)),
-            ExprKind::Unary(op, x) => self.unary(fr, op, x)?,
-            ExprKind::Binary(op, a, b) => self.binary(fr, op, a, b)?,
-            ExprKind::Call(callee, args, site) => self.call(fr, callee, args, *site)?,
-            ExprKind::If(c, then, other) => match (self.truth(fr, c)?, other) {
-                (true, _) => self.block(fr, then)?,
-                (false, Some(other)) => self.block(fr, other)?,
-                (false, None) => Value::Unit,
-            },
-            ExprKind::Match(subject, arms) => self.matching(fr, subject, arms)?,
-        })
+            ExprKind::FnValue(FnRef::Fn(id)) => Ok(Value::Fn(FnKey::Fn(*id))),
+            ExprKind::FnValue(FnRef::Variant(e, v)) => Ok(Value::Fn(FnKey::Ctor(*e, *v))),
+            ExprKind::Unary(op, x) => self.unary(fr, op, x),
+            ExprKind::Binary(op, a, b) => self.binary(fr, op, a, b),
+            ExprKind::Call(callee, args, site) => self.call(fr, callee, args, *site),
+            ExprKind::If(c, then, other) => self.branch(fr, c, then, other.as_ref()),
+            ExprKind::Match(subject, arms) => self.matching(fr, subject, arms),
+        }
+    }
+
+    fn items(&mut self, fr: &mut Frame, es: &[Expr], make: impl FnOnce(Items) -> Value) -> Done {
+        Ok(make(Items(self.all(fr, es)?)))
+    }
+
+    fn branch(&mut self, fr: &mut Frame, cond: &Expr, then: &Block, other: Option<&Block>) -> Done {
+        match (self.truth(fr, cond)?, other) {
+            (true, _) => self.block(fr, then),
+            (false, Some(other)) => self.block(fr, other),
+            (false, None) => Ok(Value::Unit),
+        }
     }
 
     fn all(&mut self, fr: &mut Frame, es: &[Expr]) -> Done<Vec<Value>> {
@@ -351,16 +408,12 @@ impl<'a> Machine<'a> {
     fn interpolate(&mut self, fr: &mut Frame, parts: &[Expr], site: Site) -> Done {
         let mut text = String::new();
         for part in parts {
-            let shown = match self.eval(fr, part)? {
-                Value::Int(n) => write!(text, "{n}"),
-                Value::Bool(b) => write!(text, "{b}"),
-                Value::Str(s) => {
-                    text.push_str(s.as_str());
-                    Ok(())
-                }
+            self.lend(fr, part, |v| match v {
+                Value::Int(n) => write!(text, "{n}").expect("writing to a String"),
+                Value::Bool(b) => write!(text, "{b}").expect("writing to a String"),
+                Value::Str(s) => text.push_str(s.as_str()),
                 _ => unreachable!("a checked part"),
-            };
-            shown.expect("writing to a String");
+            })?;
             if text.len() > CAP {
                 return Err(Trap::bare(Kind::Memory, site).into());
             }
@@ -383,28 +436,73 @@ impl<'a> Machine<'a> {
 
     fn binary(&mut self, fr: &mut Frame, op: &Bin, a: &Expr, b: &Expr) -> Done {
         match op {
-            Bin::And => return Ok(Value::Bool(self.truth(fr, a)? && self.truth(fr, b)?)),
-            Bin::Or => return Ok(Value::Bool(self.truth(fr, a)? || self.truth(fr, b)?)),
-            _ => {}
+            Bin::And => Ok(Value::Bool(self.truth(fr, a)? && self.truth(fr, b)?)),
+            Bin::Or => Ok(Value::Bool(self.truth(fr, a)? || self.truth(fr, b)?)),
+            Bin::Join(site) => self.join(fr, *site, a, b),
+            Bin::Eq(site) | Bin::Ne(site) => self.same(fr, *site, matches!(op, Bin::Eq(_)), a, b),
+            Bin::Order(cmp) => self.pair(fr, a, b, |x, y| Value::Bool(compare(cmp, x, y))),
+            Bin::Int(arith, site) => self.numbers(fr, a, b, |x, y| {
+                Ok(Value::Int(int_op(arith, *site, x.int(), y.int())?))
+            }),
+            Bin::Float(arith) => self.numbers(fr, a, b, |x, y| {
+                Ok(Value::Float(float_op(arith, x.float(), y.float())))
+            }),
         }
+    }
+
+    fn numbers(
+        &mut self,
+        fr: &mut Frame,
+        a: &Expr,
+        b: &Expr,
+        f: impl FnOnce(Value, Value) -> Done,
+    ) -> Done {
         let (x, y) = (self.eval(fr, a)?, self.eval(fr, b)?);
-        Ok(match op {
-            Bin::Int(arith, site) => Value::Int(int_op(arith, *site, x.int(), y.int())?),
-            Bin::Float(arith) => Value::Float(float_op(arith, x.float(), y.float())),
-            Bin::Join(site) => {
-                let (Value::Str(mut s), Value::Str(t)) = (x, y) else {
-                    unreachable!("checked Strings");
-                };
-                append(*site, &mut s, &t)?;
-                Value::Str(s)
-            }
-            Bin::Eq(site) | Bin::Ne(site) => {
-                let same = equals(&x, &y).ok_or_else(|| Trap::bare(Kind::Stack, *site))?;
-                Value::Bool(same == matches!(op, Bin::Eq(_)))
-            }
-            Bin::Order(cmp) => Value::Bool(compare(cmp, &x, &y)),
-            Bin::And | Bin::Or => unreachable!("decided above"),
-        })
+        f(x, y)
+    }
+
+    fn same(&mut self, fr: &mut Frame, site: Site, eq: bool, a: &Expr, b: &Expr) -> Done {
+        let same = self.pair(fr, a, b, equals)?;
+        let same = same.ok_or_else(|| Trap::bare(Kind::Stack, site))?;
+        Ok(Value::Bool(same == eq))
+    }
+
+    fn join(&mut self, fr: &mut Frame, site: Site, a: &Expr, b: &Expr) -> Done {
+        let Value::Str(mut s) = self.eval(fr, a)? else {
+            unreachable!("a checked String");
+        };
+        self.lend(fr, b, |t| match t {
+            Value::Str(t) => append(site, &mut s, t),
+            _ => unreachable!("a checked String"),
+        })??;
+        Ok(Value::Str(s))
+    }
+
+    /// Runs `f` on the value of `e`, which stays in place when `e` is a place.
+    fn lend<R>(&mut self, fr: &mut Frame, e: &Expr, f: impl FnOnce(&Value) -> R) -> Done<R> {
+        match &e.kind {
+            ExprKind::Place(p) => self.peek(fr, p, f),
+            _ => Ok(f(&self.eval(fr, e)?)),
+        }
+    }
+
+    /// Runs `f` on both operands in written order, lending the right one, and the left one when
+    /// the right one is a literal; the other is copied, since evaluating the right one may change
+    /// the left one's place.
+    fn pair<R>(
+        &mut self,
+        fr: &mut Frame,
+        a: &Expr,
+        b: &Expr,
+        f: impl FnOnce(&Value, &Value) -> R,
+    ) -> Done<R> {
+        if let ExprKind::Int(_) | ExprKind::Float(_) | ExprKind::Bool(_) | ExprKind::Str(_) = b.kind
+        {
+            let y = self.eval(fr, b)?;
+            return self.lend(fr, a, |x| f(x, &y));
+        }
+        let x = self.eval(fr, a)?;
+        self.lend(fr, b, |y| f(&x, y))
     }
 
     fn matching(&mut self, fr: &mut Frame, subject: &Expr, arms: &[Arm]) -> Done {
@@ -438,6 +536,10 @@ impl<'a> Machine<'a> {
 
     /// Runs `f` on the value at `p`, without copying it.
     fn peek<R>(&mut self, fr: &mut Frame, p: &Place, f: impl FnOnce(&Value) -> R) -> Done<R> {
+        self.look(fr, p, |seen| f(seen.value()))
+    }
+
+    fn look<R>(&mut self, fr: &mut Frame, p: &Place, f: impl FnOnce(Seen) -> R) -> Done<R> {
         let computed = match &p.root {
             Root::Value(e) => Some(self.eval(fr, e)?),
             Root::Local(_) => None,
@@ -452,7 +554,7 @@ impl<'a> Machine<'a> {
     }
 
     fn read(&mut self, fr: &mut Frame, p: &Place) -> Done {
-        let copy = self.peek(fr, p, Value::copy)?;
+        let copy = self.look(fr, p, |seen| seen.copy())?;
         Ok(copy.ok_or_else(|| Trap::bare(Kind::Stack, fr.site))?)
     }
 
@@ -493,6 +595,7 @@ impl<'a> Machine<'a> {
             given.push(g);
         }
         let (mut params, loans) = take_args(fr, given)?;
+        // A trap skips `give_back`; the loaned slots stay `Unit`, which nothing can see once the run ends.
         let value = match target {
             Target::Ctor(v) => return Ok(Value::Variant(v, Items(params))),
             Target::Builtin(row) => builtin::call(row, &mut params, site)?,
@@ -590,10 +693,10 @@ fn missing(key: &Key, site: Site) -> Trap {
     out_of_bounds(site, format!("key {}", key.show()))
 }
 
-/// Runs `f` on the value at the end of `path`; a slice or a String item is a fresh value.
-fn walk<R>(v: &Value, path: &[Idx], home: Site, f: impl FnOnce(&Value) -> R) -> Result<R, Trap> {
+/// Runs `f` on the value at the end of `path`.
+fn walk<R>(v: &Value, path: &[Idx], home: Site, f: impl FnOnce(Seen) -> R) -> Result<R, Trap> {
     let Some((step, rest)) = path.split_first() else {
-        return Ok(f(v));
+        return Ok(f(Seen::Held(v)));
     };
     match (step, v) {
         (Idx::Field(n), Value::Record(fields)) => walk(&fields.0[*n], rest, home, f),
@@ -604,7 +707,7 @@ fn walk<R>(v: &Value, path: &[Idx], home: Site, f: impl FnOnce(&Value) -> R) -> 
             let item = t.index(*i);
             let item =
                 item.map_err(|k| Trap::new(k, *site, format!("index {i}, length {}", t.len())))?;
-            walk(&Value::Str(item), rest, home, f)
+            made(Value::Str(item), rest, home, f)
         }
         (Idx::Key(k, site), Value::Map(m)) => {
             walk(m.0.get(k).ok_or_else(|| missing(k, *site))?, rest, home, f)
@@ -618,16 +721,24 @@ fn walk<R>(v: &Value, path: &[Idx], home: Site, f: impl FnOnce(&Value) -> R) -> 
             let copies = items.0[from..to].iter().map(Value::copy);
             let part = copies.collect::<Option<_>>();
             let part = part.ok_or_else(|| Trap::bare(Kind::Stack, home))?;
-            walk(&Value::List(Items(part)), rest, home, f)
+            made(Value::List(Items(part)), rest, home, f)
         }
         (Idx::Slice(a, b, site), Value::Str(t)) => {
             let part = t
                 .slice(*a, *b)
                 .map_err(|_| slice_error(*a, *b, t.len(), *site))?;
-            walk(&Value::Str(part), rest, home, f)
+            made(Value::Str(part), rest, home, f)
         }
         _ => unreachable!("a checked place"),
     }
+}
+
+/// `walk` on a fresh value, which `f` gets whole when no step is left.
+fn made<R>(v: Value, rest: &[Idx], home: Site, f: impl FnOnce(Seen) -> R) -> Result<R, Trap> {
+    if rest.is_empty() {
+        return Ok(f(Seen::Made(v)));
+    }
+    walk(&v, rest, home, f)
 }
 
 fn slice_error(a: Int, b: Int, len: impl std::fmt::Display, site: Site) -> Trap {

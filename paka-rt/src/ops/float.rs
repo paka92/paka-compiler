@@ -109,6 +109,20 @@ impl Float {
         }
     }
 
+    /// The value text form (M2-14 1.16): the shortest digits that read back as the same Float, no
+    /// exponent, a digit on each side of the point; NaN and the infinities as `fixed` shows them.
+    pub fn show(self) -> String {
+        if !self.0.is_finite() {
+            return self.fixed(Int::new(0)).expect("0 is a valid digit count");
+        }
+        let text = self.0.to_string();
+        if text.contains('.') {
+            text
+        } else {
+            text + ".0"
+        }
+    }
+
     /// `parse_float`: `-?` digits, optionally `.` digits; the nearest Float, ties to even.
     pub fn parse(text: &str) -> Option<Float> {
         is_number(text, true)

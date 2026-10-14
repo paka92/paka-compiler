@@ -3,9 +3,11 @@
 //! M2-36's.
 
 use crate::core_form::{App, Effect, Field, Grant, Program, Type};
-use eval::{Kind, Machine, Trap};
+use eval::{Kind, Machine, Stop, Trap};
+use std::any::Any;
 use std::io::{self, ErrorKind, Write};
-use std::thread;
+use std::sync::Once;
+use std::{panic, thread};
 use value::Value;
 
 mod builtin;
@@ -20,6 +22,8 @@ mod value;
 const STACK: usize = 256 << 20;
 /// The longest detail line of a trap report, in bytes.
 const DETAIL: usize = 256;
+/// The name of the thread that runs the program; its panics are reported as an internal error.
+const RUN_THREAD: &str = "paka-run";
 /// The most frames a trap report names.
 const NAMED: usize = 8;
 
@@ -27,7 +31,7 @@ const PRINT: usize = Effect::Print as usize;
 const EXIT: usize = Effect::Exit as usize;
 
 /// A status and the line that explains it.
-type Stop = (u8, String);
+type End = (u8, String);
 
 /// Runs the program; returns its status.
 pub fn run(core: &Program, out: &mut impl Write, err: &mut impl Write) -> u8 {
@@ -44,7 +48,7 @@ pub fn run(core: &Program, out: &mut impl Write, err: &mut impl Write) -> u8 {
 }
 
 /// The effects the handler returns for the start message.
-fn handle(core: &Program, app: &App) -> Result<Value, Stop> {
+fn handle(core: &Program, app: &App) -> Result<Value, End> {
     let fields = start_fields(core, app);
     if !fields.is_empty() {
         let names: Vec<_> = fields.iter().map(|f| f.name.as_str()).collect();
@@ -53,10 +57,12 @@ fn handle(core: &Program, app: &App) -> Result<Value, Stop> {
         let line = format!("expected {count} argument{plural} ({names}), got 0");
         return Err((2, format!("{}: {line}\n", app.name)));
     }
-    let outcome = on_big_stack(|| Machine::new(core).handle(app));
-    match outcome.ok_or_else(|| (4, format!("{}: internal error\n", app.name)))? {
-        Ok(answer) => Ok(answer),
-        Err(trap) => Err((3, report(core, &app.name, &trap))),
+    let internal = |reason: &str| (4, format!("{}: internal error: {reason}\n", app.name));
+    match on_big_stack(|| Machine::new(core).handle(app)) {
+        Ok(Ok(answer)) => Ok(answer),
+        Ok(Err(Stop::Trap(trap))) => Err((3, report(core, &app.name, &trap))),
+        Ok(Err(Stop::Internal(reason))) | Err(reason) => Err(internal(&reason)),
+        Ok(Err(_)) => unreachable!("a loop holds its break"),
     }
 }
 
@@ -72,12 +78,32 @@ fn start_fields<'a>(core: &'a Program, app: &App) -> &'a [Field] {
     &core.enums[msg].variants[app.start].fields
 }
 
-/// Runs `f` on a thread with room for the deepest call chain; `None` if the thread fails.
-fn on_big_stack<T: Send>(f: impl FnOnce() -> T + Send) -> Option<T> {
+/// Runs `f` on a thread with room for the deepest call chain; the reason if the thread cannot
+/// start or panics. A panic there says nothing on its own: the caller reports its reason.
+fn on_big_stack<T: Send>(f: impl FnOnce() -> T + Send) -> Result<T, String> {
+    static QUIET: Once = Once::new();
+    QUIET.call_once(|| {
+        let loud = panic::take_hook();
+        panic::set_hook(Box::new(move |info| {
+            if thread::current().name() != Some(RUN_THREAD) {
+                loud(info);
+            }
+        }));
+    });
     thread::scope(|scope| {
-        let host = thread::Builder::new().stack_size(STACK);
-        host.spawn_scoped(scope, f).ok()?.join().ok()
+        let host = thread::Builder::new()
+            .name(RUN_THREAD.into())
+            .stack_size(STACK);
+        let run = host.spawn_scoped(scope, f).map_err(|e| e.to_string())?;
+        run.join().map_err(|p| panic_reason(&*p))
     })
+}
+
+fn panic_reason(payload: &(dyn Any + Send)) -> String {
+    let text = payload.downcast_ref::<&str>().copied();
+    text.or(payload.downcast_ref::<String>().map(String::as_str))
+        .unwrap_or("the run failed")
+        .into()
 }
 
 /// The trap report of M2-06 section 1.2.
@@ -102,7 +128,7 @@ fn report(core: &Program, app: &str, trap: &Trap) -> String {
 }
 
 /// Performs the effects in order; `None` after `Exit`, or the status and line that end the run.
-fn perform(app: &App, answer: &Value, out: &mut impl Write) -> Option<Stop> {
+fn perform(app: &App, answer: &Value, out: &mut impl Write) -> Option<End> {
     let Value::List(effects) = answer else {
         unreachable!("a checked List");
     };
