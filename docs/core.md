@@ -27,8 +27,9 @@ function, local or site is its position in the list that holds it.
   and whether it is `inout`, a result type or none, the types of its locals, and a body block.
   Its parameters are locals 0 to n - 1; every `let`, `var`, `for` name and pattern name gets the
   next local number. A `let` value is numbered before its name, a `for` list before its name, and
-  an arm's fields in field order before its block. The locals list holds the parameters first, then every local in numbering
-  order, including the ones lowering adds (the `let` of a match subject, section 7).
+  an arm's fields in field order before its block. The locals list holds the parameters first,
+  then every local in numbering order, including the ones lowering adds (the `let` of a match
+  subject, section 7).
 - **Example.** A function with no parameters and a `Bool` result, kept in its own list so nothing
   can call it (M2-06). The driver names its frame `example NAME`.
 - **Site.** A line and a column, both from 1, and for a hole its name. The file is the program's.
@@ -177,9 +178,10 @@ form, so no back end sees it.
 - **A match on an Int, String or Bool** becomes a `let` of the subject and an `if` chain testing
   `==` against each arm's patterns in order (joined by `||`), the `_` arm or the last arm being the
   final `else`. Core `match` decides on variants only. The result is one `if true` without an
-  `else`, its block holding the `let` and then the chain as the block's value. That `if` takes the
-  match's type, the one case where an `if` without `else` gives a value; it never fails. The `let`
-  is the next local after the subject's own, before any arm's. Each `==` is at the arm's pattern.
+  `else`, its block holding the `let` and then the chain, the chain being the block's value when the
+  match gives one (a match with only a `_` arm is that arm's block). That `if` takes the match's
+  type, the one case where an `if` without `else` gives a value; it never fails. The `let` is the
+  next local after the subject's own, before any arm's. Each `==` is at the arm's pattern.
 - **`else if`** becomes an `if` inside the `else` block.
 - **A record literal with fields left out** gets each default written in its place. A default is a
   constant (M2-02 §1.9), so where it stands in the order changes nothing.
