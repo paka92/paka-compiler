@@ -1,0 +1,22 @@
+fn pick(n: Int) -> String {
+  match n {
+    0 => "zero"
+    1 => "one"
+    _ => unreachable()
+  }
+}
+
+example zero { pick(0) == "zero" }
+example two { pick(2) == "two" }
+
+enum Msg { Start }
+
+fn update(m: Msg) -> List<Effect<Msg>> {
+  [Print(pick(1)), Print(pick(7)), Exit]
+}
+
+app tool {
+  start: Start
+  update: update
+  grants: [Console]
+}

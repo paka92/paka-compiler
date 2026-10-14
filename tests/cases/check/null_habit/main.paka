@@ -1,0 +1,15 @@
+fn digits(s: String) -> Option<Int> {
+  null
+}
+
+enum Msg { Start }
+
+fn update(m: Msg) -> List<Effect<Msg>> {
+  [Exit]
+}
+
+app tool {
+  start: Start
+  update: update
+  grants: []
+}

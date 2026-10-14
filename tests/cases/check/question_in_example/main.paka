@@ -1,0 +1,20 @@
+fn ratio(a: Int, b: Int) -> Result<Int, String> {
+  if b == 0 {
+    return Err("divide by zero")
+  }
+  Ok(a / b)
+}
+
+example half { ratio(4, 2)? == 2 }
+
+enum Msg { Start }
+
+fn update(m: Msg) -> List<Effect<Msg>> {
+  [Exit]
+}
+
+app tool {
+  start: Start
+  update: update
+  grants: []
+}

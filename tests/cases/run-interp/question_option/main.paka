@@ -1,0 +1,36 @@
+fn first_word(words: List<String>) -> Option<String> {
+  if is_empty(words) {
+    return None
+  }
+  Some(words[0])
+}
+
+fn first_two(words: List<String>) -> Option<String> {
+  let a = first_word(words)?
+  let b = first_word(words[1..<len(words)])?
+  Some("{a} {b}")
+}
+
+fn show(o: Option<String>) -> String {
+  match o {
+    Some(text) => "some {text}"
+    None => "none"
+  }
+}
+
+enum Msg { Start }
+
+fn update(m: Msg) -> List<Effect<Msg>> {
+  [
+    Print(show(first_two(["a", "b", "c"]))),
+    Print(show(first_two(["a"]))),
+    Print(show(first_two([]))),
+    Exit
+  ]
+}
+
+app tool {
+  start: Start
+  update: update
+  grants: [Console]
+}

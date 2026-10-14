@@ -1,0 +1,16 @@
+fn digits(s: String) -> Int {
+  parse_int(s)
+  0
+}
+
+enum Msg { Start }
+
+fn update(m: Msg) -> List<Effect<Msg>> {
+  [Exit]
+}
+
+app tool {
+  start: Start
+  update: update
+  grants: []
+}

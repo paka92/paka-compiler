@@ -1,0 +1,4 @@
+ok 2
+failed: divide by zero
+ok 11
+failed: no price for egg
