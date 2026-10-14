@@ -1,0 +1,13 @@
+; labels
+      jmp a          ; a is a label here
+      out 99
+a:                   ; names the next instruction
+; comment only
+
+      out 1
+      call f
+      out 3
+      jmp done
+f:    out 2
+      ret
+done:

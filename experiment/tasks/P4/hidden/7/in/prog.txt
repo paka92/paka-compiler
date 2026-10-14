@@ -1,0 +1,6 @@
+start: set a 1
+       jmp nowhere
+       out a  ; fine
+       jlt a 10 start
+       mul a 1.5
+       set g 1

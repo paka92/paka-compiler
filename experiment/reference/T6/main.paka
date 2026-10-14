@@ -1,0 +1,176 @@
+enum Msg { Start(path: String), Loaded(text: String), Failed(why: String) }
+
+type Canvas { w: Int, h: Int, cells: List<List<String>> }
+
+fn number(w: String) -> Option<Int> {
+  let cs = chars(w)
+  var i = 0
+  if i < len(cs) && cs[0] == "-" { i = 1 }
+  let n = len(cs) - i
+  if n < 1 || n > 4 || w == "-0" { return None }
+  if n > 1 && cs[i] == "0" { return None }
+  for c in cs[i..<len(cs)] {
+    if c < "0" || c > "9" { return None }
+  }
+  parse_int(w)
+}
+
+fn size(w: String) -> Int {
+  match number(w) {
+    Some(n) => n
+    None => 0
+  }
+}
+
+fn header(line: String) -> Option<List<Int>> {
+  let words = split(line, " ")
+  if len(words) != 2 { return None }
+  let w = number(words[0])?
+  let h = number(words[1])?
+  if w < 1 || w > 80 || h < 1 || h > 80 { return None }
+  Some([w, h])
+}
+
+// The word count of a command, or 0 when there is no such command.
+fn count_of(name: String) -> Int {
+  if name == "hline" || name == "vline" || name == "text" { return 4 }
+  if name == "box" { return 5 }
+  if name == "fill" { return 6 }
+  if name == "copy" { 7 } else { 0 }
+}
+
+// The error in one command line, or the empty text.
+fn check(words: List<String>) -> String {
+  let name = words[0]
+  let count = count_of(name)
+  if count == 0 { return "unknown command" }
+  if (name == "text" && len(words) < 4) || (name != "text" && len(words) != count) { return "wrong count" }
+  var numbers = count - 1
+  if name == "text" { numbers = 2 } else if name == "fill" { numbers = 4 }
+  for w in words[1..<numbers + 1] {
+    match number(w) {
+      Some(_) => {}
+      None => {
+        return "bad number"
+      }
+    }
+  }
+  if name == "fill" && len(words[5]) != 1 { return "bad char" }
+  if name != "text" && size(words[3]) < 1 { return "bad size" }
+  if count > 4 && size(words[4]) < 1 { return "bad size" }
+  ""
+}
+
+fn on(c: Canvas, x: Int, y: Int) -> Bool {
+  x >= 0 && y >= 0 && x < c.w && y < c.h
+}
+
+fn put(c: inout Canvas, x: Int, y: Int, ch: String) {
+  if on(c, x, y) { c.cells[y][x] = ch }
+}
+
+fn mark(c: inout Canvas, x: Int, y: Int, m: String) {
+  if !on(c, x, y) { return }
+  let old = c.cells[y][x]
+  let cross = m == "+" || (m == "-" && (old == "|" || old == "+")) || (m == "|" && (old == "-" || old == "+"))
+  c.cells[y][x] = if cross { "+" } else { m }
+}
+
+// The positions from..<from + n that lie in 0..<side, as a start and an end.
+fn span(from: Int, n: Int, side: Int) -> List<Int> {
+  let a = max(from, 0)
+  [a, max(min(from + n, side), a)]
+}
+
+fn run(c: inout Canvas, words: List<String>) {
+  var n: List<Int> = []
+  for w in words[1..<len(words)] {
+    append(&n, size(w))
+  }
+  let name = words[0]
+  if name == "text" {
+    let cs = chars(join(words[3..<len(words)], " "))
+    for i in 0..<len(cs) {
+      put(&c, n[0] + i, n[1], cs[i])
+    }
+    return
+  }
+  var w = 1
+  var h = 1
+  if name == "vline" { h = n[2] } else { w = n[2] }
+  if count_of(name) > 4 { h = n[3] }
+  let xs = span(n[0], w, c.w)
+  let ys = span(n[1], h, c.h)
+  let old = if name == "copy" { c.cells } else { [] }
+  for y in ys[0]..<ys[1] {
+    for x in xs[0]..<xs[1] {
+      if name == "hline" {
+        mark(&c, x, y, "-")
+      } else if name == "vline" {
+        mark(&c, x, y, "|")
+      } else if name == "fill" {
+        put(&c, x, y, words[5])
+      } else if name == "copy" {
+        put(&c, x + n[4] - n[0], y + n[5] - n[1], old[y][x])
+      } else {
+        let row = y == n[1] || y == n[1] + h - 1
+        let col = x == n[0] || x == n[0] + w - 1
+        if row && col { mark(&c, x, y, "+") } else if row { mark(&c, x, y, "-") } else if col { mark(&c, x, y, "|") }
+      }
+    }
+  }
+}
+
+fn draw(text: String) -> Result<List<String>, String> {
+  let rows = lines(text)
+  if is_empty(rows) { return Err("error: line 1: bad header") }
+  let wh = match header(rows[0]) {
+    Some(wh) => wh
+    None => {
+      return Err("error: line 1: bad header")
+    }
+  }
+  var commands: List<List<String>> = []
+  for i in 1..<len(rows) {
+    if is_empty(rows[i]) || starts_with(rows[i], "#") { continue }
+    let words = split(rows[i], " ")
+    let what = check(words)
+    if !is_empty(what) { return Err("error: line {i + 1}: {what}") }
+    append(&commands, words)
+  }
+  var c = Canvas { w: wh[0], h: wh[1], cells: list_of(list_of(" ", count: wh[0]), count: wh[1]) }
+  for words in commands {
+    run(&c, words)
+  }
+  var out: List<String> = []
+  for row in c.cells {
+    append(&out, trim_end(join(row, "")))
+  }
+  Ok(out)
+}
+
+fn update(m: Msg) -> List<Effect<Msg>> {
+  match m {
+    Start(path) => [ReadFile(path, then: Loaded, or: Failed)]
+    Loaded(text) => {
+      match draw(text) {
+        Ok(out) => {
+          var effects: List<Effect<Msg>> = []
+          for line in out {
+            append(&effects, Print(line))
+          }
+          append(&effects, Exit)
+          effects
+        }
+        Err(why) => [Print(why), ExitWith(20)]
+      }
+    }
+    Failed(why) => [Print("error: cannot read file: {why}"), ExitWith(20)]
+  }
+}
+
+app canvas {
+  start: Start
+  update: update
+  grants: [Console, ReadFiles]
+}
