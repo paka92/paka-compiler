@@ -59,7 +59,8 @@ dog.
 
 `W` is valid when it is made only of the digits `0` to `9` (at least one digit) and its value is
 from 1 to 100. Leading zeros are allowed: `007` means 7. Anything else, such as `0`, `-5`, `+5`,
-`101`, `2x` or an empty argument, is invalid.
+`101`, `2x` or an empty argument, is invalid. `W` is checked first; when it is invalid the file
+is not read.
 
 When `W` is invalid, print exactly this line, ending with a line feed, and nothing else, and exit
 with status 20:

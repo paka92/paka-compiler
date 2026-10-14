@@ -15,7 +15,7 @@ no lines. Lines are numbered from 1, blank lines included. Columns are numbered 
 character of a line is in column 1.
 
 No number written in the file, no variable and no value worked out along the way is less than
--9007199254740991 or greater than 9007199254740991.
+-9007199254740991 or greater than 9007199254740991. Brackets and unary `-` nest at most 100 deep.
 
 ## Tokens
 

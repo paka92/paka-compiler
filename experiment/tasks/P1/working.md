@@ -65,16 +65,16 @@ Prints 14, 3, 4, -5.
 
 ## hidden/7 (`signs.txt`)
 
-1. `-7 / 2` = -3.5, toward zero -3.
-2. `7 / -2` = -3.5, toward zero -3 (unary minus after `/` is allowed: `term = unary {op unary}`).
-3. `-7 % 2`: -7 - (-3 * 2) = -7 + 6 = -1.
-4. `7 % -2`: 7 - (-3 * -2) = 7 - 6 = 1.
+1. `-9 / 4` = -2.25, toward zero -2.
+2. `9 / -4` = -2.25, toward zero -2 (unary minus after `/` is allowed: `term = unary {op unary}`).
+3. `-9 % 4`: -9 - (-2 * 4) = -9 + 8 = -1.
+4. `9 % -4`: 9 - (-2 * -4) = 9 - 8 = 1.
 5. `--5 - 005`: -(-5) = 5, minus 5 = 0.
 6. `(((4)))*-1` = 4 * (-1) = -4.
 7. `4503599627370495 * 2 + 1`: 4503599627370495 * 2 = 9007199254740990, + 1 = 9007199254740991,
    the largest value allowed; nothing on the way is larger.
 
-Prints -3, -3, -1, 1, 0, -4, 9007199254740991; status 0.
+Prints -2, -2, -1, 1, 0, -4, 9007199254740991; status 0.
 
 ## hidden/8 (`empty.txt`)
 

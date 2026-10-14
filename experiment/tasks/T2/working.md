@@ -56,22 +56,23 @@ fields: `error: line 2: bad quote`.
 
 | column | values | kind | total | width |
 |---|---|---|---|---|
-| code | 007, -0, 12 (quoted) | number | 7 + 0 + 12 = 19 | max(4, 3, 2, 2, 2) = 4 |
-| amount | -5, 10, -20 | number | -15 | max(6, 2, 2, 3, 3) = 6 |
-| plus | 1, +5, 2 | text (`+5`) | | max(4, 1, 2, 1) = 4 |
-| exp | 1e3, 2, 3 | text (`1e3`) | | max(3, 3, 1, 1) = 3 |
-| big | 1, 2, 1234567890123 | text (13 digits) | | max(3, 1, 1, 13) = 13 |
-| gap | 4, empty, 6 | text (empty) | | max(3, 1, 0, 1) = 3 |
+| code | 0042, -00, 12 | number | 42 + 0 + 12 = 54 | max(4, 4, 3, 2, 2) = 4 |
+| amount | -5, 10, -20 (quoted) | number | -5 + 10 - 20 = -15 | max(6, 2, 2, 3, 3) = 6 |
+| plus | 1, +7, 2 | text (`+7`) | | max(4, 1, 2, 1) = 4 |
+| exp | 2e5, 2, 3 | text (`2e5`) | | max(3, 3, 1, 1) = 3 |
+| big | 1, 2, 12345678901234 | text (14 digits) | | max(3, 1, 1, 14) = 14 |
+| gap | 4, 0x5, 6 | text (`0x5`) | | max(3, 1, 3, 1) = 3 |
 
 The first column is a number column, so no `total` word; the other text columns are empty on the
-total line. Values are printed as read: `007` and `-0` stay as written. Rule: 4, 6, 4, 3, 13, 3
-dashes joined by `-+-` = `-----+--------+------+-----+---------------+----`.
+total line. Values are printed as read: `0042` and `-00` stay as written, `"-20"` loses its quotes.
+Rule: 4, 6, 4, 3, 14, 3 dashes joined by `-+-` = `-----+--------+------+-----+----------------+----`.
+Check: every full line is 4 + 6 + 4 + 3 + 14 + 3 + 5 * 3 = 49 characters long.
 
-- Header: `code | amount | plus | exp | big           | gap` (`big` + 10 spaces).
-- ` 007 |     -5 | 1    | 1e3 | 1             | 4`
-- `  -0 |     10 | +5   | 2   | 2             |` (gap empty, end spaces removed)
-- `  12 |    -20 | 2    | 3   | 1234567890123 | 6`
-- Rule, then `  19 |    -15 |      |     |               |`.
+- Header: `code | amount | plus | exp | big            | gap` (`big` + 11 spaces).
+- `0042 |     -5 | 1    | 2e5 | 1              | 4`
+- ` -00 |     10 | +7   | 2   | 2              | 0x5`
+- `  12 |    -20 | 2    | 3   | 12345678901234 | 6`
+- Rule, then `  54 |    -15 |      |     |                |` (end spaces removed).
 
 ## hidden/7 (`head.csv`)
 

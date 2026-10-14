@@ -12,7 +12,7 @@ can be read.
 
 The input file holds only the characters with codes 32 to 126 and the line feed (code 10). It is a
 sequence of lines: each line ends at a line feed, and the last line may lack one. An empty file has
-no lines. Lines are numbered from 1.
+no lines. Lines are numbered from 1. The file has at most 200 lines.
 
 Every line is one row, and an empty line is a row too. The first row is the header; every later row
 is a data row. A row is split into fields at commas, read from left to right:

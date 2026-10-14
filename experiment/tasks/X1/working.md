@@ -23,23 +23,24 @@ Empty file, no word: `no words`, status 0.
 
 `123 456 -- !!!` and `... ,` hold no letter: `no words`, status 0.
 
-## hidden/3 (`text.txt 0`)
+## hidden/3 (`empty.txt 000`)
 
-`0` is digits only but below 1: `error: bad count`, status 20.
+`000` is digits only, value 0, below 1. N is checked before the file, so the error wins over
+`no words`: `error: bad count`, status 20.
 
-## hidden/4 (`text.txt +3`)
+## hidden/4 (`text.txt` and ` 3`)
 
-`+` is not a digit: `error: bad count`, status 20.
+The argument starts with a space, which is not a digit: `error: bad count`, status 20.
 
-## hidden/5 (`text.txt 1001`)
+## hidden/5 (`text.txt 01001`)
 
-Digits only, value above 1000: `error: bad count`, status 20.
+Digits only, leading zero dropped, value 1001, above 1000: `error: bad count`, status 20.
 
 ## hidden/6 (`split.txt 002`)
 
-`002` is valid, N = 2. Line 1 `don't stop2stop DON'T`: don, t, stop, stop, don, t (the apostrophe and
-the `2` separate). Line 2 `it's`: it, s. Counts: don 2, stop 2, t 2, it 1, s 1. The 2s in ASCII
-order: don, stop, t. First 2: `2 don`, `2 stop`. Check: 8 words, 2 + 2 + 2 + 1 + 1 = 8.
+`002` is valid, N = 2. Line 1 `can't stop2stop CAN'T`: can, t, stop, stop, can, t (the apostrophe and
+the `2` separate). Line 2 `it's`: it, s. Counts: can 2, stop 2, t 2, it 1, s 1. The 2s in ASCII
+order: can, stop, t. First 2: `2 can`, `2 stop`. Check: 8 words, 2 + 2 + 2 + 1 + 1 = 8.
 
 ## hidden/7 (`greek.txt 1000`)
 

@@ -35,13 +35,14 @@ words 5, into 4, lines 5, that 4, fit 3, thirty 6, columns 7, exactly, 8, please
   4 3 3: `that    fit   thirty   columns` = 4+4+3+3+6+3+7 = 30.
 - Last line `exactly, please.` (8 + 1 + 7 = 16).
 
-## hidden/1 (`text.txt 0`)
+## hidden/1 (`empty.txt 00`)
 
-`0` is below 1: `error: bad width`, status 20.
+`00` is digits only, value 0, below 1. W is checked before the file, so the error wins over the
+empty output: `error: bad width`, status 20.
 
-## hidden/2 (`text.txt 101`)
+## hidden/2 (`text.txt 0101`)
 
-`101` is above 100: `error: bad width`, status 20.
+Digits only, leading zero dropped, value 101, above 100: `error: bad width`, status 20.
 
 ## hidden/3 (`empty.txt 10`)
 
@@ -78,9 +79,9 @@ I 1, am 2, a 1, fan 3, of 2, long 4, lines 5, of 2, text 4.
   `long   lines  of` = 4+3+5+2+2 = 16.
 - Last line `text`.
 
-## hidden/8 (`exact.txt 007`)
+## hidden/8 (`exact.txt 07`)
 
-`007` is valid, W = 7. abc 3, defg 4, hi 2, jklmnop 7 (exactly W, not cut), q 1.
+`07` is valid, W = 7. abc 3, defg 4, hi 2, jklmnop 7 (exactly W, not cut), q 1.
 
 - `abc` + `defg` = 8 > 7: `abc` alone, a single word on a non-last line, printed with no padding.
 - `defg hi` = 7 exactly; adding jklmnop gives 15. L = 6, S = 1, g = 1: `defg hi`.
