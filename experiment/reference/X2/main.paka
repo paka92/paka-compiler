@@ -1,0 +1,65 @@
+enum Msg {
+  Start(first: String, second: String, output: String),
+  FirstLoaded(text: String),
+  SecondLoaded(text: String),
+  FirstFailed(why: String),
+  SecondFailed(why: String),
+  Wrote,
+  WriteFailed(why: String)
+}
+
+type Join {
+  first: String = "",
+  second: String = "",
+  output: String = "",
+  rows: List<String> = []
+}
+
+fn numbered(rows: List<String>) -> String {
+  let width = len("{len(rows)}")
+  var out = ""
+  for i in 0..<len(rows) {
+    out += pad_left("{i + 1}", width) + " |"
+    if !is_empty(rows[i]) { out += " " + rows[i] }
+    out += "\n"
+  }
+  out
+}
+
+fn fail(why: String) -> List<Effect<Msg>> {
+  [Print(why), ExitWith(20)]
+}
+
+fn update(s: inout Join, m: Msg) -> List<Effect<Msg>> {
+  match m {
+    Start(first, second, output) => {
+      s.first = first
+      s.second = second
+      s.output = output
+      [ReadFile(first, then: FirstLoaded, or: FirstFailed)]
+    }
+    FirstLoaded(text) => {
+      s.rows = lines(text)
+      [ReadFile(s.second, then: SecondLoaded, or: SecondFailed)]
+    }
+    SecondLoaded(text) => {
+      extend(&s.rows, lines(text))
+      [WriteFile(s.output, numbered(s.rows), then: Wrote, or: WriteFailed)]
+    }
+    FirstFailed(_) => fail("error: cannot read {s.first}")
+    SecondFailed(_) => fail("error: cannot read {s.second}")
+    Wrote => {
+      let k = len(s.rows)
+      let word = if k == 1 { "line" } else { "lines" }
+      [Print("wrote {k} {word} to {s.output}"), Exit]
+    }
+    WriteFailed(_) => fail("error: cannot write {s.output}")
+  }
+}
+
+app numbered_join {
+  state: Join
+  start: Start
+  update: update
+  grants: [Console, ReadFiles, WriteFiles]
+}
