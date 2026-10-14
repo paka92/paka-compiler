@@ -9,6 +9,8 @@ mod build;
 #[allow(dead_code)]
 mod builtins;
 mod check;
+// The core form; lowering builds the part M1 uses, the rest waits for M2-25.
+#[allow(dead_code)]
 mod core_form;
 mod diagnostic;
 mod interp;
@@ -95,7 +97,10 @@ fn front_end(path: &str, source: &[u8]) -> Result<M1, Diagnostic> {
     let program = parser::parse(path, source)?;
     let checked = check::check(path, &program)?;
     let core = lower::lower(path, &program, &checked);
-    Ok(lower::m1(&core).expect("the M1 checker passes only what the M1 back ends run"))
+    lower::m1(&core).ok_or_else(|| {
+        let message = "the back end runs only the milestone 1 subset";
+        Diagnostic::tool(path, "unsupported-form", message)
+    })
 }
 
 /// Reports a diagnostic, which starts with the shown path, with the file argument's own bytes there.

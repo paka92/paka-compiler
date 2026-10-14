@@ -39,7 +39,6 @@ impl Program {
 }
 
 #[derive(Debug, PartialEq)]
-#[allow(dead_code)] // M2-25 lowers the rest.
 pub enum Type {
     Int,
     Float,
@@ -86,6 +85,9 @@ pub struct Fn {
     pub name: String,
     pub site: Site,
     pub params: Vec<Param>,
+    /// The type of every local: the parameters first, then each binding in numbering order,
+    /// including the ones lowering adds.
+    pub locals: Vec<Ty>,
     pub result: Option<Ty>,
     pub body: Block,
 }
@@ -116,7 +118,6 @@ pub enum Grant {
 
 /// The variants of `Effect<M>`, in declared order.
 #[derive(Debug, PartialEq)]
-#[allow(dead_code)] // M2-25 lowers the rest.
 pub enum Effect {
     Print,
     ReadFile,
@@ -141,11 +142,10 @@ pub struct Block {
 }
 
 #[derive(Debug, PartialEq)]
-#[allow(dead_code)] // M2-25 lowers these.
 pub enum Stmt {
     Let(Local, Expr),
     /// `place = e`, or `place op= e` with the operator.
-    Assign(Place, Option<Bin>, Expr),
+    Assign(Place, Option<Compound>, Expr),
     Return(Option<Expr>),
     Break,
     Continue,
@@ -155,7 +155,6 @@ pub enum Stmt {
 }
 
 #[derive(Debug, PartialEq)]
-#[allow(dead_code)] // M2-25 lowers these.
 pub enum Walk {
     List(Expr),
     /// `a..<b`
@@ -170,7 +169,6 @@ pub struct Expr {
 }
 
 #[derive(Debug, PartialEq)]
-#[allow(dead_code)] // M2-25 lowers the rest.
 pub enum ExprKind {
     Int(Int),
     Float(Float),
@@ -194,7 +192,7 @@ pub enum ExprKind {
     Match(Box<Expr>, Vec<Arm>),
 }
 
-/// Writes and `inout` need a `Local` root.
+/// A write or an `inout` argument is rooted at a `Local`; `Root::Value` never appears in one.
 #[derive(Debug, PartialEq)]
 pub struct Place {
     pub root: Root,
@@ -202,7 +200,6 @@ pub struct Place {
 }
 
 #[derive(Debug, PartialEq)]
-#[allow(dead_code)] // M2-25 lowers these.
 pub enum Root {
     Local(Local),
     Value(Box<Expr>),
@@ -210,7 +207,6 @@ pub enum Root {
 
 /// Each site is the step's `[`.
 #[derive(Debug, PartialEq)]
-#[allow(dead_code)] // M2-25 lowers these.
 pub enum Step {
     Field(usize),
     Item(Expr, Site),
@@ -220,7 +216,6 @@ pub enum Step {
 
 /// A variant of a user enum, `Option`, `Result` or `Effect`.
 #[derive(Debug, PartialEq)]
-#[allow(dead_code)] // M2-25 lowers the rest.
 pub enum Tag {
     User(EnumId, usize),
     Some,
@@ -231,23 +226,20 @@ pub enum Tag {
 }
 
 #[derive(Debug, PartialEq)]
-#[allow(dead_code)] // M2-25 lowers these.
 pub enum FnRef {
     Fn(FnId),
     Variant(EnumId, usize),
 }
 
 #[derive(Debug, PartialEq)]
-#[allow(dead_code)] // M2-25 lowers these.
 pub enum Callee {
     Fn(FnId),
-    /// The row of paka/src/builtins.rs.
-    Builtin(&'static str),
+    /// An index into `builtins::ROWS`, chosen once by the checker.
+    Builtin(usize),
     Value(Box<Expr>),
 }
 
 #[derive(Debug, PartialEq)]
-#[allow(dead_code)] // M2-25 lowers these.
 pub enum Arg {
     Value(Expr),
     Inout(Place),
@@ -262,7 +254,6 @@ pub struct Arm {
 }
 
 #[derive(Debug, PartialEq)]
-#[allow(dead_code)] // M2-25 lowers these.
 pub enum Un {
     Neg(Site),
     NegFloat,
@@ -271,10 +262,9 @@ pub enum Un {
 
 /// The site, where an operator has one, is the operator.
 #[derive(Debug, PartialEq)]
-#[allow(dead_code)] // M2-25 lowers these.
 pub enum Bin {
     Int(Arith, Site),
-    Float(Arith),
+    Float(FloatArith),
     Join(Site),
     Eq(Site),
     Ne(Site),
@@ -284,7 +274,6 @@ pub enum Bin {
 }
 
 #[derive(Debug, PartialEq)]
-#[allow(dead_code)] // M2-25 lowers these.
 pub enum Arith {
     Add,
     Sub,
@@ -294,7 +283,22 @@ pub enum Arith {
 }
 
 #[derive(Debug, PartialEq)]
-#[allow(dead_code)] // M2-25 lowers these.
+pub enum FloatArith {
+    Add,
+    Sub,
+    Mul,
+    Div,
+}
+
+/// The operators `op=` allows: Int `+ - * / %`, Float `+ - * /`, String `+`.
+#[derive(Debug, PartialEq)]
+pub enum Compound {
+    Int(Arith, Site),
+    Float(FloatArith),
+    Join(Site),
+}
+
+#[derive(Debug, PartialEq)]
 pub enum Cmp {
     Lt,
     Le,

@@ -1,4 +1,5 @@
-//! The LLVM IR text emitter for the M1 view of the core form, written to docs/abi/m1.md sections 3, 4 and 11.
+//! The LLVM IR text emitter for the M1 view of the core form, written to docs/abi/m1.md
+//! sections 3, 4 and 11.
 
 use crate::lower::{Effect, M1};
 

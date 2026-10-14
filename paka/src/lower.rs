@@ -85,7 +85,8 @@ fn function(
         ty: ty(core, &p.ty),
         inout: p.inout,
     });
-    let params = params.collect();
+    let params: Vec<Param> = params.collect();
+    let locals = params.iter().map(|p| p.ty).collect();
     let result = ty(core, result.expect("an M1 function has a result"));
     let [ast::Node { kind, .. }] = body.stmts.as_slice() else {
         unreachable!("an M1 body is one statement");
@@ -98,6 +99,7 @@ fn function(
         name: name.text.into(),
         site,
         params,
+        locals,
         result: Some(result),
         body: Block {
             stmts: vec![],
@@ -150,8 +152,11 @@ fn expr(core: &mut Program, e: &ast::Expr, want: Ty) -> Expr {
 /// The variant `name` of the enum or effect type `want`.
 fn tag(core: &Program, name: &str, want: Ty) -> Tag {
     match core.types[want] {
-        Type::Effect(_) if name == "Print" => Tag::Effect(core_form::Effect::Print),
-        Type::Effect(_) => Tag::Effect(core_form::Effect::Exit),
+        Type::Effect(_) => match name {
+            "Print" => Tag::Effect(core_form::Effect::Print),
+            "Exit" => Tag::Effect(core_form::Effect::Exit),
+            _ => unreachable!("the M1 checker knows no other effect"),
+        },
         Type::Enum(e) => Tag::User(e, variant_id(&core.enums[e], name)),
         _ => unreachable!("M1 variants are of an enum or an effect"),
     }
@@ -159,9 +164,9 @@ fn tag(core: &Program, name: &str, want: Ty) -> Tag {
 
 /// The text of a string without interpolations, which is all the M1 checker accepts.
 fn text(parts: &[StrPart]) -> String {
-    let texts = parts.iter().filter_map(|p| match p {
-        StrPart::Text(t) => Some(t.as_str()),
-        StrPart::Expr(_) => None,
+    let texts = parts.iter().map(|p| match p {
+        StrPart::Text(t) => t.as_str(),
+        StrPart::Expr(_) => unreachable!("the M1 checker refuses interpolation"),
     });
     texts.collect()
 }
@@ -282,6 +287,7 @@ mod tests {
                 ty: 0,
                 inout: false,
             }],
+            locals: vec![0],
             result: Some(2),
             body: Block {
                 stmts: vec![],
