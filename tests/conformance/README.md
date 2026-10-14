@@ -63,8 +63,9 @@ The case folder is the working directory, so every diagnostic path is `main.paka
   `: ` and at least one more byte (spec/m1.md §11).
 - Reject case with `command`: the same, with that command; the status is 1. A reject line with no
   position is matched as a prefix of the first line of standard error, and the line may end there.
-  With `check`, the line may be followed by the field lines of spec/paka.md §12, each starting with
-  two spaces.
+  Standard error is still that one line, except that with `check` it may be followed by the field
+  lines of spec/paka.md §12, each of the form `  NAME: value`: two spaces, a lowercase field name,
+  `: ` and the value.
 - Case with `command` that is not a reject: standard output equals `stdout`, standard error equals
   `stderr` (empty when absent), the status equals `status`. An empty `stdout` file means empty.
 - `files/`, `after/`, `absent` and `present` are checked as the format says, on top of the above.
@@ -635,7 +636,7 @@ line, then a line feed. Its keys:
 | `text` | the offending text, exactly as the source holds it |
 | `expected`, `found` | the two types of a kind that carries types (only `type-mismatch`) |
 | `fix` | `null`, or `{"start","end","replacement"}`; `start` and `end` are the byte offsets of the offending text. Written only for the kinds that carry a fix (`unknown-type`, `unknown-name`, `unknown-grant`) |
-| `via` | `run` or `build`, only for a kind that has no position and is raised by that command |
+| `via` | `run` or `build`, only for a kind that is raised by that command and not by `paka check` |
 
 ### Pass rule
 
@@ -649,6 +650,10 @@ The case folder is the working directory.
 - `via: run`: `paka run main.paka` exits with status 1, and the first line of standard error starts
   with `main.paka: error[KIND]: `.
 - `via: build`: the same with `paka build main.paka -o out`.
+- `via` with `line`, `column` and `text`: the first line of standard error starts with
+  `main.paka:LINE:COL: error[KIND]: ` instead, and the source of `main.paka` at that line and
+  column starts with `text`. Only the first line is compared; a kind that prints one line per
+  position (`hole-in-build`) has its other lines unpinned.
 
 ### Cases
 
@@ -692,6 +697,7 @@ construct (the target `c.shape.w`, the operand or write `&xs`).
 | `unknown-grant` | `unknown_grant` | 10:12, fix | spec/m1.md §10; `tests/errors/unknown_grant` |
 | `unknown-grant` | `unknown_grant_no_fix` | 10:12, no fix | spec/m1.md §10; `tests/errors/unknown_grant` |
 | `duplicate-grant` | `duplicate_grant` | 10:21 | spec/m1.md §10 |
+| `hole-in-build` | `hole_in_build` | via `build`, 4:19 | spec/m1.md §10; M2-06 §1.5 |
 | `no-finite-value` | `no_finite_value` | 3:6 | M2-05 §5; `ownership/finite_record_holds_itself` |
 | `unused-result` | `unused_result` | 4:3 | M2-02 §5; `tests/cases/check-text/unused_result_call` |
 | `nothing-to-discard` | `nothing_to_discard` | 5:3 | M2-02 §5 |
@@ -706,7 +712,7 @@ construct (the target `c.shape.w`, the operand or write `&xs`).
 | `wrong-label` | `wrong_label` | 4:10 | M2-02 §5; `tests/cases/check-text/fn_value_labelled_call` |
 | `not-a-function` | `not_a_function` | 5:11 | M2-02 §5; `tests/cases/check-text/not_a_function_int` |
 | `missing-inout-mark` | `missing_inout_mark` | 5:10 | M2-05 §5; `ownership/mark_missing` |
-| `bad-inout-target` | `bad_inout_target` | 5:11 | M2-05 §5; `ownership/mark_on_let` |
+| `bad-inout-target` | `bad_inout_target` | 5:11, the `a` of `&a[0]` | M2-05 §5; `ownership/mark_on_let` |
 | `inout-overlap` | `inout_overlap` | 11:19* | M2-05 §5; `ownership/overlap_same_place_twice` |
 | `changed-while-read` | `changed_while_read` | 11:14 | M2-05 §5; `ownership/read_operator_operand` |
 | `changed-while-walked` | `changed_while_walked` | 5:24* | M2-05 §5; `ownership/walk_append_to_walked` |
@@ -724,7 +730,6 @@ Not in the table, since a program cannot reach them in a file:
 | `clang-missing` | needs a machine without `clang`; tested out of the folder (spec/m1.md §13) |
 | `clang-failed` | needs a failing `clang` run (spec/m1.md §13) |
 | `runtime-missing` | needs `libpaka_rt.a` removed from the executable's folder (spec/m1.md §13) |
-| `hole-in-build` | has a position, and `via: build` pins none; held by `apps/hole_build_*` until a positioned build format is written |
 
 `unused-name` is a warning and has no kind. `unsupported-form` is temporary (spec/m1.md §10): drop
 its case when the back end builds the core form.
@@ -909,6 +914,7 @@ record named in each row holds the line.
 | An empty `match` is `unexpected-token` at the `}` (`match_empty`) | M2-02 §1.9 |
 | A comparison chain is `unexpected-token` at the second comparison operator (`compare_chain`) | spec/paka.md, M2-02 §2 |
 | A single-line arm with no value is `missing-value` at its pattern (`types/match_single_line_arm_no_value`) | M2-02 §5 |
+| The fixed counter sample also fixes `first_of_none`: its List becomes `[0]`, so all four examples pass (R2) | M2-06 §6 |
 | The 256-byte cut of a trap detail has no marker, the cut is on the detail text, and the two-space indent is added after it (R3) | M2-06 §1.2 |
 | Several `note[hole]` blocks follow each other with no blank line (R4) | M2-06 §7 |
 | An example that traps directly prints `  in example NAME`, not `called from` (R6) | M2-06 §1.2, §6 |

@@ -37,9 +37,6 @@ const ENVIRONMENT: &[&str] = &[
     "clang-failed",
     "runtime-missing",
 ];
-/// Kinds the `errors/` format cannot hold yet: `via: build` has no position, and this one has.
-/// Its cases are in `apps/` (`hole_build_*`).
-const UNWRITTEN: &[&str] = &["hole-in-build"];
 
 fn read(dir: &Path, name: &str) -> Option<Vec<u8>> {
     fs::read(dir.join(name)).ok()
@@ -141,7 +138,7 @@ fn trap_line(got: &str, app: &str, kind: &str) -> bool {
             .all(|n| !n.is_empty() && n.bytes().all(|b| b.is_ascii_digit()))
 }
 
-/// `paka check` follows the line with its field lines, two spaces in (spec/paka.md §12).
+/// Exactly one line, which `paka check` may follow with field lines (spec/paka.md §12).
 fn reject(out: &Output, line: &[u8], check: bool) -> Result<(), String> {
     let want = text(line);
     let want = want
@@ -150,13 +147,14 @@ fn reject(out: &Output, line: &[u8], check: bool) -> Result<(), String> {
     let got = text(&out.stderr);
     let mut lines = got.split_inclusive('\n');
     let first = lines.next().unwrap_or_default();
-    let pass = if want.starts_with("main.paka: ") {
-        first.starts_with(want)
-    } else {
-        let fields = lines.all(|l| check && l.starts_with("  ") && l.ends_with('\n'));
-        let rest = first.strip_prefix(want).and_then(|r| r.strip_suffix('\n'));
-        fields && rest.is_some_and(|r| r.len() > 2 && r.starts_with(": "))
-    };
+    let fields = lines.all(|l| check && field_line(l));
+    let pass = fields
+        && if want.starts_with("main.paka: ") {
+            first.starts_with(want) && first.ends_with('\n')
+        } else {
+            let rest = first.strip_prefix(want).and_then(|r| r.strip_suffix('\n'));
+            rest.is_some_and(|r| r.len() > 2 && r.starts_with(": "))
+        };
     if out.status.code() != Some(1) || !out.stdout.is_empty() || !pass {
         return Err(format!(
             "status {:?}, stderr {got:?}, want {want}",
@@ -164,6 +162,15 @@ fn reject(out: &Output, line: &[u8], check: bool) -> Result<(), String> {
         ));
     }
     Ok(())
+}
+
+/// `  NAME: value` and a line feed (spec/paka.md §12).
+fn field_line(line: &str) -> bool {
+    let field = line.strip_prefix("  ").and_then(|l| l.strip_suffix('\n'));
+    let Some((name, value)) = field.and_then(|f| f.split_once(": ")) else {
+        return false;
+    };
+    !name.is_empty() && name.bytes().all(|b| b.is_ascii_lowercase()) && !value.is_empty()
 }
 
 fn outcome(case: &Path, run: &Path, out: &Output) -> Result<(), String> {
@@ -246,27 +253,25 @@ fn error_case(run: &Path, expect: &[u8]) -> Result<(), String> {
         Some(Json::String(kind)) => kind.clone(),
         _ => return Err("expect.json has no kind".into()),
     };
-    let via = |args: &[&str]| -> Result<(), String> {
-        let out = paka(run, args);
-        status_is(&out, 1)?;
-        let first = text(&out.stderr)
-            .lines()
-            .next()
-            .unwrap_or_default()
-            .to_string();
-        match first.starts_with(&format!("main.paka: error[{kind}]: ")) {
-            true => Ok(()),
-            false => Err(format!("first stderr line {first:?}")),
-        }
-    };
-    match want.get("via") {
-        Some(Json::String(v)) if v == "run" => return via(&["run", "main.paka"]),
+    let args: &[&str] = match want.get("via") {
+        Some(Json::String(v)) if v == "run" => &["run", "main.paka"],
         Some(Json::String(v)) if v == "build" => {
             build_runtime();
-            return via(&["build", "main.paka", "-o", "out"]);
+            &["build", "main.paka", "-o", "out"]
         }
         Some(v) => return Err(format!("via {v:?}")),
-        None => {}
+        None => &[],
+    };
+    if !args.is_empty() {
+        let out = paka(run, args);
+        status_is(&out, 1)?;
+        let prefix = via_prefix(run, &want, &kind)?;
+        let got = text(&out.stderr);
+        let first = got.lines().next().unwrap_or_default();
+        return match first.starts_with(&prefix) {
+            true => Ok(()),
+            false => Err(format!("first stderr line {first:?}, want {prefix:?}")),
+        };
     }
     let out = paka(run, &["check", "main.paka", "--json"]);
     status_is(&out, 1)?;
@@ -280,6 +285,34 @@ fn error_case(run: &Path, expect: &[u8]) -> Result<(), String> {
         }
     }
     Ok(())
+}
+
+/// The start of a `via` case's first line: positioned when `expect.json` gives `line`, `column`
+/// and `text`, and then the source must hold `text` there.
+fn via_prefix(run: &Path, want: &BTreeMap<String, Json>, kind: &str) -> Result<String, String> {
+    let at = ["line", "column", "text"].map(|k| want.get(k));
+    let [
+        Some(Json::Number(line)),
+        Some(Json::Number(col)),
+        Some(Json::String(t)),
+    ] = at
+    else {
+        return match at {
+            [None, None, None] => Ok(format!("main.paka: error[{kind}]: ")),
+            _ => Err("via takes line, column and text together or none of them".into()),
+        };
+    };
+    let (line, col) = (*line as usize, *col as usize);
+    let source = text(&read(run, "main.paka").unwrap_or_default());
+    let source_line = source.lines().nth(line - 1).unwrap_or_default().as_bytes();
+    if !source_line
+        .get(col - 1..)
+        .unwrap_or_default()
+        .starts_with(t.as_bytes())
+    {
+        return Err(format!("main.paka has no {t:?} at {line}:{col}"));
+    }
+    Ok(format!("main.paka:{line}:{col}: error[{kind}]: "))
 }
 
 fn paka(dir: &Path, args: &[&str]) -> Output {
@@ -370,12 +403,9 @@ fn every_error_kind_has_a_case() {
     let missing: Vec<_> = kinds
         .iter()
         .filter(|k| !covered.contains(*k) && !ENVIRONMENT.contains(&k.as_str()))
-        .filter(|k| !UNWRITTEN.contains(&k.as_str()))
         .collect();
     let unknown: Vec<_> = covered.iter().filter(|k| !kinds.contains(k)).collect();
-    let written: Vec<_> = UNWRITTEN.iter().filter(|k| covered.contains(**k)).collect();
     assert!(missing.is_empty(), "kinds without a case: {missing:?}");
-    assert!(written.is_empty(), "drop from UNWRITTEN: {written:?}");
     assert!(unknown.is_empty(), "cases of no kind: {unknown:?}");
 }
 
@@ -536,6 +566,16 @@ mod self_test {
         assert_eq!(map["d"], Json::Bool(true));
         assert!(Json::parse("{} {}").is_err());
         assert!(Json::parse("nul").is_err());
+    }
+
+    #[test]
+    fn field_lines_name_a_field() {
+        assert!(field_line("  text: \"&xs\"\n"));
+        assert!(!field_line("  text:\n"));
+        assert!(!field_line("   text: x\n"));
+        assert!(!field_line("  Text: x\n"));
+        assert!(!field_line("  text: x"));
+        assert!(!field_line("main.paka: error[no-app]: x\n"));
     }
 
     #[test]

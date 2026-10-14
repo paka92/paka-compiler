@@ -1,8 +1,8 @@
 enum Msg { Start }
 
 fn update(msg: Msg) -> List<Effect<Msg>> {
-  let a = [1]
-  append(&a, 2)
+  let a = [[1]]
+  append(&a[0], 2)
   [Print("done"), Exit]
 }
 
