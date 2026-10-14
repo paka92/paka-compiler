@@ -333,15 +333,24 @@ mod tests {
     #[test]
     fn m1_refuses_what_its_back_ends_cannot_run() {
         let mut state = light();
-        let empty = Expr {
-            ty: None,
+        state.records.push(core_form::Record {
+            name: "State".into(),
+            fields: vec![],
+        });
+        let ty = state.ty(Type::Record(0));
+        let literal = Expr {
+            ty: Some(ty),
             kind: ExprKind::Record(0, vec![]),
         };
-        state.app.as_mut().unwrap().state = Some(empty);
+        state.app.as_mut().unwrap().state = Some(literal);
         let mut grant = light();
         grant.app.as_mut().unwrap().grants.insert(Grant::ReadFiles);
         let mut statement = light();
-        statement.fns[0].body.stmts.push(Stmt::Break);
+        let text = Expr {
+            ty: Some(3),
+            kind: ExprKind::Str("unused".into()),
+        };
+        statement.fns[0].body.stmts.push(Stmt::Expr(text));
         let mut computed = light();
         let hole = Expr {
             ty: Some(2),

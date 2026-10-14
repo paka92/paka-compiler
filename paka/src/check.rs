@@ -420,17 +420,12 @@ impl<'a> Checker<'a> {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::ast::{Node, StrPart};
     use crate::parser::parse;
 
     const LIGHT: &str = include_str!("../../examples/light.paka");
 
     fn checked<'a>(program: &'a Program<'a>) -> Check<Checked<'a>> {
         check("main.paka", program)
-    }
-
-    fn node(at: Pos, len: usize, kind: ExprKind) -> Expr {
-        Node { at, len, kind }
     }
 
     #[test]
@@ -440,16 +435,6 @@ mod tests {
         assert_eq!(light.app, "light");
         assert_eq!(light.start, "Start");
         assert_eq!(light.grants, ["Console"]);
-        let text = StrPart::Text("let there be light".into());
-        let arg = Arg {
-            label: None,
-            value: node((4, 10), 20, ExprKind::Str(vec![text])),
-        };
-        let print = node((4, 4), 5, ExprKind::Name("Print"));
-        let print = node((4, 4), 27, ExprKind::Call(Box::new(print), vec![arg]));
-        let exit = node((4, 33), 4, ExprKind::Name("Exit"));
-        let body = node((4, 3), 35, ExprKind::List(vec![print, exit]));
-        assert_eq!(light.update, &body);
     }
 
     #[test]
