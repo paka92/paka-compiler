@@ -14,6 +14,7 @@ use crate::ast::{
 };
 use crate::diagnostic::Diagnostic;
 use crate::resolve::Binding;
+use crate::sig::Node;
 use std::cell::OnceCell;
 use std::collections::BTreeMap;
 
@@ -255,10 +256,13 @@ impl Cx<'_, '_> {
         }
     }
 
-    /// A read of a place, unless its type is Int, Float or Bool (a fresh value) or unknown.
+    /// A read of a place, unless its type is Int, Float, Bool or a function type (a fresh value) or
+    /// unknown.
     fn read<'x>(&self, e: &'x Expr<'x>) -> Option<Place<'x>> {
         let &ty = self.info.get(&span(e))?;
-        let fresh = self.is_var(ty) || ["Int", "Float", "Bool"].iter().any(|n| self.is(ty, n));
+        let fresh = self.is_var(ty)
+            || matches!(self.types.node(ty), Node::Fn(..))
+            || ["Int", "Float", "Bool"].iter().any(|n| self.is(ty, n));
         if fresh { None } else { self.rooted(e) }
     }
 
