@@ -976,7 +976,7 @@ fn rejects_records_by_label_and_type() {
         ),
         st(
             "wrong-label",
-            "\"a\", ^count",
+            "Counter { ^name",
             None,
             &["let c = Counter { name: \"a\", count: 1 }"],
         ),
@@ -1252,7 +1252,7 @@ fn pins_the_message_of_each_text() {
         ),
         (
             "wrong-label",
-            "P { b: 1, ^a",
+            "P { ^b: 1",
             "labels come in declared order",
             full(&[
                 "type P { a: Int, b: Int }",
@@ -1263,7 +1263,7 @@ fn pins_the_message_of_each_text() {
         ),
         (
             "wrong-label",
-            "\"a\", ^count",
+            "Counter { ^name",
             "labels come in declared order",
             unit(&["let c = Counter { name: \"a\", count: 1 }"]),
         ),

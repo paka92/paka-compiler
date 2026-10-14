@@ -144,7 +144,9 @@ fn trap_line(got: &str, app: &str, kind: &str) -> bool {
 /// `paka check` follows the line with its field lines, two spaces in (spec/paka.md §12).
 fn reject(out: &Output, line: &[u8], check: bool) -> Result<(), String> {
     let want = text(line);
-    let want = want.strip_suffix('\n').ok_or("reject lacks its line feed")?;
+    let want = want
+        .strip_suffix('\n')
+        .ok_or("reject lacks its line feed")?;
     let got = text(&out.stderr);
     let mut lines = got.split_inclusive('\n');
     let first = lines.next().unwrap_or_default();
@@ -182,10 +184,17 @@ fn outcome(case: &Path, run: &Path, out: &Output) -> Result<(), String> {
             let kind = kind.strip_suffix('\n').ok_or("trap lacks its line feed")?;
             match trap_line(&text(&out.stderr), &app, kind) {
                 true if code == Some(3) => Ok(()),
-                _ => Err(format!("stderr {:?}, want a {kind} trap", text(&out.stderr))),
+                _ => Err(format!(
+                    "stderr {:?}, want a {kind} trap",
+                    text(&out.stderr)
+                )),
             }
         }
-        None => want_eq("stderr", &out.stderr, &read(case, "stderr").unwrap_or_default()),
+        None => want_eq(
+            "stderr",
+            &out.stderr,
+            &read(case, "stderr").unwrap_or_default(),
+        ),
     }
 }
 
@@ -207,7 +216,11 @@ fn left_behind(case: &Path, run: &Path) -> Result<(), String> {
             }
             let relative = path.strip_prefix(&after).unwrap();
             let got = fs::read(run.join(relative)).map_err(|e| format!("{relative:?}: {e}"))?;
-            want_eq(&format!("after/{}", relative.display()), &got, &fs::read(&path).unwrap())?;
+            want_eq(
+                &format!("after/{}", relative.display()),
+                &got,
+                &fs::read(&path).unwrap(),
+            )?;
         }
     }
     for path in lines(case, "absent") {
@@ -236,7 +249,11 @@ fn error_case(run: &Path, expect: &[u8]) -> Result<(), String> {
     let via = |args: &[&str]| -> Result<(), String> {
         let out = paka(run, args);
         status_is(&out, 1)?;
-        let first = text(&out.stderr).lines().next().unwrap_or_default().to_string();
+        let first = text(&out.stderr)
+            .lines()
+            .next()
+            .unwrap_or_default()
+            .to_string();
         match first.starts_with(&format!("main.paka: error[{kind}]: ")) {
             true => Ok(()),
             false => Err(format!("first stderr line {first:?}")),
@@ -334,7 +351,9 @@ fn kinds() -> Vec<String> {
     let table = source.split("const KINDS").nth(1).unwrap();
     let table = table.split("\n];").next().unwrap();
     let names = table.lines().filter_map(|l| l.trim().strip_prefix("(\""));
-    names.map(|l| l.split('"').next().unwrap().to_string()).collect()
+    names
+        .map(|l| l.split('"').next().unwrap().to_string())
+        .collect()
 }
 
 #[test]
@@ -521,11 +540,31 @@ mod self_test {
 
     #[test]
     fn trap_line_takes_any_position_only() {
-        assert!(trap_line("app: trap stack at main.paka:3:14\n", "app", "stack"));
-        assert!(!trap_line("app: trap stack at main.paka:3:14\nx\n", "app", "stack"));
-        assert!(!trap_line("app: trap memory at main.paka:3:14\n", "app", "stack"));
-        assert!(!trap_line("other: trap stack at main.paka:3:14\n", "app", "stack"));
-        assert!(!trap_line("app: trap stack at main.paka:3:\n", "app", "stack"));
+        assert!(trap_line(
+            "app: trap stack at main.paka:3:14\n",
+            "app",
+            "stack"
+        ));
+        assert!(!trap_line(
+            "app: trap stack at main.paka:3:14\nx\n",
+            "app",
+            "stack"
+        ));
+        assert!(!trap_line(
+            "app: trap memory at main.paka:3:14\n",
+            "app",
+            "stack"
+        ));
+        assert!(!trap_line(
+            "other: trap stack at main.paka:3:14\n",
+            "app",
+            "stack"
+        ));
+        assert!(!trap_line(
+            "app: trap stack at main.paka:3:\n",
+            "app",
+            "stack"
+        ));
     }
 
     #[test]

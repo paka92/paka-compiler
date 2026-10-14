@@ -249,7 +249,7 @@ fn types_a_match_by_its_first_arm_that_has_a_type() {
     ]);
     says(&[(
         "missing-value",
-        "0 => ^t = 1",
+        "^0 => t = 1",
         "this arm must give a value",
         unit(&[
             "let n = 1",

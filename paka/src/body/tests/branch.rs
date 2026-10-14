@@ -455,7 +455,7 @@ fn a_wildcard_on_an_enum_is_never_a_missing_arm() {
 fn an_arm_that_gives_no_value_does_not_name_the_type() {
     says(&[(
         "missing-value",
-        "0 => ^t = 1",
+        "^0 => t = 1",
         "this arm must give a value",
         unit(&[
             "let n = 1",
