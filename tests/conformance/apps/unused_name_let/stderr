@@ -1,0 +1,4 @@
+main.paka:4:7: warning[unused-name]: spare is never used
+  definition: double
+  bytes: 53..58
+  text: "spare"

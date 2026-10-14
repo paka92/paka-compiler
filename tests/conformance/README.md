@@ -639,6 +639,25 @@ full in the folder. `(Rn)` marks a case that follows a reading in the Settled re
 | output printed before a hole is kept | `hole_trap_keeps_output` |
 | a hole takes its type from its place | `hole_type_argument`, `hole_type_later_argument`, `hole_type_let_annotation`, `hole_type_condition`, `hole_type_other_operand`, `hole_type_logic_operand`, `hole_type_range_side`, `hole_type_last_expression`, `hole_type_list_item`, `hole_type_record_field`, `hole_type_return`, `hole_type_assignment`, `hole_type_match_arm` |
 | no place to type it from: `cannot-infer` at the `??` | `hole_cannot_infer_let`, `hole_cannot_infer_len_argument`, `hole_cannot_infer_field_base`, `hole_cannot_infer_negation`, `hole_cannot_infer_interpolation`, `hole_cannot_infer_index_base` |
+| `check --json` prints a hole note as one object of kind `hole`, with the hole's type or "takes no value" in `message` (M2-06 §1.5) | `hole_check_json`, `hole_check_json_statement` |
+
+### Warnings: `unused-name` (M2-02 §1.3, §5)
+
+A warning has no error kind and never changes the status. It is expressed with `command`, `stderr`
+and `status` (a warning is a diagnostic line, compared byte for byte).
+
+| Point | Case(s) |
+|---|---|
+| `check` prints `warning[unused-name]: NAME is never used` at the binding of an unused `let`; status stays 0 | `unused_name_let` |
+| an unused parameter, a `var`, and an unread result (`let n = parse_int(text)`, M2-12 §1.8) | `unused_name_parameter`, `unused_name_several_in_order`, `unused_name_unread_result` |
+| several warnings are listed in position order, and with notes in one position order | `unused_name_several_in_order`, `unused_name_with_hole_note` |
+| `check --json` prints a warning as one object of kind `unused-name` (M2-02 §5, M2-06 §1.5) | `unused_name_check_json` |
+| used names, unused functions, enums and grants give no warning | `unused_name_used_is_silent` |
+| a program with an error prints the error alone, no warning | `unused_name_not_with_error` |
+| `run`, `examples` and `build` print no warning | `unused_name_run_silent`, `unused_name_examples_silent`, `unused_name_build_silent` |
+| the light program under `check` | `unused_name_light_check` |
+| a `for` name and a pattern name that are never used (M2-02 §5) | `unused_name_for_and_pattern` |
+| a `var` that is only assigned counts as used (M2-02 §5) | `unused_name_assigned_counts` |
 
 ### Covered elsewhere
 
@@ -767,8 +786,9 @@ Not in the table, since a program cannot reach them in a file:
 | `clang-failed` | needs a failing `clang` run (spec/m1.md §13) |
 | `runtime-missing` | needs `libpaka_rt.a` removed from the executable's folder (spec/m1.md §13) |
 
-`unused-name` is a warning and has no kind. `unsupported-form` is temporary (spec/m1.md §10): drop
-its case when the back end builds the core form.
+`unused-name` is a warning and has no kind; its cases are under "Warnings: `unused-name`" in
+the apps/ part. `unsupported-form` is temporary (spec/m1.md §10): drop its case when the back end
+builds the core form.
 
 ### types/ M2-02: records, enums, names
 
@@ -834,6 +854,7 @@ its case when the back end builds the core form.
 | a typed side or branch closes the other | `generics_branch_typing`, `generics_result_branches_typed`, `generics_list_literal_typing` |
 | one letter bound twice to different types | `generics_append_wrong_item`, `generics_unwrap_or_wrong_fallback` |
 | accepted walk: expected type, argument, assigned to a typed place | `generics_walk_accepted` |
+| a joined list type that is still open (`[None, None]`): accepted where a type is given, `cannot-infer` where none is, at the list's `[` (M2-02 §5) | `generics_open_list_annotated`, `generics_open_list_unannotated`, `generics_open_list_argument` |
 
 ### types/ M2-09 §1.7 to §1.11: function values
 
@@ -975,6 +996,5 @@ Several M2-14 points have no case:
 - `examples` cases are in `apps/`; the cases that need no other file use `command`.
 - String `[i]` and String slice traps: M2-03's, not M2-14 rows. The List index and slice cases above stand in for the shared rule.
 
-One type point has no case: a joined list type that is still open (`[None, None]`). NaN in
-`sort` and `sort_by` is a built-in row (M2-39b), and the `stack` trap inside `sort_by` belongs to
-M2-41.
+NaN in `sort` and `sort_by` is a built-in row (M2-39b), and the `stack` trap inside `sort_by`
+belongs to M2-41.
