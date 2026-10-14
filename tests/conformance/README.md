@@ -78,8 +78,8 @@ in one message and fails if anything does. Command:
 
     cargo test -p paka --test conformance --locked --offline exit_gate -- --ignored
 
-The test is ignored while gaps remain (M2-45); closing the last one removes the `#[ignore]`, and
-the gate then runs under `cargo test --workspace --locked --offline`. Its self-tests always run.
+It is a plain test, so `cargo test --workspace --locked --offline` runs it. Its self-tests plant
+one fault each (a node kind, a built-in, a sample, the size) and expect the gate to fail.
 
 - **Reference samples.** A block of `spec/paka.md` fenced as `paka` is a sample (the reference
   says so in its first paragraph); no other block is. A sample checks and runs when, saved as
