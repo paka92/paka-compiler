@@ -6,6 +6,7 @@ mod common;
 use common::{put, runner, scratch};
 use harness::runner::{CaseResult, Lang, OUTPUT_CAP, Report, Runner, Verdict};
 use harness::task::Task;
+use std::env;
 use std::fs;
 use std::net::TcpListener;
 use std::path::Path;
@@ -79,21 +80,21 @@ fn network_is_unreachable() {
     assert!(report.build.unwrap_err().contains("unknown-grant"));
 }
 
-#[test]
-fn hidden_cases_and_the_harness_are_unreadable() {
-    let rust = r#"fn main() {
-        for path in std::env::args().skip(1) {
-            match std::fs::read_to_string(path) {
-                Ok(text) => print!("{text}"),
-                Err(_) => println!("blocked"),
-            }
+/// Programs that print the three files named by their arguments, or `blocked` for each they
+/// cannot read.
+const READ_RUST: &str = r#"fn main() {
+    for path in std::env::args().skip(1) {
+        match std::fs::read_to_string(path) {
+            Ok(text) => print!("{text}"),
+            Err(_) => println!("blocked"),
         }
-    }"#;
-    let ts = r#"import { readFileSync } from "node:fs";
-    for (const path of process.argv.slice(2)) {
-      try { process.stdout.write(readFileSync(path, "utf8")); } catch { console.log("blocked"); }
-    }"#;
-    let paka = r#"
+    }
+}"#;
+const READ_TS: &str = r#"import { readFileSync } from "node:fs";
+for (const path of process.argv.slice(2)) {
+  try { process.stdout.write(readFileSync(path, "utf8")); } catch { console.log("blocked"); }
+}"#;
+const READ_PAKA: &str = r#"
 type Seen { left: Int = 3 }
 enum Msg { Start(a: String, b: String, c: String), Loaded(text: String), Failed(why: String) }
 fn update(s: inout Seen, m: Msg) -> List<Effect<Msg>> {
@@ -117,6 +118,14 @@ app peek {
   grants: [ReadFiles, Console]
 }
 "#;
+const READERS: [(Lang, &str); 3] = [
+    (Lang::Rust, READ_RUST),
+    (Lang::TypeScript, READ_TS),
+    (Lang::Paka, READ_PAKA),
+];
+
+#[test]
+fn hidden_cases_and_the_harness_are_unreadable() {
     let root = scratch("read");
     let args = [
         secret(&root),
@@ -125,13 +134,54 @@ app peek {
     ];
     let task = task(&root, &args, "blocked\nblocked\nblocked\n");
     let runner = runner();
-    for (lang, source) in [
-        (Lang::Rust, rust),
-        (Lang::TypeScript, ts),
-        (Lang::Paka, paka),
-    ] {
+    for (lang, source) in READERS {
         let got = verdicts(&judge(&runner, lang, source, &task));
         assert_eq!(got, [Verdict::Pass; 2], "{lang:?}");
+    }
+}
+
+/// The sandbox's first process and the program itself show only sandbox paths and the variables
+/// set for the build or case, at run time in every language and at build time in Rust.
+#[test]
+fn proc_shows_no_harness_environment_or_host_path() {
+    assert!(
+        env::var_os("CARGO_PKG_NAME").is_some(),
+        "cargo sets the marker"
+    );
+    let root = scratch("proc");
+    let args = ["/proc/1/environ", "/proc/1/cmdline", "/proc/self/environ"].map(String::from);
+    let task = task(&root, &args, "");
+    let runner = runner();
+    for (lang, source) in READERS {
+        for case in judge(&runner, lang, source, &task) {
+            assert_hidden(&runner, &format!("{lang:?} run"), &case.stdout, "LC_ALL=C");
+        }
+    }
+    let rust = r#"fn main() {
+        let shown = [
+            &include_bytes!("/proc/1/environ")[..],
+            include_bytes!("/proc/1/cmdline"),
+            include_bytes!("/proc/self/environ"),
+        ];
+        for bytes in shown {
+            std::io::Write::write_all(&mut std::io::stdout(), bytes).unwrap();
+        }
+    }"#;
+    let case = &judge(&runner, Lang::Rust, rust, &task)[0];
+    assert_hidden(&runner, "Rust build", &case.stdout, "TMPDIR=/build");
+}
+
+/// `shown` holds `expected`, so the files were read, and nothing of the harness.
+fn assert_hidden(runner: &Runner, what: &str, shown: &[u8], expected: &str) {
+    let text = String::from_utf8_lossy(shown).replace('\0', " ");
+    assert!(text.contains(expected), "{what} read nothing: {text}");
+    let repo = Path::new(env!("CARGO_MANIFEST_DIR")).parent().unwrap();
+    let host = [repo, &env::temp_dir(), &runner.rust].map(|p| p.display().to_string());
+    for leak in ["CARGO_", "HOME="]
+        .into_iter()
+        .chain(host.iter().map(String::as_str))
+    {
+        assert!(!text.contains(leak), "{what} shows {leak}: {text}");
     }
 }
 
@@ -269,8 +319,9 @@ fn endless_output_is_cut() {
         let line = "x".repeat(99);
         loop { println!("{line}"); }
     }"#;
-    let ts = r#"const line = "x".repeat(99) + "\n";
-    for (;;) process.stdout.write(line);"#;
+    let ts = r#"import { writeSync } from "node:fs";
+    const line = "x".repeat(99) + "\n";
+    for (;;) writeSync(1, line);"#;
     let paka = r#"
 enum Msg { Start }
 fn update(m: Msg) -> List<Effect<Msg>> {
@@ -301,6 +352,18 @@ app flood {
             "{lang:?}"
         );
     }
+}
+
+#[test]
+fn output_of_exactly_the_cap_passes() {
+    let rust = r#"fn main() {
+        let cap: usize = std::env::args().nth(1).unwrap().parse().unwrap();
+        print!("{}", "x".repeat(cap));
+    }"#;
+    let root = scratch("output-cap");
+    let task = task(&root, &[OUTPUT_CAP.to_string()], &"x".repeat(OUTPUT_CAP));
+    let cases = judge(&runner(), Lang::Rust, rust, &task);
+    assert_eq!(verdicts(&cases), [Verdict::Pass; 2]);
 }
 
 #[test]

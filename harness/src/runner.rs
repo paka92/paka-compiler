@@ -4,8 +4,10 @@
 use crate::Error;
 use crate::task::{Case, Task};
 use std::env;
+use std::ffi::OsStr;
 use std::fs;
-use std::io::{self, Read};
+use std::io::{self, Read, Write};
+use std::os::unix::ffi::OsStrExt;
 use std::path::{Path, PathBuf};
 use std::process::{Command, Stdio};
 use std::sync::Arc;
@@ -29,8 +31,10 @@ const TASK_CAP: u32 = 256;
 const BWRAP: &str = "/usr/bin/bwrap";
 const PRLIMIT: &str = "/usr/bin/prlimit";
 const TS_MODULES: &str = concat!(env!("CARGO_MANIFEST_DIR"), "/ts/node_modules");
-const TSC: &str = concat!(env!("CARGO_MANIFEST_DIR"), "/ts/node_modules/.bin/tsc");
-const TS_TYPES: &str = concat!(env!("CARGO_MANIFEST_DIR"), "/ts/node_modules/@types");
+/// bwrap's fixed options; `cc` links through /etc/alternatives.
+const SANDBOX: &str = "--unshare-all --die-with-parent --new-session --ro-bind /usr /usr \
+    --symlink usr/lib /lib --symlink usr/lib64 /lib64 --proc /proc --dev /dev --remount-ro /dev \
+    --ro-bind-try /etc/alternatives /etc/alternatives";
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub enum Lang {
@@ -48,59 +52,50 @@ impl Lang {
         }
     }
 
-    /// The command that builds the file in `dir`.
-    fn build(self, runner: &Runner, dir: &Path) -> Command {
-        let file = dir.join(self.file());
-        let mut cmd;
+    /// The command line that builds the file, with the paths the sandbox shows.
+    fn build(self) -> &'static [&'static str] {
         match self {
-            Lang::Paka => {
-                cmd = Command::new(&runner.paka);
-                cmd.arg("check").arg(file);
-            }
-            Lang::Rust => {
-                cmd = Command::new(runner.rust.join("bin/rustc"));
-                cmd.args([
-                    "--edition",
-                    "2024",
-                    "-C",
-                    "debug-assertions=on",
-                    "-C",
-                    "overflow-checks=on",
-                ])
-                .arg("-o")
-                .arg(dir.join("main"))
-                .arg(file);
-            }
-            Lang::TypeScript => {
-                cmd = Command::new(TSC);
-                cmd.args([
-                    "--strict", "--target", "es2022", "--module", "commonjs", "--types", "node",
-                ])
-                .args(["--typeRoots", TS_TYPES, "--noEmitOnError", "--skipLibCheck"])
-                .arg("--rootDir")
-                .arg(dir)
-                .arg("--outDir")
-                .arg(dir.join("out"))
-                .arg(file);
-            }
+            Lang::Paka => &["/tools/bin/paka", "check", "/build/main.paka"],
+            Lang::Rust => &[
+                "/tools/rust/bin/rustc",
+                "--edition",
+                "2024",
+                "-C",
+                "debug-assertions=on",
+                "-C",
+                "overflow-checks=on",
+                "-o",
+                "/build/main",
+                "/build/main.rs",
+            ],
+            Lang::TypeScript => &[
+                "/tools/ts/node_modules/.bin/tsc",
+                "--strict",
+                "--target",
+                "es2022",
+                "--module",
+                "commonjs",
+                "--types",
+                "node",
+                "--typeRoots",
+                "/tools/ts/node_modules/@types",
+                "--noEmitOnError",
+                "--skipLibCheck",
+                "--rootDir",
+                "/build",
+                "--outDir",
+                "/build/out",
+                "/build/main.ts",
+            ],
         }
-        cmd
     }
 
-    /// The command that runs the program built in `dir`, before the case arguments.
-    fn run(self, runner: &Runner, dir: &Path) -> Command {
+    /// The command line that runs the built program, before the case arguments.
+    fn run(self) -> &'static [&'static str] {
         match self {
-            Lang::Paka => {
-                let mut cmd = Command::new(&runner.paka);
-                cmd.arg("run").arg(dir.join(self.file()));
-                cmd
-            }
-            Lang::Rust => Command::new(dir.join("main")),
-            Lang::TypeScript => {
-                let mut cmd = Command::new(&runner.node);
-                cmd.arg(dir.join("out/main.js"));
-                cmd
-            }
+            Lang::Paka => &["/tools/bin/paka", "run", "/build/main.paka"],
+            Lang::Rust => &["/build/main"],
+            Lang::TypeScript => &["/tools/bin/node", "/build/out/main.js"],
         }
     }
 }
@@ -204,11 +199,10 @@ impl Runner {
 
     /// Builds in `dir`, which also takes the compilers' temporary files.
     fn build(&self, lang: Lang, dir: &Path) -> Result<Result<(), String>, Error> {
-        let mut cmd = lang.build(self, dir);
-        cmd.current_dir(dir)
-            .envs([("PATH", "/usr/bin".as_ref()), ("TMPDIR", dir.as_os_str())]);
-        let mut cmd = self.sandbox(&cmd, dir, None, BUILD_MEMORY);
-        let done = exec(&mut cmd, self.limits.build)?;
+        let env = ["PATH=/tools/bin:/usr/bin", "TMPDIR=/build"];
+        let mut cmd = confined(BUILD_MEMORY, &env);
+        cmd.args(lang.build());
+        let done = exec(&mut cmd, &self.sandbox(dir, None), self.limits.build)?;
         if done.status == Some(0) {
             return Ok(Ok(()));
         }
@@ -242,12 +236,13 @@ impl Runner {
         for (name, bytes) in &case.input {
             fs::write(work.0.join(name), bytes)?;
         }
-        let mut cmd = lang.run(self, build);
-        cmd.args(&case.args)
-            .current_dir(&work.0)
-            .envs([("TZ", "UTC"), ("LC_ALL", "C")]);
-        let mut cmd = self.sandbox(&cmd, &work.0, Some(build), CASE_MEMORY);
-        let run = exec(&mut cmd, self.limits.case)?;
+        let mut cmd = confined(CASE_MEMORY, &["TZ=UTC", "LC_ALL=C"]);
+        cmd.args(lang.run()).args(&case.args);
+        let run = exec(
+            &mut cmd,
+            &self.sandbox(build, Some(&work.0)),
+            self.limits.case,
+        )?;
         let files_match = case
             .output
             .iter()
@@ -272,42 +267,59 @@ impl Runner {
         })
     }
 
-    /// `cmd` inside bubblewrap: no network, its own process tree that dies with the sandbox, and
-    /// a read-only view of /usr, the toolchains and `read`. `write` is the only writable
-    /// directory; the task folder and every other path are absent. prlimit caps memory per
-    /// process, file size and processes, and turns off core dumps; `env -i` leaves only the
-    /// variables set on `cmd`.
-    fn sandbox(&self, cmd: &Command, write: &Path, read: Option<&Path>, memory: u64) -> Command {
-        let mut sb = Command::new(BWRAP);
-        sb.args(["--unshare-all", "--die-with-parent", "--new-session"])
-            .args(["--ro-bind", "/usr", "/usr", "--symlink", "usr/lib", "/lib"])
-            .args(["--symlink", "usr/lib64", "/lib64", "--proc", "/proc"])
-            .args(["--dev", "/dev", "--remount-ro", "/dev"]);
-        for path in ["/etc/alternatives", TS_MODULES] {
-            sb.args(["--ro-bind-try", path, path]);
-        }
-        let tools = [&self.rust, &self.paka, &self.node].map(PathBuf::as_path);
-        for path in tools.into_iter().chain(read) {
-            sb.arg("--ro-bind").arg(path).arg(path);
-        }
-        sb.arg("--bind").arg(write).arg(write);
-        sb.args(["--remount-ro", "/"]);
-        if let Some(dir) = cmd.get_current_dir() {
-            sb.arg("--chdir").arg(dir);
-        }
-        sb.args(["--", PRLIMIT])
-            .arg(format!("--data={memory}"))
-            .arg(format!("--fsize={FILE_CAP}"))
-            .arg(format!("--nproc={TASK_CAP}"))
-            .args(["--core=0", "--", "/usr/bin/env", "-i"]);
-        for (key, value) in cmd.get_envs() {
-            if let Some(value) = value {
-                sb.arg([key, value].join("=".as_ref()));
+    /// bwrap's options, NUL-separated: no network, its own process tree that dies with the
+    /// sandbox, and a read-only view of /usr and the toolchains under /tools. The build directory
+    /// shows as /build, writable while building; a case also gets `work` as /work, the only
+    /// writable directory then. The task folder and every other host path are absent.
+    fn sandbox(&self, build: &Path, work: Option<&Path>) -> Vec<u8> {
+        let mut opts: Vec<&OsStr> = SANDBOX.split(' ').map(OsStr::new).collect();
+        let mut binds: Vec<(&str, &OsStr, &str)> = vec![
+            (
+                "--ro-bind-try",
+                TS_MODULES.as_ref(),
+                "/tools/ts/node_modules",
+            ),
+            ("--ro-bind", self.rust.as_ref(), "/tools/rust"),
+            ("--ro-bind", self.paka.as_ref(), "/tools/bin/paka"),
+            ("--ro-bind", self.node.as_ref(), "/tools/bin/node"),
+        ];
+        let cwd = match work {
+            None => {
+                binds.push(("--bind", build.as_ref(), "/build"));
+                "/build"
             }
+            Some(work) => {
+                binds.push(("--ro-bind", build.as_ref(), "/build"));
+                binds.push(("--bind", work.as_ref(), "/work"));
+                "/work"
+            }
+        };
+        for (how, host, inside) in binds {
+            opts.extend([OsStr::new(how), host, OsStr::new(inside)]);
         }
-        sb.arg(cmd.get_program()).args(cmd.get_args());
-        sb
+        opts.extend(["--remount-ro", "/", "--chdir", cwd].map(OsStr::new));
+        let mut bytes = vec![];
+        for opt in opts {
+            bytes.extend(opt.as_bytes());
+            bytes.push(0);
+        }
+        bytes
     }
+}
+
+/// bwrap reading its options from standard input, so they stay out of the sandbox's
+/// /proc/1/cmdline; then prlimit's caps on memory per process, file size and processes with core
+/// dumps off; then `env -i` with only `env`. The program's command line goes after.
+fn confined(memory: u64, env: &[&str]) -> Command {
+    let mut cmd = Command::new(BWRAP);
+    cmd.env_clear()
+        .args(["--args", "0", "--", PRLIMIT])
+        .arg(format!("--data={memory}"))
+        .arg(format!("--fsize={FILE_CAP}"))
+        .arg(format!("--nproc={TASK_CAP}"))
+        .args(["--core=0", "--", "/usr/bin/env", "-i"])
+        .args(env);
+    cmd
 }
 
 struct Exec {
@@ -318,14 +330,16 @@ struct Exec {
     stderr: Vec<u8>,
 }
 
-/// Runs the command with no input, to its end, until `limit` or until an output reaches
-/// `OUTPUT_CAP`; then it is killed. Killing the sandbox kills every process inside it.
-fn exec(cmd: &mut Command, limit: Duration) -> io::Result<Exec> {
+/// Runs the command with `input` as its whole standard input, to its end, until `limit` or until
+/// an output goes past `OUTPUT_CAP`; then it is killed. Killing the sandbox kills every process
+/// inside it.
+fn exec(cmd: &mut Command, input: &[u8], limit: Duration) -> io::Result<Exec> {
     let mut child = cmd
-        .stdin(Stdio::null())
+        .stdin(Stdio::piped())
         .stdout(Stdio::piped())
         .stderr(Stdio::piped())
         .spawn()?;
+    child.stdin.take().expect("piped").write_all(input)?;
     let full = Arc::new(AtomicBool::new(false));
     let stdout = drain(child.stdout.take().expect("piped"), full.clone());
     let stderr = drain(child.stderr.take().expect("piped"), full.clone());
@@ -335,13 +349,16 @@ fn exec(cmd: &mut Command, limit: Duration) -> io::Result<Exec> {
         if let Some(status) = child.try_wait()? {
             break status.code();
         }
-        timed_out = Instant::now() >= deadline;
-        if timed_out || full.load(Ordering::Relaxed) {
-            child.kill()?;
-            child.wait()?;
-            break None;
+        if !full.load(Ordering::Relaxed) {
+            if Instant::now() < deadline {
+                thread::sleep(Duration::from_millis(5));
+                continue;
+            }
+            timed_out = true;
         }
-        thread::sleep(Duration::from_millis(5));
+        child.kill()?;
+        child.wait()?;
+        break None;
     };
     Ok(Exec {
         status,
@@ -351,12 +368,13 @@ fn exec(cmd: &mut Command, limit: Duration) -> io::Result<Exec> {
     })
 }
 
-/// Reads the pipe up to `OUTPUT_CAP` bytes; reaching it sets `full`.
+/// Reads the pipe up to `OUTPUT_CAP` bytes; one byte more sets `full`.
 fn drain(pipe: impl Read + Send + 'static, full: Arc<AtomicBool>) -> JoinHandle<Vec<u8>> {
     thread::spawn(move || {
         let mut bytes = vec![];
-        let _ = pipe.take(OUTPUT_CAP as u64).read_to_end(&mut bytes);
-        if bytes.len() == OUTPUT_CAP {
+        let _ = pipe.take(OUTPUT_CAP as u64 + 1).read_to_end(&mut bytes);
+        if bytes.len() > OUTPUT_CAP {
+            bytes.truncate(OUTPUT_CAP);
             full.store(true, Ordering::Relaxed);
         }
         bytes
