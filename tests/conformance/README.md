@@ -72,14 +72,16 @@ The case folder is the working directory, so every diagnostic path is `main.paka
 
 ## Exit gate (M2-44)
 
-One test, `exit_gate` in `paka/tests/conformance.rs` (code in `paka/tests/conformance/gate.rs`),
-checks the three parts of the M2 exit check that are not a case. It reports everything that fails
-in one message and fails if anything does. Command:
+Two groups of tests, all in `paka/tests/conformance.rs` (code in
+`paka/tests/conformance/gate.rs`): `exit_gate` checks the three parts of the M2 exit check that are
+not a case, reports everything that fails in one message and fails if anything does, and the
+self-tests next to it plant one fault each and expect the gate to fail: an unused node kind, an
+unused built-in, a sample that does not check, a sample that traps, an app sample whose run exits
+non-zero, an oversize reference. Command, which runs the gate and its self-tests:
 
-    cargo test -p paka --test conformance --locked --offline exit_gate -- --ignored
+    cargo test -p paka --test conformance --locked --offline gate
 
-It is a plain test, so `cargo test --workspace --locked --offline` runs it. Its self-tests plant
-one fault each (a node kind, a built-in, a sample, the size) and expect the gate to fail.
+It is a plain test, so `cargo test --workspace --locked --offline` runs it too.
 
 - **Reference samples.** A block of `spec/paka.md` fenced as `paka` is a sample (the reference
   says so in its first paragraph); no other block is. A sample checks and runs when, saved as
@@ -87,18 +89,22 @@ one fault each (a node kind, a built-in, a sample, the size) and expect the gate
   and, if it has an `app`, `paka run main.paka words.txt` also exits 0, with `words.txt` in that
   folder holding the text `a b c`.
 - **Size.** `spec/paka.md` is at most 8,000 tokens under the one counting rule: bytes divided by
-  three, rounded up (M2-18, `paka/tests/reference.rs`).
+  three (M2-18, `paka/tests/reference.rs`). The test rounds the quotient up, so the budget is
+  24,000 bytes; rounding down would allow two bytes more.
 - **Coverage.** The syntax node kinds are the variants of the node enums of `paka/src/ast.rs`
-  (definitions, app entries, types, statements, expressions, string parts, arm bodies and
-  patterns), each written `Enum::Variant`; the operator enums are not nodes. The built-ins are the
-  distinct names in the table of `paka/src/builtins.rs`: types, variants, grants and functions.
-  Both lists come from the compiler's own code, so a new variant or row is a gap until a case
-  uses it.
+  (definitions, app entries, types, statements, expressions, string parts, arm bodies, patterns
+  and the three operator enums), each written `Enum::Variant`. The built-ins are the distinct
+  names in the table of `paka/src/builtins.rs`: types, variants, grants and functions. A name is
+  one item however many rows it has (`len` has three), so the gate counts names, not rows. Both
+  lists come from the compiler's own code, so a new variant or row is a gap until a case uses it.
   A case counts when it passes by the rules above, has neither a `reject` file nor an
   `expect.json`, and its `main.paka` parses. A node kind is covered when it occurs in the syntax
-  tree of a counted case; a built-in is covered when its name occurs in one as a type, a name in
-  an expression or pattern, a record name or a grant. A reject case covers nothing: it shows a
-  refusal, not the construct at work.
+  tree of a counted case. A built-in type, variant or grant (upper case) is covered when its name
+  occurs in one as a type, a name in an expression or pattern, a record name or a grant. A
+  built-in function (lower case) is covered only when it is the callee of a call there, since a
+  local name may hide a built-in function. A case that expects a refusal through `reject` or
+  `expect.json` covers nothing. A case that expects a failing status with no such file counts:
+  the `apps/hole_*_build` cases, whose build is refused, are of this kind.
 
 ## Decision points and their cases
 
