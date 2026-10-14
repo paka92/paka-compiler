@@ -74,7 +74,7 @@ impl Cx<'_, '_> {
         }
     }
 
-    fn tail(&mut self, e: &Expr, want: Option<Ty>) -> Res<Out> {
+    pub(super) fn tail(&mut self, e: &Expr, want: Option<Ty>) -> Res<Out> {
         match want {
             Some(w) => self.expect_out(e, w),
             None => {
@@ -84,7 +84,7 @@ impl Cx<'_, '_> {
         }
     }
 
-    fn stmt(&mut self, s: &Stmt) -> Res<Out> {
+    pub(super) fn stmt(&mut self, s: &Stmt) -> Res<Out> {
         match &s.kind {
             S::Let {
                 var,
@@ -132,7 +132,7 @@ impl Cx<'_, '_> {
     /// An expression statement: its value, if any, may not be left unused.
     fn effect(&mut self, e: &Expr) -> Res<Out> {
         let out = match &e.kind {
-            K::Hole(_) => self.hole(Use::Dropped),
+            K::Hole(_) => Out::Unit,
             K::If {
                 branches,
                 otherwise,

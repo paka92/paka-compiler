@@ -2,9 +2,8 @@
 //! alone, never against another definition's body (docs/decisions/M2-02.md, M2-09.md, M2-12.md).
 //! A definition's result is its first error, so an error in one never changes another's.
 //!
-//! Not here: `match`, patterns, holes and examples (M2-20, see `hook`), ownership and overlap
-//! (M2-21), the corners of built-in rows (M2-22), function values (M2-30), the error forms
-//! (M2-31) and apps (M2-32).
+//! Not here: ownership and overlap (M2-21), the corners of built-in rows (M2-22), function
+//! values (M2-30), the error forms (M2-31) and apps (M2-32), which are left unchecked.
 
 use crate::ast::{self, Block, Def, Expr, Pos, Program};
 use crate::diagnostic::Diagnostic;
@@ -13,9 +12,11 @@ use crate::sig::{Checked, Item, Node, Sig, Table, Ty, Types};
 use std::collections::{BTreeMap, BTreeSet};
 use text::{float_fix, named, render};
 
+mod arms;
 mod call;
 mod expr;
-mod hook;
+mod hole;
+mod pattern;
 mod place;
 mod stmt;
 #[cfg(test)]
@@ -35,7 +36,7 @@ type Res<T = ()> = Result<T, Diagnostic>;
 /// Where an error stands: the position and the length in bytes.
 type Span = (Pos, usize);
 
-fn span(e: &Expr) -> Span {
+fn span<K>(e: &ast::Node<K>) -> Span {
     (e.at, e.len)
 }
 
@@ -64,6 +65,7 @@ enum How {
     Param,
     Inout,
     For,
+    Pattern,
 }
 
 struct Local {
@@ -149,7 +151,7 @@ impl<'t, 'a> Cx<'t, 'a> {
             (Def::Fn { params, body, .. }, Item::Fn(sig)) => self.function(sig, params, body).err(),
             (Def::Type { fields, .. }, Item::Record(held)) => (fields.iter().zip(held))
                 .find_map(|(f, h)| self.expect(f.default.as_ref()?, h.ty).err()),
-            (Def::Example { .. } | Def::App { .. }, _) => self.unchecked(def).err(),
+            (Def::Example { body, .. }, _) => self.example(body).err(),
             _ => None,
         };
         earliest(defs[i].error.clone(), found)
@@ -160,9 +162,19 @@ impl<'t, 'a> Cx<'t, 'a> {
             let how = if p.inout { How::Inout } else { How::Param };
             self.locals.insert(p.name.at, Local { ty: s.ty, how });
         }
-        self.result = sig.result;
+        self.run(body, sig.result)
+    }
+
+    /// An example is a function without parameters that gives a Bool.
+    fn example(&mut self, body: &'a Block<'a>) -> Res {
+        let bool = self.prim("Bool");
+        self.run(body, Some(bool))
+    }
+
+    fn run(&mut self, body: &'a Block<'a>, result: Option<Ty>) -> Res {
+        self.result = result;
         self.tails = stmt::tails(body);
-        let used = sig.result.map_or(Use::Dropped, |r| Use::Value(Some(r)));
+        let used = result.map_or(Use::Dropped, |r| Use::Value(Some(r)));
         self.block(body, used).map(drop)
     }
 

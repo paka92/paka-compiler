@@ -15,6 +15,15 @@ enum Why<'x> {
     Fixed(&'x Expr<'x>, How, Ty),
 }
 
+fn kind(how: How) -> &'static str {
+    match how {
+        How::Param => "a parameter",
+        How::For => "a for name",
+        How::Pattern => "a pattern name",
+        _ => "a let",
+    }
+}
+
 impl Cx<'_, '_> {
     /// A place is a `var` or `inout` name, or a field or list or map element of one.
     fn place<'x>(&self, e: &'x Expr<'x>) -> Result<(), Why<'x>> {
@@ -56,7 +65,9 @@ impl Cx<'_, '_> {
                 let (name, f) = (render(root), self.program.defs[self.def].name().text);
                 format!("{name} is read-only; write {name}: inout {} and call {f}(&ys)", self.types.show(ty))
             }
-            Why::Fixed(root, How::For, _) => format!("{} is a for name; it is a copy", render(root)),
+            Why::Fixed(root, how @ (How::For | How::Pattern), _) => {
+                format!("{} is {}; it is a copy", render(root), kind(how))
+            }
             Why::Fixed(root, ..) => format!("{} is a let; declare it with var", render(root)),
             Why::Slice => "a slice cannot be passed with &; pass the list and the positions".to_string(),
             Why::Text => "a String position is not a place".to_string(),
@@ -85,12 +96,7 @@ impl Cx<'_, '_> {
         }
         match self.place(target) {
             Err(Why::Fixed(root, how, _)) => {
-                let kind = match how {
-                    How::Param => "a parameter",
-                    How::For => "a for name",
-                    _ => "a let",
-                };
-                let message = format!("{} is {kind}; declare it with var", render(root));
+                let message = format!("{} is {}; declare it with var", render(root), kind(how));
                 return Err(self.fail_at(root, "assign-to-let", message));
             }
             Err(Why::Text) => {

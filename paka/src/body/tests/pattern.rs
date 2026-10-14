@@ -292,8 +292,12 @@ fn an_arm_may_leave_or_stop() {
             &[
                 "for i in 0..<3 {",
                 "  match o {",
-                "    Some(_) => break",
-                "    None => continue",
+                "    Some(_) => {",
+                "      break",
+                "    }",
+                "    None => {",
+                "      continue",
+                "    }",
                 "  }",
                 "}",
             ],
@@ -419,15 +423,15 @@ fn a_missing_arm_comes_before_anything_inside_the_match() {
 #[test]
 fn the_first_error_is_the_earliest_in_the_source() {
     rejects(&[
-        bad(
-            "type-mismatch",
-            "x: Int = ^\"a\"",
+        typed(
+            (MISMATCH, "x: Int = ^\"a\""),
+            ("Int", "String"),
             INT,
             &["let x: Int = \"a\"", "match n {", "  0 => x", "}"],
         ),
-        bad(
-            "type-mismatch",
-            "1 ^+ \"a\"",
+        typed(
+            (MISMATCH, "1 ^+ \"a\""),
+            ("Int", "String"),
             SHAPE,
             &[
                 "match s {",
@@ -638,6 +642,21 @@ fn a_pattern_has_the_type_of_the_subject() {
 }
 
 #[test]
+fn a_subject_of_unknown_type_is_not_held_to_its_patterns() {
+    let lines = [
+        "fn f(x: Nope) -> Int {",
+        "  match x {",
+        "    Dot => 1",
+        "    Circle(r) => 2",
+        "    7 => 3",
+        "  }",
+        "}",
+        "enum Shape { Dot, Circle(r: Float) }",
+    ];
+    assert_eq!(codes(&lines), ["unknown-type", "ok"]);
+}
+
+#[test]
 fn only_an_int_string_bool_or_enum_is_matched() {
     let want = "Int, String, Bool or an enum";
     rejects(&[
@@ -743,7 +762,7 @@ fn a_pattern_name_is_a_copy() {
 fn rejects_a_pattern_integer_that_does_not_exist() {
     says(&[say(
         ("literal-out-of-range", "^99999999999999999999 =>"),
-        "not an Int that exists",
+        "not a Int that exists",
         INT,
         &["match n {", "  99999999999999999999 => 1", "  _ => 2", "}"],
     )]);

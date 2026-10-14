@@ -10,7 +10,7 @@ use crate::sig::{Item, Node, Param, Sig, Ty};
 use std::collections::BTreeMap;
 use std::slice::from_ref;
 
-type Bound = BTreeMap<char, Ty>;
+pub(super) type Bound = BTreeMap<char, Ty>;
 
 #[derive(Clone, Copy, PartialEq)]
 enum Kind {
@@ -133,7 +133,7 @@ impl<'a> Cx<'_, 'a> {
         )
     }
 
-    fn variant_sig(&self, i: usize, j: usize) -> Sig<'a> {
+    pub(super) fn variant_sig(&self, i: usize, j: usize) -> Sig<'a> {
         let fields = match &self.defs[i].item {
             Item::Enum(variants) => &variants[j].fields[..],
             _ => &[],
@@ -513,7 +513,7 @@ impl<'a> Cx<'_, 'a> {
     }
 
     /// `ty` with the letters bound so far put in.
-    fn subst(&mut self, ty: Ty, bound: &Bound) -> Ty {
+    pub(super) fn subst(&mut self, ty: Ty, bound: &Bound) -> Ty {
         match self.types.node(ty).clone() {
             Node::Var(c) => bound.get(&c).copied().unwrap_or(ty),
             Node::Name(name, args) => {
@@ -531,7 +531,7 @@ impl<'a> Cx<'_, 'a> {
 
     /// Matches `found` against the shape `row`, binding its free letters; false when a letter
     /// meets two types or the shapes differ. A part that is not yet known binds nothing.
-    fn bind(&self, row: Ty, found: Ty, bound: &mut Bound) -> bool {
+    pub(super) fn bind(&self, row: Ty, found: Ty, bound: &mut Bound) -> bool {
         match (self.types.node(row), self.types.node(found)) {
             (Node::Var(c), _) if *c == '_' || self.is_var(found) || self.free(found) => true,
             (Node::Var(c), _) => *bound.entry(*c).or_insert(found) == found,

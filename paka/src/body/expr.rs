@@ -2,7 +2,7 @@
 
 use super::text::{article, float_fix, render};
 use super::{Cx, Out, Res, Span, Use, span};
-use crate::ast::{BinOp, Expr, ExprKind as K, Name, Pos, StrPart, UnOp};
+use crate::ast::{BinOp, Def, Expr, ExprKind as K, Name, Pos, StrPart, UnOp};
 use crate::resolve::suggestion;
 use crate::sig::{Field, Item, Node, Ty};
 use paka_rt::ops::{Float, Int};
@@ -24,7 +24,7 @@ fn operand<'x, 'a>(e: &'x Expr<'a>) -> Option<&'x Expr<'a>> {
 impl Cx<'_, '_> {
     /// The outcome of `e`; `want` is a hint, the caller decides whether it must hold.
     pub(super) fn expr(&mut self, e: &Expr, want: Option<Ty>) -> Res<Out> {
-        let want = want.filter(|&w| !self.is_var(w));
+        let (raw, want) = (want, want.filter(|&w| !self.is_var(w)));
         let mut links = vec![e];
         while let Some(x) = operand(links[links.len() - 1]) {
             links.push(x);
@@ -37,6 +37,8 @@ impl Cx<'_, '_> {
                 prev = links.pop().expect("a call");
                 self.call_named(head, args, hint(&links))?
             }
+            (K::Hole(_), Some(K::Binary(..))) => Out::Val(self.letter('T')),
+            (K::Hole(_), _) => self.hole(head, if links.is_empty() { raw } else { None })?,
             _ => self.leaf(head, hint(&links))?,
         };
         self.note(prev, &cur);
@@ -86,14 +88,14 @@ impl Cx<'_, '_> {
         let ty = match &e.kind {
             K::Int(text) => {
                 if Int::parse(text).is_none() {
-                    return Err(self.out_of_range(e, "Int"));
+                    return Err(self.out_of_range(span(e), "Int"));
                 }
                 self.int()
             }
             K::Float(text) => {
                 let finite = Float::parse(text).is_some_and(|f| (f.bits() >> 52) & 0x7ff != 0x7ff);
                 if !finite {
-                    return Err(self.out_of_range(e, "Float"));
+                    return Err(self.out_of_range(span(e), "Float"));
                 }
                 self.prim("Float")
             }
@@ -107,7 +109,6 @@ impl Cx<'_, '_> {
                 }
                 self.prim("String")
             }
-            K::Hole(_) => return Ok(self.hole(Use::Value(want))),
             K::Name(_) => return self.name(e, want),
             K::Record(name, args) => return self.record(e, name, args),
             K::List(items) => self.list(items, want)?,
@@ -123,8 +124,12 @@ impl Cx<'_, '_> {
         Ok(Out::Val(ty))
     }
 
-    fn out_of_range(&self, e: &Expr, ty: &str) -> crate::diagnostic::Diagnostic {
-        self.fail_at(e, "literal-out-of-range", format!("not a {ty} that exists"))
+    pub(super) fn out_of_range(&self, at: Span, ty: &str) -> crate::diagnostic::Diagnostic {
+        self.fail(
+            at,
+            "literal-out-of-range",
+            format!("not a {ty} that exists"),
+        )
     }
 
     /// The built-in type of `ty` is one of `allowed`, or not yet known.
@@ -196,7 +201,11 @@ impl Cx<'_, '_> {
     }
 
     fn binary(&mut self, op: BinOp, at: Pos, left: &Expr, lt: Ty, right: &Expr) -> Res<Out> {
-        let rt = self.expr_val(right, Some(lt))?;
+        let (lt, rt) = if matches!(left.kind, K::Hole(_)) && self.free(lt) {
+            self.beside_hole(left, right)?
+        } else {
+            (lt, self.expr_val(right, Some(lt))?)
+        };
         self.operands((at, op.text().len()), op, (left, lt), (right, rt))?;
         let arithmetic = matches!(
             op,
@@ -436,7 +445,11 @@ impl Cx<'_, '_> {
         } else {
             "match it".to_string()
         };
-        let message = format!("? passes {up} up, but {name} {returns}; {make}");
+        let message = if matches!(self.program.defs[self.def], Def::Example { .. }) {
+            "an example has no ?; match it".to_string()
+        } else {
+            format!("? passes {up} up, but {name} {returns}; {make}")
+        };
         Err((self.fail(at, "type-mismatch", message)).with_types(&want, &found))
     }
 
