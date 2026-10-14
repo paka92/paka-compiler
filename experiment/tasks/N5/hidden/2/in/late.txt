@@ -1,0 +1,5 @@
+parts hw:040 lab:060
+amy 100L 5L
+bo 001 0L
+cal 095 100
+parts x 85L

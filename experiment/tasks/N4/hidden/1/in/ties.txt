@@ -1,0 +1,3 @@
+members m:1 n:1 p:1
+cost x 1.27 m
+cost y 18.73 n

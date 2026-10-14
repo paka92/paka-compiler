@@ -1,0 +1,4 @@
+parts a:7 b:13 c:80
+tie 60 61 x
+edge 88 91 x
+low 0 0 0

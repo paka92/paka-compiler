@@ -1,0 +1,170 @@
+enum Msg {
+  Start(map: String, list: String),
+  MapLoaded(text: String),
+  ListLoaded(text: String),
+  PageLoaded(text: String),
+  ReadFailed(why: String),
+  Wrote,
+  WriteFailed(why: String)
+}
+
+// A page with its links rewritten, and the number rewritten.
+type Done { text: String, count: Int }
+
+type Rename {
+  map_name: String = "",
+  list_name: String = "",
+  pages: List<String> = [],
+  renames: Map<String, String> = [:],  // OLD in lower case: NEW as written
+  texts: List<String> = [],
+  done: List<Done> = [],
+  writing: Int = 0,
+  report: String = ""
+}
+
+fn is_key(s: String) -> Bool {
+  if len(s) < 1 || len(s) > 20 { return false }
+  for c in chars(s) {
+    let ok = c >= "a" && c <= "z" || c >= "A" && c <= "Z" || c >= "0" && c <= "9"
+    if !ok && c != "_" && c != "-" { return false }
+  }
+  true
+}
+
+fn plural(n: Int, word: String) -> String {
+  if n == 1 { "{n} {word}" } else { "{n} {word}s" }
+}
+
+fn parse_map(text: String) -> Result<Map<String, String>, String> {
+  var renames: Map<String, String> = [:]
+  let rows = lines(text)
+  for i in 0..<len(rows) {
+    let ws = words(rows[i])
+    if is_empty(ws) { continue }
+    let at = "error: map line {i + 1}: "
+    if len(ws) != 2 || !is_key(ws[0]) || !is_key(ws[1]) { return Err(at + "bad entry") }
+    let old = lower(ws[0])
+    if has(renames, old) { return Err(at + "duplicate {ws[0]}") }
+    renames[old] = ws[1]
+  }
+  if is_empty(renames) { return Err("error: empty map") }
+  Ok(renames)
+}
+
+fn rewrite(name: String, text: String, renames: Map<String, String>) -> Result<Done, String> {
+  var count = 0
+  var out: List<String> = []
+  let rows = split(text, "\n")
+  for i in 0..<len(rows) {
+    var rest = rows[i]
+    var line = ""
+    var col = 1
+    while true {
+      let start = unwrap_or(find(rest, "[["), -1)
+      if start < 0 { break }
+      let at = "error: {name} line {i + 1} col {col + start}: "
+      let after = rest[start + 2..<len(rest)]
+      let end = unwrap_or(find(after, "]]"), -1)
+      if end < 0 { return Err(at + "unclosed link") }
+      var parts = split(after[0..<end], "|")
+      if len(parts) > 2 || !is_key(parts[0]) { return Err(at + "bad link") }
+      match get(renames, lower(parts[0])) {
+        Some(renamed) => {
+          parts[0] = renamed
+          count += 1
+        }
+        None => {}
+      }
+      line += rest[0..<start] + "[[" + join(parts, "|") + "]]"
+      col += start + end + 4
+      rest = after[end + 2..<len(after)]
+    }
+    append(&out, line + rest)
+  }
+  Ok(Done { text: join(out, "\n"), count: count })
+}
+
+fn fail(why: String) -> List<Effect<Msg>> {
+  [Print(why), ExitWith(20)]
+}
+
+fn read_next(s: inout Rename) -> List<Effect<Msg>> {
+  let k = len(s.texts)
+  if k < len(s.pages) { return [ReadFile(s.pages[k], then: PageLoaded, or: ReadFailed)] }
+  for i in 0..<k {
+    match rewrite(s.pages[i], s.texts[i], s.renames) {
+      Ok(d) => append(&s.done, d)
+      Err(why) => {
+        return fail(why)
+      }
+    }
+  }
+  write_next(&s)
+}
+
+fn write_next(s: inout Rename) -> List<Effect<Msg>> {
+  while s.writing < len(s.pages) && s.done[s.writing].count == 0 {
+    s.writing += 1
+  }
+  if s.writing < len(s.pages) {
+    let name = s.pages[s.writing]
+    return [WriteFile(name, s.done[s.writing].text, then: Wrote, or: WriteFailed)]
+  }
+  var links = 0
+  var written = 0
+  var report = ""
+  for i in 0..<len(s.pages) {
+    let n = s.done[i].count
+    links += n
+    if n > 0 { written += 1 }
+    let k = plural(n, "link")
+    report += "{s.pages[i]}: {k}\n"
+  }
+  let l = plural(links, "link")
+  let p = plural(written, "page")
+  report += "rewrote {l} in {p}"
+  [Print(report), Exit]
+}
+
+fn update(s: inout Rename, m: Msg) -> List<Effect<Msg>> {
+  match m {
+    Start(map, list) => {
+      s.map_name = map
+      s.list_name = list
+      [ReadFile(map, then: MapLoaded, or: ReadFailed)]
+    }
+    MapLoaded(text) => {
+      match parse_map(text) {
+        Ok(renames) => {
+          s.renames = renames
+          [ReadFile(s.list_name, then: ListLoaded, or: ReadFailed)]
+        }
+        Err(why) => fail(why)
+      }
+    }
+    ListLoaded(text) => {
+      s.pages = lines(text)
+      read_next(&s)
+    }
+    PageLoaded(text) => {
+      append(&s.texts, text)
+      read_next(&s)
+    }
+    ReadFailed(_) => {
+      let k = len(s.texts)
+      if is_empty(s.renames) { fail("error: cannot read {s.map_name}") } else { fail("error: cannot read {s.pages[k]}") }
+    }
+    Wrote => {
+      s.writing += 1
+      write_next(&s)
+    }
+    WriteFailed(_) => fail("error: cannot write {s.pages[s.writing]}")
+  }
+}
+
+app link_rename {
+  state: Rename
+  start: Start
+  update: update
+  grants: [Console, ReadFiles, WriteFiles]
+}

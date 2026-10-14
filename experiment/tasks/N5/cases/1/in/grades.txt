@@ -1,0 +1,4 @@
+parts hw:30 lab:20 exam:50
+ann 90 80L 85
+bob x 100 x
+cy 95 70 x

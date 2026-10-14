@@ -1,0 +1,173 @@
+enum Msg {
+  Start(target: String, script: String, output: String),
+  ScriptLoaded(text: String),
+  TargetLoaded(text: String),
+  ReadFailed(why: String),
+  Wrote,
+  WriteFailed(why: String)
+}
+
+// kind is "d", "c" or "a"; d and c take lines from to to, and a has to equal to from.
+type Command { line: Int, kind: String, from: Int, to: Int, text: List<String> = [] }
+
+type Patch {
+  target: String = "",
+  script: String = "",
+  output: String = "",
+  reading: String = "",
+  commands: List<Command> = [],
+  summary: String = ""
+}
+
+// 0, or 1 to 4 digits not starting with 0.
+fn number(s: String) -> Option<Int> {
+  if s == "0" { return Some(0) }
+  if len(s) < 1 || len(s) > 4 || starts_with(s, "0") { return None }
+  for c in chars(s) {
+    if c < "0" || c > "9" { return None }
+  }
+  parse_int(s)
+}
+
+fn text_line(line: String) -> Option<String> {
+  if line == ">" { return Some("") }
+  if starts_with(line, "> ") { Some(line[2..<len(line)]) } else { None }
+}
+
+fn is_text(line: String) -> Bool {
+  match text_line(line) {
+    Some(_) => true
+    None => false
+  }
+}
+
+fn command(line: String, at: Int) -> Option<Command> {
+  if len(line) < 3 || line[1..<2] != " " { return None }
+  let kind = line[0..<1]
+  if kind != "d" && kind != "c" && kind != "a" { return None }
+  let ends = split(line[2..<len(line)], "-")
+  if len(ends) > 2 || len(ends) == 2 && kind == "a" { return None }
+  let from = number(ends[0])?
+  let to = number(ends[len(ends) - 1])?
+  if kind != "a" && from < 1 { return None }
+  Some(Command { line: at, kind: kind, from: from, to: to })
+}
+
+fn parse_script(text: String) -> Result<List<Command>, String> {
+  let rows = lines(text)
+  var commands: List<Command> = []
+  for i in 0..<len(rows) {
+    let at = "error: script line {i + 1}: "
+    match text_line(rows[i]) {
+      Some(t) => {
+        let k = len(commands) - 1
+        if k < 0 || commands[k].kind == "d" { return Err(at + "unexpected text") }
+        append(&commands[k].text, t)
+        continue
+      }
+      None => {}
+    }
+    let c = ok_or(command(rows[i], i + 1), at + "bad line")?
+    if c.to < c.from { return Err(at + "backward range") }
+    let next_is_text = i + 1 < len(rows) && is_text(rows[i + 1])
+    if c.kind != "d" && !next_is_text { return Err(at + "missing text") }
+    append(&commands, c)
+  }
+  Ok(commands)
+}
+
+// The first and last place taken: gap g is 2g, line l is 2l - 1.
+fn first_place(c: Command) -> Int {
+  if c.kind == "a" { 2 * c.from } else { 2 * c.from - 1 }
+}
+
+fn last_place(c: Command) -> Int {
+  if c.kind == "a" { 2 * c.from } else { 2 * c.to - 1 }
+}
+
+fn apply(target: String, commands: List<Command>) -> Result<String, String> {
+  let rows = lines(target)
+  let n = len(rows)
+  var taken = -1
+  for c in commands {
+    if c.to > n { return Err("error: script line {c.line}: past end") }
+    if first_place(c) <= taken { return Err("error: script line {c.line}: out of order") }
+    taken = last_place(c)
+  }
+  var out = ""
+  var next = 0  // index of the next target line to copy
+  var last_kept = n > 0 && !ends_with(target, "\n")
+  for c in commands {
+    let upto = if c.kind == "a" { c.from } else { c.from - 1 }
+    for row in rows[next..<upto] {
+      out += row + "\n"
+    }
+    for row in c.text {
+      out += row + "\n"
+    }
+    next = if c.kind == "a" { upto } else { c.to }
+    if c.to == n { last_kept = false }
+  }
+  for row in rows[next..<n] {
+    out += row + "\n"
+  }
+  if last_kept { out = out[0..<len(out) - 1] }
+  Ok(out)
+}
+
+fn summarize(s: Patch, text: String) -> String {
+  var added = 0
+  var gone = 0
+  for c in s.commands {
+    added += len(c.text)
+    if c.kind != "a" { gone += c.to - c.from + 1 }
+  }
+  let k = len(lines(text))
+  let word = if k == 1 { "line" } else { "lines" }
+  "wrote {k} {word} to {s.output} (+{added} -{gone})"
+}
+
+fn fail(why: String) -> List<Effect<Msg>> {
+  [Print(why), ExitWith(20)]
+}
+
+fn update(s: inout Patch, m: Msg) -> List<Effect<Msg>> {
+  match m {
+    Start(target, script, output) => {
+      s.target = target
+      s.script = script
+      s.output = output
+      s.reading = script
+      [ReadFile(script, then: ScriptLoaded, or: ReadFailed)]
+    }
+    ScriptLoaded(text) => {
+      match parse_script(text) {
+        Ok(commands) => {
+          s.commands = commands
+          s.reading = s.target
+          [ReadFile(s.target, then: TargetLoaded, or: ReadFailed)]
+        }
+        Err(why) => fail(why)
+      }
+    }
+    TargetLoaded(text) => {
+      match apply(text, s.commands) {
+        Ok(out) => {
+          s.summary = summarize(s, out)
+          [WriteFile(s.output, out, then: Wrote, or: WriteFailed)]
+        }
+        Err(why) => fail(why)
+      }
+    }
+    ReadFailed(_) => fail("error: cannot read {s.reading}")
+    Wrote => [Print(s.summary), Exit]
+    WriteFailed(_) => fail("error: cannot write {s.output}")
+  }
+}
+
+app patch_apply {
+  state: Patch
+  start: Start
+  update: update
+  grants: [Console, ReadFiles, WriteFiles]
+}

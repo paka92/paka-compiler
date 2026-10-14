@@ -1,0 +1,6 @@
+members a:1 b:1
+cost in 1000000.00 a
+cost out -01000000.00 b
+cost z -0.00
+cost small 999.99 b
+cost back -999.99 b

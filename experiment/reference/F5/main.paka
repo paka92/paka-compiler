@@ -1,0 +1,152 @@
+enum Msg {
+  Start(book: String, toc: String),
+  Loaded(text: String),
+  ReadFailed(why: String),
+  Wrote,
+  WriteFailed(why: String)
+}
+
+type Chapter { title: String, lines: List<String> = [] }
+
+type Job { name: String, text: String }
+
+type Split {
+  book: String = "",
+  toc: String = "",
+  jobs: List<Job> = [],
+  done: Int = 0,
+  summary: String = ""
+}
+
+fn is_blank(line: String) -> Bool {
+  for c in chars(line) {
+    if c != " " { return false }
+  }
+  true
+}
+
+fn strip_spaces(s: String) -> String {
+  var from = 0
+  var to = len(s)
+  while from < to && s[from..<from + 1] == " " { from += 1 }
+  while to > from && s[to - 1..<to] == " " { to -= 1 }
+  s[from..<to]
+}
+
+fn slug(title: String) -> String {
+  var s = ""
+  for c in chars(lower(title)) {
+    if c >= "a" && c <= "z" || c >= "0" && c <= "9" {
+      s += c
+    } else if !is_empty(s) && !ends_with(s, "-") {
+      s += "-"
+    }
+  }
+  if len(s) > 20 { s = s[0..<20] }
+  if ends_with(s, "-") { s = s[0..<len(s) - 1] }
+  if is_empty(s) { "chapter" } else { s }
+}
+
+fn plural(n: Int, word: String) -> String {
+  if n == 1 { "{n} {word}" } else { "{n} {word}s" }
+}
+
+fn trimmed(rows: List<String>) -> List<String> {
+  var from = 0
+  var to = len(rows)
+  while to > 0 && is_blank(rows[to - 1]) { to -= 1 }
+  while from < to && is_blank(rows[from]) { from += 1 }
+  rows[from..<to]
+}
+
+fn chapters(text: String) -> Result<List<Chapter>, String> {
+  var found: List<Chapter> = []
+  let rows = lines(text)
+  for i in 0..<len(rows) {
+    let line = rows[i]
+    let at = "error: line {i + 1}: "
+    if line == "#" || starts_with(line, "# ") {
+      let title = strip_spaces(line[1..<len(line)])
+      if is_empty(title) { return Err(at + "empty title") }
+      append(&found, Chapter { title: title })
+    } else if !is_empty(found) {
+      append(&found[len(found) - 1].lines, line)
+    } else if !is_blank(line) {
+      return Err(at + "text before first chapter")
+    }
+  }
+  if is_empty(found) { return Err("error: no chapters") }
+  Ok(found)
+}
+
+fn plan(found: List<Chapter>, toc_name: String) -> List<Job> {
+  var jobs: List<Job> = []
+  var taken: List<String> = []
+  var toc = ""
+  for k in 0..<len(found) {
+    let c = found[k]
+    let s = slug(c.title)
+    var base = s
+    var n = 2
+    while contains(taken, base) {
+      base = "{s}-{n}"
+      n += 1
+    }
+    append(&taken, base)
+    let name = base + ".txt"
+    let body = trimmed(c.lines)
+    var text = "# {c.title}\n"
+    for line in body {
+      text += line + "\n"
+    }
+    append(&jobs, Job { name: name, text: text })
+    let count = plural(len(body), "line")
+    toc += "{k + 1}. {c.title} -> {name} ({count})\n"
+  }
+  append(&jobs, Job { name: toc_name, text: toc })
+  jobs
+}
+
+fn fail(why: String) -> List<Effect<Msg>> {
+  [Print(why), ExitWith(20)]
+}
+
+fn write_next(s: Split) -> List<Effect<Msg>> {
+  if s.done == len(s.jobs) { return [Print(s.summary), Exit] }
+  let job = s.jobs[s.done]
+  [WriteFile(job.name, job.text, then: Wrote, or: WriteFailed)]
+}
+
+fn update(s: inout Split, m: Msg) -> List<Effect<Msg>> {
+  match m {
+    Start(book, toc) => {
+      s.book = book
+      s.toc = toc
+      [ReadFile(book, then: Loaded, or: ReadFailed)]
+    }
+    Loaded(text) => {
+      match chapters(text) {
+        Ok(found) => {
+          s.jobs = plan(found, s.toc)
+          let c = plural(len(found), "chapter")
+          s.summary = "split {s.book} into {c}"
+          write_next(s)
+        }
+        Err(why) => fail(why)
+      }
+    }
+    ReadFailed(_) => fail("error: cannot read {s.book}")
+    Wrote => {
+      s.done += 1
+      write_next(s)
+    }
+    WriteFailed(_) => fail("error: cannot write {s.jobs[s.done].name}")
+  }
+}
+
+app chapter_split {
+  state: Split
+  start: Start
+  update: update
+  grants: [Console, ReadFiles, WriteFiles]
+}
