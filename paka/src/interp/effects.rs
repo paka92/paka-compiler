@@ -133,7 +133,7 @@ fn usable(path: &str) -> Result<&str, Reason> {
     Ok(path)
 }
 
-/// The host: descriptor 1 through `out`, and the files below the working directory.
+/// The host: descriptor 1 through `out`, and files by path, relative to the working directory.
 pub struct Host<W>(pub W);
 
 impl<W: Write> World for Host<W> {
@@ -149,13 +149,16 @@ impl<W: Write> World for Host<W> {
     }
 
     fn read(&mut self, path: &str) -> Result<String, Reason> {
-        let file = File::open(path).map_err(|e| file_reason(&e))?;
-        if !file.metadata().map_err(|e| file_reason(&e))?.is_file() {
+        let meta = fs::metadata(path).map_err(|e| file_reason(&e))?;
+        if !meta.is_file() {
             return Err("not a file");
         }
-        let mut bytes = vec![];
-        let limit = CAP as u64 + 1;
-        file.take(limit)
+        if meta.len() > CAP as u64 {
+            return Err("failed");
+        }
+        let mut bytes = Vec::with_capacity(meta.len() as usize);
+        let file = File::open(path).map_err(|e| file_reason(&e))?;
+        file.take(CAP as u64 + 1)
             .read_to_end(&mut bytes)
             .map_err(|e| file_reason(&e))?;
         if bytes.len() > CAP {

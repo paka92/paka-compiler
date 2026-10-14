@@ -36,7 +36,7 @@ const RUN_THREAD: &str = "paka-run";
 const NAMED: usize = 8;
 
 /// Runs the program with the command-line arguments after its file, `out` being descriptor 1 and
-/// the files those of the working directory; returns its status.
+/// file paths relative to the working directory; returns its status.
 pub fn run(
     core: &Program,
     args: &[OsString],
