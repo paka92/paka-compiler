@@ -250,7 +250,7 @@ mod tests {
     }
 
     /// Codes of the second milestone, until the spec lists them.
-    const M2: [&str; 21] = [
+    const M2: [&str; 24] = [
         "no-finite-value",
         "unused-result",
         "nothing-to-discard",
@@ -272,6 +272,9 @@ mod tests {
         "duplicate-arm",
         "wildcard-on-enum",
         "bad-state",
+        "inout-overlap",
+        "changed-while-read",
+        "changed-while-walked",
     ];
 
     #[test]

@@ -7,6 +7,7 @@ use crate::resolve::resolve;
 
 mod app;
 mod branch;
+mod own;
 mod pattern;
 mod rows;
 
@@ -1268,7 +1269,7 @@ fn pins_the_message_of_each_text() {
         (
             "bad-assignment-target",
             "^d.shape.w = 3.0",
-            "w is a field of the variant Rect; build Rect(..) and assign the subject",
+            "w is a field of the variant Rect; build Rect(..) and assign d.shape",
             full(&[
                 "type D { shape: Shape = Dot }",
                 "fn f(d: inout D) {",
