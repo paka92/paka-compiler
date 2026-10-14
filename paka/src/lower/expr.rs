@@ -19,25 +19,21 @@ pub(super) enum Math {
     Join(Site),
 }
 
-impl From<Math> for Bin {
-    fn from(m: Math) -> Bin {
-        match m {
-            Math::Int(op, site) => Bin::Int(op, site),
-            Math::Float(op) => Bin::Float(op),
-            Math::Join(site) => Bin::Join(site),
+macro_rules! from_math {
+    ($($to:ident),*) => {$(
+        impl From<Math> for $to {
+            fn from(m: Math) -> $to {
+                match m {
+                    Math::Int(op, site) => $to::Int(op, site),
+                    Math::Float(op) => $to::Float(op),
+                    Math::Join(site) => $to::Join(site),
+                }
+            }
         }
-    }
+    )*};
 }
 
-impl From<Math> for Compound {
-    fn from(m: Math) -> Compound {
-        match m {
-            Math::Int(op, site) => Compound::Int(op, site),
-            Math::Float(op) => Compound::Float(op),
-            Math::Join(site) => Compound::Join(site),
-        }
-    }
-}
+from_math!(Bin, Compound);
 
 /// The operand a link of a chain works on.
 fn operand<'e, 'a>(e: &'e ast::Expr<'a>) -> Option<&'e ast::Expr<'a>> {
@@ -326,8 +322,8 @@ impl<'a> Cx<'_, 'a> {
             Binding::Builtin(name) if self.table.variants.contains_key(name) => {
                 ExprKind::Variant(builtin_tag(name), self.values(args))
             }
-            Binding::Builtin(name) => {
-                let row = self.row(name, args);
+            Binding::Builtin(_) => {
+                let row = self.row(callee);
                 self.call(Callee::Builtin(row), args, callee.at)
             }
         };
@@ -359,21 +355,13 @@ impl<'a> Cx<'_, 'a> {
         args.iter().map(|a| self.expr(&a.value)).collect()
     }
 
-    /// The index in `builtins::ROWS` of the row the checker chose for a call of `name`: the first
-    /// of its rows with as many parameters as arguments whose first parameter takes the first
-    /// argument.
-    fn row(&self, name: &str, args: &[ast::Arg<'a>]) -> usize {
-        let rows = &self.table.fns[name];
-        let first = args.first().and_then(|a| match &a.value.kind {
-            K::Inout(x) => self.entry(x),
-            _ => self.entry(&a.value),
-        });
-        let takes = |r: &crate::sig::Sig| {
-            r.params.len() == args.len()
-                && (rows.len() == 1
-                    || first.is_none_or(|t| self.table.types.fits(t, r.params[0].ty)))
+    /// The index in `builtins::ROWS` of the row the checker picked for the call of the built-in
+    /// `callee`; a built-in with one row has none recorded.
+    fn row(&self, callee: &ast::Expr<'a>) -> usize {
+        let K::Name(name) = callee.kind else {
+            unreachable!("a built-in callee is a name");
         };
-        let nth = rows.iter().position(takes).expect("a row for the call");
+        let picked = self.bodies.rows[self.def].get(&(callee.at, callee.len));
         let named = |&&(kind, text): &&(Kind, &'static str)| {
             kind == Kind::Fn && builtins::name(text) == name
         };
@@ -381,7 +369,9 @@ impl<'a> Cx<'_, 'a> {
             .iter()
             .enumerate()
             .filter(|&(_, row)| named(&row));
-        all.map(|(i, _)| i).nth(nth).expect("a row of the name")
+        all.map(|(i, _)| i)
+            .nth(picked.copied().unwrap_or(0))
+            .expect("a row of the name")
     }
 }
 

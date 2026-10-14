@@ -81,7 +81,8 @@ impl Cx<'_, '_> {
         hint: Option<Ty>,
     ) -> Res<Option<Ty>> {
         let ends: Vec<_> = (0..n).map(|i| Some(item(i))).collect();
-        let joined = self.branches(e, &ends, Use::Value(None), |cx, i, u, _| {
+        let fixed = hint.filter(|&h| !self.free(h));
+        let joined = self.branches(e, &ends, Use::Value(fixed), |cx, i, u, _| {
             match (u.want(), hint) {
                 (None, Some(h)) => {
                     let out = cx.expr(item(i), Some(h))?;

@@ -34,6 +34,9 @@ pub struct Bodies {
     pub defs: Vec<Option<Diagnostic>>,
     /// The type of every expression met, by (position, length in bytes); partial after an error.
     pub types: Vec<BTreeMap<(Pos, usize), Ty>>,
+    /// The row picked for each call of a built-in that has several, by (position, length in
+    /// bytes) of the name: the row's place among the rows of that name.
+    pub rows: Vec<BTreeMap<(Pos, usize), usize>>,
 }
 
 type Res<T = ()> = Result<T, Diagnostic>;
@@ -108,6 +111,7 @@ struct Cx<'t, 'a> {
     /// The place each `for` name walks, as written, when it walks a place.
     walks: BTreeMap<Pos, String>,
     info: BTreeMap<(Pos, usize), Ty>,
+    picks: BTreeMap<Span, usize>,
 }
 
 pub fn check<'a>(
@@ -138,14 +142,17 @@ pub fn check<'a>(
         locals: BTreeMap::new(),
         walks: BTreeMap::new(),
         info: BTreeMap::new(),
+        picks: BTreeMap::new(),
     };
     let mut bodies = Bodies {
         defs: Vec::new(),
         types: Vec::new(),
+        rows: Vec::new(),
     };
     for (i, def) in program.defs.iter().enumerate() {
         bodies.defs.push(cx.definition(i, def));
         bodies.types.push(std::mem::take(&mut cx.info));
+        bodies.rows.push(std::mem::take(&mut cx.picks));
     }
     bodies
 }

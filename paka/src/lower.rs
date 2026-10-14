@@ -380,6 +380,12 @@ pub fn m1(core: &Program) -> Option<M1> {
     if app.state.is_some() || !only_console || !update.body.stmts.is_empty() {
         return None;
     }
+    let Type::Enum(msg) = core.types[update.params.last()?.ty] else {
+        return None;
+    };
+    if !core.enums[msg].variants[app.start].fields.is_empty() {
+        return None;
+    }
     let ExprKind::List(items) = &update.body.value.as_ref()?.kind else {
         return None;
     };

@@ -286,7 +286,12 @@ impl<'a> Cx<'_, 'a> {
         };
         let (sig, first) = match rows {
             [_] => (only, None),
-            _ => self.pick(c, &counted, &args[0])?,
+            _ => {
+                let (row, first) = self.pick(c, &counted, &args[0])?;
+                let nth = rows.iter().position(|r| std::ptr::eq(r, row));
+                self.picks.insert(c.at, nth.expect("a row of the call"));
+                (row, first)
+            }
         };
         self.labels(c, sig, args)?;
         self.walk(c, sig, args, first, want)
@@ -410,7 +415,11 @@ impl<'a> Cx<'_, 'a> {
         }
         if let (Some(w), Some(r)) = (want, sig.result) {
             let r = self.subst(r, &bound);
-            self.bind(r, w, &mut bound);
+            if !self.bind(r, w, &mut bound) && misfit.is_some() && !self.free(w) {
+                let r = self.subst(r, &bound);
+                let (w, r) = (self.types.show(w), self.types.show(r));
+                return Err(self.mismatch(c.at, &w, &r, ""));
+            }
         }
         for (i, got) in open {
             let (param, value) = (sig.params[i].ty, &args[i].value);
