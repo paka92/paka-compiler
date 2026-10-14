@@ -1,8 +1,11 @@
 //! The case runner on hand-written tasks: a known-good and known-bad program per language, and the
 //! task loader on a good and several malformed folders.
 
+mod common;
+
+use common::{put, runner, scratch};
 use harness::Error;
-use harness::runner::{Lang, Limits, Runner, Verdict};
+use harness::runner::{Lang, Runner, Verdict};
 use harness::task::Task;
 use std::fs;
 use std::path::{Path, PathBuf};
@@ -97,19 +100,6 @@ fn programs() -> [Programs; 3] {
 
 type Breaker = fn(&Path);
 
-fn scratch(name: &str) -> PathBuf {
-    let dir = std::env::temp_dir().join(format!("harness-runner-{}-{name}", std::process::id()));
-    let _ = fs::remove_dir_all(&dir);
-    fs::create_dir_all(&dir).unwrap();
-    dir
-}
-
-fn put(dir: &Path, rel: &str, text: &str) {
-    let path = dir.join(rel);
-    fs::create_dir_all(path.parent().unwrap()).unwrap();
-    fs::write(path, text).unwrap();
-}
-
 /// A case folder: arguments, input file, expected output and status.
 fn put_case(dir: &Path, name: &str, args: &str, input: Option<&str>, stdout: &str, status: &str) {
     put(dir, &format!("{name}/args"), args);
@@ -155,25 +145,6 @@ fn word_task(name: &str) -> (PathBuf, Task) {
     );
     let task = Task::load(&root).unwrap();
     (root, task)
-}
-
-fn runner() -> Runner {
-    // Cargo builds the paka binary beside the test binary's `deps` folder.
-    let exe = std::env::current_exe().unwrap();
-    let paka = exe.parent().unwrap().parent().unwrap().join("paka");
-    assert!(
-        paka.exists(),
-        "build the paka binary first: {}",
-        paka.display()
-    );
-    let limits = Limits {
-        build: Duration::from_secs(120),
-        case: Duration::from_secs(5),
-    };
-    Runner {
-        limits,
-        ..Runner::new(paka).unwrap()
-    }
 }
 
 /// The verdicts of a program that builds: visible cases in name order, then hidden ones.
