@@ -1,0 +1,10 @@
+open hal
+open ivy
+deposit hal 50.00
+transfer max hal 1.00
+transfer hal max 1.00
+transfer zoe max 1.00
+transfer hal hal 99.00
+hold hal p 20.00
+transfer hal ivy 30.01
+transfer hal ivy 30.00

@@ -1,0 +1,3 @@
+open uma
+release
+withdraw uma 1.00
