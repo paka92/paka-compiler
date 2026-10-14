@@ -344,7 +344,11 @@ impl<'a> Cx<'_, 'a> {
         };
         let found = self.types.show(ty);
         let d = self.fail_at(&arg.value, "type-mismatch", message);
-        Err(d.with_types(&shown.join(" or "), &found))
+        let expected = match shown.as_slice() {
+            [init @ .., last] if !init.is_empty() => format!("{} or {last}", init.join(", ")),
+            _ => shown.concat(),
+        };
+        Err(d.with_types(&expected, &found))
     }
 
     /// Labels stand where the signature has them, with its names, in its order.

@@ -1,13 +1,34 @@
-//! The generic built-in rows over List, Map and Option (M2-14 sections 1.8 to 1.10). One routine
-//! serves every item type: the checker has already made each use agree on one.
+//! The generic built-in rows over List, Map and Option (M2-14 sections 1.3 and 1.8 to 1.10), and
+//! `sort` (section 1.13). One routine serves every item type: the checker has already made each
+//! use agree on one.
 
-use super::eval::{CAP, Kind, Trap, bound, out_of_bounds};
-use super::value::{Items, Key, Value, equals, position};
-use crate::core_form::Site;
+use super::eval::{CAP, Kind, Trap, bound, compare, out_of_bounds};
+use super::value::{Items, Key, Value, equals, number, position};
+use crate::builtins::{ROWS, name};
+use crate::core_form::{Cmp, Site, Tag};
 use paka_rt::ops::Int;
 use std::mem;
+use std::sync::OnceLock;
 
 type Out = Result<Value, Trap>;
+
+/// Whether the routine of row `row` moves argument `arg` into its result or a collection. Such an
+/// argument must be a value of its own, not a local lent for the call; the other arguments are
+/// only read, or copied when they are kept.
+pub fn keeps(row: usize, arg: usize) -> bool {
+    static KEPT: OnceLock<Vec<u8>> = OnceLock::new();
+    let kept = KEPT.get_or_init(|| ROWS.iter().map(|r| kept_by(name(r.1))).collect());
+    kept[row] >> arg & 1 == 1
+}
+
+/// A bit per argument.
+fn kept_by(row: &str) -> u8 {
+    match row {
+        "list_of" | "unwrap_or" | "ok_or" => 0b01,
+        "append" | "extend" | "insert" | "get" | "has" | "remove" => 0b10,
+        _ => 0,
+    }
+}
 
 /// Runs the generic row `name` on `args`; `None` when no generic row fits them.
 pub fn call(name: &str, args: &mut [Value], site: Site) -> Option<Out> {
@@ -41,38 +62,36 @@ pub fn call(name: &str, args: &mut [Value], site: Site) -> Option<Out> {
             xs.0.reverse();
             Ok(Value::Unit)
         }
+        ("sort", [Value::List(xs)]) => {
+            let mut scratch = Vec::with_capacity(xs.0.len());
+            sort(&mut xs.0, &mut scratch);
+            Ok(Value::Unit)
+        }
         ("list_of", [item, n]) => list_of(item, n.int(), site),
-        ("get", [Value::Map(m), key]) => (m.0.get(&Key::of(key)))
+        ("get", [Value::Map(m), key]) => (m.0.get(&mem::take(key).key()))
             .map(|v| copied(v, site))
             .transpose()
             .map(option),
-        ("has", [Value::Map(m), key]) => Ok(Value::Bool(m.0.contains_key(&Key::of(key)))),
+        ("has", [Value::Map(m), key]) => Ok(Value::Bool(m.0.contains_key(&mem::take(key).key()))),
         ("remove", [Value::Map(m), key]) => {
-            m.0.remove(&Key::of(key));
+            m.0.remove(&mem::take(key).key());
             Ok(Value::Unit)
         }
         ("keys", [Value::Map(m)]) => Ok(list(m.0.keys().map(Key::value).collect())),
         ("values", [Value::Map(m)]) => (m.0.values().map(|v| copied(v, site)))
             .collect::<Result<_, _>>()
             .map(list),
-        ("unwrap_or", [Value::Variant(n, inside), fallback]) => Ok(mem::take(if *n == SOME {
-            &mut inside.0[0]
-        } else {
-            fallback
-        })),
-        ("ok_or", [Value::Variant(n, inside), error]) => Ok(if *n == SOME {
-            Value::Variant(OK, mem::take(inside))
-        } else {
-            Value::Variant(ERR, Items(vec![mem::take(error)]))
-        }),
+        ("unwrap_or", [Value::Variant(n, inside), fallback]) => match *n == number(&Tag::Some) {
+            true => Ok(mem::take(&mut inside.0[0])),
+            false => copied(fallback, site),
+        },
+        ("ok_or", [Value::Variant(n, inside), error]) => match *n == number(&Tag::Some) {
+            true => Ok(Value::Variant(number(&Tag::Ok), mem::take(inside))),
+            false => copied(error, site).map(|e| Value::Variant(number(&Tag::Err), Items(vec![e]))),
+        },
         _ => return None,
     })
 }
-
-/// The variant numbers of `Option` and `Result`.
-const SOME: usize = 1;
-const OK: usize = 0;
-const ERR: usize = 1;
 
 fn count(n: usize) -> Value {
     Value::Int(Int::new(n as i64))
@@ -84,8 +103,8 @@ fn list(items: Vec<Value>) -> Value {
 
 fn option(inside: Option<Value>) -> Value {
     match inside {
-        Some(v) => Value::Variant(SOME, Items(vec![v])),
-        None => Value::Variant(0, Items(vec![])),
+        Some(v) => Value::Variant(number(&Tag::Some), Items(vec![v])),
+        None => Value::Variant(number(&Tag::None), Items(vec![])),
     }
 }
 
@@ -95,10 +114,10 @@ fn copied(v: &Value, site: Site) -> Out {
 
 /// Checks M2-06's cap before a value of `len` items grows by `more`.
 fn room(len: usize, more: usize, site: Site) -> Result<(), Trap> {
-    match len.saturating_add(more) > CAP {
-        true => Err(Trap::bare(Kind::Memory, site)),
-        false => Ok(()),
+    if len.saturating_add(more) > CAP {
+        return Err(Trap::bare(Kind::Memory, site));
     }
+    Ok(())
 }
 
 fn index_of(xs: &Items, item: &Value, site: Site) -> Result<Option<usize>, Trap> {
@@ -138,4 +157,30 @@ fn list_of(item: &mut Value, n: Int, site: Site) -> Out {
         items.push(item);
     }
     Ok(list(items))
+}
+
+/// M2-14 section 1.13's procedure with `<` as `before`; `scratch` is the range merged into.
+fn sort(xs: &mut [Value], scratch: &mut Vec<Value>) {
+    if xs.len() < 2 {
+        return;
+    }
+    let mid = xs.len() / 2;
+    let (left, right) = xs.split_at_mut(mid);
+    sort(left, scratch);
+    sort(right, scratch);
+    let (mut i, mut j) = (0, mid);
+    while i < mid && j < xs.len() {
+        let from = if compare(&Cmp::Lt, &xs[j], &xs[i]) {
+            &mut j
+        } else {
+            &mut i
+        };
+        scratch.push(mem::take(&mut xs[*from]));
+        *from += 1;
+    }
+    scratch.extend(xs[i..mid].iter_mut().map(mem::take));
+    scratch.extend(xs[j..].iter_mut().map(mem::take));
+    for (slot, item) in xs.iter_mut().zip(scratch.drain(..)) {
+        *slot = item;
+    }
 }

@@ -34,17 +34,3 @@ pub fn call(row: usize, args: &mut [Value], site: Site) -> Done {
         }
     })
 }
-
-/// Whether row `row` moves an argument into its result or a collection: such an argument must be
-/// a value of its own, not a local lent for the call.
-pub fn stores(row: usize) -> bool {
-    let rows = [
-        "append",
-        "extend",
-        "insert",
-        "list_of",
-        "unwrap_or",
-        "ok_or",
-    ];
-    rows.contains(&name(ROWS[row].1))
-}

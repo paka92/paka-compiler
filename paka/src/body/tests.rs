@@ -637,7 +637,7 @@ fn rejects_inout_marks() {
         st(
             MISMATCH,
             "sort(^&xs",
-            Some(("List<Int> or List<Float> or List<String>", "List<Bool>")),
+            Some(("List<Int>, List<Float> or List<String>", "List<Bool>")),
             &["var xs = [true]", "sort(&xs)"],
         ),
     ]);
@@ -964,7 +964,7 @@ fn rejects_built_in_calls_by_row() {
         st(
             MISMATCH,
             "len(^5)",
-            Some(("String or List<T> or Map<K, V>", "Int")),
+            Some(("String, List<T> or Map<K, V>", "Int")),
             &["_ = len(5)"],
         ),
         st(

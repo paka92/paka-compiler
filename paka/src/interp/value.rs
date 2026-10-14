@@ -40,14 +40,6 @@ pub enum Key {
 }
 
 impl Key {
-    pub fn of(v: &Value) -> Key {
-        match v {
-            Value::Int(n) => Key::Int(*n),
-            Value::Str(t) => Key::Str(t.clone()),
-            _ => unreachable!("a checked key"),
-        }
-    }
-
     pub fn value(&self) -> Value {
         match self {
             Key::Int(n) => Value::Int(*n),

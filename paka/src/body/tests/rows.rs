@@ -387,7 +387,7 @@ fn a_bound_letter_holds_against_later_arguments() {
         st(
             MISMATCH,
             "sort(^&ps",
-            Some(("List<Int> or List<Float> or List<String>", "List<Counter>")),
+            Some(("List<Int>, List<Float> or List<String>", "List<Counter>")),
             &["var ps = [Counter { name: \"a\" }]", "sort(&ps)"],
         ),
     ]);

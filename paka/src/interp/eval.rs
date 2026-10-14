@@ -1,7 +1,7 @@
 //! Evaluation of the core form, node by node (docs/core.md sections 2 to 6).
 
 use super::value::{Entries, FnKey, Items, Key, Value, equals, number, position};
-use super::{RUN_THREAD, STACK, builtin};
+use super::{RUN_THREAD, STACK, builtin, generic};
 use crate::core_form::Fn as Func;
 use crate::core_form::{
     App, Arg, Arith, Arm, Bin, Block, Callee, Cmp, Compound, Expr, ExprKind, FloatArith, FnId,
@@ -683,14 +683,14 @@ impl<'a> Machine<'a> {
                 _ => unreachable!("a checked function value"),
             },
         };
-        let lend = match target {
+        let lend = |i| match target {
             Target::Ctor(_) => false,
-            Target::Builtin(row) => !builtin::stores(row),
+            Target::Builtin(row) => !generic::keeps(row, i),
             Target::User(_) => true,
         };
         let mut given: Vec<Given> = Vec::with_capacity(args.len());
-        for arg in args {
-            let g = self.given(fr, arg, lend, &given)?;
+        for (i, arg) in args.iter().enumerate() {
+            let g = self.given(fr, arg, lend(i), &given)?;
             given.push(g);
         }
         let (mut params, loans) = take_args(fr, given)?;
@@ -923,7 +923,7 @@ fn float_op(op: &FloatArith, a: Float, b: Float) -> Float {
     }
 }
 
-fn compare(cmp: &Cmp, a: &Value, b: &Value) -> bool {
+pub(super) fn compare(cmp: &Cmp, a: &Value, b: &Value) -> bool {
     let order = match (a, b) {
         (Value::Int(x), Value::Int(y)) => x.partial_cmp(y),
         (Value::Float(x), Value::Float(y)) => x.partial_cmp(y),
