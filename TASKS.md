@@ -595,11 +595,12 @@ or merged during review. Ids with a letter were added during review.
 
 ### M2-39 · L3 · Write conformance tests for types, match, generics, function values and errors
 
+- status: done
 - needs: M2-18, M2-30, M2-31
 - flags: none
 - done when: Expected results merged before any run, written without access to a built paka; every decision point in scope has a case.
 - why this level: Hand-computing exact results across interacting features.
-- note: The caller runs this agent with no paka binary and no way to build one (no cargo, or a checkout holding only the reference, the decision records and the tests folder); the agent must not build or run paka; the cases land in a not-yet-required list. M2-41b runs them.
+- note: The caller runs this agent with no paka binary and no way to build one (no cargo, or a checkout holding only the reference, the decision records and the tests folder); the agent must not build or run paka; the cases land in a not-yet-required list. M2-41b runs them. Done: 208 cases in tests/conformance/types (47 run, 161 reject) for user types, match, generics, function values, habit spellings, sort_by and errors. The README Case reading table lists the readings chosen where a record leaves a point open.
 
 ### M2-39b · L3 · Write conformance tests for the built-in functions and collection types
 
@@ -633,7 +634,7 @@ or merged during review. Ids with a letter were added during review.
 - flags: open-ended, owner
 - done when: All cases pass with none skipped under `cargo test --workspace --locked --offline`; the not-yet-required list is empty; each change to code or expectation cites the decision line that settles it; a mismatch no line settles goes to the owner as an amendment to that decision before either side changes. A test proves every error kind has a case, and a test applies each expected fix and the result passes paka check. A kind found without a case gets one from an agent without the paka binary, as in M2-42.
 - why this level: Choosing which side is wrong silently sets the language's meaning.
-- note: Settle while running tests/conformance/errors: the span length where no record states it (bad-escape, changed-while-walked, inout-overlap, bad-assignment-target, marked * in the README table); spec/m1.md section 10 still puts type-mismatch at the first token and gives no-app the stage check, while later records put a mixed operand at the operator and only run and build raise no-app; spec/m1.md section 10 lists 31 of the 54 kinds; the lex cases M2-03 cites (string_close_brace, escape_before_line_end) do not exist.
+- note: Settle while running tests/conformance/errors: the span length where no record states it (bad-escape, changed-while-walked, inout-overlap, bad-assignment-target, marked * in the README table); spec/m1.md section 10 still puts type-mismatch at the first token and gives no-app the stage check, while later records put a mixed operand at the operator and only run and build raise no-app; spec/m1.md section 10 lists 31 of the 54 kinds; the lex cases M2-03 cites (string_close_brace, escape_before_line_end) do not exist. Rule on the types/ Case reading table: a wrong field count in a pattern is wrong-argument-count at the variant name; max(1, 2.0) is at the second argument; a record literal in an if header fails at the colon; a field default fails at the first token not part of a constant. Two types/ gaps the README calls unpinned are now settled by later records: missing-value at the arm first token (M2-02 section 5) and a state with a function field giving type-mismatch before bad-state (M2-09); add their cases.
 
 ### M2-42 · L3 · Write a rejected program for every error kind
 
