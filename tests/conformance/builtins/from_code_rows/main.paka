@@ -1,0 +1,18 @@
+enum Msg { Start }
+
+fn b(x: Bool) -> String { "{x}" }
+
+fn n(x: Int) -> String { "{x}" }
+
+fn update(msg: Msg) -> List<Effect<Msg>> {
+  let l1 = join([from_code(65), from_code(233), from_code(26412), from_code(128512)], " ")
+  let l2 = join([b(from_code(10) == "\n"), b(from_code(9) == "\t"), b(from_code(13) == "\r"), n(len(from_code(0))), n(code_at(from_code(0), 0))], " ")
+  let l3 = join([n(code_at(from_code(1114111), 0)), n(code_at(from_code(55295), 0)), n(code_at(from_code(57344), 0)), n(len(from_code(11)))], " ")
+  [Print(l1), Print(l2), Print(l3), Exit]
+}
+
+app builtins {
+  start: Start
+  update: update
+  grants: [Console]
+}

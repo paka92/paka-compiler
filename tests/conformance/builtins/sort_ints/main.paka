@@ -1,0 +1,29 @@
+enum Msg { Start }
+
+fn si(xs: List<Int>) -> String {
+  var parts: List<String> = []
+  for x in xs { append(&parts, "{x}") }
+  "[" + join(parts, ",") + "]"
+}
+
+fn update(msg: Msg) -> List<Effect<Msg>> {
+  var a = [5, 3, 9, 1, 3, -2, 0]
+  sort(&a)
+  var e: List<Int> = []
+  sort(&e)
+  var one = [4]
+  sort(&one)
+  var up = [1, 2, 3]
+  sort(&up)
+  var down = [3, 2, 1]
+  sort(&down)
+  var edge = [9223372036854775807, -9223372036854775807, 0]
+  sort(&edge)
+  [Print(si(a)), Print(si(e)), Print(si(one)), Print(si(up)), Print(si(down)), Print(si(edge)), Exit]
+}
+
+app builtins {
+  start: Start
+  update: update
+  grants: [Console]
+}

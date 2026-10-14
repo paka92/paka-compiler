@@ -7,6 +7,10 @@ These cases are not yet required: no harness runs them today. M2-41b runs them.
 `core/` covers values, expressions, control flow and functions (M2-02, M2-03, M2-06, M2-09, M2-12 where they
 bear on these).
 
+`builtins/` covers the built-in functions and collection types (M2-14): every row of its table, the
+edges of its text, List, Map, sort and trap rules, the seven samples, and the check-time rejections
+it pins.
+
 ## Case format
 
 A case is a folder `<area>/<name>/`, `<name>` matching `[a-z0-9_]+`, holding a full program in
@@ -14,7 +18,8 @@ A case is a folder `<area>/<name>/`, `<name>` matching `[a-z0-9_]+`, holding a f
 
 - A run case adds `stdout`, `status` (decimal digits and a line feed) and, only when standard error
   is not empty, `stderr`. Status 0 cases show their behaviour through printed output; status 3
-  cases hold the trap report of M2-06 §1.2 byte for byte.
+  cases hold the trap report of M2-06 §1.2 byte for byte. A run case for a `stack` or `memory`
+  trap holds `trap` instead of `stderr`: the kind and one line feed. Its `status` is 3.
 - A reject case adds `reject` alone: `main.paka:LINE:COL: error[CODE]` and one line feed. Only the
   code and position are pinned; message texts are not, since the records fix most of them only in
   parts.
@@ -26,6 +31,9 @@ The case folder is the working directory, so every diagnostic path is `main.paka
 - Run case: `paka run main.paka` passes when standard output equals `stdout` byte for byte, the
   exit status equals `status`, and standard error equals `stderr` byte for byte (empty when the
   case has no `stderr` file). The format is spec/m1.md §11.
+- Run case with `trap`: standard output equals `stdout`, the exit status is 3, and standard error
+  is exactly one line `<app>: trap <kind> at main.paka:LINE:COL` and a line feed, with `<kind>` the
+  `trap` text and any LINE and COL. This extends spec/m1.md §11.
 - Reject case: `paka run main.paka` exits with status 1, standard output is empty, and standard
   error is exactly one line that starts with the `reject` text without its line feed, followed by
   `: ` and at least one more byte (spec/m1.md §11).
@@ -292,6 +300,170 @@ M2-41 reuses `order_call_arguments` and `order_assignment_right_first`.
 | trap report inside calls: chain of frames | `factorial_overflow`, `trap_frame_chain` |
 | the chain stops at eight names and ends in `, ...` | `trap_frames_cut` |
 
+### M2-14 §1.2 to §1.3: reading a row, shared rows
+
+| Point | Case(s) |
+|---|---|
+| `len` on String (code points), List, Map | `len_string_list_map` |
+| `is_empty` on the three types | `is_empty_three_types` |
+| `contains` on String, empty part, non-ASCII | `contains_string` |
+| `contains` on List, `contains([], 1)`, a NaN is never found | `contains_list` |
+| `find` on String, empty part, overlap, non-ASCII | `find_string` |
+| `find` on List, `find([], 1)` | `find_list` |
+| a type with no row: `len(5)`, `abs("x")` | `len_of_int`, `abs_of_string` |
+| `len([])` and `len([:])` written bare | `len_of_empty_list`, `len_of_empty_map_literal` |
+| `min(1, 2.0)` | `min_of_int_and_float` |
+| a built-in is not a value | `builtin_as_value`, `builtin_as_sort_by_function` |
+| a user definition of a row's name; a type named like a built-in type | `user_function_named_like_row`, `user_type_named_option` |
+| a local may hide a built-in; calling it is `not-a-function` | `local_hides_builtin`, `local_hides_builtin_call` |
+| an unlisted habit name | `unknown_habit_name` |
+| the labels of `fixed`, `insert` and `list_of` are required | `fixed_digits_unlabelled`, `insert_at_unlabelled`, `list_of_count_unlabelled` |
+| a dropped result needs `_ =` | `pop_result_dropped`, `remove_at_result_dropped` |
+
+### M2-14 §1.4: number rows
+
+| Point | Case(s) |
+|---|---|
+| `min`, `max` on Int, Float, String | `min_max_ints`, `min_max_floats`, `min_max_strings` |
+| `abs`, the smallest Int traps | `abs_rows`, `abs_smallest_int` |
+| `to_float` | `to_float_rows` |
+| `to_int`, NaN, infinity, out of range | `to_int_rows`, `to_int_nan`, `to_int_infinity`, `to_int_too_large`, `to_int_two_to_63`, `to_int_below_min` |
+| `sqrt` (with `fixed` to 20 digits), `floor`, `ceil`, `trunc`, `round`, `floor` of a large Float | `sqrt_rows`, `floor_rows`, `floor_large`, `ceil_rows`, `trunc_rows`, `round_rows` |
+| `fixed`, digits 0 to 20, digits outside | `fixed_rows`, `fixed_digits_21`, `fixed_digits_negative` |
+| `wrap_add`, `wrap_sub`, `wrap_mul` | `wrap_rows` |
+| `bit_and`, `bit_or`, `bit_xor`, `bit_not` | `bit_rows` |
+| `shift_left`, `shift_right`, count outside 0 to 63 | `shift_rows`, `shift_left_64`, `shift_right_negative` |
+
+### M2-14 §1.5: text to number and characters
+
+| Point | Case(s) |
+|---|---|
+| `parse_int` shape, limits, non-ASCII digits | `parse_int_rows` |
+| `parse_float` shape, huge value, no exponent | `parse_float_rows` |
+| `code_at`, non-ASCII; bad position | `code_at_rows`, `code_at_past_end`, `code_at_empty_text`, `code_at_negative` |
+| `from_code`, controls, the ends of the range; outside the range or a surrogate | `from_code_rows`, `from_code_too_large`, `from_code_surrogate`, `from_code_negative` |
+
+### M2-14 §1.6 to §1.7: text rows
+
+| Point | Case(s) |
+|---|---|
+| `split`: empty pieces, empty `sep`, no overlap, non-ASCII | `split_rows` |
+| `chars` | `chars_rows` |
+| `lines`, a carriage return stays | `lines_rows` |
+| `words`, the six white-space characters, U+00A0 stays | `words_rows` |
+| `join` | `join_rows` |
+| `repeat`; a count below zero | `repeat_rows`, `repeat_negative_count` |
+| `pad_left`, `pad_right`: zero, negative width, non-ASCII | `pad_rows` |
+| `trim`, `trim_start`, `trim_end` | `trim_rows` |
+| `starts_with`, `ends_with` | `starts_ends_rows` |
+| `replace`: no rescan, empty `old` | `replace_rows` |
+| `upper`, `lower`: ASCII only | `upper_lower_rows` |
+
+### M2-14 §1.8: List rows
+
+| Point | Case(s) |
+|---|---|
+| `append` | `append_rows` |
+| `extend`, with a bound copy | `extend_rows` |
+| `pop`; on an empty List | `pop_rows`, `pop_empty` |
+| `insert`, `at == len`; past the end, negative | `insert_rows`, `insert_past_end`, `insert_negative_position` |
+| `remove_at`; past the end, negative, empty | `remove_at_rows`, `remove_at_past_end`, `remove_at_negative`, `remove_at_empty` |
+| `swap`; either position bad, both bad, equal and bad, negative, empty | `swap_rows`, `swap_first_position_bad`, `swap_second_position_bad`, `swap_both_positions_bad`, `swap_equal_positions_out_of_range`, `swap_negative_position`, `swap_empty_list` |
+| `reverse` | `reverse_rows` |
+| `list_of`: independent copies, zero; a count below zero | `list_of_rows`, `list_of_negative_count` |
+| `sort` on Int, String, Float | `sort_ints`, `sort_strings`, `sort_floats` |
+| `sort` on `-0.0` and NaN | `sort_floats_zero_and_nan` |
+| `sort` on an item type with no order | `sort_of_bools` |
+| index and slice bounds | `index_past_end`, `index_negative`, `index_write_past_end`, `slice_rows`, `slice_past_end`, `slice_start_after_end`, `slice_negative_start` |
+
+### M2-14 §1.9 to §1.10: Map, Option, Result, assert
+
+| Point | Case(s) |
+|---|---|
+| `get`, `has`, `remove`, a missing key | `get_has_remove`, `int_keys_get_remove` |
+| `keys`, `values` of an empty Map | `empty_map` |
+| `keys`, `values`, `get` give copies | `get_and_values_are_copies` |
+| `unwrap_or`, `T` from the other argument | `unwrap_or_rows` |
+| `unwrap_or` evaluates both arguments | `unwrap_or_evaluates_fallback` |
+| `ok_or` | `ok_or_rows` |
+| `assert` true; false | `assert_true_continues`, `assert_false`, `assert_false_in_helper` |
+| `assert` with a second argument | `assert_two_arguments` |
+| `unreachable`: not reached, as a value, as a statement | `unreachable_not_reached`, `unreachable_reached_as_value`, `unreachable_reached_as_statement` |
+| `unreachable` with no expected type; `None` with no type | `unreachable_without_type`, `none_without_type` |
+| `unreachable` takes no argument | `unreachable_with_argument` |
+
+### M2-14 §1.11 to §1.12: Map order, keys, literal, index; walking
+
+| Point | Case(s) |
+|---|---|
+| Int keys by signed number, including the extremes | `key_order_ints` |
+| String keys by code point, non-ASCII | `key_order_strings` |
+| equal Maps walk and compare alike | `equality_ignores_insertion_order` |
+| a later equal key in a literal replaces; both values are evaluated | `literal_duplicate_and_order`, `literal_duplicate_key_evaluates_both` |
+| `m[key] = v` adds or replaces; steps need the key; nested Map | `assign_adds_and_replaces` |
+| `m[key]` missing: String key, Int key, negative key, empty Map | `read_missing_string_key`, `read_missing_int_key`, `read_missing_negative_key`, `read_missing_key_in_empty_map` |
+| `m[key] += 1` on a new key; the count idiom | `plus_equals_on_new_key`, `count_idiom` |
+| `m[a][b] = v` with `a` missing; the right side runs first | `nested_assign_missing_first_key`, `nested_assign_right_side_first` |
+| `m[key].field = v` with the key missing | `field_assign_missing_key` |
+| `&m[key]` with the key missing | `mark_missing_key` |
+| `for k in keys(m)` walks in key order | `keys_walk_in_order` |
+| a Map key type other than Int or String | `map_key_type_in_annotation`, `map_key_type_in_literal` |
+| literal with mixed value types; `[:]` without a type | `map_literal_value_type`, `map_empty_literal_untyped` |
+| `for` over a String or a Map | `for_over_string`, `for_over_map` |
+
+### M2-14 §1.13: the sort
+
+| Point | Case(s) |
+|---|---|
+| stable on equal keys, ascending and descending | `sort_by_stable` |
+| `sort_by` with a named function, code point lengths | `sort_by_strings_by_length` |
+| a function that always answers `true` reverses; `[3, 1, 2]` becomes `[2, 1, 3]` | `sort_by_always_true` |
+| a function that always answers `false` changes nothing | `sort_by_always_false` |
+| a function that contradicts itself: the call sequence decides | `sort_by_inconsistent_function` |
+| no call under two items | `sort_by_not_called_under_two_items` |
+| a trap inside the function, where it traps | `sort_by_function_asserts`, `sort_by_function_traps_at_second_call` |
+
+### M2-14 §1.14: text rules
+
+| Point | Case(s) |
+|---|---|
+| white space is the six code points 9 to 13 and 32 | `trim_rows`, `words_rows` |
+| case maps ASCII only | `upper_lower_rows` |
+| matching: exact code point, earliest, no overlap | `find_string`, `contains_string`, `split_rows`, `replace_rows`, `starts_ends_rows` |
+| positions and lengths count code points; order by code point | `len_string_list_map`, `find_string`, `code_at_rows`, `sort_strings`, `key_order_strings` |
+
+### M2-14 §1.15: growth and the cap
+
+Cases test the cap check only with sizes no cap could allow: a count or width of 2^62 or more, or a
+size product that overflows Int. The cap's exact value and growth just past it are unit tests.
+
+| Point | Case(s) |
+|---|---|
+| `repeat`: the exact product overflows Int | `repeat_product_overflows` |
+| `pad_left`, `pad_right` with a huge width | `pad_left_huge_width`, `pad_right_huge_width` |
+| `list_of` with a huge count | `list_of_huge_count` |
+
+### M2-14 §4: the seven samples
+
+| Sample | Case |
+|---|---|
+| 1 text processing | `sample_word_counts` |
+| 2 parsing | `sample_sum_expression` |
+| 3 simulations | `sample_traffic_light` |
+| 4 grids | `sample_min_path_sum` |
+| 5 graphs | `sample_bfs_order` |
+| 6 reports | `sample_float_report` |
+| 7 file tools | `sample_strip_trailing_space` |
+
+### M2-14 §8, the M2-39b line
+
+| Point | Case(s) |
+|---|---|
+| the sort with a contradicting function | `sort_by_always_true`, `sort_by_inconsistent_function` |
+| Map key order with negative Ints and non-ASCII Strings | `key_order_ints`, `key_order_strings` |
+| `+=` on a new key | `plus_equals_on_new_key` |
+| a duplicate key in a literal | `literal_duplicate_and_order` |
+
 ## Settled readings
 
 Where the records leave a point open, the owner settled it. The cases follow these readings. A row
@@ -320,6 +492,18 @@ confirmation.
 | A slice whose start is after its end traps `out_of_bounds` with detail `slice 2..<1, length 3` | M2-06 §1.1, §1.2 |
 | After `{` in a string the lexer looks for the first `}` on the line; with none, the string is `unterminated-string` at the opening quote (`"{"`); with one, a `"`, `{` or `}` before it is `unexpected-character` at that byte (`"{"a"}"`) | M2-03 §1.11 |
 | Case reading: `to_int` and `to_float` appear as the Int/Float bridge; the rest of their rows belong to the built-in function cases | M2-03 §1.5 |
+| A shift count outside 0 to 63 traps at the function name, like every other row | M2-06 §1.1, M2-14 §1.15 |
+| A slice trap sits at the `[`; its detail is `slice A..<B, length N` for an end past the length, a start past the end and a negative start | M2-06 §1.1, §1.2 |
+| `swap` names the first bad position in the detail, checked `i` before `j`, also when `i == j` | M2-14 §1.8 |
+| `m[a][b] = v` with `a` missing traps at the `[` of the `a` step; `&m[k]` with `k` missing traps at the `[` | M2-14 §1.11, M2-06 §1.1, core.md §6 |
+| `counts[w] += 1` on a new key has the ordinary three-line report; the help line is not part of the report | M2-06 §1.2 |
+| A trap inside the function given to `sort_by` names that function first: `in before, called from update` | M2-06 §1.2, M2-14 §1.15 |
+| `stack` and `memory` traps pin their one line in a `trap` file, with any position. Cases use only sizes no cap could allow (2^62 or more, or a product that overflows Int) | M2-06 §1.2, §1.4, M2-14 §1.15 |
+| `unreachable()` as a whole statement is an `if` body whose last statement it is | M2-14 §1.10 |
+| NaN and the infinities are made by `0.0 / 0.0` and `1.0 / 0.0`, and shown by `fixed` as `NaN`, `inf`, `-inf` | M2-03, M2-14 §1.16 |
+| A `Print` string may hold line feeds; its lines are separate lines of `stdout` | M2-15 |
+| `duplicate-name` for a row's name sits at the name after `fn`; `sort` on an item type with no order sits at the `&` of the argument; `wrong-label` and `type-mismatch` sit at the argument; `wrong-argument-count` at the function name; `cannot-infer` at the empty literal, `None` or the name | M2-02, M2-04, M2-09, M2-14 |
+| An unlabelled argument to a labelled row (`insert(xs, 1, 0)`) is `wrong-label` at that argument; `unreachable(1)` is `wrong-argument-count` at the name; `type Option` is `duplicate-name` at the name after `type`; `len([:])` is `cannot-infer` at the `[:]` | M2-02, M2-04, M2-09, M2-14 §1.3 |
 
 ## Not decided
 
@@ -330,3 +514,11 @@ kind `stale_handle` is reserved and nothing raises it.
 The `core/` cases leave out what the records do not pin: the wording of every message. The habit
 spellings `;` and a trailing comma are held by `lex/semicolon` and `parse/trailing_comma`. The call-depth case belongs to M2-41 and is compared on kind and status only
 (M2-06 §1.4). Shift traps and the other built-in rows belong to the built-in function cases.
+
+Several M2-14 points have no case:
+
+- `m[key] = v` on a new key past the cap: it needs 16,777,216 entries, and M2-14 §1.15 only names
+  the position, the last `[`. The cap's exact value is a unit test (M2-14 §1.15).
+- The value text form of §1.16 beyond the details above: no program can reach it.
+- `examples` cases: this README describes run and reject cases only.
+- String `[i]` and String slice traps: M2-03's, not M2-14 rows. The List index and slice cases above stand in for the shared rule.

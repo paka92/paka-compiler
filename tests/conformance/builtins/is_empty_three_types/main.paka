@@ -1,0 +1,18 @@
+enum Msg { Start }
+
+fn b(x: Bool) -> String { "{x}" }
+
+fn update(msg: Msg) -> List<Effect<Msg>> {
+  let xs = [1]
+  let ys: List<Int> = []
+  let m = ["a": 1]
+  let e: Map<String, Int> = [:]
+  let l1 = join([b(is_empty("")), b(is_empty(" ")), b(is_empty(xs)), b(is_empty(ys)), b(is_empty(m)), b(is_empty(e))], " ")
+  [Print(l1), Exit]
+}
+
+app builtins {
+  start: Start
+  update: update
+  grants: [Console]
+}

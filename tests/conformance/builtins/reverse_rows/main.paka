@@ -1,0 +1,31 @@
+enum Msg { Start }
+
+fn si(xs: List<Int>) -> String {
+  var parts: List<String> = []
+  for x in xs { append(&parts, "{x}") }
+  "[" + join(parts, ",") + "]"
+}
+
+fn ss(xs: List<String>) -> String {
+  "{len(xs)}:[" + join(xs, "|") + "]"
+}
+
+fn update(msg: Msg) -> List<Effect<Msg>> {
+  var e: List<Int> = []
+  reverse(&e)
+  var one = [1]
+  reverse(&one)
+  var even = [1, 2, 3, 4]
+  reverse(&even)
+  var odd = [1, 2, 3]
+  reverse(&odd)
+  var ws = ["a", "é", "日"]
+  reverse(&ws)
+  [Print(si(e)), Print(si(one)), Print(si(even)), Print(si(odd)), Print(ss(ws)), Exit]
+}
+
+app builtins {
+  start: Start
+  update: update
+  grants: [Console]
+}

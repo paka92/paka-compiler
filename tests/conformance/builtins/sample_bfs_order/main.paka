@@ -1,0 +1,36 @@
+enum Msg { Start }
+
+fn bfs(adj: List<List<Int>>, index: Map<String, Int>, start: String) -> List<Int> {
+  var seen = list_of(false, count: len(adj))
+  var q = [index[start]]
+  seen[q[0]] = true
+  var i = 0
+  while i < len(q) {
+    for v in adj[q[i]] {
+      if !seen[v] {
+        seen[v] = true
+        append(&q, v)
+      }
+    }
+    i += 1
+  }
+  q
+}
+
+fn show(xs: List<Int>) -> String {
+  var parts: List<String> = []
+  for x in xs { append(&parts, "{x}") }
+  join(parts, " ")
+}
+
+fn update(msg: Msg) -> List<Effect<Msg>> {
+  let adj = [[1, 2], [3], [3, 0], []]
+  let index = ["a": 0, "b": 1, "c": 2, "d": 3]
+  [Print(show(bfs(adj, index, "a"))), Print(show(bfs(adj, index, "c"))), Print(show(bfs(adj, index, "d"))), Exit]
+}
+
+app builtins {
+  start: Start
+  update: update
+  grants: [Console]
+}

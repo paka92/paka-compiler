@@ -1,0 +1,28 @@
+enum Msg { Start }
+
+fn of(o: Option<Float>) -> String {
+  match o {
+    Some(v) => "Some(" + fixed(v, digits: 3) + ")"
+    None => "None"
+  }
+}
+
+fn n(x: Int) -> String { "{x}" }
+
+fn update(msg: Msg) -> List<Effect<Msg>> {
+  let good = ["7", "0", "-0", "-0.0", "1.5", "-1.5", "007.50", "2.675", "9223372036854775808"]
+  let bad = ["", ".", "1.", ".5", "-.5", "1.2.3", "1e3", "1.5e3", "inf", "NaN", "nan", "1,5", " 1", "1 ", "+1.5", "-", "--1", "0x10", "1_0", "٣"]
+  var ok: List<String> = []
+  for t in good { append(&ok, of(parse_float(t))) }
+  var misses: List<String> = []
+  for t in bad { append(&misses, of(parse_float(t))) }
+  let tenth = fixed(unwrap_or(parse_float("0.1"), 0.0), digits: 20)
+  let huge = "1" + repeat("0", 400)
+  [Print(join(ok, " ")), Print(join(misses, " ")), Print(n(len(misses))), Print(of(parse_float(huge))), Print(tenth), Exit]
+}
+
+app builtins {
+  start: Start
+  update: update
+  grants: [Console]
+}

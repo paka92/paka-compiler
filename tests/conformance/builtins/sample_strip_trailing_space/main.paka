@@ -1,0 +1,17 @@
+enum Msg { Start }
+
+fn clean(text: String) -> String {
+  var out: List<String> = []
+  for l in lines(text) { append(&out, trim_end(l)) }
+  join(out, "\n") + "\n"
+}
+
+fn update(msg: Msg) -> List<Effect<Msg>> {
+  [Print(clean("a  \nb\t\n\nc \r\n")), Exit]
+}
+
+app builtins {
+  start: Start
+  update: update
+  grants: [Console]
+}

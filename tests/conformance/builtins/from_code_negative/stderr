@@ -1,0 +1,3 @@
+builtins: trap bad_conversion at main.paka:4:11
+  from_code(-1)
+  in update

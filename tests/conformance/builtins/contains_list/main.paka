@@ -1,0 +1,17 @@
+enum Msg { Start }
+
+fn b(x: Bool) -> String { "{x}" }
+
+fn update(msg: Msg) -> List<Effect<Msg>> {
+  let nan = 0.0 / 0.0
+  let nested = [[1], [2]]
+  let l1 = join([b(contains([1, 2, 3], 2)), b(contains([1, 2, 3], 4)), b(contains([], 1)), b(contains(["a", "b"], "b"))], " ")
+  let l2 = join([b(contains(nested, [2])), b(contains([nan], nan)), b(contains([1.0, 2.5], 2.5))], " ")
+  [Print(l1), Print(l2), Exit]
+}
+
+app builtins {
+  start: Start
+  update: update
+  grants: [Console]
+}

@@ -1,0 +1,24 @@
+enum Msg { Start }
+
+fn boom(a: Int, b: Int) -> Bool {
+  assert(false)
+  true
+}
+
+fn si(xs: List<Int>) -> String {
+  var parts: List<String> = []
+  for x in xs { append(&parts, "{x}") }
+  "[" + join(parts, ",") + "]"
+}
+
+fn update(msg: Msg) -> List<Effect<Msg>> {
+  var xs = [5, 6]
+  sort_by(&xs, boom)
+  [Print(si(xs)), Exit]
+}
+
+app builtins {
+  start: Start
+  update: update
+  grants: [Console]
+}

@@ -1,0 +1,15 @@
+enum Msg { Start }
+
+fn n(x: Int) -> String { "{x}" }
+
+fn update(msg: Msg) -> List<Effect<Msg>> {
+  let l1 = join([n(min(1, 2)), n(max(1, 2)), n(min(-1, -2)), n(max(-1, -2)), n(min(3, 3))], " ")
+  let l2 = join([n(min(-9223372036854775808, 9223372036854775807)), n(max(-9223372036854775808, 9223372036854775807))], " ")
+  [Print(l1), Print(l2), Exit]
+}
+
+app builtins {
+  start: Start
+  update: update
+  grants: [Console]
+}

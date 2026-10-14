@@ -1,0 +1,22 @@
+enum Msg { Start }
+
+fn rs(r: Result<Int, String>) -> String {
+  match r {
+    Ok(v) => "Ok({v})"
+    Err(e) => "Err(" + e + ")"
+  }
+}
+
+fn update(msg: Msg) -> List<Effect<Msg>> {
+  let a = rs(ok_or(parse_int("12"), "bad"))
+  let b = rs(ok_or(parse_int("x"), "bad"))
+  let c = rs(ok_or(None, "gone"))
+  let d = rs(ok_or(Some(3), "unused"))
+  [Print(a), Print(b), Print(c), Print(d), Exit]
+}
+
+app builtins {
+  start: Start
+  update: update
+  grants: [Console]
+}

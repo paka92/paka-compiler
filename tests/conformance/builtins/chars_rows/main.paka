@@ -1,0 +1,16 @@
+enum Msg { Start }
+
+fn ss(xs: List<String>) -> String {
+  "{len(xs)}:[" + join(xs, "|") + "]"
+}
+
+fn update(msg: Msg) -> List<Effect<Msg>> {
+  let rows = [ss(chars("abc")), ss(chars("")), ss(chars("héé")), ss(chars("日本語")), ss(chars("a😀"))]
+  [Print(join(rows, "\n")), Exit]
+}
+
+app builtins {
+  start: Start
+  update: update
+  grants: [Console]
+}

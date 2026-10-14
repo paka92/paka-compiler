@@ -1,0 +1,23 @@
+enum Msg { Start }
+
+fn never(a: Int, b: Int) -> Bool { false }
+
+fn si(xs: List<Int>) -> String {
+  var parts: List<String> = []
+  for x in xs { append(&parts, "{x}") }
+  "[" + join(parts, ",") + "]"
+}
+
+fn update(msg: Msg) -> List<Effect<Msg>> {
+  var a = [3, 1, 2]
+  sort_by(&a, never)
+  var b = [5, 4, 3, 2, 1]
+  sort_by(&b, never)
+  [Print(si(a)), Print(si(b)), Exit]
+}
+
+app builtins {
+  start: Start
+  update: update
+  grants: [Console]
+}

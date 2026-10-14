@@ -1,0 +1,20 @@
+enum Msg { Start }
+
+fn n(x: Int) -> String { "{x}" }
+
+fn update(msg: Msg) -> List<Effect<Msg>> {
+  let s = "héllo"
+  let xs = [1, 2, 3]
+  let ys: List<Int> = []
+  let m = ["a": 1, "b": 2]
+  let e: Map<String, Int> = [:]
+  let l1 = join([n(len("")), n(len("é")), n(len(s)), n(len("日本語")), n(len("a😀"))], " ")
+  let l2 = join([n(len(xs)), n(len(ys)), n(len(m)), n(len(e))], " ")
+  [Print(l1), Print(l2), Exit]
+}
+
+app builtins {
+  start: Start
+  update: update
+  grants: [Console]
+}

@@ -1,0 +1,3 @@
+builtins: trap bad_conversion at main.paka:7:11
+  to_int(NaN)
+  in update

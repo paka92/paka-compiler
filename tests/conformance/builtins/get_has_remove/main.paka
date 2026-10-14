@@ -1,0 +1,33 @@
+enum Msg { Start }
+
+fn oi(o: Option<Int>) -> String {
+  match o {
+    Some(v) => "Some({v})"
+    None => "None"
+  }
+}
+
+fn b(x: Bool) -> String { "{x}" }
+
+fn ss(xs: List<String>) -> String {
+  "{len(xs)}:[" + join(xs, "|") + "]"
+}
+
+fn n(x: Int) -> String { "{x}" }
+
+fn update(msg: Msg) -> List<Effect<Msg>> {
+  var m: Map<String, Int> = ["a": 1, "b": 2]
+  let g1 = oi(get(m, "a"))
+  let g2 = oi(get(m, "z"))
+  let h1 = b(has(m, "b")) + " " + b(has(m, "c"))
+  remove(&m, "a")
+  remove(&m, "missing")
+  let h2 = b(has(m, "a")) + " " + b(has(m, "b"))
+  [Print(g1 + " " + g2), Print(h1), Print(h2), Print(ss(keys(m))), Print(n(len(m))), Exit]
+}
+
+app builtins {
+  start: Start
+  update: update
+  grants: [Console]
+}
