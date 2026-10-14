@@ -70,14 +70,18 @@ pub enum State {
     Cut,
 }
 
+/// The last complete line of the log at `path`; `None` when there is none, or the log is missing.
+pub fn last_line(path: &Path) -> io::Result<Option<Value>> {
+    match fs::read(path) {
+        Ok(bytes) => Ok(last_event(&bytes)),
+        Err(e) if e.kind() == ErrorKind::NotFound => Ok(None),
+        Err(e) => Err(e),
+    }
+}
+
 /// How the run logged at `path` ended.
 pub fn state(path: &Path) -> io::Result<State> {
-    let bytes = match fs::read(path) {
-        Ok(bytes) => bytes,
-        Err(e) if e.kind() == ErrorKind::NotFound => return Ok(State::Cut),
-        Err(e) => return Err(e),
-    };
-    let Some(last) = last_event(&bytes) else {
+    let Some(last) = last_line(path)? else {
         return Ok(State::Cut);
     };
     Ok(match last.get("event").and_then(Value::as_str) {
