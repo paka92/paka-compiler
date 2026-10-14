@@ -577,11 +577,12 @@ or merged during review. Ids with a letter were added during review.
 
 ### M2-37 · L3 · Perform console, file, argument and exit effects only when granted
 
+- status: done
 - needs: M2-30, M2-31, M2-36
 - flags: none
 - done when: Golden tests over an in-memory world, plus one on real files, pass for each effect, failure, and effect refused without its grant. Where M2-15 changed the provisional missing-grant rule, the interpreter and paka-rt's run loop change in this pull request, and M2-18's re-expected copy is moved from tests/cases-pending over the old case with git mv and passes on both back ends.
 - why this level: Several effects, fixed failure values, and a grant check with no way around it.
-- note: The paka-rt change adds no unsafe beyond the one call into compiled code. Follows docs/decisions/M2-15.md for the app form, effects, grants and ending.
+- note: The paka-rt change adds no unsafe beyond the one call into compiled code. Follows docs/decisions/M2-15.md for the app form, effects, grants and ending. Done: paka/src/interp/effects.rs performs Print, ReadFile, WriteFile, Exit and ExitWith behind a small World trait; the host reads a file by its metadata first, so a non-regular file is refused unopened and one over the String limit unread. Cases in tests/cases/run-interp, a real-file test in paka/tests/effects.rs. paka-rt is unchanged: native file effects stay unsupported-form until its ABI carries them.
 
 ### M2-38 · L3 · Write conformance tests for values, expressions, control flow and functions
 
