@@ -660,10 +660,12 @@ or merged during review. Ids with a letter were added during review.
 
 ### M2-44 · L3 · Add the exit gates: reference samples, size, construct and built-in coverage
 
+- status: done
 - needs: M2-33, M2-34, M2-38, M2-39, M2-40, M2-41, M2-42, M2-43, M2-41b, M2-39b
 - flags: none
 - done when: One command runs every reference sample, checks the size budget, and lists each syntax node kind and built-in missing from passing conformance cases. Node kinds and built-ins are read from the compiler's own definitions, not a separate list; a self-test shows a planted unused node kind, a planted unused built-in and a planted failing reference sample each make the command fail.
 - why this level: Extracting samples and enumerating node kinds across stages; known technique, several modules.
+- note: Done: the gate is the test exit_gate in paka/tests/conformance/gate.rs, run with `cargo test -p paka --test conformance --locked --offline gate` (gate plus self-tests); its readings are in the Exit gate section of tests/conformance/README.md. At merge it reports nothing missing.
 
 ### M2-45 · L4 · Close every gap the gate reports, in the reference and the conformance cases
 
@@ -671,7 +673,7 @@ or merged during review. Ids with a letter were added during review.
 - flags: open-ended
 - done when: The gate command passes with nothing missing; every reference or case change cites its decision; size stays within budget. A new case is written by an agent without the paka binary, as in M2-38. The gate runs as a required test under `cargo test --workspace --locked --offline`.
 - why this level: Edits must stay exact and in budget; one wrong sentence silently misleads every model.
-- note: The unused-name warning (M2-02 section 2 and section 5) is decided but no task implements it; close it here if no earlier task does. Left open after M2-41b: no conformance case for hole notes under --json; no host test for a closed or full standard output or a file over the String limit; no case for an open joined list type such as [None, None]; text routines are not native in paka-rt yet.
+- note: The unused-name warning (M2-02 section 2 and section 5) is decided but no task implements it; close it here if no earlier task does. Left open after M2-41b: no conformance case for hole notes under --json; no host test for a closed or full standard output or a file over the String limit; no case for an open joined list type such as [None, None]; text routines are not native in paka-rt yet. The gate already runs under cargo test --workspace and passes with nothing missing at M2-44; what remains is the list above.
 
 ## M3 — The experiment: go or stop
 
