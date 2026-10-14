@@ -498,11 +498,12 @@ or merged during review. Ids with a letter were added during review.
 
 ### M2-27 · L2 · Run examples and compute each one's status
 
+- status: done
 - needs: M2-06, M2-25, M2-26
 - flags: none
 - done when: paka examples prints hand-written expected statuses: pass, fail, trapped, and unfinished when a hole is reached.
 - why this level: Clear rules from the decision; one module mapping results to statuses.
-- note: Follows docs/decisions/M2-06.md for traps, holes and examples.
+- note: Follows docs/decisions/M2-06.md for traps, holes and examples. Done: paka examples FILE in paka/src/interp.rs (examples, entry) with interp/show.rs for the value text form; tests in paka/tests/examples.rs. A failed example is reported at a claim site recorded in Fn.claims (docs/core.md section 9 item 18). An example that returns false early is reported at its first claim with no left and right lines.
 
 ### M2-28 · L2 · Extend the golden-file runner to check and example tests
 
