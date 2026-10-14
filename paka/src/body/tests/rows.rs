@@ -288,13 +288,13 @@ fn a_letter_fixed_by_neither_is_cannot_infer() {
         ),
         st(
             "cannot-infer",
-            "unwrap_or(^None",
+            "unwrap_or(None, ^??a",
             None,
             &["_ = unwrap_or(None, ??a)"],
         ),
         st(
             "cannot-infer",
-            "contains(^[]",
+            "contains([], ^??a",
             None,
             &["_ = contains([], ??a)"],
         ),
@@ -485,7 +485,7 @@ fn sort_on_an_item_without_order_offers_sort_by() {
 
 #[test]
 fn a_body_is_checked_the_same_whatever_its_callers() {
-    let bodies: [&[&str]; 2] = [
+    let bodies: [&[&str]; 4] = [
         &[
             "fn f(xs: List<Int>) -> Int {",
             "  let n = unwrap_or(find(xs, 3), 0)",
@@ -496,6 +496,18 @@ fn a_body_is_checked_the_same_whatever_its_callers() {
             "fn f(xs: List<Int>) -> Int {",
             "  let ys = []",
             "  len(xs) + len(ys)",
+            "}",
+        ],
+        &[
+            "fn f(xs: List<Int>) -> Int {",
+            "  let a: List<List<Int>> = unwrap_or(None, [[], [:]])",
+            "  len(xs) + len(a)",
+            "}",
+        ],
+        &[
+            "fn f(xs: List<Int>) -> Int {",
+            "  let m = unwrap_or(None, ??a).count",
+            "  len(xs) + m",
             "}",
         ],
     ];
@@ -512,10 +524,231 @@ fn a_body_is_checked_the_same_whatever_its_callers() {
     ];
     for body in bodies {
         let alone = full(body);
-        let called = full(&[body, callers].concat());
-        let first = |src: &str| run(src).defs[0].as_ref().map(|d| format!("{d:?}"));
-        assert_eq!(first(&alone), first(&called), "{}", head(&called));
-        assert_eq!(held(&alone)[0], held(&called)[0], "{}", head(&called));
+        let called = full(&[callers, body].concat());
+        let first = |src: &str, i: usize| {
+            let shown = |d: &Diagnostic| (d.code, d.position.map(|p| p.1), d.message.clone());
+            run(src).defs[i].as_ref().map(shown)
+        };
+        assert_eq!(first(&alone, 0), first(&called, 3), "{}", head(&called));
+        let columns = |src: &str, i: usize| {
+            let shown = held(src).swap_remove(i);
+            shown
+                .into_iter()
+                .map(|t| t.split_once(", ").map(|(_, r)| r.to_string()))
+        };
+        assert!(
+            columns(&alone, 0).eq(columns(&called, 3)),
+            "{}",
+            head(&called)
+        );
     }
-    assert!(run(&full(bodies[1])).defs[0].is_some());
+    assert!(run(&full(&[callers, bodies[1]].concat())).defs[3].is_some());
+}
+
+#[test]
+fn an_open_part_is_checked_against_the_type_it_gets() {
+    rejects(&[
+        typed(
+            (MISMATCH, "[[], ^[:]]"),
+            ("List<T>", "Map<K, V>"),
+            "f()",
+            &[
+                "let a: List<List<Int>> = unwrap_or(None, [[], [:]])",
+                "_ = a",
+            ],
+        ),
+        typed(
+            (MISMATCH, "[[], ^[:]]"),
+            ("List<T>", "Map<K, V>"),
+            "f()",
+            &["let a: Option<List<List<Int>>> = Some([[], [:]])", "_ = a"],
+        ),
+        typed(
+            (MISMATCH, "None, ^[]]"),
+            ("Option<Int>", "List<T>"),
+            "f()",
+            &["let a: List<Option<Int>> = [None, []]", "_ = a"],
+        ),
+        typed(
+            (MISMATCH, "None, ^[]]"),
+            ("Option<Int>", "List<T>"),
+            "f() -> List<Option<Int>>",
+            &["[None, []]"],
+        ),
+        typed(
+            (MISMATCH, "Some([]), ^[:])"),
+            ("List<T>", "Map<K, V>"),
+            "f()",
+            &[
+                "var m: Map<String, Int> = [:]",
+                "_ = unwrap_or(Some([]), [:]) == m",
+            ],
+        ),
+        typed(
+            (MISMATCH, "Some([]), ^[:])"),
+            ("List<T>", "Map<K, V>"),
+            "f()",
+            &["let z = unwrap_or(Some([]), [:])", "_ = z"],
+        ),
+        typed(
+            (MISMATCH, "[[], ^[:]]"),
+            ("List<T>", "Map<K, V>"),
+            "f()",
+            &["_ = [[], [:]]"],
+        ),
+        typed(
+            (MISMATCH, "[Some([]), ^Some([:])]"),
+            ("Option<List<T>>", "Option<Map<K, V>>"),
+            "f()",
+            &["_ = [Some([]), Some([:])]"],
+        ),
+    ]);
+}
+
+#[test]
+fn the_first_argument_that_fails_is_the_error() {
+    rejects(&[typed(
+        (MISMATCH, "list_of(^[]"),
+        ("String", "List<T>"),
+        "f()",
+        &["let g: List<String> = list_of([], count: \"x\")", "_ = g"],
+    )]);
+}
+
+#[test]
+fn an_open_value_that_fixes_no_type_is_cannot_infer_where_it_is_met() {
+    let hole = "cannot infer the type of ??a; write it: let a: T = ??a";
+    let list = "cannot infer the type of []; write it: let x: List<T> = ...";
+    says(&[
+        (
+            "cannot-infer",
+            "or(None, ^??a)",
+            hole,
+            unit(&["let n: Int = unwrap_or(None, ??a).count", "_ = n"]),
+        ),
+        (
+            "cannot-infer",
+            "Int = ^[][0]",
+            list,
+            unit(&["let n: Int = [][0]", "_ = n"]),
+        ),
+        (
+            "cannot-infer",
+            "Int = ^[:][\"a\"]",
+            "cannot infer the type of [:]; write it: let x: Map<K, V> = ...",
+            unit(&["let x: Int = [:][\"a\"]", "_ = x"]),
+        ),
+        (
+            "cannot-infer",
+            "Int = ^unreachable()",
+            "cannot infer the type of unreachable; write it: let x: T = ...",
+            unit(&["let n: Int = unreachable().count", "_ = n"]),
+        ),
+        (
+            "cannot-infer",
+            "-unwrap_or(None, ^??a)",
+            hole,
+            unit(&["_ = -unwrap_or(None, ??a)"]),
+        ),
+        (
+            "cannot-infer",
+            "{unwrap_or(None, ^??a)}",
+            hole,
+            unit(&["_ = \"{unwrap_or(None, ??a)}\""]),
+        ),
+        (
+            "cannot-infer",
+            "match unwrap_or(None, ^??a)",
+            hole,
+            unit(&["match unwrap_or(None, ??a) {", "  _ => {}", "}"]),
+        ),
+    ]);
+}
+
+#[test]
+fn a_bool_operand_and_a_range_side_settle() {
+    let programs = [
+        unit(&["if !unwrap_or(None, ??a) {", "}"]),
+        unit(&[
+            "let n = 3",
+            "for i in unwrap_or(None, ??lo)..<n {",
+            "  _ = i",
+            "}",
+        ]),
+        unit(&["for i in ??a..<??b {", "  _ = i", "}"]),
+        unit(&["_ = unwrap_or(Some([1]), [])[0]"]),
+        unit(&["_ = len(unwrap_or(None, [1]))"]),
+        unit(&["let xs = [1, 2]", "_ = xs[unwrap_or(None, ??a)..<2]"]),
+        unit(&["_ = unwrap_or(None, ??a) + 1"]),
+    ];
+    settled(&programs);
+    holds(&programs[0], "unwrap_or(None, ^??a", 3, "Bool");
+    holds(&programs[1], "unwrap_or(None, ^??lo", 4, "Int");
+    holds(&programs[1], "in ^unwrap_or(None, ??lo)", 21, "Int");
+    holds(&programs[3], "^unwrap_or(Some([1]), [])", 24, "List<Int>");
+}
+
+#[test]
+fn a_letter_met_by_an_unknown_type_is_silent() {
+    let bad = "type R { x: Nope, n: Int }";
+    for body in [
+        "  let w = unwrap_or(None, r.x)",
+        "  let l = list_of(r.x, count: 2)",
+    ] {
+        let src = full(&[bad, "fn f(r: R) {", body, "}"]);
+        let found = errors(&src);
+        assert!(found.iter().all(|d| d.code == "unknown-type"), "{found:?}");
+    }
+}
+
+#[test]
+fn a_cannot_infer_text_fills_the_letters_that_are_known() {
+    says(&[
+        (
+            "cannot-infer",
+            "keys(^[:])",
+            "cannot infer the type of [:]; write it: let x: Map<String, V> = ...",
+            unit(&["let a: List<String> = keys([:])", "_ = a"]),
+        ),
+        (
+            "cannot-infer",
+            "has(^[:]",
+            "cannot infer the type of [:]; write it: let x: Map<String, V> = ...",
+            unit(&["_ = has([:], \"a\")"]),
+        ),
+        (
+            "cannot-infer",
+            "values(^[:])",
+            "cannot infer the type of [:]; write it: let x: Map<K, Int> = ...",
+            unit(&["let a: List<Int> = values([:])", "_ = a"]),
+        ),
+        (
+            "cannot-infer",
+            "[^None, None",
+            "cannot infer the type of None; write it: let x: Option<List<T>> = ...",
+            unit(&["_ = [None, None, Some([])]"]),
+        ),
+        (
+            "cannot-infer",
+            "{ ^[] } else",
+            "cannot infer the type of []; write it: let x: List<List<T>> = ...",
+            unit(&["_ = if true { [] } else { [[]] }"]),
+        ),
+        (
+            "wrong-label",
+            "(None, ^fallback",
+            "fallback is bare: write ??a",
+            unit(&["_ = unwrap_or(None, fallback: ??a)"]),
+        ),
+    ]);
+}
+
+#[test]
+fn a_question_mark_settles_the_error_type_from_the_result() {
+    let src = func(
+        "g() -> Result<Int, String>",
+        &["let x: Int = Ok(1)?", "Ok(x)"],
+    );
+    accepts(std::slice::from_ref(&src));
+    holds(&src, "= ^Ok(1)", 5, "Result<Int, String>");
 }

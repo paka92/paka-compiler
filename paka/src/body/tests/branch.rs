@@ -273,12 +273,10 @@ fn a_hole_beside_a_range_takes_the_type_of_the_other_side() {
     holds(&high, "..<^??hi", 4, "Int");
     holds(&slices, "[^??a..<2]", 3, "Int");
     holds(&slices, "0..<^??b]", 3, "Int");
-    rejects(&[bad(
-        "cannot-infer",
-        "in ^??a..<??b",
-        "f()",
-        &["for i in ??a..<??b {", "  _ = i", "}"],
-    )]);
+    let both = func("f()", &["for i in ??a..<??b {", "  _ = i", "}"]);
+    accepts(std::slice::from_ref(&both));
+    holds(&both, "in ^??a", 3, "Int");
+    holds(&both, "..<^??b", 3, "Int");
 }
 
 #[test]
