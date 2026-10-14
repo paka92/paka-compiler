@@ -1,0 +1,8 @@
+Web,GET /a,200
+db,query,ok
+Web,GET /b,404
+Web
+
+Web 2,POST,201
+web2,PUT,500
+DB.old,,x
