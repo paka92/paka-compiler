@@ -489,11 +489,12 @@ or merged during review. Ids with a letter were added during review.
 
 ### M2-26 · L3 · Evaluate the core form in the interpreter
 
+- status: done
 - needs: M2-08, M2-23
 - flags: none
 - done when: Hand-built core programs give hand-written results for every node, each trap kind and the call-depth limit.
 - why this level: Tree-walking interpreter with inout places and traps as status returns; fiddly details.
-- note: Removes the m1() bridge in paka/src/lower.rs and the unsupported-form tool error (spec/m1.md marks it temporary).
+- note: Removes the m1() bridge in paka/src/lower.rs and the unsupported-form tool error (spec/m1.md marks it temporary). Done: paka run evaluates the core form in paka/src/interp.rs with interp/; the m1() bridge is gone. paka build still emits only the milestone 1 subset (llvm::view) and answers unsupported-form for anything else, holes included. Expression nesting never traps; deep evaluation continues on a fresh stack segment. Built-ins other than assert, unreachable, abs, to_int and from_code end the run with an internal error until M2-33 and M2-34.
 
 ### M2-27 · L2 · Run examples and compute each one's status
 
@@ -612,7 +613,7 @@ or merged during review. Ids with a letter were added during review.
 - flags: none
 - done when: Expected results merged before any run, written without access to a built paka; every decision point in scope has a case.
 - why this level: Many runtime paths: refusal, failure, unfinished; results worked out by hand.
-- note: The caller runs this agent with no paka binary and no way to build one (no cargo, or a checkout holding only the reference, the decision records and the tests folder); the agent must not build or run paka; the cases land in a not-yet-required list. M2-41b runs them.
+- note: The caller runs this agent with no paka binary and no way to build one (no cargo, or a checkout holding only the reference, the decision records and the tests folder); the agent must not build or run paka; the cases land in a not-yet-required list. M2-41b runs them. paka build refuses a program with a hole as unsupported-form; paka run reports the hole. The cases decide which form the build side takes.
 
 ### M2-41b · L4 · Run the conformance suite and rule on every mismatch
 
