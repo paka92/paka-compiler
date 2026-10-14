@@ -40,6 +40,23 @@ The build lines follow M3-01 plus the flags for the local install (`--typeRoots`
 
 Install `tsc` once with `ts/check.sh`.
 
+## Sandbox
+
+Builds and cases run under `bwrap` and `prlimit` from util-linux; both must be in `/usr/bin`.
+
+- No network: the sandbox has its own network namespace with only loopback.
+- Reads: `/usr`, the toolchains and, for a case, its build, all read-only. The task folder,
+  hidden cases, the harness and home directories are absent.
+- Writes: only the build or case directory.
+- Memory: 1 GB per process for a case, 4 GB for a build (the Rust linker needs more than 1 GB).
+- Files: 64 MB per file. Processes: 256 per sandbox, so a fork bomb stops.
+- Output: standard output and standard error each stop at 1 MB, and the program is killed.
+- Time: at the limit the sandbox is killed, and with it every process the program started.
+
+A program killed by a signal has status 128 plus the signal number: 134 when it aborts on
+running out of memory, 153 when it writes a file past the cap. Memory is capped per process,
+not per sandbox.
+
 ## Verdicts
 
 A case passes when standard output and the exit status match and every file in `out/` was written
