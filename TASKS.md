@@ -830,7 +830,7 @@ or merged during review. Ids with a letter were added during review.
 - flags: owner
 - done when: Before any model call the owner merges and tags (`protocol`) a protocol naming tasks, model, metrics, margin and toolchain versions; the harness refuses a counted run from any commit but the one tagged `run`.
 - why this level: Assembles approved decisions into one file and adds one commit check; little to decide.
-- note: The protocol carries the 20 task outlines, their classes, the tags, the reserve order, the band lines, the two token caps and error status 20.
+- note: Protocol file experiment/protocol.md and the commit check are in; open: model id, CLI fixed-text tokens, call time limit, CLI version, Paka reference size, batch order. Waits for the owner's protocol tag. The protocol carries the 20 task outlines, their classes, the tags, the reserve order, the band lines, the two token caps and error status 20.
 
 ### M3-19 · L3 · Dry-run the harness on practice tasks and fix its faults
 
