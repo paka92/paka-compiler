@@ -31,7 +31,8 @@ function, local or site is its position in the list that holds it.
   then every local in numbering order, including the ones lowering adds (the `let` of a match
   subject, section 7).
 - **Example.** A function with no parameters and a `Bool` result, kept in its own list so nothing
-  can call it (M2-06). The driver names its frame `example NAME`.
+  can call it (M2-06). The driver names its frame `example NAME`. It also holds `claims`: one site
+  for each operand of its final expression's `&&` chain, in written order (section 9, item 18).
 - **Site.** A line and a column, both from 1, and for a hole its name. The file is the program's.
 
 ## 2. Evaluation
@@ -241,6 +242,11 @@ Each is the smallest reading consistent with M2-03, M2-05 and M2-06.
     boundary at or before byte 256.
 17. Expression nesting never traps on its own; the interpreter continues deep evaluation on a
     fresh stack segment, so only the call depth limit gives `stack`.
+18. M2-06 §1.6 reports a failed example at the operand of the final `&&` chain that was `false`:
+    the operator for a comparison, else the operand's first token. A chain is read through both
+    sides of `&&`, so `a && b && c` has three operands whichever way it nests. The sites are
+    `claims` on the example, one per operand in written order; every other function has none. An
+    example that ends early by `return` is reported at its first claim, with no help lines.
 
 ## 10. Recorded text this page changes
 
