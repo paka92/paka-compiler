@@ -118,15 +118,38 @@ fn run_without_the_console_grant_is_refused() {
     assert_eq!(String::from_utf8_lossy(&out.stderr), want);
 }
 
-#[test]
-fn run_of_a_program_the_back_ends_cannot_run_is_unsupported_form() {
+/// The light program with its text replaced by an interpolation, which the back end cannot build.
+fn interpolated_light(name: &str) -> std::path::PathBuf {
     let source = std::fs::read_to_string(LIGHT).unwrap();
-    let file = std::env::temp_dir().join(format!("paka-interpolated-{}.paka", std::process::id()));
+    let file = std::env::temp_dir().join(format!("paka-{name}-{}.paka", std::process::id()));
     std::fs::write(&file, source.replace("light\")", "{1}\")")).unwrap();
+    file
+}
+
+#[test]
+fn run_of_an_interpolated_program_prints_it() {
+    let file = interpolated_light("interpolated-run");
     let out = paka(&["run", file.to_str().unwrap()]);
+    std::fs::remove_file(&file).unwrap();
+    assert_eq!(out.status.code(), Some(0));
+    assert_eq!(String::from_utf8_lossy(&out.stdout), "let there be 1\n");
+    assert!(out.stderr.is_empty());
+}
+
+#[test]
+fn build_of_a_program_beyond_the_m1_subset_is_unsupported_form() {
+    let file = interpolated_light("interpolated-build");
+    let output = file.with_extension("out");
+    let out = paka(&[
+        "build",
+        file.to_str().unwrap(),
+        "-o",
+        output.to_str().unwrap(),
+    ]);
     std::fs::remove_file(&file).unwrap();
     assert_eq!(out.status.code(), Some(1));
     assert!(out.stdout.is_empty());
+    assert!(!output.exists());
     let text = String::from_utf8_lossy(&out.stderr);
     assert!(text.contains("error[unsupported-form]"), "{text}");
 }

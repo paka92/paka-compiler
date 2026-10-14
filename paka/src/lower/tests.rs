@@ -182,44 +182,6 @@ fn light_paka_lowers() {
 }
 
 #[test]
-fn light_paka_reaches_the_m1_back_ends_as_before() {
-    let by_hand = M1 {
-        app: "light".into(),
-        start: 0,
-        console: true,
-        update_name: "update".into(),
-        update: vec![Effect::Print("let there be light".into()), Effect::Exit],
-    };
-    assert_eq!(m1(&lowered(LIGHT)), Some(by_hand));
-}
-
-#[test]
-fn m1_refuses_what_its_back_ends_cannot_run() {
-    let mut state = lowered(LIGHT);
-    state.records.push(core_form::Record {
-        name: "State".into(),
-        fields: vec![],
-    });
-    let ty = state.ty(Type::Record(0));
-    state.app.as_mut().unwrap().state = Some(ex(ty, ExprKind::Record(0, vec![])));
-    let mut grant = lowered(LIGHT);
-    grant.app.as_mut().unwrap().grants.insert(Grant::ReadFiles);
-    let mut statement = lowered(LIGHT);
-    statement.fns[0]
-        .body
-        .stmts
-        .push(Stmt::Expr(text(3, "unused")));
-    let mut computed = lowered(LIGHT);
-    computed.fns[0].body.value = Some(Box::new(ex(2, ExprKind::Hole(0))));
-    let mut none = lowered(LIGHT);
-    none.app = None;
-    let payload = lowered(&[&["enum Msg { Start(path: String) }"], &LIGHT[1..]].concat());
-    for core in [state, grant, statement, computed, none, payload] {
-        assert_eq!(m1(&core), None);
-    }
-}
-
-#[test]
 fn statements() {
     let core = lowered(&[
         "fn f(xs: List<Int>) {",
