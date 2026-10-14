@@ -834,11 +834,12 @@ or merged during review. Ids with a letter were added during review.
 
 ### M3-19 · L3 · Dry-run the harness on practice tasks and fix its faults
 
+- status: done
 - needs: M3-18
 - flags: owner, open-ended, model-calls
 - done when: Practice tasks finish in all three languages on live model calls with zero harness faults in the last pass; fixes and amendments merged by owner. The run records the language reference's real token count from the model's usage report; over 8,000 is a protocol amendment. Raw logs merged.
 - why this level: Faults can sit in any harness module; fixes must leave tasks, tests and counting rules untouched.
-- note: A fault in the sandbox (M3-07) or in edit and token counting (M3-09) is fixed as its own level 4 pull request. Each pass is 12 runs (2 practice tasks x 3 languages x 2 runs), at most three passes; a fourth needs the owner's yes. It reports measured tokens per run and the projection for the rest.
+- note: A fault in the sandbox (M3-07) or in edit and token counting (M3-09) is fixed as its own level 4 pull request. One pass of 12 practice runs: all passed first try, no harness fault, 58.7k input and 12.1k output tokens. Measured: model claude-sonnet-5-5, 784 tokens of fixed CLI text, reference about 9,400 tokens, sent whole by amendment. Logs in experiment/runs/dry-1. Each pass is 12 runs (2 practice tasks x 3 languages x 2 runs), at most three passes; a fourth needs the owner's yes. It reports measured tokens per run and the projection for the rest.
 
 ### M3-19b · L2 · Run the Rust and TypeScript calibration pass and apply the swap rule
 
