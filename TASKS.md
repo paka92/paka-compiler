@@ -772,11 +772,12 @@ or merged during review. Ids with a letter were added during review.
 
 ### M3-10 · L3 · Build the metrics tool: raw logs to three metrics and verdict
 
+- status: done
 - needs: M3-02, M3-03, M3-09
 - flags: none
 - done when: On a small hand-made log set with a hand-made rulings file (runs excluded or re-classed under M3-03), one command prints the three metrics per language and per task and the verdict, equal to values worked out by hand; the set includes a never-passing run and a ruled-out run.
 - why this level: Never-passing runs and per-task grouping are easy to get subtly wrong, and this number decides the project.
-- note: Formulas are pooled over runs (M3-02). More than 2 dropped tasks of 14 makes the verdict inconclusive: a third dropped task is enough.
+- note: The metrics tool takes a runs root, a rulings file and an optional reference token count. It gives no verdict, and exits 20, unless every kept task has equal run counts in all three languages and no unfinished run; a void-ruled run is rerun in a new rep folder. Practice tasks and stray entries are errors; checking tasks against the frozen counted list waits for M3-18. Bands are decided on exact integers, and edges count as the better band. Formulas are pooled over runs (M3-02). More than 2 dropped tasks of 14 makes the verdict inconclusive: a third dropped task is enough.
 
 ### M3-11 · L4 · Write statements and hand-made tests for one batch of at most five tasks
 
