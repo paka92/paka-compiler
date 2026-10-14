@@ -6,6 +6,7 @@ mod common;
 
 use common::{PAKA, Scratch};
 use std::fs::{self, File, Permissions};
+use std::io::Write;
 use std::os::unix::fs::PermissionsExt;
 use std::process::Command;
 
@@ -34,8 +35,8 @@ app copy {
 }
 ";
 
-/// The bytes past the String limit of M2-06 section 1.4.
-const TOO_BIG: u64 = 16_777_217;
+/// The String limit of M2-06 section 1.4, in bytes.
+const LIMIT: u64 = 16_777_216;
 
 /// Runs the copy tool in `dir` and returns its standard output and status.
 fn copy(dir: &Scratch, src: &str, dest: &str) -> (String, i32) {
@@ -55,6 +56,13 @@ fn copy(dir: &Scratch, src: &str, dest: &str) -> (String, i32) {
     )
 }
 
+/// A file of `len` bytes that starts with `head`, the rest zeros.
+fn sparse(dir: &Scratch, name: &str, head: &[u8], len: u64) {
+    let mut file = File::create(dir.path(name)).unwrap();
+    file.write_all(head).unwrap();
+    file.set_len(len).unwrap();
+}
+
 fn workspace(name: &str) -> Scratch {
     let dir = Scratch::new(name);
     fs::write(dir.path("main.paka"), COPY).unwrap();
@@ -62,10 +70,13 @@ fn workspace(name: &str) -> Scratch {
     fs::write(dir.path("empty.txt"), "").unwrap();
     fs::write(dir.path("bad.bin"), [b'a', 0xff, 0xfe]).unwrap();
     fs::create_dir(dir.path("folder")).unwrap();
-    File::create(dir.path("big.txt"))
-        .unwrap()
-        .set_len(TOO_BIG)
+    let made = Command::new("mkfifo")
+        .arg(dir.path("pipe"))
+        .status()
         .unwrap();
+    assert!(made.success());
+    sparse(&dir, "limit.txt", b"", LIMIT);
+    sparse(&dir, "big.txt", &[0xff], LIMIT + 1);
     dir
 }
 
@@ -80,6 +91,13 @@ fn a_file_is_copied_replacing_what_was_there() {
 }
 
 #[test]
+fn a_file_of_exactly_the_limit_is_read() {
+    let dir = workspace("limit");
+    assert_eq!(copy(&dir, "limit.txt", "out.txt"), ("copied\n".into(), 0));
+    assert_eq!(fs::metadata(dir.path("out.txt")).unwrap().len(), LIMIT);
+}
+
+#[test]
 fn each_way_a_read_fails_gives_its_reason() {
     let dir = workspace("read");
     let rows = [
@@ -87,8 +105,9 @@ fn each_way_a_read_fails_gives_its_reason() {
         ("in.txt/below", "not found"),
         ("folder", "not a file"),
         ("/dev/null", "not a file"),
+        ("pipe", "not a file"), // refused unopened: opening it would wait for a writer
         ("bad.bin", "not text"),
-        ("big.txt", "failed"),
+        ("big.txt", "failed"), // not text, but too big comes first
         ("", "failed"),
     ];
     for (src, why) in rows {

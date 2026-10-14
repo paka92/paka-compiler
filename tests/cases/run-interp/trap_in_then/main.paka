@@ -6,7 +6,7 @@ fn boom(text: String) -> Msg {
 
 fn update(m: Msg) -> List<Effect<Msg>> {
   match m {
-    Start => [Print("asking"), ReadFile("main.paka", then: boom, or: Failed)]
+    Start => [Print("asking"), ReadFile("main.paka", then: boom, or: Failed), Print("asked")]
     Loaded(text) => [Print("read"), Exit]
     Failed(why) => [Print("cannot read: {why}"), ExitWith(20)]
   }

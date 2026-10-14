@@ -1,0 +1,15 @@
+enum Msg { Start, Loaded(text: String), Missing(why: String) }
+
+fn update(m: Msg) -> List<Effect<Msg>> {
+  match m {
+    Start => [ReadFile("missing.txt", then: Loaded, or: Missing), ReadFile("main.paka", then: Loaded, or: Missing)]
+    Loaded(text) => [Print("read"), Exit]
+    Missing(why) => [ExitWith(20)]
+  }
+}
+
+app reader {
+  start: Start
+  update: update
+  grants: [Console, ReadFiles]
+}

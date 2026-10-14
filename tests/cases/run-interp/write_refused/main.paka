@@ -2,7 +2,7 @@ enum Msg { Start, Saved, Failed(why: String) }
 
 fn update(m: Msg) -> List<Effect<Msg>> {
   match m {
-    Start => [Print("saving"), WriteFile("out.txt", "text", then: Saved, or: Failed)]
+    Start => [Print("saving"), WriteFile("no_such_dir/out.txt", "text", then: Saved, or: Failed)]
     Saved => [Print("saved"), Exit]
     Failed(why) => [Print("cannot write: {why}"), ExitWith(20)]
   }
