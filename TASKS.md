@@ -461,11 +461,12 @@ or merged during review. Ids with a letter were added during review.
 
 ### M2-22 · L4 · Check each built-in use from its table row and argument types
 
+- status: done
 - needs: M2-09, M2-17, M2-20
 - flags: none
 - done when: Decision samples pass; the type variables of a built-in row are taken from the arguments and the expected type, and `cannot-infer` is given when neither fixes one. A test shows a function body's result never depends on any caller.
 - why this level: The language has no user generics (M2-09), so only built-in rows carry type variables; binding them wrongly accepts or refuses programs silently.
-- note: Follows docs/decisions/M2-09.md: the interface hash covers every named type a signature reaches, and no app state may hold a function type. Follows docs/decisions/M2-12.md for Option, Result, `?` and unreachable(). Settle here whether the `cannot-infer` message names the local or the expression when both exist: docs/decisions/M2-02.md and M2-12.md give both forms. Owns a hole as a later argument of a built-in or inside `Some(..)` with a known result type.
+- note: Follows docs/decisions/M2-09.md: the interface hash covers every named type a signature reaches, and no app state may hold a function type. Follows docs/decisions/M2-12.md for Option, Result, `?` and unreachable(). Settle here whether the `cannot-infer` message names the local or the expression when both exist: docs/decisions/M2-02.md and M2-12.md give both forms. Owns a hole as a later argument of a built-in or inside `Some(..)` with a known result type. Done: built-in row letters bind from arguments and the expected type; open values are checked against their position with fits. Ok in one branch and Err in another still do not complete each other (cannot-infer).
 
 ### M2-23 · L4 · Define the core form for the whole headless language
 
