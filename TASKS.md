@@ -745,11 +745,12 @@ or merged during review. Ids with a letter were added during review.
 
 ### M3-07 · L4 · Run submitted programs in a sandbox without network or hidden cases
 
+- status: done
 - needs: M3-06
 - flags: none
 - done when: Tests show a program in each language cannot reach the network, read hidden cases, write outside its directory or exceed limits, at build or run.
 - why this level: A sandbox gap is silent and runs model-written code on the owner's machine; needs a reviewer told to break it.
-- note: bwrap 0.11.1 is installed; no download.
+- note: bwrap 0.11.1 is installed; no download. Builds and cases run under bubblewrap and prlimit with no network, an empty environment and only fixed paths (/tools, /build, /work). Known gaps: memory is capped per process and disk per file.
 
 ### M3-08 · L3 · Build the model client: send request, read reply, count tokens
 
