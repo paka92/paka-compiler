@@ -1,0 +1,9 @@
+crane: gross 99899990.01 discount 0.00 net 99899990.01 tax 99890000.01 total 199789990.02
+crane: gross -99899990.01 discount -998999.90 net -98900990.11 tax -9890.10 total -98910880.21
+mug: gross 8.00 discount 0.00 net 8.00 tax 1.00 total 9.00
+mug: gross -8.00 discount 0.00 net -8.00 tax -1.00 total -9.00
+nib: gross 0.01 discount 0.00 net 0.01 tax 0.00 total 0.01
+nib: gross -0.01 discount 0.00 net -0.01 tax 0.00 total -0.01
+net 998999.90
+tax 99880109.91
+total 100879109.81
