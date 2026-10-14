@@ -453,7 +453,11 @@ impl<'a> Cx<'_, 'a> {
             if !self.free(hint) {
                 self.settle(value, hint)?;
             } else if self.stuck(sig, param, &bound) {
-                self.info.insert(span(value), hint);
+                // The argument's own shape, with the letters the call has bound (M2-02 section 5).
+                let mut known = bound.clone();
+                self.unify(param, got, &mut known);
+                let shape = self.subst(param, &known);
+                self.info.insert(span(value), shape);
                 let open = args.iter().map(|a| &a.value).filter(|v| self.is_open(v));
                 return Err(self.open_part(self.needs_in(open, value), None));
             } else {

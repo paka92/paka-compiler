@@ -228,7 +228,8 @@ impl Cx<'_, '_> {
     }
 
     /// The part of `roots` that lacks a type of its own: a hole if any, else the first part, the
-    /// deepest, that is open and holds no open part. `fallback` when there is none.
+    /// deepest, that is open and holds no open part; an open list literal is one part, its items
+    /// searched only for a hole (M2-02 section 5). `fallback` when there is none.
     pub(super) fn needs_in<'x>(
         &self,
         roots: impl IntoIterator<Item = &'x Expr<'x>>,
@@ -238,12 +239,14 @@ impl Cx<'_, '_> {
         stack.reverse();
         let mut deepest = None;
         while let Some(e) = stack.pop() {
-            let inner = self.open_parts(e);
-            match (&e.kind, inner.is_empty()) {
-                (K::Hole(_), _) => return e,
-                (_, true) => _ = deepest.get_or_insert(e),
-                _ => stack.extend(inner.into_iter().rev()),
+            if matches!(e.kind, K::Hole(_)) {
+                return e;
             }
+            let inner = self.open_parts(e);
+            if inner.is_empty() || matches!(e.kind, K::List(_)) {
+                deepest.get_or_insert(e);
+            }
+            stack.extend(inner.into_iter().rev());
         }
         deepest.unwrap_or(fallback)
     }
