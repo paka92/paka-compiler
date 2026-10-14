@@ -4,6 +4,8 @@
 
 use std::fmt;
 
+// A new node enum must also be listed in `coverage::node_kinds!`.
+
 /// (line, column), both from 1.
 pub type Pos = (usize, usize);
 

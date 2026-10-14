@@ -6,6 +6,6 @@ pub mod ast;
 pub mod builtins;
 pub mod coverage;
 pub mod diagnostic;
-pub mod json;
+mod json;
 mod lexer;
 pub mod parser;

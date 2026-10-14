@@ -1,6 +1,6 @@
 //! What a program uses of the language: the syntax node kinds in its tree and the names it writes.
 //! The exit gate (tests/conformance/README.md) compares this with `NODE_KINDS` and the built-in
-//! table. Operators are token classes, not nodes, and have no kind.
+//! table.
 
 use crate::ast::*;
 use crate::builtins;
@@ -9,8 +9,8 @@ use std::collections::BTreeSet;
 /// Gives each node enum a `kind()` that names its variant as `Enum::Variant`, and lists them all
 /// in `NODE_KINDS`. The match has no wildcard: a variant missing here does not compile.
 macro_rules! node_kinds {
-    ($($ty:ident: $($variant:ident)+;)+) => {
-        $(impl $ty<'_> {
+    ($($ty:ident $(<$lt:lifetime>)?: $($variant:ident)+;)+) => {
+        $(impl $ty $(<$lt>)? {
             fn kind(&self) -> &'static str {
                 match self {
                     $(Self::$variant { .. } => concat!(stringify!($ty), "::", stringify!($variant)),)+
@@ -24,15 +24,18 @@ macro_rules! node_kinds {
 }
 
 node_kinds! {
-    Def: Type Enum Fn Example App;
-    Entry: State Start Update Grants;
-    Type: Name Fn;
-    StmtKind: Let Discard Assign Return Break Continue For While Expr;
-    ExprKind: Int Float Bool Str Hole Name Record List Map Unary Binary Range Index Field Try Call
+    Def<'_>: Type Enum Fn Example App;
+    Entry<'_>: State Start Update Grants;
+    Type<'_>: Name Fn;
+    StmtKind<'_>: Let Discard Assign Return Break Continue For While Expr;
+    ExprKind<'_>: Int Float Bool Str Hole Name Record List Map Unary Binary Range Index Field Try Call
         Inout If Match;
-    StrPart: Text Expr;
-    ArmBody: Block Line;
-    PatKind: Wild Int Str Bool Bind Variant;
+    StrPart<'_>: Text Expr;
+    ArmBody<'_>: Block Line;
+    PatKind<'_>: Wild Int Str Bool Bind Variant;
+    AssignOp: Set Add Sub Mul Div Rem;
+    UnOp: Neg Not;
+    BinOp: Or And Eq Ne Lt Le Gt Ge Add Sub Mul Div Rem;
 }
 
 /// Every distinct name of the built-in table, sorted.
@@ -42,8 +45,9 @@ pub fn builtin_names() -> Vec<&'static str> {
     names.into_iter().collect()
 }
 
-/// The node kinds of a tree, and the names it writes as a type, a name in an expression or a
-/// pattern, a record name or a grant.
+/// The node kinds of a tree, and the names it writes: an upper-case name as a type, a name in an
+/// expression or a pattern, a record name or a grant; a lower-case name only as a callee, since a
+/// local name may hide a built-in function.
 #[derive(Default)]
 pub struct Uses {
     pub kinds: BTreeSet<&'static str>,
@@ -98,7 +102,8 @@ impl Uses {
     fn entry(&mut self, entry: &Entry) {
         self.kinds.insert(entry.kind());
         match entry {
-            Entry::State(_, name) | Entry::Update(_, name) => self.name(name.text),
+            Entry::State(_, name) => self.name(name.text),
+            Entry::Update(..) => {}
             Entry::Start(_, expr) => self.expr(expr),
             Entry::Grants(_, grants) => grants.iter().for_each(|g| self.name(g.text)),
         }
@@ -130,7 +135,8 @@ impl Uses {
                 self.expr(value);
             }
             StmtKind::Discard(value) | StmtKind::Expr(value) => self.expr(value),
-            StmtKind::Assign { target, value, .. } => {
+            StmtKind::Assign { target, op, value } => {
+                self.kinds.insert(op.kind());
                 self.expr(target);
                 self.expr(value);
             }
@@ -159,7 +165,8 @@ impl Uses {
                     }
                 }
             }
-            ExprKind::Name(name) => self.name(name),
+            ExprKind::Name(name) if name.starts_with(char::is_uppercase) => self.name(name),
+            ExprKind::Name(_) => {}
             ExprKind::Record(name, args) => {
                 self.name(name);
                 args.iter().for_each(|a| self.expr(&a.value));
@@ -169,16 +176,25 @@ impl Uses {
                 self.expr(k);
                 self.expr(v);
             }),
-            ExprKind::Unary(_, e)
-            | ExprKind::Field(e, _)
-            | ExprKind::Try(e, _)
-            | ExprKind::Inout(e) => self.expr(e),
-            ExprKind::Binary(_, _, a, b) | ExprKind::Range(a, b) | ExprKind::Index(a, b) => {
+            ExprKind::Unary(op, e) => {
+                self.kinds.insert(op.kind());
+                self.expr(e);
+            }
+            ExprKind::Field(e, _) | ExprKind::Try(e, _) | ExprKind::Inout(e) => self.expr(e),
+            ExprKind::Binary(op, _, a, b) => {
+                self.kinds.insert(op.kind());
+                self.expr(a);
+                self.expr(b);
+            }
+            ExprKind::Range(a, b) | ExprKind::Index(a, b) => {
                 self.expr(a);
                 self.expr(b);
             }
             ExprKind::Call(callee, args) => {
                 self.expr(callee);
+                if let ExprKind::Name(name) = &callee.kind {
+                    self.name(name);
+                }
                 args.iter().for_each(|a| self.expr(&a.value));
             }
             ExprKind::If {
