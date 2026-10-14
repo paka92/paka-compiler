@@ -16,10 +16,9 @@ mod eval;
 mod tests;
 mod value;
 
-/// Host stack for a call depth of 10,000. A call takes about 2 KiB in a release build and
-/// 20 KiB in a debug build, plus what the expressions around it take; the pages are only
-/// committed when used.
-const STACK: usize = 256 << 20;
+/// Host stack of the run thread and of every segment the evaluation adds to it (`eval::BUDGET`
+/// levels each); the pages are only committed when used.
+const STACK: usize = 32 << 20;
 /// The longest detail line of a trap report, in bytes.
 const DETAIL: usize = 256;
 /// The name of the thread that runs the program; its panics are reported as an internal error.

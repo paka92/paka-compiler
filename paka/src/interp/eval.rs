@@ -1,7 +1,7 @@
 //! Evaluation of the core form, node by node (docs/core.md sections 2 to 6).
 
-use super::builtin;
 use super::value::{Entries, FnKey, Items, Key, Value, equals, number, position};
+use super::{RUN_THREAD, STACK, builtin};
 use crate::core_form::{
     App, Arg, Arith, Arm, Bin, Block, Callee, Cmp, Compound, Expr, ExprKind, FloatArith, FnId,
     FnRef, Local, Place, Program, Root, Site, Step, Stmt, Un, Walk,
@@ -9,13 +9,13 @@ use crate::core_form::{
 use paka_rt::ops::{self, Float, Int, Text};
 use std::cmp::Ordering;
 use std::fmt::Write;
-use std::mem;
+use std::{mem, panic, thread};
 
 /// The call depth no call may pass; the handler is at depth 1.
 const DEPTH: usize = 10_000;
-/// The most expressions and blocks under evaluation at once, over all calls. It keeps the host
-/// stack from running out, which the call depth alone does not: each level takes stack too.
-const LEVELS: usize = 50_000;
+/// The most expressions and blocks under evaluation on one stack segment. A level takes under
+/// 5 KiB in a debug build, so a segment of `STACK` bytes holds it with a wide margin.
+const BUDGET: usize = 1_000;
 /// The most bytes in a String, and the most items or entries in a List or Map.
 pub const CAP: usize = 16_777_216;
 /// Frame names a trap keeps: the report shows eight, one more says there were others.
@@ -241,9 +241,30 @@ impl<'a> Machine<'a> {
     }
 
     fn block(&mut self, fr: &mut Frame, b: &Block) -> Done {
-        self.enter(fr)?;
-        let done = self.statements(fr, b);
-        self.levels -= 1;
+        self.deeper(|m| m.statements(fr, b))
+    }
+
+    /// Runs `f` as one more level of evaluation. Past `BUDGET` levels on this stack segment, `f`
+    /// goes on a fresh segment: a scoped thread with a stack of its own, joined at once.
+    fn deeper(&mut self, f: impl FnOnce(&mut Self) -> Done + Send) -> Done {
+        if self.levels < BUDGET {
+            self.levels += 1;
+            let done = f(self);
+            self.levels -= 1;
+            return done;
+        }
+        let here = mem::take(&mut self.levels);
+        let done = thread::scope(|scope| {
+            let host = thread::Builder::new().name(RUN_THREAD.into());
+            let run = host
+                .stack_size(STACK)
+                .spawn_scoped(scope, || self.deeper(f));
+            match run {
+                Ok(run) => run.join().unwrap_or_else(|p| panic::resume_unwind(p)),
+                Err(e) => Err(Stop::Internal(e.to_string())),
+            }
+        });
+        self.levels = here;
         done
     }
 
@@ -255,16 +276,6 @@ impl<'a> Machine<'a> {
             Some(e) => self.eval(fr, e),
             None => Ok(Value::Unit),
         }
-    }
-
-    /// Counts one more level under evaluation, which the caller takes off again; past `LEVELS`
-    /// it traps `stack`.
-    fn enter(&mut self, fr: &Frame) -> Result<(), Trap> {
-        if self.levels >= LEVELS {
-            return Err(Trap::bare(Kind::Stack, fr.site));
-        }
-        self.levels += 1;
-        Ok(())
     }
 
     /// The value a function leaves with: a local that is not a parameter moves.
@@ -339,10 +350,7 @@ impl<'a> Machine<'a> {
     }
 
     pub fn eval(&mut self, fr: &mut Frame, e: &Expr) -> Done {
-        self.enter(fr)?;
-        let done = self.node(fr, e);
-        self.levels -= 1;
-        done
+        self.deeper(|m| m.node(fr, e))
     }
 
     /// One arm each, so that this frame stays small: it is on the stack once per nesting level.
