@@ -1,0 +1,218 @@
+enum Msg { Start(path: String), Loaded(text: String), Failed(why: String) }
+
+enum Kind { Name, Str, Symbol, End }
+
+type Token { kind: Kind, text: String, line: Int, col: Int }
+
+type Problem { line: Int, col: Int, message: String }
+
+enum Value { Text(text: String), Items(items: List<Value>), Table(entries: Map<String, Value>) }
+
+type Parser { tokens: List<Token> = [], pos: Int = 0, duplicate: Option<Problem> = None }
+
+fn is_name_char(c: String) -> Bool {
+  c >= "a" && c <= "z" || c >= "A" && c <= "Z" || c >= "0" && c <= "9" || c == "_"
+}
+
+fn hex_value(c: String) -> Option<Int> {
+  find("0123456789abcdef", lower(c))
+}
+
+// The character a `\x` escape at `at` stands for, or None when the escape is bad.
+fn hex_escape(cs: List<String>, at: Int) -> Option<String> {
+  if at + 3 >= len(cs) || cs[at + 1] != "x" { return None }
+  let code = hex_value(cs[at + 2])? * 16 + hex_value(cs[at + 3])?
+  if code < 32 || code > 126 { return None }
+  Some(from_code(code))
+}
+
+fn tokens(text: String) -> Result<List<Token>, Problem> {
+  let cs = chars(text)
+  var out: List<Token> = []
+  var i = 0
+  var line = 1
+  var col = 1
+  while i < len(cs) {
+    let c = cs[i]
+    let start = i
+    let at_col = col
+    if c == "\n" {
+      i += 1
+      line += 1
+      col = 1
+    } else if c == " " {
+      i += 1
+      col += 1
+    } else if c == "#" {
+      while i < len(cs) && cs[i] != "\n" { i += 1 }
+      col += i - start
+    } else if is_name_char(c) {
+      while i < len(cs) && is_name_char(cs[i]) { i += 1 }
+      append(&out, Token { kind: Name, text: text[start..<i], line: line, col: at_col })
+      col += i - start
+    } else if contains("=\{\}[],", c) {
+      append(&out, Token { kind: Symbol, text: c, line: line, col: at_col })
+      i += 1
+      col += 1
+    } else if c == "\"" {
+      var value = ""
+      i += 1
+      while i < len(cs) && cs[i] != "\"" && cs[i] != "\n" {
+        if cs[i] != "\\" {
+          value += cs[i]
+          i += 1
+        } else if i + 1 < len(cs) && (cs[i + 1] == "\"" || cs[i + 1] == "\\") {
+          value += cs[i + 1]
+          i += 2
+        } else {
+          let bad = Problem { line: line, col: at_col + i - start, message: "bad escape" }
+          value += ok_or(hex_escape(cs, i), bad)?
+          i += 4
+        }
+      }
+      if i == len(cs) || cs[i] == "\n" {
+        return Err(Problem { line: line, col: at_col, message: "unterminated string" })
+      }
+      i += 1
+      append(&out, Token { kind: Str, text: value, line: line, col: at_col })
+      col += i - start
+    } else {
+      return Err(Problem { line: line, col: col, message: "bad character" })
+    }
+  }
+  append(&out, Token { kind: End, text: "", line: line, col: col })
+  Ok(out)
+}
+
+fn current(p: Parser) -> Token {
+  p.tokens[p.pos]
+}
+
+fn syntax_error(p: Parser) -> Problem {
+  let t = current(p)
+  Problem { line: t.line, col: t.col, message: "syntax error" }
+}
+
+fn is_symbol(p: Parser, text: String) -> Bool {
+  let t = current(p)
+  t.kind == Symbol && t.text == text
+}
+
+// Reads one symbol, or fails when the current token is another.
+fn expect(p: inout Parser, text: String) -> Result<Bool, Problem> {
+  if !is_symbol(p, text) { return Err(syntax_error(p)) }
+  p.pos += 1
+  Ok(true)
+}
+
+// The entries of a table, up to the first token that is not a name.
+fn entries(p: inout Parser) -> Result<Map<String, Value>, Problem> {
+  var table: Map<String, Value> = [:]
+  while current(p).kind == Name {
+    let name = current(p)
+    p.pos += 1
+    _ = expect(&p, "=")?
+    let v = value(&p)?
+    if has(table, name.text) {
+      if p.duplicate == None {
+        let why = "duplicate key {name.text}"
+        p.duplicate = Some(Problem { line: name.line, col: name.col, message: why })
+      }
+    } else {
+      table[name.text] = v
+    }
+  }
+  Ok(table)
+}
+
+fn value(p: inout Parser) -> Result<Value, Problem> {
+  let t = current(p)
+  if t.kind == Str {
+    p.pos += 1
+    return Ok(Text(t.text))
+  }
+  if is_symbol(p, "\{") {
+    p.pos += 1
+    let table = entries(&p)?
+    _ = expect(&p, "\}")?
+    return Ok(Table(table))
+  }
+  _ = expect(&p, "[")?
+  var items: List<Value> = []
+  if !is_symbol(p, "]") {
+    append(&items, value(&p)?)
+    while is_symbol(p, ",") {
+      p.pos += 1
+      append(&items, value(&p)?)
+    }
+  }
+  _ = expect(&p, "]")?
+  Ok(Items(items))
+}
+
+fn quoted(text: String) -> String {
+  "\"" + replace(replace(text, "\\", "\\\\"), "\"", "\\\"") + "\""
+}
+
+fn show(path: String, v: Value, out: inout List<String>) {
+  match v {
+    Text(text) => append(&out, "{path} = {quoted(text)}")
+    Items(items) => {
+      if is_empty(items) { append(&out, "{path} = []") }
+      for i in 0..<len(items) {
+        show("{path}[{i}]", items[i], &out)
+      }
+    }
+    Table(table) => {
+      if is_empty(table) { append(&out, "{path} = \{\}") }
+      for name in keys(table) {
+        show(path + "." + name, table[name], &out)
+      }
+    }
+  }
+}
+
+fn config(text: String) -> Result<List<String>, Problem> {
+  var p = Parser { tokens: tokens(text)? }
+  let top = entries(&p)?
+  if current(p).kind != End { return Err(syntax_error(p)) }
+  match p.duplicate {
+    Some(problem) => {
+      return Err(problem)
+    }
+    None => {}
+  }
+  var out: List<String> = []
+  for name in keys(top) {
+    show(name, top[name], &out)
+  }
+  Ok(out)
+}
+
+fn report(result: Result<List<String>, Problem>) -> List<Effect<Msg>> {
+  match result {
+    Ok(out) => {
+      var effects: List<Effect<Msg>> = []
+      for line in out {
+        append(&effects, Print(line))
+      }
+      append(&effects, Exit)
+      effects
+    }
+    Err(e) => [Print("error: line {e.line} col {e.col}: {e.message}"), ExitWith(20)]
+  }
+}
+
+fn update(m: Msg) -> List<Effect<Msg>> {
+  match m {
+    Start(path) => [ReadFile(path, then: Loaded, or: Failed)]
+    Loaded(text) => report(config(text))
+    Failed(why) => [Print("error: cannot read file: {why}"), ExitWith(20)]
+  }
+}
+
+app nested_config {
+  start: Start
+  update: update
+  grants: [Console, ReadFiles]
+}

@@ -1,0 +1,130 @@
+enum Msg { Start(path: String), Loaded(text: String), Failed(why: String) }
+
+fn is_digit(c: String) -> Bool {
+  c >= "0" && c <= "9"
+}
+
+fn is_name(s: String) -> Bool {
+  if len(s) < 1 || len(s) > 20 { return false }
+  for c in chars(s) {
+    let letter = c >= "a" && c <= "z" || c >= "A" && c <= "Z"
+    if !letter && !is_digit(c) && c != "_" && c != "-" { return false }
+  }
+  true
+}
+
+// The value of 1 to `most` decimal digits and nothing else.
+fn digits(s: String, most: Int) -> Option<Int> {
+  if len(s) < 1 || len(s) > most { return None }
+  for c in chars(s) {
+    if !is_digit(c) { return None }
+  }
+  parse_int(s)
+}
+
+// Hundredths written as 1 to `most` digits, a `.` and exactly 2 digits.
+fn hundredths(s: String, most: Int) -> Option<Int> {
+  let parts = split(s, ".")
+  if len(parts) != 2 || len(parts[1]) != 2 { return None }
+  Some(digits(parts[0], most)? * 100 + digits(parts[1], 2)?)
+}
+
+fn quantity(s: String) -> Option<Int> {
+  if starts_with(s, "-") {
+    return Some(-digits(s[1..<len(s)], 3)?)
+  }
+  digits(s, 3)
+}
+
+fn discount(s: String) -> Option<Int> {
+  if !ends_with(s, "%") { return None }
+  let pct = digits(s[0..<len(s) - 1], 3)?
+  if pct > 100 { return None }
+  Some(pct)
+}
+
+fn tax_rate(s: String) -> Option<Int> {
+  if !ends_with(s, "%") { return None }
+  hundredths(s[0..<len(s) - 1], 2)
+}
+
+// a / b rounded to the nearest whole, halves away from zero; b > 0.
+fn div_round(a: Int, b: Int) -> Int {
+  let q = (2 * abs(a) + b) / (2 * b)
+  if a < 0 { -q } else { q }
+}
+
+fn money(cents: Int) -> String {
+  let sign = if cents < 0 { "-" } else { "" }
+  let size = abs(cents)
+  let rest = size % 100
+  let pad = if rest < 10 { "0" } else { "" }
+  "{sign}{size / 100}.{pad}{rest}"
+}
+
+fn invoice_lines(text: String) -> Result<List<String>, String> {
+  var out: List<String> = []
+  var net_sum = 0
+  var tax_sum = 0
+  var total_sum = 0
+  let rows = lines(text)
+  for i in 0..<len(rows) {
+    let n = i + 1
+    let f = words(rows[i])
+    if is_empty(f) { continue }
+    if len(f) != 5 { return Err("error: line {n}: expected 5 fields, got {len(f)}") }
+    if !is_name(f[0]) { return Err("error: line {n}: bad name") }
+    let qty = ok_or(quantity(f[1]), "error: line {n}: bad quantity")?
+    let price = ok_or(hundredths(f[2], 5), "error: line {n}: bad price")?
+    let pct = ok_or(discount(f[3]), "error: line {n}: bad discount")?
+    let rate = ok_or(tax_rate(f[4]), "error: line {n}: bad tax")?
+
+    let gross = qty * price
+    let off = div_round(gross * pct, 100)
+    let net = gross - off
+    let tax = div_round(net * rate, 10000)
+    let total = net + tax
+    net_sum += net
+    tax_sum += tax
+    total_sum += total
+    let name = f[0]
+    append(&out, "{name}: gross {money(gross)} discount {money(off)} net {money(net)} tax {money(tax)} total {money(total)}")
+  }
+  if is_empty(out) { return Err("error: no items") }
+  append(&out, "net {money(net_sum)}")
+  append(&out, "tax {money(tax_sum)}")
+  if total_sum >= 0 {
+    append(&out, "total {money(total_sum)}")
+  } else {
+    append(&out, "refund {money(-total_sum)}")
+  }
+  Ok(out)
+}
+
+fn report(result: Result<List<String>, String>) -> List<Effect<Msg>> {
+  match result {
+    Ok(out) => {
+      var effects: List<Effect<Msg>> = []
+      for line in out {
+        append(&effects, Print(line))
+      }
+      append(&effects, Exit)
+      effects
+    }
+    Err(why) => [Print(why), ExitWith(20)]
+  }
+}
+
+fn update(m: Msg) -> List<Effect<Msg>> {
+  match m {
+    Start(path) => [ReadFile(path, then: Loaded, or: Failed)]
+    Loaded(text) => report(invoice_lines(text))
+    Failed(why) => [Print("error: cannot read file: {why}"), ExitWith(20)]
+  }
+}
+
+app invoice {
+  start: Start
+  update: update
+  grants: [Console, ReadFiles]
+}

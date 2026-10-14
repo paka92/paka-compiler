@@ -1,0 +1,181 @@
+enum Msg { Start(path: String), Loaded(text: String), Failed(why: String) }
+
+// A date is its day number: days since 1900-01-01, a Monday.
+enum Command {
+  Blank,
+  Days(from: Int, to: Int),
+  Weekday(day: Int),
+  Add(day: Int, count: Int, line: Int),
+  Holiday(day: Int)
+}
+
+fn is_digits(s: String) -> Bool {
+  for c in chars(s) {
+    if c < "0" || c > "9" { return false }
+  }
+  !is_empty(s)
+}
+
+fn is_date_form(s: String) -> Bool {
+  len(s) == 10 && s[4] == "-" && s[7] == "-" && is_digits(s[0..<4] + s[5..<7] + s[8..<10])
+}
+
+fn is_count_form(s: String) -> Bool {
+  let body = if starts_with(s, "-") { s[1..<len(s)] } else { s }
+  len(body) <= 3 && is_digits(body)
+}
+
+fn is_command(f: List<String>) -> Bool {
+  match f[0] {
+    "days" => len(f) == 3 && is_date_form(f[1]) && is_date_form(f[2])
+    "weekday" | "holiday" => len(f) == 2 && is_date_form(f[1])
+    "add" => len(f) == 3 && is_date_form(f[1]) && is_count_form(f[2])
+    _ => false
+  }
+}
+
+fn is_leap(y: Int) -> Bool {
+  y % 4 == 0 && (y % 100 != 0 || y % 400 == 0)
+}
+
+fn month_length(y: Int, m: Int) -> Int {
+  if m == 2 {
+    if is_leap(y) { 29 } else { 28 }
+  } else if m == 4 || m == 6 || m == 9 || m == 11 {
+    30
+  } else {
+    31
+  }
+}
+
+fn year_length(y: Int) -> Int {
+  if is_leap(y) { 366 } else { 365 }
+}
+
+fn day_number(y: Int, m: Int, d: Int) -> Int {
+  var n = d - 1
+  for year in 1900..<y {
+    n += year_length(year)
+  }
+  for month in 1..<m {
+    n += month_length(y, month)
+  }
+  n
+}
+
+// The day number of a date written YYYY-MM-DD, or None when it is not a valid date.
+fn day_of(s: String) -> Option<Int> {
+  let y = parse_int(s[0..<4])?
+  let m = parse_int(s[5..<7])?
+  let d = parse_int(s[8..<10])?
+  if y < 1900 || y > 2100 || m < 1 || m > 12 || d < 1 || d > month_length(y, m) { return None }
+  Some(day_number(y, m, d))
+}
+
+fn two(n: Int) -> String {
+  if n < 10 { "0{n}" } else { "{n}" }
+}
+
+fn date_text(day: Int) -> String {
+  var n = day
+  var y = 1900
+  while n >= year_length(y) {
+    n -= year_length(y)
+    y += 1
+  }
+  var m = 1
+  while n >= month_length(y, m) {
+    n -= month_length(y, m)
+    m += 1
+  }
+  "{y}-{two(m)}-{two(n + 1)}"
+}
+
+fn weekday(day: Int) -> Int {
+  (day % 7 + 7) % 7
+}
+
+fn parse_line(line: String, n: Int) -> Result<Command, String> {
+  if is_empty(line) { return Ok(Blank) }
+  let f = split(line, " ")
+  if !is_command(f) { return Err("error: line {n}: bad command") }
+  let bad_date = "error: line {n}: bad date"
+  let a = ok_or(day_of(f[1]), bad_date)?
+  match f[0] {
+    "days" => Ok(Days(a, ok_or(day_of(f[2]), bad_date)?))
+    "weekday" => Ok(Weekday(a))
+    "holiday" => Ok(Holiday(a))
+    _ => Ok(Add(a, unwrap_or(parse_int(f[2]), 0), n))
+  }
+}
+
+fn is_working(day: Int, holidays: Map<Int, Bool>) -> Bool {
+  weekday(day) < 5 && !has(holidays, day)
+}
+
+fn add(day: Int, count: Int, line: Int, holidays: Map<Int, Bool>) -> String {
+  let step = if count > 0 { 1 } else { -1 }
+  var at = day
+  var left = abs(count)
+  while left > 0 {
+    at += step
+    if is_working(at, holidays) { left -= 1 }
+  }
+  if at < 0 || at > day_number(2100, 12, 31) {
+    return "line {line}: out of range"
+  }
+  date_text(at)
+}
+
+fn answers(text: String) -> Result<List<String>, String> {
+  var commands: List<Command> = []
+  var holidays: Map<Int, Bool> = [:]
+  let rows = lines(text)
+  for i in 0..<len(rows) {
+    let c = parse_line(rows[i], i + 1)?
+    match c {
+      Holiday(day) => holidays[day] = true
+      Blank | Days(_, _) | Weekday(_) | Add(_, _, _) => {}
+    }
+    append(&commands, c)
+  }
+  let names = ["Monday", "Tuesday", "Wednesday", "Thursday", "Friday", "Saturday", "Sunday"]
+  var out: List<String> = []
+  for c in commands {
+    match c {
+      Days(from, to) => append(&out, "{to - from}")
+      Weekday(day) => append(&out, names[weekday(day)])
+      Add(day, count, line) => append(&out, add(day, count, line, holidays))
+      Blank | Holiday(_) => {}
+    }
+  }
+  Ok(out)
+}
+
+fn report(result: Result<List<String>, String>) -> List<Effect<Msg>> {
+  match result {
+    Ok(out) => {
+      var effects: List<Effect<Msg>> = []
+      for line in out {
+        append(&effects, Print(line))
+      }
+      append(&effects, Exit)
+      effects
+    }
+    Err(why) => [Print(why), ExitWith(20)]
+  }
+}
+
+fn update(m: Msg) -> List<Effect<Msg>> {
+  match m {
+    Start(path) => [ReadFile(path, then: Loaded, or: Failed)]
+    Loaded(text) => report(answers(text))
+    Failed(why) => [Print("error: cannot read file: {why}"), ExitWith(20)]
+  }
+}
+
+app calendar {
+  start: Start
+  update: update
+  grants: [Console, ReadFiles]
+}

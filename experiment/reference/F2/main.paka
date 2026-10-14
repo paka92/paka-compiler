@@ -1,0 +1,139 @@
+enum Msg {
+  Start(input: String, field: String, index: String),
+  Loaded(text: String),
+  ReadFailed(why: String),
+  Wrote,
+  WriteFailed(why: String)
+}
+
+type Job { name: String, text: String }
+
+// The files to write, in writing order, and the line to print when they are written.
+type Plan { jobs: List<Job>, summary: String }
+
+type Split {
+  input: String = "",
+  index: String = "",
+  field: Int = 0,
+  jobs: List<Job> = [],
+  done: Int = 0,
+  summary: String = ""
+}
+
+// One or more digits and nothing else, with a value from 1 to 9.
+fn field_number(s: String) -> Option<Int> {
+  if is_empty(s) { return None }
+  var n = 0
+  for c in chars(s) {
+    if c < "0" || c > "9" { return None }
+    n = min(n * 10 + parse_int(c)?, 10)
+  }
+  if n < 1 || n > 9 { None } else { Some(n) }
+}
+
+fn file_name(key: String) -> String {
+  var name = ""
+  for c in chars(lower(key)) {
+    if c >= "a" && c <= "z" || c >= "0" && c <= "9" {
+      name += c
+    } else {
+      name += "_"
+    }
+  }
+  name + ".txt"
+}
+
+fn plural(n: Int, word: String) -> String {
+  if n == 1 { "{n} {word}" } else { "{n} {word}s" }
+}
+
+fn split_records(text: String, f: Int, index: String) -> Result<Plan, String> {
+  var rests: Map<String, String> = [:]   // file name: its lines
+  var counts: Map<String, Int> = [:]     // file name: its records
+  var key_of: Map<String, String> = [:]  // file name: its key
+  var records = 0
+  let rows = lines(text)
+  for i in 0..<len(rows) {
+    let n = i + 1
+    if is_empty(rows[i]) { continue }
+    var fields = split(rows[i], ",")
+    if len(fields) < f { return Err("error: line {n}: no field {f}") }
+    let key = remove_at(&fields, f - 1)
+    if is_empty(key) { return Err("error: line {n}: empty key") }
+    let name = file_name(key)
+    match get(key_of, name) {
+      Some(earlier) => {
+        if earlier != key {
+          return Err("error: line {n}: {key} clashes with {earlier} in {name}")
+        }
+      }
+      None => {
+        key_of[name] = key
+        rests[name] = ""
+        counts[name] = 0
+      }
+    }
+    rests[name] += join(fields, ",") + "\n"
+    counts[name] += 1
+    records += 1
+  }
+  var jobs: List<Job> = []
+  var listing = ""
+  for name in keys(rests) {
+    append(&jobs, Job { name: name, text: rests[name] })
+    listing += "{name} {counts[name]} {key_of[name]}\n"
+  }
+  append(&jobs, Job { name: index, text: listing })
+  let r = plural(records, "record")
+  let k = plural(len(rests), "file")
+  Ok(Plan { jobs: jobs, summary: "split {r} into {k}" })
+}
+
+fn fail(why: String) -> List<Effect<Msg>> {
+  [Print(why), ExitWith(20)]
+}
+
+fn write_next(s: Split) -> List<Effect<Msg>> {
+  if s.done == len(s.jobs) { return [Print(s.summary), Exit] }
+  let job = s.jobs[s.done]
+  [WriteFile(job.name, job.text, then: Wrote, or: WriteFailed)]
+}
+
+fn update(s: inout Split, m: Msg) -> List<Effect<Msg>> {
+  match m {
+    Start(input, field, index) => {
+      match field_number(field) {
+        Some(f) => {
+          s.input = input
+          s.index = index
+          s.field = f
+          [ReadFile(input, then: Loaded, or: ReadFailed)]
+        }
+        None => fail("error: bad field")
+      }
+    }
+    Loaded(text) => {
+      match split_records(text, s.field, s.index) {
+        Ok(plan) => {
+          s.jobs = plan.jobs
+          s.summary = plan.summary
+          write_next(s)
+        }
+        Err(why) => fail(why)
+      }
+    }
+    ReadFailed(_) => fail("error: cannot read {s.input}")
+    Wrote => {
+      s.done += 1
+      write_next(s)
+    }
+    WriteFailed(_) => fail("error: cannot write {s.jobs[s.done].name}")
+  }
+}
+
+app split_by_key {
+  state: Split
+  start: Start
+  update: update
+  grants: [Console, ReadFiles, WriteFiles]
+}

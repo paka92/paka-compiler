@@ -1,0 +1,142 @@
+enum Msg {
+  Start(root: String, output: String),
+  Loaded(text: String),
+  ReadFailed(why: String),
+  Written,
+  WriteFailed(why: String)
+}
+
+// What is known of a file: not read yet, its text, or that it cannot be read.
+enum File { Unknown, Text(text: String), Unreadable }
+
+// Why a merge stopped: it needs a file not read yet, or it found an error.
+enum Stop { Need(name: String), Error(line: String) }
+
+// The merge replays from the root each time a file arrives, so the files it read are its cache.
+type Resolver {
+  root: String = "",
+  output: String = "",
+  files: Map<String, File> = [:],
+  waiting: String = "",
+  written: Int = 0
+}
+
+type Merge { chain: List<String> = [], finished: Map<String, Bool> = [:], out: List<String> = [] }
+
+fn is_name(s: String) -> Bool {
+  if len(s) < 1 || len(s) > 30 { return false }
+  for c in chars(s) {
+    let ok = c >= "a" && c <= "z" || c >= "A" && c <= "Z" || c >= "0" && c <= "9"
+    if !ok && c != "." && c != "_" && c != "-" { return false }
+  }
+  s[0] != "." && s[0] != "_" && s[0] != "-"
+}
+
+fn merge(name: String, text: String, files: Map<String, File>, m: inout Merge) -> Result<Bool, Stop> {
+  append(&m.chain, name)
+  let rows = lines(text)
+  for i in 0..<len(rows) {
+    let line = rows[i]
+    if !starts_with(line, "#include") {
+      append(&m.out, line)
+      continue
+    }
+    let at = "error: {name} line {i + 1}: "
+    if !starts_with(line, "#include ") || !is_name(line[9..<len(line)]) {
+      return Err(Error(at + "bad include"))
+    }
+    let target = line[9..<len(line)]
+    if contains(m.chain, target) {
+      return Err(Error(at + "include cycle: " + join(m.chain, " -> ") + " -> " + target))
+    }
+    if has(m.finished, target) { continue }
+    match unwrap_or(get(files, target), Unknown) {
+      Unknown => {
+        return Err(Need(target))
+      }
+      Unreadable => {
+        return Err(Error(at + "cannot read {target}"))
+      }
+      Text(t) => {
+        _ = merge(target, t, files, &m)?
+      }
+    }
+  }
+  _ = pop(&m.chain)
+  m.finished[name] = true
+  Ok(true)
+}
+
+fn merge_root(root: String, files: Map<String, File>) -> Result<List<String>, Stop> {
+  match unwrap_or(get(files, root), Unknown) {
+    Unknown => Err(Need(root))
+    Unreadable => Err(Error("error: cannot read {root}"))
+    Text(text) => {
+      var m = Merge {}
+      _ = merge(root, text, files, &m)?
+      Ok(m.out)
+    }
+  }
+}
+
+fn plural(n: Int, word: String) -> String {
+  if n == 1 { "{n} {word}" } else { "{n} {word}s" }
+}
+
+fn fail(why: String) -> List<Effect<Msg>> {
+  [Print(why), ExitWith(20)]
+}
+
+// Runs the merge as far as the files read so far allow.
+fn resume(s: inout Resolver) -> List<Effect<Msg>> {
+  match merge_root(s.root, s.files) {
+    Ok(out) => {
+      s.written = len(out)
+      var text = ""
+      for line in out {
+        text += line + "\n"
+      }
+      [WriteFile(s.output, text, then: Written, or: WriteFailed)]
+    }
+    Err(stop) => {
+      match stop {
+        Need(name) => {
+          s.waiting = name
+          [ReadFile(name, then: Loaded, or: ReadFailed)]
+        }
+        Error(line) => fail(line)
+      }
+    }
+  }
+}
+
+fn update(s: inout Resolver, m: Msg) -> List<Effect<Msg>> {
+  match m {
+    Start(root, output) => {
+      s.root = root
+      s.output = output
+      resume(&s)
+    }
+    Loaded(text) => {
+      s.files[s.waiting] = Text(text)
+      resume(&s)
+    }
+    ReadFailed(_) => {
+      s.files[s.waiting] = Unreadable
+      resume(&s)
+    }
+    Written => {
+      let f = plural(len(s.files), "file")
+      let k = plural(s.written, "line")
+      [Print("read {f}, wrote {k} to {s.output}"), Exit]
+    }
+    WriteFailed(_) => fail("error: cannot write {s.output}")
+  }
+}
+
+app include {
+  state: Resolver
+  start: Start
+  update: update
+  grants: [Console, ReadFiles, WriteFiles]
+}

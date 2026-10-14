@@ -1,0 +1,119 @@
+enum Msg { Start(path: String, steps: String), Loaded(text: String), Failed(why: String) }
+
+type Sand { limit: Int = 0 }
+
+// One or more digits and nothing else, with a value from 0 to 1000.
+fn step_limit(s: String) -> Option<Int> {
+  if is_empty(s) { return None }
+  var n = 0
+  for c in chars(s) {
+    if c < "0" || c > "9" { return None }
+    n = min(n * 10 + parse_int(c)?, 1001)
+  }
+  if n > 1000 { None } else { Some(n) }
+}
+
+fn read_grid(text: String) -> Result<List<List<String>>, String> {
+  let rows = lines(text)
+  if is_empty(rows) || is_empty(rows[0]) { return Err("error: empty grid") }
+  let width = len(rows[0])
+  var grid: List<List<String>> = []
+  for i in 0..<len(rows) {
+    let cells = chars(rows[i])
+    for c in 0..<len(cells) {
+      let cell = cells[c]
+      if cell != "." && cell != "#" && cell != "o" {
+        return Err("error: line {i + 1} col {c + 1}: bad cell")
+      }
+    }
+    if len(cells) != width { return Err("error: line {i + 1}: ragged row") }
+    append(&grid, cells)
+  }
+  Ok(grid)
+}
+
+fn is_free(g: List<List<String>>, r: Int, c: Int) -> Bool {
+  c >= 0 && c < len(g[r]) && g[r][c] == "."
+}
+
+// Runs one step; tells whether any grain moved.
+fn step(g: inout List<List<String>>) -> Bool {
+  var moved = false
+  var r = len(g) - 2
+  while r >= 0 {
+    for c in 0..<len(g[r]) {
+      if g[r][c] != "o" { continue }
+      var to = -1
+      if is_free(g, r + 1, c) {
+        to = c
+      } else if is_free(g, r, c - 1) && is_free(g, r + 1, c - 1) {
+        to = c - 1
+      } else if is_free(g, r, c + 1) && is_free(g, r + 1, c + 1) {
+        to = c + 1
+      }
+      if to >= 0 {
+        g[r][c] = "."
+        g[r + 1][to] = "o"
+        moved = true
+      }
+    }
+    r -= 1
+  }
+  moved
+}
+
+fn run(text: String, limit: Int) -> Result<List<String>, String> {
+  var grid = read_grid(text)?
+  var steps = 0
+  var settled = false
+  while steps < limit && !settled {
+    if step(&grid) {
+      steps += 1
+    } else {
+      settled = true
+    }
+  }
+  var out: List<String> = []
+  for row in grid {
+    append(&out, join(row, ""))
+  }
+  append(&out, if settled { "steps: {steps}, settled" } else { "steps: {limit}, limit" })
+  Ok(out)
+}
+
+fn report(result: Result<List<String>, String>) -> List<Effect<Msg>> {
+  match result {
+    Ok(out) => {
+      var effects: List<Effect<Msg>> = []
+      for line in out {
+        append(&effects, Print(line))
+      }
+      append(&effects, Exit)
+      effects
+    }
+    Err(why) => [Print(why), ExitWith(20)]
+  }
+}
+
+fn update(s: inout Sand, m: Msg) -> List<Effect<Msg>> {
+  match m {
+    Start(path, steps) => {
+      match step_limit(steps) {
+        Some(n) => {
+          s.limit = n
+          [ReadFile(path, then: Loaded, or: Failed)]
+        }
+        None => [Print("error: bad steps"), ExitWith(20)]
+      }
+    }
+    Loaded(text) => report(run(text, s.limit))
+    Failed(why) => [Print("error: cannot read file: {why}"), ExitWith(20)]
+  }
+}
+
+app sand {
+  state: Sand
+  start: Start
+  update: update
+  grants: [Console, ReadFiles]
+}
