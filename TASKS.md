@@ -453,11 +453,12 @@ or merged during review. Ids with a letter were added during review.
 
 ### M2-21 · L4 · Enforce copies, inout exclusivity and borrow rules in the checker
 
+- status: done
 - needs: M2-05, M2-20
 - flags: none
 - done when: Every accept and reject sample from the ownership decision passes, plus own edge tests; rejections carry a fix where the error kind declares one (M2-04).
 - why this level: Overlap analysis on paths; a missed case is a silent hole release mode will trust.
-- note: Follows docs/decisions/M2-05.md, including its two tightened call rules.
+- note: Follows docs/decisions/M2-05.md, including its two tightened call rules. Done: the checks are paka/src/body/own.rs, run after the type checks; the earliest error in a definition wins and a type error wins a tie. Places part ways only at fields before the first index step. A String key inside an & place counts as a read-only operand.
 
 ### M2-22 · L4 · Check each built-in use from its table row and argument types
 
