@@ -7,6 +7,7 @@ use std::process::{Command, Output};
 use std::sync::Once;
 
 pub const PAKA: &str = env!("CARGO_BIN_EXE_paka");
+
 /// The one counting rule for the size of a text: a token is three bytes, rounded up.
 pub fn tokens(text: &str) -> usize {
     text.len().div_ceil(3)

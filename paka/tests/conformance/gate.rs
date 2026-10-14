@@ -151,7 +151,40 @@ mod self_test {
     #[test]
     fn a_sample_that_does_not_run_fails() {
         let trapping = "```paka\nexample e {\n  1 / 0 == 0\n}\n```\n";
-        assert_eq!(problems(trapping, &[], &[], &used()).len(), 1);
+        let found = problems(trapping, &[], &[], &used());
+        assert_eq!(found.len(), 1);
+        assert!(found[0].contains("paka examples"), "{found:?}");
+    }
+
+    #[test]
+    fn an_app_sample_whose_run_fails_fails() {
+        let exiting = "```paka\ntype T { n: Int = 0 }\n\nenum Msg { Start(path: String) }\n\n\
+            fn update(s: inout T, m: Msg) -> List<Effect<Msg>> {\n  [ExitWith(7)]\n}\n\n\
+            app a {\n  state: T\n  start: Start\n  update: update\n  grants: [Console]\n}\n```\n";
+        let found = problems(exiting, &[], &[], &used());
+        assert_eq!(found.len(), 1);
+        assert!(found[0].contains("paka run"), "{found:?}");
+    }
+
+    #[test]
+    fn a_local_name_does_not_cover_a_built_in_function() {
+        let source = "fn f(text: String) -> Int {\n  let words = 1\n  words\n}\n";
+        let program = parse("main.paka", source.as_bytes()).unwrap();
+        assert!(!coverage::uses(&program).names.contains("words"));
+        let source = "fn f(text: String) -> Int {\n  len(words(text))\n}\n";
+        let program = parse("main.paka", source.as_bytes()).unwrap();
+        let used = coverage::uses(&program);
+        assert!(used.names.contains("words") && used.names.contains("len"));
+    }
+
+    #[test]
+    fn operators_are_node_kinds() {
+        let source = "fn f(a: Int) -> Int {\n  var b = -a\n  b += a % 2\n  b\n}\n";
+        let program = parse("main.paka", source.as_bytes()).unwrap();
+        let kinds = coverage::uses(&program).kinds;
+        for kind in ["UnOp::Neg", "AssignOp::Add", "BinOp::Rem"] {
+            assert!(kinds.contains(kind), "{kind}");
+        }
     }
 
     #[test]
