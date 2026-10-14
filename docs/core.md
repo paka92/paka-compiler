@@ -24,8 +24,10 @@ function, local or site is its position in the list that holds it.
 - **Enum.** A name and its variants in declared order, each a name and its fields. A variant's
   number is its position.
 - **Function.** A name, a site (its name in the definition), its parameters in order, each a type
-  and whether it is `inout`, a result type or none, and a body block. Its parameters are locals 0
-  to n - 1; every `let`, `var`, `for` name and pattern name gets the next local number.
+  and whether it is `inout`, a result type or none, the types of its locals, and a body block.
+  Its parameters are locals 0 to n - 1; every `let`, `var`, `for` name and pattern name gets the
+  next local number. The locals list holds the parameters first, then every local in numbering
+  order, including the ones lowering adds (the `let` of a match subject, section 7).
 - **Example.** A function with no parameters and a `Bool` result, kept in its own list so nothing
   can call it (M2-06). The driver names its frame `example NAME`.
 - **Site.** A line and a column, both from 1, and for a hole its name. The file is the program's.
@@ -94,8 +96,8 @@ Every expression carries its type, or none when it gives no value.
 | `if c { a } else { b }` | the blocks' type, or none without `else` | `c`, then only the chosen block | never |
 | `match` | the arms' type, or none | below | never |
 
-**Call.** The callee is a user function, a built-in row of paka/src/builtins.rs, or a function
-value. Evaluation:
+**Call.** The callee is a user function, a built-in, or a function value. A built-in is an index into
+`builtins::ROWS` (paka/src/builtins.rs), chosen once by the checker. Evaluation:
 
 1. a function value callee, then the arguments in written order, each fully; an `inout` argument
    only evaluates its place's root and index operands, in its position;
@@ -151,13 +153,14 @@ Exactly these nodes trap, with these kinds, at these sites; nothing else does.
 | `==`, `!=` | `stack` | the operator |
 | item, key and slice steps | `out_of_bounds`; `memory` for a slice, or a key added by an assignment | the step's `[` |
 | `op=` | the operator's kinds | the operator |
-| call | `stack` (user function, function value, or a call back from a built-in); a built-in's own kinds | the call's site |
+| call | `stack` (user function, function value, or a call back from a built-in), and `stack` from a compare or copy too deep inside the row (`contains`, `find`, `append`, `list_of` item copies); a built-in's own kinds | the call's site |
 | function | `stack` from a copy too deep | its name in the definition |
 
 `stack` and `memory` give only their kind as meaning (M2-06 §1.2); their sites only need to
-exist. In native code an allocation the host refuses also traps `memory`, at the node that
-allocates or, for a copy, the function's site (M2-06 §1.4). A site belongs to a node, not to a kind: Int `/` reports either kind at one site, so the
-kind travels with the trap. Not traps: a `?` that passes a value up (it is a `return`), the stop
+exist. In native code an allocation the host refuses also traps `memory`, at the node's site, or
+the function's site for a node that has none (a literal, a copy) (M2-06 §1.4). A site belongs to
+a node, not to a kind: Int `/` reports either kind at one site, so the kind travels with the
+trap. Not traps: a `?` that passes a value up (it is a `return`), the stop
 lines of M2-15 (`refused`, `failed`, `ended without Exit`, an `ExitWith` status out of range),
 an endless loop.
 
@@ -217,3 +220,28 @@ Each is the smallest reading consistent with M2-03, M2-05 and M2-06.
    call's site.
 8. String `+` and interpolation trap `memory` past the size cap (M2-06 §1.4).
 9. A match on an Int, String or Bool is sugar; core `match` decides on variants only.
+10. A call through a function value has no name to report at; its site is its first token.
+11. `m[k] = v` on a new key traps `memory` at the last key step's `[`, the one step of an
+    assignment that can add.
+12. An allocation the host refuses is reported at the node's site, or the function's site for a
+    literal or a copy, which have none of their own (section 6).
+
+## 10. Recorded text this page changes
+
+- docs/decisions M2-03 :267 (strings, `a + b`, `s += t`): the row said "never traps"; it traps
+  `memory` past the cap (M2-06 §1.4 already says so).
+- docs/decisions M2-03 :315-317 (§2.8, index and slice): the rule was written for one step, with
+  the check before the next operand. It now reads: on a chain of steps, from a place or from a
+  computed value, every index comes first, then the checks and reads step by step (M2-05 Rule D).
+  This is a change, not a clarification: for `let y = xs[9][f()]` the old text checks `9` before
+  `f()` runs, so a missing item 9 is reported first; now `f()` runs first, so what `f()` traps on
+  comes first.
+- docs/decisions M2-06 :29 (stack, position): adds a function value call's first token, the
+  operator for a compare, the enclosing function's name for a copy.
+- docs/decisions M2-06 :107-108 (§1.3): "each trap site returns its own constant" becomes: each
+  trap returns its site's constant and its kind.
+- docs/decisions M2-06 :128 (§1.4, host refusal): a literal or a copy reports at the enclosing
+  function's name.
+- docs/decisions M2-06 :268-271 (§3, trap sites): the table has no kind column; the kind travels
+  with the trap, since one site may raise several kinds.
+- docs/decisions M2-14 :265 (§1.15): `m[key] = v` on a new key traps `memory` at its last `[`.
