@@ -32,6 +32,7 @@ const KINDS: &[(&str, bool, bool)] = &[
     ("missing-grants", false, false),
     ("bad-update-signature", false, false),
     ("bad-start", false, false),
+    ("bad-state", false, false),
     ("unknown-grant", false, true),
     ("duplicate-grant", false, false),
     // The second milestone's codes; the spec lists them once it covers that milestone.

@@ -111,7 +111,7 @@ fn same(a: &Type, b: &Type) -> bool {
     }
 }
 
-fn key(entry: &Entry) -> (Pos, &'static str) {
+pub(crate) fn key(entry: &Entry) -> (Pos, &'static str) {
     match entry {
         Entry::State(at, _) => (*at, "state"),
         Entry::Start(at, _) => (*at, "start"),

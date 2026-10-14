@@ -188,7 +188,12 @@ fn rejects_a_wrong_update_signature() {
     let shape = "update must be fn(s: inout Tally, m: Msg) -> List<Effect<Msg>>";
     let bare = "update must be fn(m: Msg) -> List<Effect<Msg>>";
     let wrong = |f: &str| app(&[TALLY, MSG, f], &FULL);
-    let stateless = |f: &str| app(&[MSG, f], &["start: Start", "update: update", "grants: []"]);
+    let stateless = |f: &str| {
+        app(
+            &[TALLY, MSG, f],
+            &["start: Start", "update: update", "grants: []"],
+        )
+    };
     let other = "enum Other { Stop }";
     says(&[
         (
@@ -344,7 +349,7 @@ fn rejects_an_unknown_or_repeated_grant() {
         (
             "unknown-grant",
             "[^Files]",
-            "Files is not a grant; did you mean ReadFiles?",
+            "Files is not a grant",
             grants("grants: [Files]"),
         ),
         (
@@ -368,7 +373,7 @@ fn rejects_an_unknown_or_repeated_grant() {
         (
             "unknown-grant",
             "[Console, ^Files, Console]",
-            "Files is not a grant; did you mean ReadFiles?",
+            "Files is not a grant",
             grants("grants: [Console, Files, Console]"),
         ),
     ]);
@@ -376,11 +381,11 @@ fn rejects_an_unknown_or_repeated_grant() {
 
 #[test]
 fn the_unknown_grant_carries_its_fix() {
-    let src = full_with("grants", "grants: [Files]");
+    let src = full_with("grants", "grants: [Consol]");
     let [d] = &errors(&src)[..] else {
         panic!("want one error")
     };
-    assert!(d.detailed(src.as_bytes()).contains(" with \"ReadFiles\"\n"));
+    assert!(d.detailed(src.as_bytes()).contains(" with \"Console\"\n"));
 }
 
 #[test]

@@ -3,7 +3,7 @@
 //! A definition's result is its first error, so an error in one never changes another's.
 //!
 //! Not here: ownership and overlap (M2-21), the corners of built-in rows (M2-22), function
-//! values (M2-30), the error forms (M2-31) and apps (M2-32), which are left unchecked.
+//! values (M2-30) and the error forms (M2-31), which are left unchecked.
 
 use crate::ast::{self, Block, Def, Expr, Pos, Program};
 use crate::diagnostic::Diagnostic;
@@ -12,6 +12,7 @@ use crate::sig::{Checked, Item, Node, Sig, Table, Ty, Types};
 use std::collections::{BTreeMap, BTreeSet};
 use text::{float_fix, named, render};
 
+mod app;
 mod arms;
 mod branch;
 mod call;
@@ -163,6 +164,9 @@ impl<'t, 'a> Cx<'t, 'a> {
             (Def::Type { fields, .. }, Item::Record(held)) => (fields.iter().zip(held))
                 .find_map(|(f, h)| self.expect(f.default.as_ref()?, h.ty).err()),
             (Def::Example { body, .. }, _) => self.example(body).err(),
+            (Def::App { name, entries }, Item::App { state, update }) => {
+                self.app(name, entries, (*state, *update)).err()
+            }
             _ => None,
         };
         earliest(defs[i].error.clone(), found)
