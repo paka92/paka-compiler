@@ -1,0 +1,34 @@
+enum Msg { Start, Loaded(text: String) }
+
+fn shorter(a: String, b: String) -> Bool { len(a) < len(b) || len(a) == len(b) && a < b }
+
+fn by_length(ws: List<String>) -> List<String> {
+  var out = ws
+  sort_by(&out, shorter)
+  out
+}
+
+type Job { done: fn(Int) -> Msg }
+
+fn run(j: Job) -> Msg { j.done(3) }
+
+fn pad(text: String; width: Int) -> String { text }
+
+fn keep(f: fn(String, Int) -> String) -> fn(String, Int) -> String { f }
+
+fn probe() -> Msg {
+  let g = keep(pad)
+  let make: fn(String) -> Msg = Loaded
+  _ = g("a", 1)
+  make("b")
+}
+
+fn update(m: Msg) -> List<Effect<Msg>> {
+  [Exit]
+}
+
+app callbacks {
+  start: Start
+  update: update
+  grants: []
+}
