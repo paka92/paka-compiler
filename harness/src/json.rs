@@ -1,6 +1,6 @@
 //! A strict JSON reader and string quoter. Numbers stay as text, so no float is ever made.
 
-/// Deeper nesting than any stream line has is an error, not a stack overflow.
+/// Levels of nesting allowed; deeper is an error, not a stack overflow.
 const MAX_DEPTH: usize = 64;
 
 #[derive(Debug, Clone, PartialEq)]
@@ -33,13 +33,6 @@ impl Value {
     pub fn as_bool(&self) -> Option<bool> {
         match self {
             Value::Bool(b) => Some(*b),
-            _ => None,
-        }
-    }
-
-    pub fn as_array(&self) -> Option<&[Value]> {
-        match self {
-            Value::Array(items) => Some(items),
             _ => None,
         }
     }
@@ -111,7 +104,7 @@ impl Parser<'_> {
     }
 
     fn value(&mut self, depth: usize) -> Parse<Value> {
-        if depth > MAX_DEPTH {
+        if depth >= MAX_DEPTH {
             return self.fail("nesting too deep");
         }
         self.skip_space();

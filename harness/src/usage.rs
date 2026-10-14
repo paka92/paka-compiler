@@ -12,33 +12,23 @@ pub struct Tokens {
     pub output: u64,
 }
 
-/// The cap on each counter. Calls stop when either total has reached its cap.
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub struct Caps {
-    pub input: u64,
-    pub output: u64,
-}
-
-impl Default for Caps {
-    /// The caps of M3-02 section 1.8.
-    fn default() -> Caps {
-        Caps {
-            input: 16_000_000,
-            output: 9_500_000,
-        }
-    }
-}
+/// The caps of M3-02 section 1.8. Calls stop when either total has reached its cap.
+pub const DEFAULT_CAPS: Tokens = Tokens {
+    input: 16_000_000,
+    output: 9_500_000,
+};
 
 /// The running total, kept as `{"input":N,"output":M}`. A file that is missing is a total of zero;
-/// one that cannot be read exactly is an error.
+/// one that cannot be read exactly is an error. The file has no lock: one harness process uses a
+/// ledger at a time.
 #[derive(Debug, Clone)]
 pub struct Ledger {
     path: PathBuf,
-    caps: Caps,
+    caps: Tokens,
 }
 
 impl Ledger {
-    pub fn new(path: impl Into<PathBuf>, caps: Caps) -> Ledger {
+    pub fn new(path: impl Into<PathBuf>, caps: Tokens) -> Ledger {
         Ledger {
             path: path.into(),
             caps,
@@ -51,20 +41,11 @@ impl Ledger {
             Err(e) if e.kind() == ErrorKind::NotFound => return Ok(Tokens::default()),
             Err(e) => return Err(e.into()),
         };
-        self.read(&text).ok_or_else(|| {
+        read(&text).ok_or_else(|| {
             Error::Malformed(format!(
                 "{}: expected {{\"input\":N,\"output\":M}}",
                 self.path.display()
             ))
-        })
-    }
-
-    fn read(&self, text: &str) -> Option<Tokens> {
-        let total = json::parse(text).ok()?;
-        let count = |key| total.get(key).and_then(Value::as_u64);
-        Some(Tokens {
-            input: count("input")?,
-            output: count("output")?,
         })
     }
 
@@ -97,4 +78,13 @@ impl Ledger {
         fs::rename(staged, &self.path)?;
         Ok(())
     }
+}
+
+fn read(text: &str) -> Option<Tokens> {
+    let total = json::parse(text).ok()?;
+    let count = |key| total.get(key).and_then(Value::as_u64);
+    Some(Tokens {
+        input: count("input")?,
+        output: count("output")?,
+    })
 }

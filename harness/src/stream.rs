@@ -6,24 +6,28 @@ use crate::json::{self, Value};
 use crate::usage::Tokens;
 
 pub enum Event {
+    /// The `system` init line; the key source is `none` when no API key is in use.
+    Init { api_key_source: Option<String> },
     /// An assistant message, with the model that wrote it.
     Assistant { model: String },
     /// The end of a turn.
     Result(Outcome),
     /// The conversation is being, or was, compacted.
     Compaction,
-    /// A kind of line that carries nothing counted: `system` (init, hooks, status) and
+    /// A kind of line that carries nothing counted: other `system` lines (hooks, status) and
     /// `rate_limit_event`.
     Ignored,
 }
 
+/// The end of a turn. Failed or not, the usage it reports was spent.
 pub enum Outcome {
     Reply {
         text: String,
         tokens: Tokens,
+        stop_reason: Option<String>,
     },
-    /// The provider failed the turn; the message is for the log.
-    Failed(String),
+    /// The provider failed the turn; the message is for the log. No usage line counts as none.
+    Failed { message: String, tokens: Tokens },
 }
 
 pub fn parse_event(line: &str) -> Result<Event, Error> {
@@ -36,7 +40,7 @@ pub fn parse_event(line: &str) -> Result<Event, Error> {
 fn read(line: &str) -> Result<Event, String> {
     let event = json::parse(line)?;
     match str_field(&event, "type")? {
-        "system" => Ok(system(&event)?),
+        "system" => system(&event),
         "assistant" => {
             let model = str_field(field(&event, "message")?, "model")?;
             Ok(Event::Assistant {
@@ -51,6 +55,7 @@ fn read(line: &str) -> Result<Event, String> {
 
 fn system(event: &Value) -> Result<Event, String> {
     let compacting = match str_field(event, "subtype")? {
+        "init" => return init(event),
         "compact_boundary" => true,
         "status" => event.get("status").and_then(Value::as_str) == Some("compacting"),
         _ => false,
@@ -60,6 +65,19 @@ fn system(event: &Value) -> Result<Event, String> {
     } else {
         Event::Ignored
     })
+}
+
+fn init(event: &Value) -> Result<Event, String> {
+    let api_key_source = match event.get("apiKeySource") {
+        None => None,
+        Some(source) => Some(
+            source
+                .as_str()
+                .ok_or("\"apiKeySource\" is not a string")?
+                .into(),
+        ),
+    };
+    Ok(Event::Init { api_key_source })
 }
 
 fn result(event: &Value) -> Result<Outcome, String> {
@@ -72,9 +90,30 @@ fn result(event: &Value) -> Result<Outcome, String> {
             .get("result")
             .and_then(Value::as_str)
             .unwrap_or(subtype);
-        return Ok(Outcome::Failed(message.into()));
+        let tokens = event.get("usage").map_or(Ok(Tokens::default()), usage)?;
+        return Ok(Outcome::Failed {
+            message: message.into(),
+            tokens,
+        });
     }
-    let usage = field(event, "usage")?;
+    let stop_reason = match event.get("stop_reason") {
+        None | Some(Value::Null) => None,
+        Some(reason) => Some(
+            reason
+                .as_str()
+                .ok_or("\"stop_reason\" is not a string")?
+                .into(),
+        ),
+    };
+    Ok(Outcome::Reply {
+        text: str_field(event, "result")?.into(),
+        tokens: usage(field(event, "usage")?)?,
+        stop_reason,
+    })
+}
+
+/// Input is plain, cache-write and cache-read input together.
+fn usage(usage: &Value) -> Result<Tokens, String> {
     let mut input = 0u64;
     for key in [
         "input_tokens",
@@ -85,12 +124,9 @@ fn result(event: &Value) -> Result<Outcome, String> {
             .checked_add(count(usage, key)?)
             .ok_or("input tokens overflow")?;
     }
-    Ok(Outcome::Reply {
-        text: str_field(event, "result")?.into(),
-        tokens: Tokens {
-            input,
-            output: count(usage, "output_tokens")?,
-        },
+    Ok(Tokens {
+        input,
+        output: count(usage, "output_tokens")?,
     })
 }
 

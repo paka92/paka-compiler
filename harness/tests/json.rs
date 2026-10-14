@@ -80,7 +80,10 @@ fn nesting_is_bounded_at_64_levels() {
 #[test]
 fn unescaped_non_ascii_text_is_kept() {
     assert_eq!(parse("\"é😀\""), Ok(Value::Str("é😀".into())));
-    assert_eq!(parse("\"\\u00e9\\ud83d\\ude00\""), Ok(Value::Str("é😀".into())));
+    assert_eq!(
+        parse("\"\\u00e9\\ud83d\\ude00\""),
+        Ok(Value::Str("é😀".into()))
+    );
 }
 
 #[test]
@@ -89,10 +92,6 @@ fn accessors() {
     assert_eq!(v.get("n").and_then(Value::as_u64), Some(12));
     assert_eq!(v.get("s").and_then(Value::as_str), Some("t"));
     assert_eq!(v.get("b").and_then(Value::as_bool), Some(true));
-    assert_eq!(
-        v.get("l").and_then(Value::as_array).map(<[Value]>::len),
-        Some(1)
-    );
     assert!(v.get("missing").is_none());
     assert_eq!(v.get("s").and_then(Value::as_u64), None);
     assert_eq!(Value::Null.get("n"), None);

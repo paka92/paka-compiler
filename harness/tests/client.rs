@@ -132,7 +132,10 @@ fn a_failed_result_voids_the_run_and_its_tokens_are_counted() {
     let rig = Rig::new("failed", "failed.txt", BIG);
     let mut run = rig.start().unwrap();
     let err = run.send("hello").unwrap_err();
-    assert!(matches!(&err, Error::Provider(m) if m.contains("529")), "{err:?}");
+    assert!(
+        matches!(&err, Error::Provider(m) if m.contains("529")),
+        "{err:?}"
+    );
     assert_eq!(rig.used(), tokens(27, 9));
     assert_eq!(rig.run_file("stdin").lines().count(), 1);
 }
@@ -304,7 +307,10 @@ fn a_reply_without_an_assistant_message_is_an_error_but_is_counted() {
 fn one_assistant_message_from_another_model_voids_the_turn() {
     let rig = Rig::new("mixed", "mixed_models.txt", BIG);
     let err = rig.start().unwrap().send("hello").unwrap_err();
-    assert!(matches!(&err, Error::WrongModel { got, .. } if got == "claude-haiku-5-5"), "{err:?}");
+    assert!(
+        matches!(&err, Error::WrongModel { got, .. } if got == "claude-haiku-5-5"),
+        "{err:?}"
+    );
     assert_eq!(rig.used(), tokens(1203, 50));
 }
 
@@ -328,7 +334,10 @@ fn a_reply_cut_at_the_token_limit_is_flagged() {
 fn a_key_source_other_than_none_is_refused() {
     let rig = Rig::new("api-key", "api_key.txt", BIG);
     let err = rig.start().unwrap().send("hello").unwrap_err();
-    assert!(matches!(&err, Error::ApiKey(s) if s == "ANTHROPIC_API_KEY"), "{err:?}");
+    assert!(
+        matches!(&err, Error::ApiKey(s) if s == "ANTHROPIC_API_KEY"),
+        "{err:?}"
+    );
 }
 
 #[test]
@@ -337,7 +346,11 @@ fn the_child_gets_a_cleared_environment() {
     if std::env::var_os(INNER).is_none() {
         let this = std::env::current_exe().unwrap();
         let status = std::process::Command::new(this)
-            .args(["--exact", "the_child_gets_a_cleared_environment", "--nocapture"])
+            .args([
+                "--exact",
+                "the_child_gets_a_cleared_environment",
+                "--nocapture",
+            ])
             .env(INNER, "1")
             .env("ANTHROPIC_API_KEY", "not-a-key")
             .status()

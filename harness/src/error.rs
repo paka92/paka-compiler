@@ -1,4 +1,4 @@
-use crate::usage::{Caps, Tokens};
+use crate::usage::Tokens;
 use std::fmt;
 use std::io;
 
@@ -8,7 +8,7 @@ pub enum Error {
     /// The usage total has reached a cap; no further call is made.
     CapReached {
         used: Tokens,
-        caps: Caps,
+        caps: Tokens,
     },
     /// The process ended or closed its output before the turn was complete.
     Died,
@@ -26,8 +26,14 @@ pub enum Error {
         expected: u64,
         got: u64,
     },
-    /// The turn failed on every attempt; carries the last message.
+    /// The provider failed the turn; carries its message. The run is void.
     Provider(String),
+    /// The reply is a refusal.
+    Refused,
+    /// The process reports a key source other than none: calls would be paid.
+    ApiKey(String),
+    /// The run already failed; nothing more is sent.
+    Voided,
 }
 
 impl fmt::Display for Error {
@@ -45,7 +51,10 @@ impl fmt::Display for Error {
             Error::FirstCall { expected, got } => {
                 write!(f, "first call took {got} input tokens, expected {expected}")
             }
-            Error::Provider(msg) => write!(f, "the turn failed on every attempt: {msg}"),
+            Error::Provider(msg) => write!(f, "the turn failed: {msg}"),
+            Error::Refused => f.write_str("the reply is a refusal"),
+            Error::ApiKey(source) => write!(f, "the key source is {source:?}, not \"none\""),
+            Error::Voided => f.write_str("the run already failed"),
         }
     }
 }
