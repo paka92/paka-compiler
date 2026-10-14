@@ -413,7 +413,7 @@ or merged during review. Ids with a letter were added during review.
 - flags: none
 - done when: Tests pass: each definition kind's signature is accepted or rejected with expected and found types; built-ins come from one table.
 - why this level: Base for per-definition checking; recursive types and default values hide easy-to-miss cases.
-- note: Follows docs/decisions/M2-05.md, including its two tightened call rules. Follows docs/decisions/M2-09.md: the interface hash covers every named type a signature reaches, and no app state may hold a function type. Follows docs/decisions/M2-14.md for the built-in table. Calls the M2-13 pass and gives the built-in table of paka/src/resolve.rs its signatures. Done: the table is paka/src/sig.rs with the built-in rows in paka/src/builtins.rs; no command calls it yet, and M2-19 wires it in. It runs the finite-value test, so M2-21 does not. It holds no interface hash (M4-11) and no app rule (M2-32). The parser reads a field default as a constant.
+- note: Follows docs/decisions/M2-05.md, including its two tightened call rules. Follows docs/decisions/M2-09.md: the interface hash covers every named type a signature reaches, and no app state may hold a function type. Follows docs/decisions/M2-14.md for the built-in table. Calls the M2-13 pass and gives the built-in table of paka/src/resolve.rs its signatures. Done: the table is paka/src/sig.rs with the built-in rows in paka/src/builtins.rs; no command calls it yet; M2-25 wires it in with the body check. It runs the finite-value test, so M2-21 does not. It holds no interface hash (M4-11) and no app rule (M2-32). The parser reads a field default as a constant.
 
 ### M2-17 · L4 · Parse type arguments, function values and error-handling forms
 
@@ -435,10 +435,12 @@ or merged during review. Ids with a letter were added during review.
 
 ### M2-19 · L3 · Check statements and expressions against signatures only
 
+- status: done
 - needs: M2-16
 - flags: none
 - done when: Accept and reject tests pass with expected and found types; an error in one body never changes another definition's result.
 - why this level: Local inference, labels, mutability and discards across several modules; own tests needed.
+- note: Done: the check is paka/src/body.rs and paka/src/body/; no command calls it yet, and M2-25 wires it in. It gives one result per definition, the earliest error in source order among name, signature and body errors, and a type per expression. Operators and `?` carry their position in the tree. Left to later tasks: match arms, patterns, holes, example and app bodies (M2-20, entry points in paka/src/body/hook.rs), ownership (M2-21), `cannot-infer` at an argument (M2-22), full function values (M2-30) and error forms (M2-31).
 
 ### M2-20 · L3 · Check match, patterns, holes and example bodies
 
@@ -462,7 +464,7 @@ or merged during review. Ids with a letter were added during review.
 - flags: none
 - done when: Decision samples pass; the type variables of a built-in row are taken from the arguments and the expected type, and `cannot-infer` is given when neither fixes one. A test shows a function body's result never depends on any caller.
 - why this level: The language has no user generics (M2-09), so only built-in rows carry type variables; binding them wrongly accepts or refuses programs silently.
-- note: Follows docs/decisions/M2-09.md: the interface hash covers every named type a signature reaches, and no app state may hold a function type. Follows docs/decisions/M2-12.md for Option, Result, `?` and unreachable().
+- note: Follows docs/decisions/M2-09.md: the interface hash covers every named type a signature reaches, and no app state may hold a function type. Follows docs/decisions/M2-12.md for Option, Result, `?` and unreachable(). Settle here whether the `cannot-infer` message names the local or the expression when both exist: docs/decisions/M2-02.md and M2-12.md give both forms.
 
 ### M2-23 · L4 · Define the core form for the whole headless language
 
@@ -478,6 +480,7 @@ or merged during review. Ids with a letter were added during review.
 - flags: none
 - done when: Tests compare hand-written core for each statement, expression and pattern kind; all pass.
 - why this level: Desugars match, interpolation and inout places while keeping the fixed evaluation order.
+- note: Wires the name pass, the signature table and the body check into `paka check` and `paka run` in place of the milestone 1 checker.
 
 ### M2-26 · L3 · Evaluate the core form in the interpreter
 
