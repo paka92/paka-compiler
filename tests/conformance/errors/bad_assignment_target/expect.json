@@ -1,1 +1,1 @@
-{"kind":"bad-assignment-target","line":8,"column":3,"text":"c"}
+{"kind":"bad-assignment-target","line":8,"column":3,"text":"c.shape.w"}

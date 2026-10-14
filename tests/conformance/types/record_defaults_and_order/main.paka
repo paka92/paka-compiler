@@ -5,14 +5,14 @@ enum Mood { Calm, Busy(why: String) }
 type Inner { x: Int = 7 }
 
 type Job {
-  name: String
-  prio: Int = -3
-  ratio: Float = 0.5
-  done: Bool = false
-  notes: List<String> = []
-  tags: Map<String, Int> = [:]
-  inner: Inner = Inner { x: 7 }
-  mood: Mood = Busy("none")
+  name: String,
+  prio: Int = -3,
+  ratio: Float = 0.5,
+  done: Bool = false,
+  notes: List<String> = [],
+  tags: Map<String, Int> = [:],
+  inner: Inner = Inner { x: 7 },
+  mood: Mood = Busy("none"),
   best: Option<Int> = None
 }
 

@@ -1,8 +1,10 @@
-app errorsfn update(msg: Msg) -> List<Effect<Msg>> {
-  [Print("done"), Exit]
-}
-
 app errors {
   start: Start
   update: update
+}
+
+enum Msg { Start }
+
+fn update(msg: Msg) -> List<Effect<Msg>> {
+  [Print("done"), Exit]
 }

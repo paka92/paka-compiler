@@ -15,7 +15,7 @@ fn n(x: Int) -> String { "{x}" }
 fn update(msg: Msg) -> List<Effect<Msg>> {
   let e: Map<String, Int> = [:]
   let f: Map<Int, String> = [:]
-  [Print(ss(keys(e))), Print(si(values(e))), Print(ss(values(f))), Print(ss(keys(f))), Print(n(len(e))), Exit]
+  [Print(ss(keys(e))), Print(si(values(e))), Print(ss(values(f))), Print(si(keys(f))), Print(n(len(e))), Exit]
 }
 
 app builtins {

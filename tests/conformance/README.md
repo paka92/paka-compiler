@@ -1,6 +1,6 @@
 # Conformance cases
 
-These cases are not yet required: no harness runs them today. M2-41b runs them.
+`paka/tests/conformance.rs` runs every case by the pass rules below, with none skipped.
 
 `ownership/` covers ownership and shared data (M2-05, M2-10, the Map rows of M2-14).
 `errors/` holds one rejected program for every error kind a program file can raise (M2-42).
@@ -63,6 +63,8 @@ The case folder is the working directory, so every diagnostic path is `main.paka
   `: ` and at least one more byte (spec/m1.md §11).
 - Reject case with `command`: the same, with that command; the status is 1. A reject line with no
   position is matched as a prefix of the first line of standard error, and the line may end there.
+  With `check`, the line may be followed by the field lines of spec/paka.md §12, each starting with
+  two spaces.
 - Case with `command` that is not a reject: standard output equals `stdout`, standard error equals
   `stderr` (empty when absent), the status equals `status`. An empty `stdout` file means empty.
 - `files/`, `after/`, `absent` and `present` are checked as the format says, on top of the above.
@@ -497,7 +499,7 @@ size product that overflows Int. The cap's exact value and growth just past it a
 
 Sources: M2-15, M2-06 §1.1 to §1.6, spec/m1.md §8 to §9, M2-12 for the hole and example forms. A
 case name below is a folder in `apps/`. A `*` stands for the cases of that name prefix, listed in
-full in the folder. `(Rn)` marks a case that follows a reading in `record-amends.md`.
+full in the folder. `(Rn)` marks a case that follows a reading in the Settled readings table below.
 
 ### The app form (M2-15 §1.1, spec/m1.md §8)
 
@@ -509,7 +511,7 @@ full in the folder. `(Rn)` marks a case that follows a reading in `record-amends
 | state starts from its field defaults and lives across handler calls | `app_state_defaults`, `app_state_persists` |
 | a key twice is `duplicate-app-entry`, before a missing key | `app_duplicate_start`, `app_duplicate_grants`, `app_duplicate_before_missing` |
 | a missing key is `missing-start`, `missing-update` or `missing-grants`, in that order, at the app name | `app_missing_start`, `app_missing_update`, `app_missing_grants`, `app_missing_start_before_grants`, `app_missing_update_before_grants`, `app_empty` |
-| an unknown entry is `unsupported-app-entry` (R8) | `app_unknown_entry` |
+| an unknown entry is `unexpected-token` at the key: M2-02 §5 retired `unsupported-app-entry` | `app_unknown_entry` |
 | `state` must be a record with defaults on every field, checked before `update` | `state_is_int`, `state_is_enum`, `state_field_without_default`, `state_function_field` (R1), `state_before_update_signature` |
 | `update` is a known function, `(inout State, Msg) -> Effects`, or `(Msg) -> Effects` with no state | `update_unknown_name`, `update_returns_int`, `update_state_needs_inout`, `update_state_given_one_parameter`, `update_without_state_has_two`, `update_wrong_state_type`, `update_message_not_an_enum`, `update_effect_of_other_message`, `update_signature_before_start` |
 | `start` is a variant with String fields only; an unknown name, a function and a non-String field are told apart | `start_unknown_name`, `start_is_function`, `start_field_not_string`, `start_before_grants` (R9) |
@@ -603,10 +605,14 @@ full in the folder. `(Rn)` marks a case that follows a reading in `record-amends
 
 ### Covered elsewhere
 
-A case cannot make a host fail, so these are left to the unit tests of the toolchain:
+A case cannot make a host fail, so these are left to the host tests of the toolchain:
 
-- a file effect failing with `no permission`, `no space` or `failed` for a file over the String limit;
-- `Print` failing on a closed or full standard output, a closed descriptor or a file size limit;
+- a file effect failing with `no permission`, `no space` or `failed` for a file over the String limit
+  (`paka/tests/effects.rs`: `a_file_the_process_may_not_use_gives_no_permission`,
+  `each_way_a_write_fails_gives_its_reason`, `each_way_a_read_fails_gives_its_reason`);
+- `Print` failing on a full or closed standard output (`paka/tests/cli.rs`:
+  `full_disk_gives_status_3_and_its_line`, `closed_pipe_gives_status_3_and_its_line`); a closed
+  descriptor and a file size limit have no test;
 - the call-depth and collection-size numbers of M2-06 §1.4 (`stack` and `memory` are tested with sizes no cap could allow);
 - a stack trap inside a deep copy or compare, and `deep(1 / 0)` at the limit;
 - the entry text of an example that traps `stack` or `memory`;
@@ -650,9 +656,9 @@ Each case holds the same small app (`enum Msg { Start }`, `update`, `app errors`
 and changes only what its kind needs, so the kind is the first error found. A kind that carries a
 fix has a second case with no near name (`..._no_fix`), which pins `"fix":null`.
 
-Pins: line and column of the diagnostic. A `*` marks a text whose length no record shows; the
-record gives only the start, and the case takes the token that starts there (`\`, `&`, the
-first name of a target).
+Pins: line and column of the diagnostic. A `*` marks a text whose length follows the span rule of
+spec/m1.md §10: a named token covers itself (`\`), the first token of a construct covers the
+construct (the target `c.shape.w`, the operand or write `&xs`).
 
 | Kind | Case | Pins | Record |
 |---|---|---|---|
@@ -718,6 +724,7 @@ Not in the table, since a program cannot reach them in a file:
 | `clang-missing` | needs a machine without `clang`; tested out of the folder (spec/m1.md §13) |
 | `clang-failed` | needs a failing `clang` run (spec/m1.md §13) |
 | `runtime-missing` | needs `libpaka_rt.a` removed from the executable's folder (spec/m1.md §13) |
+| `hole-in-build` | has a position, and `via: build` pins none; held by `apps/hole_build_*` until a positioned build format is written |
 
 `unused-name` is a warning and has no kind. `unsupported-form` is temporary (spec/m1.md §10): drop
 its case when the back end builds the core form.
@@ -749,6 +756,7 @@ its case when the back end builds the core form.
 | `Option` and `Result` subjects | `match_option_result` |
 | an arm that leaves: bare after `=>` is refused at the keyword; as a block it runs | `match_arm_return`, `match_arm_break`, `match_arm_continue`, `match_arms_that_leave` |
 | arm types differ | `match_arm_type_differs` |
+| a single-line arm with no value: `missing-value` at its pattern (M2-02 §5) | `match_single_line_arm_no_value` |
 | empty `match`; comma after an arm | `match_empty`, `match_comma_after_arm` |
 | name in an alternatives arm | `match_alternative_binds_name` |
 | subject type: Float, List, record | `match_subject_float`, `match_subject_list`, `match_subject_record` |
@@ -805,7 +813,7 @@ its case when the back end builds the core form.
 | a bare `fn` name where its own result is expected | `fv_bare_fn_where_result_expected` |
 | effect-list functions: `then`, `or`, bare `Print` | `fv_then_given_message`, `fv_then_given_builtin_variant`, `fv_then_too_many_fields`, `fv_or_given_effect`, `fv_effect_list_bare_print` |
 | `sort_by` before: built-in, result not Bool, wrong item type | `fv_sort_by_builtin_as_before`, `fv_sort_by_result_not_bool`, `fv_sort_by_wrong_item_type` |
-| app state reaches a function type | `fv_state_reaches_function_type` |
+| app state reaches a function type, with or without a default | `fv_state_reaches_function_type`, `state_function_field_no_default` |
 | a record holding a function outside the state | `fv_state_unrelated_record_holds_function` |
 
 ### types/ habit spellings (M2-09 §2, M2-12 §1.9)
@@ -855,9 +863,8 @@ its case when the back end builds the core form.
 
 ## Settled readings
 
-Where the records leave a point open, the owner settled it. The cases follow these readings. A row
-that starts with "Case reading" is a choice the `core/` cases made; it waits for the owner's
-confirmation.
+Where the records leave a point open, the owner settled it. The cases follow these readings; the
+record named in each row holds the line.
 
 | Reading | Record |
 |---|---|
@@ -880,12 +887,12 @@ confirmation.
 | An `if` or `match` standing in the header counts as a level; the one holding it adds none | spec/m1.md §10, M2-02 §1.7 |
 | A slice whose start is after its end traps `out_of_bounds` with detail `slice 2..<1, length 3` | M2-06 §1.1, §1.2 |
 | After `{` in a string the lexer looks for the first `}` on the line; with none, the string is `unterminated-string` at the opening quote (`"{"`); with one, a `"`, `{` or `}` before it is `unexpected-character` at that byte (`"{"a"}"`) | M2-03 §1.11 |
-| Case reading: `to_int` and `to_float` appear as the Int/Float bridge; the rest of their rows belong to the built-in function cases | M2-03 §1.5 |
+| `to_int` and `to_float` appear as the Int/Float bridge; the rest of their rows belong to the built-in function cases | M2-03 §1.5 |
 | A shift count outside 0 to 63 traps at the function name, like every other row | M2-06 §1.1, M2-14 §1.15 |
 | A slice trap sits at the `[`; its detail is `slice A..<B, length N` for an end past the length, a start past the end and a negative start | M2-06 §1.1, §1.2 |
 | `swap` names the first bad position in the detail, checked `i` before `j`, also when `i == j` | M2-14 §1.8 |
 | `m[a][b] = v` with `a` missing traps at the `[` of the `a` step; `&m[k]` with `k` missing traps at the `[` | M2-14 §1.11, M2-06 §1.1, core.md §6 |
-| `counts[w] += 1` on a new key has the ordinary three-line report; the help line is not part of the report | M2-06 §1.2 |
+| `counts[w] += 1` on a new key has the ordinary three-line report; on an Int value the detail is `key "w"; write m[k] = unwrap_or(get(m, k), 0) + 1` | M2-06 §1.2, M2-14 §1.11, §10 |
 | A trap inside the function given to `sort_by` names that function first: `in before, called from update` | M2-06 §1.2, M2-14 §1.15 |
 | `stack` and `memory` traps pin their one line in a `trap` file, with any position. Cases use only sizes no cap could allow (2^62 or more, or a product that overflows Int) | M2-06 §1.2, §1.4, M2-14 §1.15 |
 | `unreachable()` as a whole statement is an `if` body whose last statement it is | M2-14 §1.10 |
@@ -893,26 +900,20 @@ confirmation.
 | A `Print` string may hold line feeds; its lines are separate lines of `stdout` | M2-15 |
 | `duplicate-name` for a row's name sits at the name after `fn`; `sort` on an item type with no order sits at the `&` of the argument; `wrong-label` and `type-mismatch` sit at the argument; `wrong-argument-count` at the function name; `cannot-infer` at the empty literal, `None` or the name | M2-02, M2-04, M2-09, M2-14 |
 | An unlabelled argument to a labelled row (`insert(xs, 1, 0)`) is `wrong-label` at that argument; `unreachable(1)` is `wrong-argument-count` at the name; `type Option` is `duplicate-name` at the name after `type`; `len([:])` is `cannot-infer` at the `[:]` | M2-02, M2-04, M2-09, M2-14 §1.3 |
-| Case reading (`apps/`): `type-mismatch` for a function type in `state:` applies when every field has a default; a function-typed field with no default is `bad-state` (R1) | M2-15 §1.1, M2-09 §1.11 |
-| Case reading (`apps/`): the 256-byte cut of a trap detail has no marker, the cut is on the detail text, and the two-space indent is added after it (R3) | M2-06 §1.2 |
-| Case reading (`apps/`): several `note[hole]` blocks follow each other with no blank line (R4) | M2-06 §1.5 |
-| Case reading (`apps/`): an example that traps directly prints `  in example NAME`, not `called from` (R6) | M2-06 §1.2, §6 |
-| Case reading (`apps/`): `no-app` has no position and no message after the code; the reject line is `main.paka: error[no-app]` (R7) | spec/m1.md §11, M2-15 §5 |
-| Case reading (`apps/`): `bad-start` for a function name, `unknown-name` for a name that is not defined; a type name is not used (R9) | M2-15 §1.1 |
-
-## Case reading
-
-Where the records leave a point open, the case follows the reading closest to them.
-
-| Reading | Record | Case(s) |
-|---|---|---|
-| A binary type error on `==`, `+` is at the operator, as `>` is for order | M2-09 §1.5, §5 | `eq_int_float`, `eq_different_types`, `sum_int_float`, `plus_string_int`, `plus_on_lists`, `fv_equality_of_different_types` |
-| `max(1, 2.0)` is at the second argument, where the §1.3 walk finds the second binding | M2-09 §1.3, §5 | `max_mixed` |
-| A pattern with the wrong number of fields is `wrong-argument-count` at the variant name in the pattern | M2-02 §5 | `pattern_too_few_fields`, `pattern_too_many_fields`, `pattern_fieldful_variant_bare`, `pattern_fieldless_variant_with_name` |
-| An Upper name followed by `{` ends a header, so the `{` opens the body and the first token that cannot continue a statement is `unexpected-token`: the `:` of `count: 1` | M2-02 §1.9 | `record_literal_in_header_unparenthesized` |
-| A field default is reported at the first token not part of a constant: the name for a call, the operator for a sum, the first item for a non-empty list | M2-02 §1.9 | `field_default_call`, `field_default_sum`, `field_default_list_of_values` |
-| An empty `match` is `unexpected-token` at the `}` | M2-02 §1.9 | `match_empty` |
-| A comparison chain is `unexpected-token` at the second comparison operator | spec/paka.md, M2-02 §2 | `compare_chain` |
+| A function type reachable from `state:` is `type-mismatch` at the value before the default check, with or without a default (R1; `types/state_function_field_no_default`) | M2-15 §1.1, M2-09 §1.11 |
+| A binary type error on `==`, `+` is at the operator, as `>` is for order (`eq_int_float`, `sum_int_float`, `plus_string_int` and others) | M2-03 §1.13 |
+| `max(1, 2.0)` is at the second argument (`max_mixed`) | M2-09 §1.3 |
+| A pattern with the wrong number of fields is `wrong-argument-count` at the variant name in the pattern (`pattern_too_few_fields` and others) | M2-02 §5 |
+| An Upper name followed by `{` ends a header, so `if Counter { count: 1 } == c` fails at the `:` (`record_literal_in_header_unparenthesized`) | M2-02 §1.9 |
+| A field default is reported at the first token not part of a constant: the name of a call, the operator of a sum, the first item of a non-empty list (`field_default_*`) | M2-02 §1.9 |
+| An empty `match` is `unexpected-token` at the `}` (`match_empty`) | M2-02 §1.9 |
+| A comparison chain is `unexpected-token` at the second comparison operator (`compare_chain`) | spec/paka.md, M2-02 §2 |
+| A single-line arm with no value is `missing-value` at its pattern (`types/match_single_line_arm_no_value`) | M2-02 §5 |
+| The 256-byte cut of a trap detail has no marker, the cut is on the detail text, and the two-space indent is added after it (R3) | M2-06 §1.2 |
+| Several `note[hole]` blocks follow each other with no blank line (R4) | M2-06 §7 |
+| An example that traps directly prints `  in example NAME`, not `called from` (R6) | M2-06 §1.2, §6 |
+| `no-app` has no position and no message after the code; the reject line is `main.paka: error[no-app]` (R7) | spec/m1.md §11, M2-15 §1.1 |
+| `bad-start` for a function name, `unknown-name` for a name that is not defined; a type name is not used (R9) | M2-15 §5 |
 
 ## Not decided
 
@@ -932,8 +933,6 @@ Several M2-14 points have no case:
 - `examples` cases are in `apps/`; the cases that need no other file use `command`.
 - String `[i]` and String slice traps: M2-03's, not M2-14 rows. The List index and slice cases above stand in for the shared rule.
 
-Three type points have no case, because the records do not pin the position or the order:
-`missing-value` on a single-line arm, a joined list type that is still open (`[None, None]`), and
-which of `bad-state` and the function-type `type-mismatch` comes first when a state has both. NaN in
+One type point has no case: a joined list type that is still open (`[None, None]`). NaN in
 `sort` and `sort_by` is a built-in row (M2-39b), and the `stack` trap inside `sort_by` belongs to
 M2-41.
