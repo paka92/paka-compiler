@@ -47,19 +47,12 @@ pub fn call(name: &str, args: &mut [Value], site: Site) -> Option<Out> {
             index_of(xs, item, site).map(|i| Value::Bool(i.is_some()))
         }
         ("find", [Value::List(xs), item]) => index_of(xs, item, site).map(|i| option(i.map(count))),
-        ("append", [Value::List(xs), item]) => room(xs.0.len(), 1, site).map(|()| {
-            xs.0.push(mem::take(item));
-            Value::Unit
-        }),
-        ("extend", [Value::List(xs), Value::List(more)]) => room(xs.0.len(), more.0.len(), site)
-            .map(|()| {
-                xs.0.append(&mut more.0);
-                Value::Unit
-            }),
+        ("append", [Value::List(xs), item]) => append(xs, item, CAP, site),
+        ("extend", [Value::List(xs), Value::List(more)]) => extend(xs, more, CAP, site),
         ("pop", [Value::List(xs)]) => {
             (xs.0.pop()).ok_or_else(|| out_of_bounds(site, "pop on an empty List".into()))
         }
-        ("insert", [Value::List(xs), item, at]) => insert(xs, item, at.int(), site),
+        ("insert", [Value::List(xs), item, at]) => insert(xs, item, at.int(), CAP, site),
         ("remove_at", [Value::List(xs), i]) => {
             bound(i.int(), xs.0.len(), site).map(|i| xs.0.remove(i))
         }
@@ -120,8 +113,8 @@ fn copied(v: &Value, site: Site) -> Out {
 }
 
 /// Checks M2-06's cap before a value of `len` items grows by `more`.
-fn room(len: usize, more: usize, site: Site) -> Result<(), Trap> {
-    if len.saturating_add(more) > CAP {
+fn room(cap: usize, len: usize, more: usize, site: Site) -> Result<(), Trap> {
+    if len.saturating_add(more) > cap {
         return Err(Trap::bare(Kind::Memory, site));
     }
     Ok(())
@@ -136,11 +129,23 @@ fn index_of(xs: &Items, item: &Value, site: Site) -> Result<Option<usize>, Trap>
     Ok(None)
 }
 
-fn insert(xs: &mut Items, item: &mut Value, at: Int, site: Site) -> Out {
+fn append(xs: &mut Items, item: &mut Value, cap: usize, site: Site) -> Out {
+    room(cap, xs.0.len(), 1, site)?;
+    xs.0.push(mem::take(item));
+    Ok(Value::Unit)
+}
+
+fn extend(xs: &mut Items, more: &mut Items, cap: usize, site: Site) -> Out {
+    room(cap, xs.0.len(), more.0.len(), site)?;
+    xs.0.append(&mut more.0);
+    Ok(Value::Unit)
+}
+
+fn insert(xs: &mut Items, item: &mut Value, at: Int, cap: usize, site: Site) -> Out {
     let len = xs.0.len();
     let i = position(at).filter(|i| *i <= len);
     let i = i.ok_or_else(|| out_of_bounds(site, format!("index {at}, length {len}")))?;
-    room(len, 1, site)?;
+    room(cap, len, 1, site)?;
     xs.0.insert(i, mem::take(item));
     Ok(Value::Unit)
 }
@@ -154,7 +159,7 @@ fn swap(xs: &mut Items, i: Int, j: Int, site: Site) -> Out {
 
 fn list_of(item: &mut Value, n: Int, site: Site) -> Out {
     let times = position(n).ok_or_else(|| out_of_bounds(site, format!("count {n}")))?;
-    room(0, times, site)?;
+    room(CAP, 0, times, site)?;
     let item = mem::take(item);
     let mut items = Vec::with_capacity(times);
     for _ in 1..times {
@@ -195,4 +200,35 @@ pub fn merge_sort<E>(
         *slot = item;
     }
     Ok(())
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    fn items(n: usize) -> Items {
+        Items((0..n).map(count).collect())
+    }
+
+    fn memory(out: Out) -> bool {
+        matches!(out, Err(t) if (t.kind, t.site) == (Kind::Memory, 7))
+    }
+
+    #[test]
+    fn growth_stops_one_past_the_cap() {
+        assert!(room(CAP, CAP - 2, 2, 7).is_ok());
+        assert!(room(CAP, CAP - 2, 3, 7).is_err());
+        assert!(room(CAP, usize::MAX, 1, 7).is_err());
+    }
+
+    #[test]
+    fn append_extend_and_insert_check_the_cap() {
+        let mut item = count(9);
+        assert!(append(&mut items(2), &mut item, 3, 7).is_ok());
+        assert!(memory(append(&mut items(3), &mut item, 3, 7)));
+        assert!(extend(&mut items(1), &mut items(2), 3, 7).is_ok());
+        assert!(memory(extend(&mut items(2), &mut items(2), 3, 7)));
+        assert!(insert(&mut items(2), &mut item, Int::new(2), 3, 7).is_ok());
+        assert!(memory(insert(&mut items(3), &mut item, Int::new(0), 3, 7)));
+    }
 }

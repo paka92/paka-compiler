@@ -72,24 +72,30 @@ impl Cx<'_, '_> {
     }
 
     /// The type shared by `n` items of a list or a map, `hint` when there are none. Each item is
-    /// checked against the hint until one has a type of its own, then against that type.
+    /// checked against the hint until one has a type of its own, then against that type. The first
+    /// of Map `keys` must be an Int or a String before the others are checked against it.
     pub(super) fn items<'x>(
         &mut self,
         e: &Expr,
         n: usize,
+        keys: bool,
         item: impl Fn(usize) -> &'x Expr<'x>,
         hint: Option<Ty>,
     ) -> Res<Option<Ty>> {
         let ends: Vec<_> = (0..n).map(|i| Some(item(i))).collect();
         let fixed = hint.filter(|&h| !self.free(h));
         let joined = self.branches(e, &ends, Use::Value(fixed), |cx, i, u, _| {
-            match (u.want(), hint) {
+            let out = match (u.want(), hint) {
                 (None, Some(h)) => {
                     let out = cx.expr(item(i), Some(h))?;
                     cx.val(out, item(i)).map(|_| out)
                 }
                 (want, _) => cx.tail(item(i), want),
+            }?;
+            if let (true, 0, Out::Val(ty)) = (keys, i, out) {
+                cx.map_key(span(item(0)), ty)?;
             }
+            Ok(out)
         })?;
         Ok(joined.ty.or(hint))
     }

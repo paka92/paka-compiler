@@ -553,7 +553,7 @@ impl Cx<'_, '_> {
 
     fn list(&mut self, e: &Expr, items: &[Expr], want: Option<Ty>) -> Res<Ty> {
         let hint = want.and_then(|w| self.arg(w, "List", 0));
-        let elem = self.items(e, items.len(), |i| &items[i], hint)?;
+        let elem = self.items(e, items.len(), false, |i| &items[i], hint)?;
         let elem = elem.unwrap_or_else(|| self.letter('T'));
         Ok(self.types.named("List", &[elem]))
     }
@@ -561,11 +561,8 @@ impl Cx<'_, '_> {
     fn map(&mut self, e: &Expr, pairs: &[(Expr, Expr)], want: Option<Ty>) -> Res<Ty> {
         let hint = |i| want.and_then(|w| self.arg(w, "Map", i));
         let (key_hint, value_hint) = (hint(0), hint(1));
-        let key = self.items(e, pairs.len(), |i| &pairs[i].0, key_hint)?;
-        if let (Some(ty), Some((k, _))) = (key, pairs.first()) {
-            self.allow(span(k), ty, &["Int", "String"], "Int or String")?;
-        }
-        let value = self.items(e, pairs.len(), |i| &pairs[i].1, value_hint)?;
+        let key = self.items(e, pairs.len(), true, |i| &pairs[i].0, key_hint)?;
+        let value = self.items(e, pairs.len(), false, |i| &pairs[i].1, value_hint)?;
         let key = key.unwrap_or_else(|| self.letter('K'));
         let value = value.unwrap_or_else(|| self.letter('V'));
         Ok(self.types.named("Map", &[key, value]))

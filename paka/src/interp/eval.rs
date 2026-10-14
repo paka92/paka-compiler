@@ -693,7 +693,10 @@ impl<'a> Machine<'a> {
         let root = &mut fr.locals[*l];
         match op {
             None => store(root, path, value, CAP)?,
-            Some(op) => compound(walk_mut(root, &path)?, op, value)?,
+            Some(op) => {
+                let slot = walk_mut(root, &path).map_err(|t| name_idiom(t, op, path.last()))?;
+                compound(slot, op, value)?
+            }
         }
         Ok(())
     }
@@ -836,6 +839,15 @@ pub(super) fn bound(i: Int, len: usize, site: Site) -> Result<usize, Trap> {
 
 fn missing(key: &Key, site: Site) -> Trap {
     out_of_bounds(site, format!("key {}", key.show()))
+}
+
+/// An Int `+=` on a missing last key names the count idiom (M2-14 section 1.11).
+fn name_idiom(mut trap: Trap, op: &Compound, last: Option<&Idx>) -> Trap {
+    let counts = matches!(op, Compound::Int(Arith::Add, _));
+    if counts && matches!(last, Some(Idx::Key(_, site)) if *site == trap.site) {
+        trap.detail += "; write m[k] = unwrap_or(get(m, k), 0) + 1";
+    }
+    trap
 }
 
 /// Runs `f` on the value at the end of `path`.

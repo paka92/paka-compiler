@@ -881,7 +881,7 @@ fn assignment_errors() {
             ),
             "out_of_bounds",
             STEP,
-            "key \"z\"",
+            "key \"z\"; write m[k] = unwrap_or(get(m, k), 0) + 1",
         ),
         (
             put(6, vec![], Compound::Int(Arith::Add, OP), int(1)),

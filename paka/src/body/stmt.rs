@@ -270,7 +270,19 @@ impl Cx<'_, '_> {
         match (self.arg(ty, "List", 0), self.is_var(ty)) {
             (Some(elem), _) => Ok(elem),
             (None, true) => Ok(self.unknown()),
-            (None, false) => Err(self.mismatch(span(list), "List", &self.types.show(ty), "")),
+            (None, false) => {
+                let fix = self.walk_fix(ty, list);
+                Err(self.mismatch(span(list), "List", &self.types.show(ty), &fix))
+            }
+        }
+    }
+
+    /// The fix for a `for` over a String or a Map (M2-14 section 1.12).
+    fn walk_fix(&self, ty: Ty, list: &Expr) -> String {
+        match (self.is(ty, "String"), self.is(ty, "Map")) {
+            (true, _) => format!("write chars({})", render(list)),
+            (_, true) => format!("write keys({})", render(list)),
+            _ => String::new(),
         }
     }
 
@@ -376,19 +388,21 @@ impl Cx<'_, '_> {
     }
 
     fn key(&self, key: &Ty, written: &Type) -> Res {
-        if self.is_var(*key) || self.is(*key, "Int") || self.is(*key, "String") {
-            return Ok(());
-        }
         let (at, len) = match written {
             Type::Name { name, .. } => (name.at, name.text.len()),
             Type::Fn { at, .. } => (*at, 2),
         };
-        let found = self.types.show(*key);
-        let d = self.fail(
-            (at, len),
-            "type-mismatch",
-            "a Map key is an Int or a String",
-        );
+        self.map_key((at, len), *key)
+    }
+
+    /// A Map key is an Int or a String; `at` is where the key type is written or its first key.
+    pub(super) fn map_key(&self, at: super::Span, key: Ty) -> Res {
+        if self.is_var(key) || self.is(key, "Int") || self.is(key, "String") {
+            return Ok(());
+        }
+        let found = self.types.show(key);
+        let message = "a Map key is an Int or a String";
+        let d = self.fail(at, "type-mismatch", message);
         Err(d.with_types(&"Int or String", &found))
     }
 }
