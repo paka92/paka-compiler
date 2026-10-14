@@ -70,6 +70,36 @@ The case folder is the working directory, so every diagnostic path is `main.paka
   `stderr` (empty when absent), the status equals `status`. An empty `stdout` file means empty.
 - `files/`, `after/`, `absent` and `present` are checked as the format says, on top of the above.
 
+## Exit gate (M2-44)
+
+One test, `exit_gate` in `paka/tests/conformance.rs` (code in `paka/tests/conformance/gate.rs`),
+checks the three parts of the M2 exit check that are not a case. It reports everything that fails
+in one message and fails if anything does. Command:
+
+    cargo test -p paka --test conformance --locked --offline exit_gate -- --ignored
+
+The test is ignored while gaps remain (M2-45); closing the last one removes the `#[ignore]`, and
+the gate then runs under `cargo test --workspace --locked --offline`. Its self-tests always run.
+
+- **Reference samples.** A block of `spec/paka.md` fenced as `paka` is a sample (the reference
+  says so in its first paragraph); no other block is. A sample checks and runs when, saved as
+  `main.paka` in a fresh folder, `paka check main.paka` and `paka examples main.paka` both exit 0,
+  and, if it has an `app`, `paka run main.paka words.txt` also exits 0, with `words.txt` in that
+  folder holding the text `a b c`.
+- **Size.** `spec/paka.md` is at most 8,000 tokens under the one counting rule: bytes divided by
+  three, rounded up (M2-18, `paka/tests/reference.rs`).
+- **Coverage.** The syntax node kinds are the variants of the node enums of `paka/src/ast.rs`
+  (definitions, app entries, types, statements, expressions, string parts, arm bodies and
+  patterns), each written `Enum::Variant`; the operator enums are not nodes. The built-ins are the
+  distinct names in the table of `paka/src/builtins.rs`: types, variants, grants and functions.
+  Both lists come from the compiler's own code, so a new variant or row is a gap until a case
+  uses it.
+  A case counts when it passes by the rules above, has neither a `reject` file nor an
+  `expect.json`, and its `main.paka` parses. A node kind is covered when it occurs in the syntax
+  tree of a counted case; a built-in is covered when its name occurs in one as a type, a name in
+  an expression or pattern, a record name or a grant. A reject case covers nothing: it shows a
+  refusal, not the construct at work.
+
 ## Decision points and their cases
 
 ### M2-05 §1.1 to §1.2: copies, places, fresh values
