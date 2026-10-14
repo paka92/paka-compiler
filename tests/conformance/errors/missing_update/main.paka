@@ -1,0 +1,8 @@
+app errorsfn update(msg: Msg) -> List<Effect<Msg>> {
+  [Print("done"), Exit]
+}
+
+app errors {
+  start: Start
+  grants: [Console]
+}

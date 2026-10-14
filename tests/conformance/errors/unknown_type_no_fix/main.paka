@@ -1,0 +1,15 @@
+enum Msg { Start }
+
+fn show(m: Widget) -> Int {
+  1
+}
+
+fn update(msg: Msg) -> List<Effect<Msg>> {
+  [Print("done"), Exit]
+}
+
+app errors {
+  start: Start
+  update: update
+  grants: [Console]
+}

@@ -3,6 +3,7 @@
 These cases are not yet required: no harness runs them today. M2-41b runs them.
 
 `ownership/` covers ownership and shared data (M2-05, M2-10, the Map rows of M2-14).
+`errors/` holds one rejected program for every error kind a program file can raise (M2-42).
 
 `core/` covers values, expressions, control flow and functions (M2-02, M2-03, M2-06, M2-09, M2-12 where they
 bear on these).
@@ -463,6 +464,116 @@ size product that overflows Int. The cap's exact value and growth just past it a
 | Map key order with negative Ints and non-ASCII Strings | `key_order_ints`, `key_order_strings` |
 | `+=` on a new key | `plus_equals_on_new_key` |
 | a duplicate key in a literal | `literal_duplicate_and_order` |
+
+## errors/: one rejected program per error kind
+
+The reject format above pins only the code and the position. These cases also pin the offending
+text, the types and the fix, so they use a second small format. Both formats stay.
+
+### Case format
+
+A case is a folder `errors/<name>/` holding `main.paka` and `expect.json`: one JSON object on one
+line, then a line feed. Its keys:
+
+| Key | Meaning |
+|---|---|
+| `kind` | the error kind id; always present |
+| `line`, `column` | 1-based; the column counts bytes |
+| `text` | the offending text, exactly as the source holds it |
+| `expected`, `found` | the two types of a kind that carries types (only `type-mismatch`) |
+| `fix` | `null`, or `{"start","end","replacement"}`; `start` and `end` are the byte offsets of the offending text. Written only for the kinds that carry a fix (`unknown-type`, `unknown-name`, `unknown-grant`) |
+| `via` | `run` or `build`, only for a kind that has no position and is raised by that command |
+
+### Pass rule
+
+The case folder is the working directory.
+
+- Without `via`: `paka check main.paka --json` exits with status 1, writes nothing to standard
+  output, and writes one JSON object to standard error (the `check-json` stage of spec/m1.md §11). Every key of `expect.json`, except
+  `via`, equals the key of the same name in that object (`kind`, `line`, `column`, `text`, `expected`,
+  `found`, `fix`). A key that `expect.json` lacks is not compared. The message wording is never
+  compared.
+- `via: run`: `paka run main.paka` exits with status 1, and the first line of standard error starts
+  with `main.paka: error[KIND]: `.
+- `via: build`: the same with `paka build main.paka -o out`.
+
+### Cases
+
+Each case holds the same small app (`enum Msg { Start }`, `update`, `app errors`, grant `Console`)
+and changes only what its kind needs, so the kind is the first error found. A kind that carries a
+fix has a second case with no near name (`..._no_fix`), which pins `"fix":null`.
+
+Pins: line and column of the diagnostic. A `*` marks a text whose length no record shows; the
+record gives only the start, and the case takes the token that starts there (`\`, `&`, the
+first name of a target).
+
+| Kind | Case | Pins | Record |
+|---|---|---|---|
+| `invalid-byte` | `invalid_byte` | 4:1 | spec/m1.md §10 |
+| `unexpected-character` | `unexpected_character` | 4:13 | spec/m1.md §10; M2-03: a bare `}` in a string |
+| `unterminated-string` | `unterminated_string` | 4:11 | spec/m1.md §10; `tests/errors/unterminated_string` |
+| `bad-escape` | `bad_escape` | 4:13* | spec/m1.md §10; M2-03 |
+| `unexpected-token` | `unexpected_token` | 4:12 | spec/m1.md §10; M2-02 §5: `;` |
+| `unexpected-inout-mark` | `unexpected_inout_mark` | 5:11 | spec/m1.md §10; M2-05 §5 |
+| `nesting-too-deep` | `nesting_too_deep` | 4:66 | spec/m1.md §10; M2-02 §5; `tests/cases/parse/nesting_too_deep` |
+| `unsupported-view` | `unsupported_view` | 7:1 | spec/m1.md §10; `tests/cases/parse/view_definition` |
+| `unsupported-form` | `unsupported_form` | via `build`, no position | spec/m1.md §10 (build, no position) |
+| `duplicate-name` | `duplicate_name` | 3:6 | spec/m1.md §10; `tests/cases/check/duplicate_enum` |
+| `duplicate-local` | `duplicate_local` | 5:7 | spec/m1.md §10; M2-02 §5 |
+| `no-app` | `no_app` | via `run`, no position | spec/m1.md §10 (no position) |
+| `multiple-apps` | `multiple_apps` | 13:5 | spec/m1.md §10; `tests/cases/check/two_apps` |
+| `unknown-type` | `unknown_type` | 3:12, fix | spec/m1.md §10; M2-02 §1.3, §5 |
+| `unknown-type` | `unknown_type_no_fix` | 3:12, no fix | spec/m1.md §10; M2-02 §1.3, §5 |
+| `wrong-type-arguments` | `wrong_type_arguments` | 3:12 | spec/m1.md §10; M2-02 §5 |
+| `unknown-name` | `unknown_name` | 5:11, fix | spec/m1.md §10; M2-02 §1.3, §5 |
+| `unknown-name` | `unknown_name_no_fix` | 4:11, no fix | spec/m1.md §10; M2-02 §1.3, §5 |
+| `wrong-argument-count` | `wrong_argument_count` | 4:4 | spec/m1.md §10; `tests/cases/check/print_without_argument` |
+| `type-mismatch` | `type_mismatch` | 4:3, types | spec/m1.md §10; `tests/errors/type_mismatch` |
+| `duplicate-app-entry` | `duplicate_app_entry` | 9:3 | spec/m1.md §10 |
+| `missing-start` | `missing_start` | 1:5 | spec/m1.md §10 |
+| `missing-update` | `missing_update` | 1:5 | spec/m1.md §10 |
+| `missing-grants` | `missing_grants` | 1:5 | spec/m1.md §10 |
+| `bad-update-signature` | `bad_update_signature` | 9:11 | spec/m1.md §10; `tests/cases/check/update_takes_string` |
+| `bad-start` | `bad_start` | 8:10 | spec/m1.md §10; `tests/cases/check/start_is_effect` |
+| `bad-state` | `bad_state` | 8:10 | spec/m1.md §10; M2-15; `tests/cases/parse/app_state_entry` |
+| `unknown-grant` | `unknown_grant` | 10:12, fix | spec/m1.md §10; `tests/errors/unknown_grant` |
+| `unknown-grant` | `unknown_grant_no_fix` | 10:12, no fix | spec/m1.md §10; `tests/errors/unknown_grant` |
+| `duplicate-grant` | `duplicate_grant` | 10:21 | spec/m1.md §10 |
+| `no-finite-value` | `no_finite_value` | 3:6 | M2-05 §5; `ownership/finite_record_holds_itself` |
+| `unused-result` | `unused_result` | 4:3 | M2-02 §5; `tests/cases/check-text/unused_result_call` |
+| `nothing-to-discard` | `nothing_to_discard` | 5:3 | M2-02 §5 |
+| `missing-value` | `missing_value` | 5:1 | M2-02 §5: at the block's `}` |
+| `unreachable-code` | `unreachable_code` | 5:3 | M2-02 §5 |
+| `break-outside-loop` | `break_outside_loop` | 4:3 | M2-02 §5 |
+| `if-needs-else` | `if_needs_else` | 4:11 | M2-02 §5 |
+| `return-last` | `return_last` | 4:3 | M2-02 §5 |
+| `assign-to-let` | `assign_to_let` | 5:3 | M2-02 §5; `ownership/assign_to_let` |
+| `bad-assignment-target` | `bad_assignment_target` | 8:3* | M2-02 §5; M2-05 §5; `ownership/assign_to_variant_field` |
+| `cannot-infer` | `cannot_infer` | 4:11 | M2-02 §5; `tests/cases/check-text/cannot_infer_discarded_empty` |
+| `wrong-label` | `wrong_label` | 4:10 | M2-02 §5; `tests/cases/check-text/fn_value_labelled_call` |
+| `not-a-function` | `not_a_function` | 5:11 | M2-02 §5; `tests/cases/check-text/not_a_function_int` |
+| `missing-inout-mark` | `missing_inout_mark` | 5:10 | M2-05 §5; `ownership/mark_missing` |
+| `bad-inout-target` | `bad_inout_target` | 5:11 | M2-05 §5; `ownership/mark_on_let` |
+| `inout-overlap` | `inout_overlap` | 11:19* | M2-05 §5; `ownership/overlap_same_place_twice` |
+| `changed-while-read` | `changed_while_read` | 11:14 | M2-05 §5; `ownership/read_operator_operand` |
+| `changed-while-walked` | `changed_while_walked` | 5:24* | M2-05 §5; `ownership/walk_append_to_walked` |
+| `not-a-value` | `not_a_value` | 4:11 | `tests/cases/check-text/built_in_as_value` |
+| `literal-out-of-range` | `literal_out_of_range` | 4:28 | spec/m1.md §10; M2-15 |
+| `missing-arm` | `missing_arm` | 5:11 | M2-02 §5; `tests/cases/check-text/missing_arm_none` |
+| `duplicate-arm` | `duplicate_arm` | 7:5 | M2-02 §5 |
+| `wildcard-on-enum` | `wildcard_on_enum` | 5:5 | M2-02 §5; `tests/cases/check-text/wildcard_on_option` |
+
+Not in the table, since a program cannot reach them in a file:
+
+| Kind | Why no case |
+|---|---|
+| `file-unreadable` | needs a file that cannot be read; a case folder always holds `main.paka` (spec/m1.md §13) |
+| `clang-missing` | needs a machine without `clang`; tested out of the folder (spec/m1.md §13) |
+| `clang-failed` | needs a failing `clang` run (spec/m1.md §13) |
+| `runtime-missing` | needs `libpaka_rt.a` removed from the executable's folder (spec/m1.md §13) |
+
+`unused-name` is a warning and has no kind. `unsupported-form` is temporary (spec/m1.md §10): drop
+its case when the back end builds the core form.
 
 ## Settled readings
 
