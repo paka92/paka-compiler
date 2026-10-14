@@ -552,11 +552,12 @@ or merged during review. Ids with a letter were added during review.
 
 ### M2-33 · L2 · Implement the built-in String functions and every other built-in that is not a collection or pool function
 
+- status: done
 - needs: M2-14, M2-31, M2-34
 - flags: none
 - done when: Every function in the approved list outside M2-34 has hand-written golden tests (String functions for normal, empty and non-ASCII input); all pass; a test fails if an entry of the built-in table has no golden test.
 - why this level: Each function is small with a clear spec; routine code.
-- note: Follows docs/decisions/M2-14.md for the built-in table. M2-31 checks the parse_int samples and the M2-12 section 1.7 app but cannot run them; add run cases for them once parse_int and ReadFile run. When min runs, make tests/cases/run-interp/sample_grid_path_sum use min as in M2-14 section 4 (it uses a local lesser today); add M2-14 section 4 samples 1 and 4 word for word; make the read_own_source effect case count characters with len.
+- note: Follows docs/decisions/M2-14.md for the built-in table. M2-31 checks the parse_int samples and the M2-12 section 1.7 app but cannot run them; add run cases for them once parse_int and ReadFile run. When min runs, make tests/cases/run-interp/sample_grid_path_sum use min as in M2-14 section 4 (it uses a local lesser today); add M2-14 section 4 samples 1 and 4 word for word; make the read_own_source effect case count characters with len. Done: paka/src/interp/text.rs and number.rs run every String and number row of M2-14 in the interpreter; golden cases in tests/cases/run-interp; every_function_has_a_golden_case in paka/src/builtins.rs reads ROWS and fails when no run case calls a name. The text routines are not yet in paka-rt (M2-14 section 3): native code still refuses them.
 
 ### M2-34 · L3 · Implement the built-in collection types and their functions
 
