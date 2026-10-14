@@ -487,12 +487,8 @@ fn every_form_with_operands_is_a_call() {
             &["let line = \"{doc} {cut(&doc)}\""],
         ),
     ]);
-    says(&[say(
-        (READ, "h(^xs"),
-        &take("h"),
-        "t(h: fn(List<Int>, List<Int>) -> Int, xs: inout List<Int>) -> Int",
-        &["h(xs, take(&xs))"],
-    )]);
+    let head = "t(h: fn(List<Int>, List<Int>) -> Int, xs: inout List<Int>) -> Int";
+    says(&[(READ, "h(^xs", &take("h"), own(head, &["h(xs, take(&xs))"]))]);
 }
 
 #[test]
@@ -625,11 +621,11 @@ fn a_for_name_over_a_place_is_changed_by_position() {
 
 #[test]
 fn a_variant_field_names_its_subject() {
-    says(&[say(
-        ("bad-assignment-target", "^c.shape.w = 3.0"),
+    says(&[(
+        "bad-assignment-target",
+        "^c.shape.w = 3.0",
         "w is a field of the variant Rect; build Rect(..) and assign c.shape",
-        "touch(c: inout Cell)",
-        &["c.shape.w = 3.0"],
+        own("touch(c: inout Cell)", &["c.shape.w = 3.0"]),
     )]);
 }
 
@@ -661,12 +657,12 @@ fn the_earliest_error_wins_across_both_passes() {
 fn a_deep_chain_with_one_change_fits_the_stack() {
     for head in [false, true] {
         deep(|| {
-            let links = " + doc".repeat(999);
+            let links = " + doc".repeat(998);
             let wrap = |inner: String| match head {
                 true => format!("({inner}{links} + doc)"),
                 false => format!("(doc{links} + {inner})"),
             };
-            let expr = (0..62).fold("cut(&doc)".to_string(), |inner, _| wrap(inner));
+            let expr = (0..62).fold("cut(&doc) + doc".to_string(), |inner, _| wrap(inner));
             let src = own("t(doc: inout String) -> String", &[&expr]);
             let found = errors(&src);
             assert_eq!(found.iter().map(|d| d.code).collect::<Vec<_>>(), [READ]);
