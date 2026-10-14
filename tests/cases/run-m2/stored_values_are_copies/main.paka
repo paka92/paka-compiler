@@ -1,0 +1,19 @@
+enum Msg { Start }
+
+fn update(m: Msg) -> List<Effect<Msg>> {
+  let row = [1, 2]
+  var grid: List<List<Int>> = []
+  append(&grid, row)
+  append(&grid, row)
+  append(&grid[0], 3)
+  var ys = [0]
+  extend(&ys, row)
+  let o = unwrap_or(Some(row), [])
+  [Print("{len(row)} {len(grid[0])} {len(grid[1])} {len(ys)} {len(o)}"), Exit]
+}
+
+app generics {
+  start: Start
+  update: update
+  grants: [Console]
+}

@@ -1,0 +1,4 @@
+main.paka:2:19: error[cannot-infer]: cannot infer the type of g; write it: let g: List<List<T>> = ...
+  definition: grid
+  bytes: 30..32
+  text: "[]"

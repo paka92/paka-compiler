@@ -1,0 +1,10 @@
+asks_for_the_file pass
+different_variants pass
+empty_meets_typed pass
+float_is_ieee pass
+function_values_by_definition pass
+list_by_position pass
+map_order_is_free pass
+nan_inside_a_record pass
+option_and_result pass
+record_by_fields pass

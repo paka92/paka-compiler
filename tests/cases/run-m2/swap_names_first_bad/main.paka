@@ -1,0 +1,13 @@
+enum Msg { Start }
+
+fn update(m: Msg) -> List<Effect<Msg>> {
+  var xs = [1, 2, 3]
+  swap(&xs, 7, 5)
+  [Print("{len(xs)}"), Exit]
+}
+
+app generics {
+  start: Start
+  update: update
+  grants: [Console]
+}

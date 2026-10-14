@@ -1,0 +1,12 @@
+type Point { x: Int, y: Int }
+enum Msg { Start(path: String), Loaded(text: String), Failed(why: String) }
+
+example a_float { 1.0 == 1.5 }
+example a_list { [1, 2] == [1, 3] }
+example a_map { ["a": 1] == ["a": 2] }
+example a_record { Point { x: 3, y: 4 } == Point { x: 3, y: 5 } }
+example an_option { Some(1) == None }
+example effect_functions {
+  [ReadFile("a.txt", then: Loaded, or: Failed)] == [ReadFile("a.txt", then: Failed, or: Failed)]
+}
+example text_differs { "a\n" == "b" }

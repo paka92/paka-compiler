@@ -1,0 +1,15 @@
+fn same() {
+  _ = [] == []
+}
+
+enum Msg { Start }
+
+fn update(m: Msg) -> List<Effect<Msg>> {
+  [Exit]
+}
+
+app generics {
+  start: Start
+  update: update
+  grants: []
+}

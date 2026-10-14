@@ -1,0 +1,19 @@
+enum Msg { Start }
+
+fn update(m: Msg) -> List<Effect<Msg>> {
+  var adj: List<List<Int>> = list_of([], count: 3)
+  append(&adj[0], 1)
+  append(&adj[2], 5)
+  append(&adj[2], 6)
+  let n = 4
+  var seen = list_of(false, count: n)
+  seen[1] = true
+  let none = list_of(7, count: 0)
+  [Print("{len(adj[0])} {len(adj[1])} {len(adj[2])} {len(seen)} {seen[0]} {seen[1]} {is_empty(none)}"), Exit]
+}
+
+app generics {
+  start: Start
+  update: update
+  grants: [Console]
+}

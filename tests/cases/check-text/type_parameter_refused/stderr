@@ -1,0 +1,3 @@
+main.paka:1:9: error[unexpected-token]: Paka has no type parameters; write it for one type: fn first(xs: List<Int>) -> Int
+  bytes: 8..9
+  text: "<"
