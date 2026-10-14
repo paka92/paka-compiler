@@ -75,6 +75,20 @@ pub fn quote(text: &str) -> String {
     out
 }
 
+/// A JSON object from keys and values already written as JSON.
+pub fn object<'a>(fields: impl IntoIterator<Item = (&'a str, String)>) -> String {
+    let fields: Vec<String> = fields
+        .into_iter()
+        .map(|(key, value)| format!("{}:{value}", quote(key)))
+        .collect();
+    format!("{{{}}}", fields.join(","))
+}
+
+/// A JSON array from values already written as JSON.
+pub fn array(items: impl IntoIterator<Item = String>) -> String {
+    format!("[{}]", items.into_iter().collect::<Vec<_>>().join(","))
+}
+
 struct Parser<'a> {
     text: &'a str,
     at: usize,

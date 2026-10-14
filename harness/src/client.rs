@@ -4,15 +4,23 @@
 //! Any error voids the run (M3-03 reruns it) and no later turn is sent. Every token a turn is
 //! known to have spent goes into the ledger, whether the turn was good or not; `Reply::tokens` is
 //! the figure for the metrics.
+//!
+//! A watchdog bounds each call in wall-clock time: past the limit the process is killed with its
+//! whole process group. Writes and reads run on threads of their own, so a process that stops
+//! reading, hangs, or leaves a child holding its output open, cannot hold the call past its limit.
 
 use crate::Error;
 use crate::json::quote;
 use crate::stream::{Event, Outcome, parse_event};
 use crate::usage::{Ledger, Tokens};
-use std::fs::File;
-use std::io::{BufRead, BufReader, ErrorKind, Write};
+use std::fs::{self, File};
+use std::io::{self, BufRead, BufReader, ErrorKind, Write};
+use std::os::unix::process::CommandExt;
 use std::path::PathBuf;
 use std::process::{Child, ChildStdin, ChildStdout, Command, Stdio};
+use std::sync::mpsc::{self, Receiver, RecvTimeoutError};
+use std::thread;
+use std::time::{Duration, Instant};
 
 /// How far the first call's input tokens may sit from the expected count (M3-01 section 1.7).
 const FIRST_CALL_MARGIN: u64 = 50;
@@ -26,11 +34,15 @@ pub struct Config {
     pub effort: String,
     pub system_prompt: String,
     /// The working directory of the process: a fresh empty directory made by the caller. The
-    /// process's standard error is written to `stderr.log` in it.
+    /// process's standard error is written to `stderr.log` in it, every line written to or read
+    /// from the process, in order, to `stream.log`, and its process id, which is also its process
+    /// group, to `claude.pid`.
     pub dir: PathBuf,
     /// The input tokens the first call must show: system text, statement, reference and the fixed
     /// CLI text. `None` skips the guard, for the dry run that measures it.
     pub first_call_input: Option<u64>,
+    /// Wall-clock limit on one call.
+    pub call_limit: Duration,
 }
 
 #[derive(Debug)]
@@ -45,10 +57,12 @@ pub struct Reply {
 pub struct Run {
     child: Child,
     stdin: Option<ChildStdin>,
-    stdout: BufReader<ChildStdout>,
+    lines: Receiver<io::Result<String>>,
+    stream: File,
     model: String,
     ledger: Ledger,
     first_call_input: Option<u64>,
+    call_limit: Duration,
 }
 
 impl Run {
@@ -79,6 +93,7 @@ impl Run {
                 "--verbose",
             ])
             .current_dir(&config.dir)
+            .process_group(0)
             .env_clear()
             .stdin(Stdio::piped())
             .stdout(Stdio::piped())
@@ -88,16 +103,20 @@ impl Run {
                 command.env(key, value);
             }
         }
+        let stream = File::create(config.dir.join("stream.log"))?;
         let mut child = command.spawn()?;
+        fs::write(config.dir.join("claude.pid"), format!("{}\n", child.id()))?;
         let stdin = child.stdin.take();
         let stdout = child.stdout.take().expect("stdout is piped");
         Ok(Run {
             child,
             stdin,
-            stdout: BufReader::new(stdout),
+            lines: read_lines(stdout),
+            stream,
             model: config.model.clone(),
             ledger: ledger.clone(),
             first_call_input: config.first_call_input,
+            call_limit: config.call_limit,
         })
     }
 
@@ -117,37 +136,68 @@ impl Run {
     /// Ends the run: closes the process's input and waits for it to exit cleanly.
     pub fn close(mut self) -> Result<(), Error> {
         drop(self.stdin.take());
-        match self.child.wait()?.success() {
-            true => Ok(()),
-            false => Err(Error::Died),
+        if self.child.wait()?.success() {
+            Ok(())
+        } else {
+            Err(Error::Died)
         }
     }
 
     fn turn(&mut self, text: &str) -> Result<Reply, Error> {
         self.ledger.check()?;
+        let end = Instant::now() + self.call_limit;
         let guard = self.first_call_input.take();
         let line = user_line(text);
-        let stdin = self.stdin.as_mut().ok_or(Error::Voided)?;
-        stdin
-            .write_all(line.as_bytes())
-            .map_err(|e| match e.kind() {
-                ErrorKind::BrokenPipe => Error::Died,
-                _ => e.into(),
-            })?;
-        self.read_turn(guard)
+        self.stream.write_all(line.as_bytes())?;
+        self.write(line, end)?;
+        self.read_turn(guard, end)
+    }
+
+    /// Writes `line` on a thread of its own, so a process that stops reading cannot hold the call
+    /// past `end`.
+    fn write(&mut self, line: String, end: Instant) -> Result<(), Error> {
+        let mut stdin = self.stdin.take().ok_or(Error::Voided)?;
+        let (send, done) = mpsc::channel();
+        thread::spawn(move || {
+            let written = stdin.write_all(line.as_bytes());
+            let _ = send.send((stdin, written));
+        });
+        match done.recv_timeout(end.saturating_duration_since(Instant::now())) {
+            Ok((stdin, Ok(()))) => {
+                self.stdin = Some(stdin);
+                Ok(())
+            }
+            Ok((_, Err(e))) if e.kind() == ErrorKind::BrokenPipe => Err(Error::Died),
+            Ok((_, Err(e))) => Err(e.into()),
+            Err(_) => Err(self.kill()),
+        }
+    }
+
+    /// The watchdog's act: kill the process and its children, so nothing more comes from them.
+    fn kill(&mut self) -> Error {
+        kill_group(self.child.id());
+        Error::TimedOut
+    }
+
+    /// The next line from the process, waiting until `end` at most.
+    fn next_line(&mut self, end: Instant) -> Result<String, Error> {
+        let wait = end.saturating_duration_since(Instant::now());
+        let line = match self.lines.recv_timeout(wait) {
+            Ok(line) => line?,
+            Err(RecvTimeoutError::Disconnected) => return Err(Error::Died),
+            Err(RecvTimeoutError::Timeout) => return Err(self.kill()),
+        };
+        writeln!(self.stream, "{line}")?;
+        Ok(line)
     }
 
     /// Reads lines up to the turn's `result`. A model or compaction problem is kept until then, so
     /// that the usage the result reports is still counted.
-    fn read_turn(&mut self, guard: Option<u64>) -> Result<Reply, Error> {
+    fn read_turn(&mut self, guard: Option<u64>, end: Instant) -> Result<Reply, Error> {
         let mut answered = false;
         let mut void = None;
-        let mut line = String::new();
         loop {
-            line.clear();
-            if self.stdout.read_line(&mut line)? == 0 {
-                return Err(Error::Died);
-            }
+            let line = self.next_line(end)?;
             match parse_event(line.trim_end())? {
                 Event::Init {
                     api_key_source: Some(source),
@@ -192,9 +242,32 @@ impl Run {
 
 impl Drop for Run {
     fn drop(&mut self) {
+        kill_group(self.child.id());
         let _ = self.child.kill();
         let _ = self.child.wait();
     }
+}
+
+/// Kills every process in the group `pgid`. std has no call for it, so this runs `kill`.
+pub fn kill_group(pgid: u32) {
+    let _ = Command::new("/bin/kill")
+        .args(["-KILL", "--", &format!("-{pgid}")])
+        .stderr(Stdio::null())
+        .status();
+}
+
+/// Every line of the process's output, read on a thread of its own until the output closes.
+fn read_lines(stdout: ChildStdout) -> Receiver<io::Result<String>> {
+    let (send, lines) = mpsc::channel();
+    thread::spawn(move || {
+        for line in BufReader::new(stdout).lines() {
+            let failed = line.is_err();
+            if send.send(line).is_err() || failed {
+                break;
+            }
+        }
+    });
+    lines
 }
 
 fn judge(

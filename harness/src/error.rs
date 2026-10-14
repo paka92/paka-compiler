@@ -34,6 +34,10 @@ pub enum Error {
     ApiKey(String),
     /// The run already failed; nothing more is sent.
     Voided,
+    /// The watchdog killed the process: a model call passed its time limit.
+    TimedOut,
+    /// A run was void three times (M3-03 section 1.1); the experiment waits for the owner.
+    Paused(String),
 }
 
 impl fmt::Display for Error {
@@ -55,6 +59,10 @@ impl fmt::Display for Error {
             Error::Refused => f.write_str("the reply is a refusal"),
             Error::ApiKey(source) => write!(f, "the key source is {source:?}, not \"none\""),
             Error::Voided => f.write_str("the run already failed"),
+            Error::TimedOut => f.write_str("the model call passed its time limit"),
+            Error::Paused(run) => {
+                write!(f, "run {run} was void three times; the experiment pauses")
+            }
         }
     }
 }
