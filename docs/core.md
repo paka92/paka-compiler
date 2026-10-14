@@ -232,11 +232,17 @@ Each is the smallest reading consistent with M2-03, M2-05 and M2-06.
     assignment that can add.
 12. An allocation the host refuses is reported at the node's site, or the function's site for a
     literal or a copy, which have none of their own (section 6).
-13. A copy or a compare of values nested deeper than 10,000 levels traps `stack` (the same limit
-    as the call depth), so that neither needs more native stack than a call does.
-14. A start variant with fields is refused with the usage line before the state is built.
-15. `to_int` reports a finite value outside the Int range with its exact decimal digits in the
-    detail (`to_int(1e30)` shows all digits); the value text form is owned by M2-27.
+13. A copy or a compare counts its own nesting, apart from the call depth; past 10,000 levels it
+    traps `stack`.
+14. See M2-15 §1.4.
+15. `to_int` shows its operand in the value text form of M2-14 §1.16:
+    `to_int(1000000000000000000000000000000.0)`.
+16. The 256-byte cut applies to the detail text without its two-space indent, at the last char
+    boundary at or before byte 256.
+17. Expression nesting counts toward the `stack` limit, so a legal program never exhausts the
+    native stack. Each expression or block under evaluation adds one to a count that calls do not
+    reset; past 50,000 live levels it traps `stack` at the function's site. The call-depth limit
+    stays 10,000.
 
 ## 10. Recorded text this page changes
 
@@ -257,3 +263,5 @@ Each is the smallest reading consistent with M2-03, M2-05 and M2-06.
 - docs/decisions M2-06 :268-271 (§3, trap sites): the table has no kind column; the kind travels
   with the trap, since one site may raise several kinds.
 - docs/decisions M2-14 :265 (§1.15): `m[key] = v` on a new key traps `memory` at its last `[`.
+- docs/decisions M2-06 §3 (copy and compare depth): "copy and compare count their depth on the same
+  counter" becomes: they count their own nesting, apart from the call depth (section 9, item 13).
