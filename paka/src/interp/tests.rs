@@ -1042,11 +1042,11 @@ fn abs_to_int_and_from_code() {
 
 #[test]
 fn an_unimplemented_built_in_is_an_internal_error() {
-    let (out, err, status) = go(&plain(vec![], vec![], builtin("len", vec![list(vec![])])));
+    let (out, err, status) = go(&plain(vec![], vec![], builtin("upper", vec![text("a")])));
     assert_eq!(out, "");
     assert_eq!(
         err,
-        "light: internal error: built-in len is not implemented yet\n"
+        "light: internal error: built-in upper is not implemented yet\n"
     );
     assert_eq!(status, 4);
 }

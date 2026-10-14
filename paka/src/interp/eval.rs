@@ -683,7 +683,11 @@ impl<'a> Machine<'a> {
                 _ => unreachable!("a checked function value"),
             },
         };
-        let lend = !matches!(target, Target::Ctor(_));
+        let lend = match target {
+            Target::Ctor(_) => false,
+            Target::Builtin(row) => !builtin::stores(row),
+            Target::User(_) => true,
+        };
         let mut given: Vec<Given> = Vec::with_capacity(args.len());
         for arg in args {
             let g = self.given(fr, arg, lend, &given)?;
@@ -774,11 +778,11 @@ fn pick<'p>(arms: &'p [Arm], subject: &Value) -> Option<(&'p Arm, Vec<(Local, Va
     Some((arm, binds))
 }
 
-fn out_of_bounds(site: Site, detail: String) -> Trap {
+pub(super) fn out_of_bounds(site: Site, detail: String) -> Trap {
     Trap::new(Kind::OutOfBounds, site, detail)
 }
 
-fn bound(i: Int, len: usize, site: Site) -> Result<usize, Trap> {
+pub(super) fn bound(i: Int, len: usize, site: Site) -> Result<usize, Trap> {
     position(i)
         .filter(|n| *n < len)
         .ok_or_else(|| out_of_bounds(site, format!("index {i}, length {len}")))

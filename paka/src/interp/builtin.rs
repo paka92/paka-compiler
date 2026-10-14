@@ -1,6 +1,7 @@
 //! The built-ins the interpreter runs so far; the others end the run (M2-33 and M2-34 add them).
 
 use super::eval::{Done, Kind, Stop, Trap};
+use super::generic;
 use super::value::Value;
 use crate::builtins::{ROWS, name};
 use crate::core_form::Site;
@@ -9,6 +10,9 @@ use paka_rt::ops::Text;
 /// Runs row `row` of the built-in table on `args`, which it may update.
 pub fn call(row: usize, args: &mut [Value], site: Site) -> Done {
     let name = name(ROWS[row].1);
+    if let Some(done) = generic::call(name, args, site) {
+        return Ok(done?);
+    }
     Ok(match (name, &args[..]) {
         ("assert", [Value::Bool(true)]) => Value::Unit,
         ("assert" | "unreachable", _) => return Err(Trap::bare(Kind::Assert, site).into()),
@@ -29,4 +33,18 @@ pub fn call(row: usize, args: &mut [Value], site: Site) -> Done {
             return Err(Stop::Internal(reason));
         }
     })
+}
+
+/// Whether row `row` moves an argument into its result or a collection: such an argument must be
+/// a value of its own, not a local lent for the call.
+pub fn stores(row: usize) -> bool {
+    let rows = [
+        "append",
+        "extend",
+        "insert",
+        "list_of",
+        "unwrap_or",
+        "ok_or",
+    ];
+    rows.contains(&name(ROWS[row].1))
 }

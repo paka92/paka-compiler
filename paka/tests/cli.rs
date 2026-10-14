@@ -193,12 +193,12 @@ fn stderr_of(out: &Output) -> String {
 
 #[test]
 fn an_unimplemented_built_in_is_one_internal_error_line() {
-    let out = run_program("len", "", "  let n = len([1, 2])");
+    let out = run_program("upper", "", "  let s = upper(\"a\")");
     assert_eq!(out.status.code(), Some(4));
     assert!(out.stdout.is_empty());
     assert_eq!(
         stderr_of(&out),
-        "t: internal error: built-in len is not implemented yet\n"
+        "t: internal error: built-in upper is not implemented yet\n"
     );
 }
 

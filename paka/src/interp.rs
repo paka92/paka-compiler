@@ -14,6 +14,7 @@ use value::Value;
 
 mod builtin;
 mod eval;
+mod generic;
 mod show;
 #[cfg(test)]
 mod tests;

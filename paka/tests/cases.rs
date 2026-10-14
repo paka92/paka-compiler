@@ -1,6 +1,7 @@
 //! Case runner: every folder under `tests/cases/<stage>/` against its hand-written expectations
 //! (spec/m1.md section 11). The stage names the command: `check-text`, `check-json` and `examples`
 //! run the command they are named for, every other stage runs `paka run`.
+//! `run-m2` holds the run cases that only the interpreter can run yet (`native.rs` takes `run`).
 
 use std::fs;
 use std::path::{Path, PathBuf};

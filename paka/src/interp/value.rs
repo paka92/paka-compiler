@@ -40,6 +40,21 @@ pub enum Key {
 }
 
 impl Key {
+    pub fn of(v: &Value) -> Key {
+        match v {
+            Value::Int(n) => Key::Int(*n),
+            Value::Str(t) => Key::Str(t.clone()),
+            _ => unreachable!("a checked key"),
+        }
+    }
+
+    pub fn value(&self) -> Value {
+        match self {
+            Key::Int(n) => Value::Int(*n),
+            Key::Str(t) => Value::Str(t.clone()),
+        }
+    }
+
     /// The key in its value text form.
     pub fn show(&self) -> String {
         match self {
