@@ -516,10 +516,12 @@ or merged during review. Ids with a letter were added during review.
 
 ### M2-29 · L3 · Run generic functions and interface calls in the interpreter
 
+- status: done
 - needs: M2-22, M2-25, M2-26, M2-28
 - flags: none
 - done when: Golden tests built from the generics decision samples print the hand-written results.
 - why this level: Type arguments and interface lookup must reach the core without changing meaning.
+- note: Done: M2-09 has no user generics or interfaces, so this runs the generic List, Map and Option rows and sort (paka/src/interp/generic.rs) and pins structural equality. Interpreter-only cases go in tests/cases/run-interp (spec/m1.md section 11). The not-a-function text is M2-09s for every local (M2-02 amended). String forms of the shared rows wait for M2-33; sort_by for M2-30 and M2-34.
 
 ### M2-30 · L3 · Check, lower and run function values
 
