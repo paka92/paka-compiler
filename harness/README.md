@@ -21,6 +21,10 @@ status    the exit status as a number; 0 when absent
 out/      files the program must write, with their exact content; optional
 ```
 
+The experiment tasks live in `experiment/tasks/<id>/`. Each also holds `working.md`, the hand
+working for every expected result; the loader ignores it, and like `hidden/` it is never shown to
+the model.
+
 `in/` and `out/` hold plain files only. Anything else in a case folder, or a missing `stdout`, is
 malformed, and the whole task is refused. Standard error is not compared.
 
