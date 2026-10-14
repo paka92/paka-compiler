@@ -1260,13 +1260,6 @@ fn a_missing_grant_refuses_and_drops_the_rest() {
 }
 
 #[test]
-fn effects_beyond_print_and_exit_are_not_run_yet() {
-    let read = variant(Tag::Effect(Effect::ReadFile), vec![text("p")]);
-    let want = "light: internal error: effect not implemented yet\n";
-    assert_eq!(go(&light(true, vec![read])), ("".into(), want.into(), 4));
-}
-
-#[test]
 fn the_state_is_built_once_and_passed_first() {
     let state = at(0, vec![Step::Field(0)]);
     let effects = list(vec![print(show(sum(state, int(1)))), exit()]);

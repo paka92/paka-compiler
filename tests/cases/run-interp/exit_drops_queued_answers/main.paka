@@ -1,0 +1,15 @@
+enum Msg { Start, Loaded(text: String), Failed(why: String) }
+
+fn update(m: Msg) -> List<Effect<Msg>> {
+  match m {
+    Start => [ReadFile("missing.txt", then: Loaded, or: Failed), ExitWith(20)]
+    Loaded(text) => [Print("read"), Exit]
+    Failed(why) => [Print("cannot read: {why}"), Exit]
+  }
+}
+
+app reader {
+  start: Start
+  update: update
+  grants: [Console, ReadFiles]
+}

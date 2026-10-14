@@ -1,0 +1,19 @@
+enum Msg { Start, Loaded(text: String), Failed(why: String) }
+
+fn boom(text: String) -> Msg {
+  Loaded("{1 / 0}")
+}
+
+fn update(m: Msg) -> List<Effect<Msg>> {
+  match m {
+    Start => [Print("asking"), ReadFile("main.paka", then: boom, or: Failed)]
+    Loaded(text) => [Print("read"), Exit]
+    Failed(why) => [Print("cannot read: {why}"), ExitWith(20)]
+  }
+}
+
+app reader {
+  start: Start
+  update: update
+  grants: [Console, ReadFiles]
+}
