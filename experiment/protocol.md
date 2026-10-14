@@ -2,7 +2,7 @@
 
 Frozen at the `protocol` tag. It collects what DECISIONS.md M3-01 to M3-04 already settled and
 adds no decision. Reasons live there. Counted runs start only from the commit tagged `run`, with a
-clean tree (`harness/src/commit.rs`). The numbers in the `open` list at the end are not settled.
+clean tree (`harness/src/commit.rs`). The numbers in the `Open` list at the end are not settled.
 
 ## What a run is (M3-01)
 
@@ -189,15 +189,20 @@ task F1 dropped tools and reference disagree
   between tools and reference, a toolchain defect, or an expected result the statement proves
   wrong; each needs the owner's approval. A reference gap is not a mismatch.
 
+## Settled here
+
+Numbers the decisions left open, set by the owner with this file:
+
+- Watchdog limit: one model call gets 10 minutes of wall-clock time (`Setup.call_limit`); a call
+  past it is a harness fault.
+- `claude` CLI: version 2.1.299, recorded, not pinned.
+- Batch order: the 14 batches run in the order of the `counted:` line. Reps are numbered 1 to 4 per
+  task and language; a rerun takes the next free number (M3-03).
+
 ## Open
 
-Numbers or names the decisions leave open; this file does not settle them.
+Measured in the dry run (M3-19), not settled by this file:
 
-- The model id as the dry run's replies report it (M3-02 names `claude-sonnet-5-5`; the dry run
-  confirms it).
-- The fixed CLI text, in tokens, for the first-call guard (within 50 tokens); measured in the dry
-  run (M3-01.7).
-- The wall-clock limit of one model call for the watchdog; M3-09 says only that there is one.
-- The `claude` CLI version; not pinned by any decision.
-- The Paka reference text and its token count (M3-19 trims it to 8,000 tokens if over).
-- The order in which the 14 batches run and the numbering of reps.
+- The model id as the replies report it (M3-02 names `claude-sonnet-5-5`).
+- The fixed CLI text, in tokens, for the first-call guard (within 50 tokens; M3-01.7).
+- The Paka reference text and its token count (trimmed to 8,000 tokens if over).
