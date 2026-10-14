@@ -44,7 +44,15 @@ pub enum Lang {
 }
 
 impl Lang {
-    fn file(self) -> &'static str {
+    pub fn name(self) -> &'static str {
+        match self {
+            Lang::Paka => "Paka",
+            Lang::Rust => "Rust",
+            Lang::TypeScript => "TypeScript",
+        }
+    }
+
+    pub fn file(self) -> &'static str {
         match self {
             Lang::Paka => "main.paka",
             Lang::Rust => "main.rs",

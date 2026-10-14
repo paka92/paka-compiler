@@ -5,6 +5,7 @@ use harness::client::{Config, Run};
 use harness::usage::{Ledger, Tokens};
 use std::fs;
 use std::path::{Path, PathBuf};
+use std::time::Duration;
 
 const FAKE: &str = concat!(env!("CARGO_MANIFEST_DIR"), "/tests/fake_claude/claude");
 const STREAMS: &str = concat!(env!("CARGO_MANIFEST_DIR"), "/tests/streams");
@@ -38,6 +39,8 @@ impl Rig {
             system_prompt: "rules of the run".into(),
             dir,
             first_call_input: None,
+            call_limit: Duration::from_secs(30),
+            run_limit: Duration::from_secs(60),
         };
         let ledger = Ledger::new(base.join("usage.json"), caps);
         Rig {

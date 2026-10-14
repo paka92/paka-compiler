@@ -1,21 +1,36 @@
 #!/bin/sh
-# Stand-in for `claude -p` in the client tests. Everything it needs is in its working directory:
-# `script` holds the lines to print, in blocks split by a line of three dashes. Block 0 is printed
-# at start; block n answers the n-th line read from standard input. An empty block ends the process
-# with status 3. The arguments are written to `args`, one per line, each input line to `stdin`, the
-# environment to `env` and the process id to `pid`; one line goes to standard error.
+# Stand-in for `claude -p` in the client and trial tests. Everything it needs is in its working
+# directory: `script` holds the lines to print, in blocks split by a line of three dashes. Without
+# a `script`, it takes the lowest-numbered file of the folder named by QUEUE, when set. Block 0 is
+# printed at start; block n answers the n-th line read from standard input. A line `@sleep N` in a
+# block waits N seconds instead of printing. An empty block ends the process with status 3. The
+# arguments are written to `args`, one per line, each input line to `stdin`, the environment to
+# `env` and the process id to `pid`; one line goes to standard error.
 printf '%s\n' "$@" > args
 env > env
 echo $$ > pid
 echo fake-stderr >&2
+if [ ! -e script ] && [ -n "$QUEUE" ]; then
+    next=$(ls "$QUEUE" | sort -n | head -n 1)
+    [ -z "$next" ] || mv "$QUEUE/$next" script
+fi
 block() { awk -v n="$1" '/^---$/ { b++; next } b == n' script; }
-block 0
+emit() {
+    [ -n "$1" ] || return 0
+    printf '%s\n' "$1" | while IFS= read -r l; do
+        case $l in
+            "@sleep "*) sleep "${l#@sleep }" ;;
+            *) printf '%s\n' "$l" ;;
+        esac
+    done
+}
+emit "$(block 0)"
 n=1
 while IFS= read -r line; do
     printf '%s\n' "$line" >> stdin
     out=$(block "$n")
     [ -n "$out" ] || exit 3
-    printf '%s\n' "$out"
+    emit "$out"
     n=$((n + 1))
 done
 exit 0

@@ -4,15 +4,22 @@
 //! Any error voids the run (M3-03 reruns it) and no later turn is sent. Every token a turn is
 //! known to have spent goes into the ledger, whether the turn was good or not; `Reply::tokens` is
 //! the figure for the metrics.
+//!
+//! A watchdog bounds each call and the whole run in wall-clock time: past either limit the process
+//! is killed. Lines are read on their own thread, so a process that hangs, or leaves a child holding
+//! its output open, cannot hold the call past its limit.
 
 use crate::Error;
 use crate::json::quote;
 use crate::stream::{Event, Outcome, parse_event};
 use crate::usage::{Ledger, Tokens};
 use std::fs::File;
-use std::io::{BufRead, BufReader, ErrorKind, Write};
+use std::io::{self, BufRead, BufReader, ErrorKind, Write};
 use std::path::PathBuf;
 use std::process::{Child, ChildStdin, ChildStdout, Command, Stdio};
+use std::sync::mpsc::{self, Receiver, RecvTimeoutError};
+use std::thread;
+use std::time::{Duration, Instant};
 
 /// How far the first call's input tokens may sit from the expected count (M3-01 section 1.7).
 const FIRST_CALL_MARGIN: u64 = 50;
@@ -26,11 +33,15 @@ pub struct Config {
     pub effort: String,
     pub system_prompt: String,
     /// The working directory of the process: a fresh empty directory made by the caller. The
-    /// process's standard error is written to `stderr.log` in it.
+    /// process's standard error is written to `stderr.log` in it, and every line written to or
+    /// read from the process, in order, to `stream.log`.
     pub dir: PathBuf,
     /// The input tokens the first call must show: system text, statement, reference and the fixed
     /// CLI text. `None` skips the guard, for the dry run that measures it.
     pub first_call_input: Option<u64>,
+    /// Wall-clock limits on one call and on the whole run, from the process's start.
+    pub call_limit: Duration,
+    pub run_limit: Duration,
 }
 
 #[derive(Debug)]
@@ -45,10 +56,14 @@ pub struct Reply {
 pub struct Run {
     child: Child,
     stdin: Option<ChildStdin>,
-    stdout: BufReader<ChildStdout>,
+    lines: Receiver<io::Result<String>>,
+    stream: File,
     model: String,
     ledger: Ledger,
     first_call_input: Option<u64>,
+    call_limit: Duration,
+    /// When the run's time is up.
+    run_end: Instant,
 }
 
 impl Run {
@@ -88,16 +103,20 @@ impl Run {
                 command.env(key, value);
             }
         }
+        let stream = File::create(config.dir.join("stream.log"))?;
         let mut child = command.spawn()?;
         let stdin = child.stdin.take();
         let stdout = child.stdout.take().expect("stdout is piped");
         Ok(Run {
             child,
             stdin,
-            stdout: BufReader::new(stdout),
+            lines: read_lines(stdout),
+            stream,
             model: config.model.clone(),
             ledger: ledger.clone(),
             first_call_input: config.first_call_input,
+            call_limit: config.call_limit,
+            run_end: Instant::now() + config.run_limit,
         })
     }
 
@@ -125,8 +144,18 @@ impl Run {
 
     fn turn(&mut self, text: &str) -> Result<Reply, Error> {
         self.ledger.check()?;
+        let left = self.run_end.saturating_duration_since(Instant::now());
+        let (limit, what) = match self.call_limit < left {
+            true => (self.call_limit, "model call"),
+            false => (left, "run"),
+        };
+        if limit.is_zero() {
+            return Err(self.kill(what));
+        }
+        let call_end = Instant::now() + limit;
         let guard = self.first_call_input.take();
         let line = user_line(text);
+        self.stream.write_all(line.as_bytes())?;
         let stdin = self.stdin.as_mut().ok_or(Error::Voided)?;
         stdin
             .write_all(line.as_bytes())
@@ -134,20 +163,39 @@ impl Run {
                 ErrorKind::BrokenPipe => Error::Died,
                 _ => e.into(),
             })?;
-        self.read_turn(guard)
+        self.read_turn(guard, call_end, what)
+    }
+
+    /// The watchdog's act: kill the process, so nothing more comes from it.
+    fn kill(&mut self, what: &'static str) -> Error {
+        let _ = self.child.kill();
+        Error::TimedOut(what)
+    }
+
+    /// The next line from the process, waiting until `end` at most.
+    fn next_line(&mut self, end: Instant, what: &'static str) -> Result<String, Error> {
+        let wait = end.saturating_duration_since(Instant::now());
+        let line = match self.lines.recv_timeout(wait) {
+            Ok(line) => line?,
+            Err(RecvTimeoutError::Disconnected) => return Err(Error::Died),
+            Err(RecvTimeoutError::Timeout) => return Err(self.kill(what)),
+        };
+        writeln!(self.stream, "{line}")?;
+        Ok(line)
     }
 
     /// Reads lines up to the turn's `result`. A model or compaction problem is kept until then, so
     /// that the usage the result reports is still counted.
-    fn read_turn(&mut self, guard: Option<u64>) -> Result<Reply, Error> {
+    fn read_turn(
+        &mut self,
+        guard: Option<u64>,
+        end: Instant,
+        what: &'static str,
+    ) -> Result<Reply, Error> {
         let mut answered = false;
         let mut void = None;
-        let mut line = String::new();
         loop {
-            line.clear();
-            if self.stdout.read_line(&mut line)? == 0 {
-                return Err(Error::Died);
-            }
+            let line = self.next_line(end, what)?;
             match parse_event(line.trim_end())? {
                 Event::Init {
                     api_key_source: Some(source),
@@ -195,6 +243,20 @@ impl Drop for Run {
         let _ = self.child.kill();
         let _ = self.child.wait();
     }
+}
+
+/// Every line of the process's output, read on a thread of its own until the output closes.
+fn read_lines(stdout: ChildStdout) -> Receiver<io::Result<String>> {
+    let (send, lines) = mpsc::channel();
+    thread::spawn(move || {
+        for line in BufReader::new(stdout).lines() {
+            let failed = line.is_err();
+            if send.send(line).is_err() || failed {
+                break;
+            }
+        }
+    });
+    lines
 }
 
 fn judge(

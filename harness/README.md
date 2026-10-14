@@ -70,3 +70,36 @@ Known gaps: memory is capped per process, not per sandbox, and disk use per file
 
 A case passes when standard output and the exit status match and every file in `out/` was written
 byte for byte. Otherwise its verdict is the first of: `Timeout`, `Stdout`, `Status`, `Files`.
+
+## Trial loop
+
+`src/trial.rs` runs a batch: per run one `claude -p` process (`src/client.rs`), the statement
+with the visible cases as the first message (`src/prompt.rs`), then up to eight submissions. Each
+reply is a submission; one without exactly one code block, or cut off (stop reason `max_tokens`
+or more than 32,000 output tokens), fails and counts. Each program is judged on every case; the
+feedback gives the build text, or each failing visible case in full and the hidden cases as
+counts. Hidden cases and `working.md` never reach the model.
+
+Every run and attempt has a folder, plain files only:
+
+```
+<root>/<task>-<language>-<rep>/<attempt>/log       raw log, one JSON object per line
+<root>/<task>-<language>-<rep>/<attempt>/claude/   the process's working directory:
+                                                   stream.log (every line sent and read)
+                                                   and stderr.log
+```
+
+`log` lines, each written and synced before the next step: `start` (system text, model, effort),
+then per submission `call` (message sent, time), `reply` (text, tokens, cut off, time, duration),
+`submission` (program or why there is none) and `report` (build, diagnostic codes, every case),
+and last `end` (passed, submissions, edits, tokens) or `void` (reason). Times are milliseconds
+since the Unix epoch.
+
+A watchdog kills the process when a model call or the whole run passes its wall-clock limit; the
+run is void. Any error during a run voids it: process death, compaction, provider error, refusal,
+empty reply, the usage cap, a failed first-call guard. A void run is run again, at most twice; a
+third void attempt stops the batch with `Paused`. Reaching a usage cap stops the batch.
+
+Resume: run the same batch again. A run whose last attempt logged `end` is skipped; an attempt
+whose log has neither `end` nor `void` was cut short by a kill and is closed as void, and the run
+goes on with its next attempt.
