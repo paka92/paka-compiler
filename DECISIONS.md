@@ -2159,7 +2159,7 @@ T = total output tokens, all runs    lost if T_paka / T_rust > 2.0
 
 - Why: A result past the worst main-setup figures for a language the model never saw is a clear loss in the paper's sense (GENESIS 26), and it stands clear of the noise of this sample. The paper notes larger gaps in other setups (GENESIS 381), and the edits line has no published figure: 1.0 is a judgement, one extra round of feedback per run.
 - Locks: The stop rule. It is tagged before the first model call and cannot move.
-- Not chosen: Tight margin (Lost at 10 points, 0.5 edits or 1.5 times. With about 110 runs per language, chance alone moves the first-try gap by about 7 points, so this would stop the project on noise.) · Loose margin (Lost at 30 points, 2.0 edits or 3.0 times. Almost nothing stops the project; the experiment would no longer be a test.)
+- Not chosen: Tight margin (Lost at 10 points, 0.5 edits or 1.5 times. With 56 runs per language, chance alone moves the first-try gap by about 9 points, so this would stop the project on noise.) · Loose margin (Lost at 30 points, 2.0 edits or 3.0 times. Almost nothing stops the project; the experiment would no longer be a test.)
 - Look again when: Only before the `protocol` tag: a published result for a never-seen language given its reference in the prompt would be better evidence than the fine-tuned models of GENESIS 381.
 
 ### M3-02.6 How is chance kept from deciding the verdict?
@@ -2330,8 +2330,8 @@ kept list: rust first try 58% (30..85), ts 71% (<= 85) -> may tag `run`
 
 **Fix bugs, swap gaps** (recommended). Found before the freeze, in M3-16: a bug (the tools disagree with the reference) is fixed through M3-16's defect task, and a task that cannot be written at all with the approved language and built-ins is swapped for a reserve task and listed in the report under 'Paka could not express'. Long or clumsy does not qualify, and more than two such swaps goes to the owner.
 
-- Why: The experiment tests the writing risk (GENESIS 366); missing features are known without spending model calls, and listing them keeps the report honest. Only 'cannot be written at all' qualifies, or the eight tasks chosen to cost Paka (M3-04) could be swapped away.
-- Locks: Little; it applies only before the `protocol` tag. Each such swap uses one of the six reserve tasks that calibration also draws on.
+- Why: The experiment tests the writing risk (GENESIS 366); missing features are known without spending model calls, and listing them keeps the report honest. Only 'cannot be written at all' qualifies, or the five counted tasks chosen to cost Paka (M3-04) could be swapped away.
+- Locks: Little; it applies only before the `protocol` tag. Each such swap uses one of the four reserve tasks that calibration also draws on.
 - Not chosen: Keep it, Paka fails (The task stays counted and Paka scores never-passing runs. Strict, but it measures a known missing feature, and M3-17 cannot be met without a passing Paka reference solution.) · Add the feature (The language grows to fit the task. Reopens M2 decisions under time pressure and makes the reference larger.)
 - Owner must still: Decide in person if more than two tasks cannot be expressed.
 
@@ -2411,9 +2411,9 @@ statement extract (task R1, build order):
 ```
 
 - Why: Detail is hard without being recallable, it is where compilers and silent defaults separate languages, and it resembles the work agents really do.
-- Locks: The style of all 30 statements and the weight on M3-11's review for anything a statement leaves to the language.
+- Locks: The style of all 20 statements and the weight on M3-11's review for anything a statement leaves to the language.
 - Not chosen: Classic hard algorithms (Short statements that need a clever method. Models know these from training in the familiar languages, so they pass by recall or fail for reasons unrelated to the language.) · Large programs (Fewer tasks of 800 lines or more. Hard for sure, but each run is long and costly, whole-file edits become clumsy, and the slow interpreter and the 32,000-token reply limit get in the way.)
-- Look again when: If calibration finds more than six tasks to swap, this way of making tasks hard has failed for this model and the list is redone before any counted run (M3-03).
+- Look again when: If calibration finds more than four tasks to swap, this way of making tasks hard has failed for this model and the list is redone before any counted run (M3-03).
 
 ### M3-04.4 Does the list deliberately include tasks where Paka is expected to pay?
 
