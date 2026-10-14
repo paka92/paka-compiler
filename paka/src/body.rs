@@ -2,8 +2,9 @@
 //! alone, never against another definition's body (docs/decisions/M2-02.md, M2-09.md, M2-12.md).
 //! A definition's result is its first error, so an error in one never changes another's.
 //!
-//! Not here: ownership and overlap (M2-21), function values (M2-30) and the error forms
-//! (M2-31), which are left unchecked.
+//! Ownership and overlap (M2-05) are checked after the types, in `own`.
+//!
+//! Not here: function values (M2-30) and the error forms (M2-31), which are left unchecked.
 
 use crate::ast::{self, Block, Def, Expr, Pos, Program};
 use crate::diagnostic::Diagnostic;
@@ -18,6 +19,7 @@ mod branch;
 mod call;
 mod expr;
 mod hole;
+mod own;
 mod pattern;
 mod place;
 mod settle;
@@ -103,6 +105,8 @@ struct Cx<'t, 'a> {
     loops: usize,
     /// Every local met, by the position of its name.
     locals: BTreeMap<Pos, Local>,
+    /// The place each `for` name walks, as written, when it walks a place.
+    walks: BTreeMap<Pos, String>,
     info: BTreeMap<(Pos, usize), Ty>,
 }
 
@@ -132,6 +136,7 @@ pub fn check<'a>(
         writing: None,
         loops: 0,
         locals: BTreeMap::new(),
+        walks: BTreeMap::new(),
         info: BTreeMap::new(),
     };
     let mut bodies = Bodies {
@@ -159,6 +164,7 @@ impl<'t, 'a> Cx<'t, 'a> {
     fn definition(&mut self, i: usize, def: &'a Def<'a>) -> Option<Diagnostic> {
         (self.def, self.loops, self.result, self.writing) = (i, 0, None, None);
         self.locals.clear();
+        self.walks.clear();
         let defs = self.defs;
         let found = match (def, &defs[i].item) {
             (Def::Fn { params, body, .. }, Item::Fn(sig)) => self.function(sig, params, body).err(),
@@ -191,7 +197,8 @@ impl<'t, 'a> Cx<'t, 'a> {
         self.result = result;
         self.tails = stmt::tails(body);
         let used = result.map_or(Use::Dropped, |r| Use::Value(Some(r)));
-        self.block(body, used).map(drop)
+        let typed = self.block(body, used).err();
+        earliest(typed, self.ownership(body)).map_or(Ok(()), Err)
     }
 
     fn fail(&self, (at, len): Span, code: &'static str, message: impl ToString) -> Diagnostic {

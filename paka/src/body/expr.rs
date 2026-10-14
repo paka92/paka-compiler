@@ -426,9 +426,12 @@ impl Cx<'_, '_> {
         variant: &str,
         field: &str,
     ) -> crate::diagnostic::Diagnostic {
-        if self.writing == Some(e.at) {
+        if self.writing == Some(e.at)
+            && let K::Field(subject, _) = &e.kind
+        {
             let message = format!(
-                "{field} is a field of the variant {variant}; build {variant}(..) and assign the subject"
+                "{field} is a field of the variant {variant}; build {variant}(..) and assign {}",
+                render(subject)
             );
             return self.fail_at(e, "bad-assignment-target", message);
         }

@@ -1,7 +1,7 @@
 //! How expressions and types are spelled inside messages.
 
 use super::{Span, span};
-use crate::ast::{Arg, Expr, ExprKind as K};
+use crate::ast::{Arg, AssignOp, Expr, ExprKind as K};
 
 /// The name of the function a call names.
 pub(super) fn named<'a>(e: &Expr<'a>) -> Option<&'a str> {
@@ -54,7 +54,23 @@ fn atom(e: &Expr) -> String {
         K::Inout(x) => format!("&{}", render(x)),
         K::List(items) if items.is_empty() => "[]".to_string(),
         K::Map(pairs) if pairs.is_empty() => "[:]".to_string(),
+        K::Range(a, b) => match (atom(a), atom(b)) {
+            (a, b) if a != ".." && b != ".." => format!("{a}..<{b}"),
+            _ => "..".to_string(),
+        },
         _ => "..".to_string(),
+    }
+}
+
+/// The operator of an assignment as written.
+pub(super) fn assign_op(op: AssignOp) -> &'static str {
+    match op {
+        AssignOp::Set => "=",
+        AssignOp::Add => "+=",
+        AssignOp::Sub => "-=",
+        AssignOp::Mul => "*=",
+        AssignOp::Div => "/=",
+        AssignOp::Rem => "%=",
     }
 }
 

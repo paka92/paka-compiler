@@ -1,6 +1,6 @@
 //! What may stand left of an assignment or after `&`.
 
-use super::text::render;
+use super::text::{assign_op, render};
 use super::{Cx, How, Res, Ty, span};
 use crate::ast::{AssignOp, Expr, ExprKind as K};
 use crate::resolve::Binding;
@@ -78,6 +78,14 @@ impl Cx<'_, '_> {
         Err(self.fail_at(x, "bad-inout-target", message))
     }
 
+    /// The place a `for` name walks, as written, when it walks one.
+    fn walked(&self, name: &Expr) -> Option<&String> {
+        let Some(Binding::Local(decl)) = self.resolved.get(name.at) else {
+            return None;
+        };
+        self.walks.get(&decl)
+    }
+
     /// Type of the target, then what it is, then the value.
     pub(super) fn assign(&mut self, target: &Expr, op: AssignOp, value: &Expr) -> Res {
         self.writing = Some(target.at);
@@ -96,7 +104,18 @@ impl Cx<'_, '_> {
         }
         match self.place(target) {
             Err(Why::Fixed(root, how, _)) => {
-                let message = format!("{} is {}; declare it with var", render(root), kind(how));
+                let name = render(root);
+                let message = match self.walked(root) {
+                    Some(w) => {
+                        let rest = render(target);
+                        let (rest, op) = (&rest[name.len()..], assign_op(op));
+                        let value = render(value);
+                        format!(
+                            "{name} is a for name; write {w}[i]{rest} {op} {value} walking by position"
+                        )
+                    }
+                    None => format!("{name} is {}; declare it with var", kind(how)),
+                };
                 return Err(self.fail_at(root, "assign-to-let", message));
             }
             Err(Why::Text) => {
