@@ -1,0 +1,4 @@
+n_call fail at main.paka:7:18
+n_name fail at main.paka:5:3
+n_not fail at main.paka:1:17
+n_or fail at main.paka:2:16

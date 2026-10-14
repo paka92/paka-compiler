@@ -1,0 +1,3 @@
+apps: trap overflow at main.paka:5:15
+  4611686018427387904 * 2
+  in update

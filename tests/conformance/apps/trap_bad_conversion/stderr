@@ -1,0 +1,3 @@
+apps: trap bad_conversion at main.paka:3:31
+  from_code(1114112)
+  in letter, called from update

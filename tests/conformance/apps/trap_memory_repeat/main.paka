@@ -1,0 +1,12 @@
+enum Msg { Start }
+
+fn update(m: Msg) -> List<Effect<Msg>> {
+  let s = repeat("a", 4611686018427387904)
+  [Print(s), Exit]
+}
+
+app apps {
+  start: Start
+  update: update
+  grants: [Console, ReadFiles]
+}

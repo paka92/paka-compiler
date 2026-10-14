@@ -1,0 +1,8 @@
+main.paka:3:21: note[hole]: ??one takes Int
+  definition: first
+  bytes: 40..45
+  text: "??one"
+main.paka:5:25: note[hole]: ??two takes String
+  definition: second
+  bytes: 73..78
+  text: "??two"

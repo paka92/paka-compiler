@@ -1,0 +1,17 @@
+enum Msg { Start }
+
+fn update(m: Msg) -> List<Effect<Msg>> {
+  [Exit]
+}
+
+app first {
+  start: Start
+  update: update
+  grants: []
+}
+
+app second {
+  start: Start
+  update: update
+  grants: []
+}

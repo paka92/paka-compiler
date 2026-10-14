@@ -1,0 +1,10 @@
+c_first fail at main.paka:2:21
+  left: 1
+  right: 2
+c_last fail at main.paka:1:30
+  left: 2
+  right: 3
+c_middle fail at main.paka:4:32
+  left: 5
+  right: 2
+c_plain fail at main.paka:3:27

@@ -1,0 +1,21 @@
+enum Msg { Start, Loaded(text: String), Failed(why: String) }
+
+fn helper(text: String) -> Int { 7 / (len(text) - len(text)) }
+
+fn boom(text: String) -> Msg {
+  Loaded("{helper(text)}")
+}
+
+fn update(m: Msg) -> List<Effect<Msg>> {
+  match m {
+    Start => [Print("asked"), ReadFile("main.paka", then: boom, or: Failed)]
+    Loaded(text) => [Print("never"), Exit]
+    Failed(why) => [Exit]
+  }
+}
+
+app apps {
+  start: Start
+  update: update
+  grants: [Console, ReadFiles, WriteFiles]
+}

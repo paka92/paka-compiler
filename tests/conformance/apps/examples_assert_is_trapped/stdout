@@ -1,0 +1,4 @@
+a_false trapped at main.paka:2:3
+  trap assert
+a_final fail at main.paka:11:19
+a_true pass

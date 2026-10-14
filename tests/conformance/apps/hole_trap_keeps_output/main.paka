@@ -1,0 +1,15 @@
+enum Msg { Start, Loaded(text: String), Failed(why: String) }
+
+fn update(m: Msg) -> List<Effect<Msg>> {
+  match m {
+    Start => [Print("kept"), ReadFile("main.paka", then: Loaded, or: Failed)]
+    Loaded(text) => ??next
+    Failed(why) => [Exit]
+  }
+}
+
+app apps {
+  start: Start
+  update: update
+  grants: [Console, ReadFiles]
+}

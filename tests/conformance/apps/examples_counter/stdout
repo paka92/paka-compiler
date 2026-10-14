@@ -1,0 +1,11 @@
+dec_from_two fail at main.paka:23:11
+  left: 1
+  right: 2
+dec_stops_at_zero pass
+first_of_none trapped at main.paka:34:5
+  trap out_of_bounds
+  index 0, length 0
+  in example first_of_none
+inc_once unfinished at main.paka:8:22
+  ??step
+  in update, called from example inc_once

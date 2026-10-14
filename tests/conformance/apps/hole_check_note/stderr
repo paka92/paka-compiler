@@ -1,0 +1,4 @@
+main.paka:4:33: note[hole]: ??rest takes Effect<Msg>
+  definition: update
+  bytes: 93..99
+  text: "??rest"

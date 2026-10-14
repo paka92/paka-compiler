@@ -1,0 +1,10 @@
+fn later(n: Int) -> Int { ??todo }
+
+example u_call { later(1) == 1 }
+
+example u_direct {
+  let n: Int = ??pick
+  n == 1
+}
+
+example u_other { true }

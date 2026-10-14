@@ -1,0 +1,14 @@
+type Later { after: List<fn(Int) -> Int> = [] }
+
+enum Msg { Start }
+
+fn update(s: inout Later, m: Msg) -> List<Effect<Msg>> {
+  [Exit]
+}
+
+app apps {
+  state: Later
+  start: Start
+  update: update
+  grants: [Console]
+}

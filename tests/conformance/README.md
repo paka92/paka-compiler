@@ -15,6 +15,10 @@ it pins.
 `types/` covers user types, `match`, generics, function values and errors (M2-02, M2-09, M2-12, the
 type rows of M2-14).
 
+`apps/` covers apps, effects, grants and refusals, the answer queue, the eight traps, `paka examples`
+and holes (M2-06, M2-15, with spec/m1.md). The cases here reuse `core/order_call_arguments` and
+`core/order_assignment_right_first` by citation.
+
 ## Case format
 
 A case is a folder `<area>/<name>/`, `<name>` matching `[a-z0-9_]+`, holding a full program in
@@ -27,6 +31,22 @@ A case is a folder `<area>/<name>/`, `<name>` matching `[a-z0-9_]+`, holding a f
 - A reject case adds `reject` alone: `main.paka:LINE:COL: error[CODE]` and one line feed. Only the
   code and position are pinned; message texts are not, since the records fix most of them only in
   parts.
+- A reject line with no position, `main.paka: error[CODE]`, is for the kinds that have none
+  (`no-app`).
+
+Files added by the `apps/` cases. Each is optional.
+
+- `args`: the arguments after `main.paka`, one per line, each ended by a line feed. A lone line feed
+  is one empty argument. The bytes are passed as they are, so a line may hold an invalid UTF-8
+  byte. No file means no argument.
+- `command`: one line, the words after `paka`, replacing the default `run main.paka` and `args`
+  (`check main.paka`, `examples main.paka`, `build main.paka -o out`).
+- `files/`: before the command the case folder is copied to a fresh folder, and the contents of
+  `files/` are copied into its root, keeping sub-folders; `files/` itself is not there. The command
+  runs in that folder. A name such as `~` or `$PAKA_DIR` is a plain folder name.
+- `after/`: files that must exist after the command with exactly these bytes, same relative paths.
+- `absent`: paths, one per line, that must not exist after the command.
+- `present`: paths, one per line, that must exist after the command.
 
 ## Pass rules
 
@@ -41,6 +61,11 @@ The case folder is the working directory, so every diagnostic path is `main.paka
 - Reject case: `paka run main.paka` exits with status 1, standard output is empty, and standard
   error is exactly one line that starts with the `reject` text without its line feed, followed by
   `: ` and at least one more byte (spec/m1.md §11).
+- Reject case with `command`: the same, with that command; the status is 1. A reject line with no
+  position is matched as a prefix of the first line of standard error, and the line may end there.
+- Case with `command` that is not a reject: standard output equals `stdout`, standard error equals
+  `stderr` (empty when absent), the status equals `status`. An empty `stdout` file means empty.
+- `files/`, `after/`, `absent` and `present` are checked as the format says, on top of the above.
 
 ## Decision points and their cases
 
@@ -468,6 +493,125 @@ size product that overflows Int. The cap's exact value and growth just past it a
 | `+=` on a new key | `plus_equals_on_new_key` |
 | a duplicate key in a literal | `literal_duplicate_and_order` |
 
+## apps/: apps, effects, grants, traps, examples and holes
+
+Sources: M2-15, M2-06 §1.1 to §1.6, spec/m1.md §8 to §9, M2-12 for the hole and example forms. A
+case name below is a folder in `apps/`. A `*` stands for the cases of that name prefix, listed in
+full in the folder. `(Rn)` marks a case that follows a reading in `record-amends.md`.
+
+### The app form (M2-15 §1.1, spec/m1.md §8)
+
+| Point | Case(s) |
+|---|---|
+| a light app runs; keys in any order; `state` optional; empty `grants` | `app_light`, `app_keys_any_order`, `app_empty_grants`, `app_grants_unused` |
+| `start` may be any variant of the start type; its text fields are filled from the arguments | `app_start_second_variant` |
+| `update` may have any name | `app_update_other_name` |
+| state starts from its field defaults and lives across handler calls | `app_state_defaults`, `app_state_persists` |
+| a key twice is `duplicate-app-entry`, before a missing key | `app_duplicate_start`, `app_duplicate_grants`, `app_duplicate_before_missing` |
+| a missing key is `missing-start`, `missing-update` or `missing-grants`, in that order, at the app name | `app_missing_start`, `app_missing_update`, `app_missing_grants`, `app_missing_start_before_grants`, `app_missing_update_before_grants`, `app_empty` |
+| an unknown entry is `unsupported-app-entry` (R8) | `app_unknown_entry` |
+| `state` must be a record with defaults on every field, checked before `update` | `state_is_int`, `state_is_enum`, `state_field_without_default`, `state_function_field` (R1), `state_before_update_signature` |
+| `update` is a known function, `(inout State, Msg) -> Effects`, or `(Msg) -> Effects` with no state | `update_unknown_name`, `update_returns_int`, `update_state_needs_inout`, `update_state_given_one_parameter`, `update_without_state_has_two`, `update_wrong_state_type`, `update_message_not_an_enum`, `update_effect_of_other_message`, `update_signature_before_start` |
+| `start` is a variant with String fields only; an unknown name, a function and a non-String field are told apart | `start_unknown_name`, `start_is_function`, `start_field_not_string`, `start_before_grants` (R9) |
+| no app: `check` passes, `run` and `build` give `no-app` after the program is checked | `no_app_check_ok`, `no_app_run`, `no_app_build`, `no_app_empty_file`, `no_app_error_first`, `no_app_check_error_first` (R7) |
+| two apps stay a check error | `multiple_apps`, `multiple_apps_check` |
+
+### Arguments and the first message (M2-15 §1.4)
+
+| Point | Case(s) |
+|---|---|
+| each field takes its argument by position | `args_fill_fields`, `args_order_by_position` |
+| an empty argument is a field of "" | `args_empty_argument` |
+| an argument that is not text is a usage error, status 2 | `args_not_text` |
+| the argument count must equal the field count; status 2, text `expected n argument(s) (fields), got m` | `usage_missing_one`, `usage_missing_of_two`, `usage_none_of_two`, `usage_too_many`, `usage_one_extra_for_one`, `usage_fieldless`, `usage_fieldless_two` |
+
+### Effects, the queue and ending (M2-15 §1.5 to §1.8)
+
+| Point | Case(s) |
+|---|---|
+| `Print` adds one line feed; empty text; multi-byte text; interpolation; order of effects | `print_adds_one_line_feed`, `print_empty_text`, `print_unicode_bytes`, `print_interpolated`, `print_in_order`, `print_before_answer` |
+| `Exit` and `ExitWith` need no grant and drop the later effects | `exit_plain`, `exit_needs_no_grant`, `exit_drops_rest`, `exit_before_refused_effect` |
+| `ExitWith` 0 and 5 to 255 end with that status | `exit_with_0`, `exit_with_5`, `exit_with_101`, `exit_with_255`, `exit_with_needs_no_grant`, `exit_with_drops_rest` |
+| a literal other than 0 or 5 to 255 is rejected at check time | `exit_with_literal_one`, `exit_with_literal_four`, `exit_with_literal_256`, `exit_with_literal_negative` |
+| a computed status outside 0 or 5 to 255 stops the program, status 3, `effect ExitWith failed` | `exit_with_computed_one`, `exit_with_computed_two`, `exit_with_computed_three`, `exit_with_computed_four`, `exit_with_computed_256`, `exit_with_computed_negative`; and the accepted ends `exit_with_computed_zero`, `exit_with_computed_five`, `exit_with_computed_255` |
+| the list ends without `Exit`: status 3, `ended without Exit` | `ended_empty_list`, `ended_after_print`, `ended_after_answer`, `ended_after_failed_answer` |
+| a file answer joins the back of the queue and is applied at the front, just before `update` | `answers_in_order_mixed`, `answers_in_order_two_missing`, `answer_queued_behind_existing`, `then_applied_at_front`, `or_applied_at_front` |
+| `Exit` drops queued answers | `exit_drops_queued_answers`, `exit_with_drops_queued_answer` |
+| a write done before an `Exit` stays done; a failed write dropped by `Exit` gives no answer | `write_failure_dropped_at_exit`, `write_then_read_same_list`, `read_then_write_same_list` |
+
+### Grants and refusals (M2-15 §1.3, spec/m1.md §9.4)
+
+| Point | Case(s) |
+|---|---|
+| `Print` without Console, `ReadFile` without ReadFiles, `WriteFile` without WriteFiles are refused: status 3, `effect E refused: grant G is missing`, earlier output kept | `grant_print_refused`, `grant_print_refused_with_files`, `grant_read_refused`, `grant_read_refused_with_write`, `grant_write_refused`, `grant_write_refused_with_read` |
+| a refusal stops at that effect: later effects and queued answers are dropped, and nothing is written | `grant_refused_drops_queue`, `grant_refused_in_answer` |
+| a missing grant for an effect never reached does nothing | `grant_effect_unreached` |
+| an unknown grant is `unknown-grant`; a repeated grant is `duplicate-grant`; left to right, so the first fault wins | `grant_unknown`, `grant_unknown_files`, `grant_unknown_first_of_two`, `grant_unknown_second`, `grant_duplicate`, `grant_duplicate_third`, `grant_unknown_before_duplicate`, `grant_duplicate_before_unknown` |
+
+### ReadFile and WriteFile (M2-15 §1.7)
+
+| Point | Case(s) |
+|---|---|
+| a read gives the text; an empty file; text with multi-byte characters; a path in a sub-folder; the program's own source | `read_text`, `read_empty_file`, `read_utf8_file`, `read_subdirectory`, `read_own_source` |
+| `failed`: empty path, NUL in the path | `read_empty_path`, `read_nul_path`, `write_empty_path`, `write_nul_path` |
+| `not found`: missing file, missing folder, a file used as a folder | `read_missing`, `read_missing_directory`, `read_not_a_directory_prefix`, `write_missing_directory`, `write_not_a_directory_prefix` |
+| `not a file`: a folder; a device on read | `read_directory`, `read_device`, `write_directory` |
+| `not text`: invalid UTF-8, a surrogate, a cut sequence (read only) | `read_not_text`, `read_not_text_surrogate`, `read_not_text_truncated` |
+| paths are used as written: `~` and `$VAR` are not expanded | `read_path_tilde`, `read_path_dollar` |
+| a write creates, replaces, writes empty text and UTF-8 text, in a sub-folder | `write_creates`, `write_replaces`, `write_empty_text`, `write_utf8`, `write_subdirectory`; a write adds no line feed: `write_adds_nothing` |
+| `then:` on a write carries a value into the message | `write_then_carries_value` |
+| a failed write is told to `or:`, and the file is not created | `write_missing_directory` |
+
+### Traps (M2-06 §1.1 to §1.3, M2-15 §1.9)
+
+| Point | Case(s) |
+|---|---|
+| each kind with its report text and status 3: overflow, divide_by_zero, out_of_bounds, bad_conversion, assert, hole | `trap_overflow`, `trap_overflow_multiply`, `trap_divide_by_zero_remainder`, `trap_out_of_bounds`, `trap_out_of_bounds_pop`, `trap_bad_conversion`, `trap_assert`, `trap_unreachable`, `hole_run_trap` |
+| `stack` and `memory` by kind and status only (a `trap` file); the call depth and collection numbers have no case (M2-06 §1.4) | `trap_stack_recursion`, `trap_stack_mutual`, `trap_stack_after_output`, `trap_stack_in_then`, `trap_stack_drops_handler_effects`, `trap_memory_repeat`, `trap_memory_repeat_product_overflows`, `trap_memory_list_of`, `trap_memory_after_output`, `trap_memory_drops_handler_effects` |
+| `&&` and `\|\|` skip the right side; `\|\|` runs it on false | `trap_and_skips_right`, `trap_or_skips_right`, `trap_or_runs_right`; also `core/short_circuit`, `core/short_circuit_trap` |
+| order is strictly left to right | `trap_left_division_first`, `trap_left_index_first`, `trap_second_argument_after_first_ok`; also `core/order_call_arguments`, `core/order_assignment_right_first`, `core/order_left_trap_first` |
+| a trap in a handler: that handler's effects are not done, earlier output stays, the program ends | `trap_drops_handler_effects`, `trap_keeps_earlier_output`, `trap_ends_program_queue_dropped` |
+| a trap in a `then:` or `or:` function names it as the outermost frame | `trap_in_then`, `trap_in_or` |
+| the call chain: eight names exactly, nine names end in `, ...`; the chain itself is `core/trap_frame_chain`, `core/trap_frames_cut` | `trap_frames_exactly_eight`, `trap_frames_nine` |
+| the detail line is cut at 256 bytes (R3) | `trap_detail_cut_at_256` |
+
+### paka examples (M2-06 §1.6)
+
+| Point | Case(s) |
+|---|---|
+| the four statuses and the summary; exit 3 when any is not a pass | `examples_counter`, `examples_counter_fixed` (R2), `examples_trapped` (R6), `examples_unfinished` |
+| output is in byte order of the names; no examples | `examples_order_by_name_bytes`, `examples_none` |
+| `fail` is at the comparison operator with `left:` and `right:` in the value text form | `examples_fail_comparisons`, `examples_fail_value_text` |
+| a non-comparison fails at its first token, with no help lines; an `&&` chain reports the last operand evaluated | `examples_fail_not_a_comparison`, `examples_fail_and_chain` |
+| a false `assert` is `trapped`, not `fail` | `examples_assert_is_trapped` |
+| an example may compare an effect list | `examples_effects_compare` |
+| `run`, `check` and `build` do not run examples | `examples_not_run_by_run`, `examples_not_run_by_check`, `examples_not_run_by_build` |
+| an example body is one Bool expression: not Bool, ends in a statement, empty, `?`, a name not in scope, a repeated name, a name that is a function; a check error runs nothing | `example_body_not_bool`, `example_body_ends_in_statement`, `example_empty`, `example_question_mark`, `example_name_not_in_scope`, `example_duplicate_name`, `example_name_clashes_with_function`, `example_check_error_runs_nothing` |
+| `return` in an example body is allowed | `example_return_allowed` |
+
+### Holes (M2-06 §1.5)
+
+| Point | Case(s) |
+|---|---|
+| the one program with `check` note, `run` trap and `build` refusal | `hole_check_note`, `hole_run_trap`, `hole_build_refused` |
+| a statement hole: "takes no value" | `hole_statement`, `hole_statement_run` |
+| a hole not reached: `check` notes it, `run` passes, `build` refuses | `hole_cold_branch_check`, `hole_cold_branch_run`, `hole_cold_branch_build` |
+| several holes: one note each, one build line each in position order (R4); one name twice | `hole_check_two_notes`, `hole_build_two_holes`, `hole_same_name_twice_build` |
+| output printed before a hole is kept | `hole_trap_keeps_output` |
+| a hole takes its type from its place | `hole_type_argument`, `hole_type_later_argument`, `hole_type_let_annotation`, `hole_type_condition`, `hole_type_other_operand`, `hole_type_logic_operand`, `hole_type_range_side`, `hole_type_last_expression`, `hole_type_list_item`, `hole_type_record_field`, `hole_type_return`, `hole_type_assignment`, `hole_type_match_arm` |
+| no place to type it from: `cannot-infer` at the `??` | `hole_cannot_infer_let`, `hole_cannot_infer_len_argument`, `hole_cannot_infer_field_base`, `hole_cannot_infer_negation`, `hole_cannot_infer_interpolation`, `hole_cannot_infer_index_base` |
+
+### Covered elsewhere
+
+A case cannot make a host fail, so these are left to the unit tests of the toolchain:
+
+- a file effect failing with `no permission`, `no space` or `failed` for a file over the String limit;
+- `Print` failing on a closed or full standard output, a closed descriptor or a file size limit;
+- the call-depth and collection-size numbers of M2-06 §1.4 (`stack` and `memory` are tested with sizes no cap could allow);
+- a stack trap inside a deep copy or compare, and `deep(1 / 0)` at the limit;
+- the entry text of an example that traps `stack` or `memory`;
+- rollback of earlier effects when a later one fails.
+
 ## errors/: one rejected program per error kind
 
 The reject format above pins only the code and the position. These cases also pin the offending
@@ -749,6 +893,12 @@ confirmation.
 | A `Print` string may hold line feeds; its lines are separate lines of `stdout` | M2-15 |
 | `duplicate-name` for a row's name sits at the name after `fn`; `sort` on an item type with no order sits at the `&` of the argument; `wrong-label` and `type-mismatch` sit at the argument; `wrong-argument-count` at the function name; `cannot-infer` at the empty literal, `None` or the name | M2-02, M2-04, M2-09, M2-14 |
 | An unlabelled argument to a labelled row (`insert(xs, 1, 0)`) is `wrong-label` at that argument; `unreachable(1)` is `wrong-argument-count` at the name; `type Option` is `duplicate-name` at the name after `type`; `len([:])` is `cannot-infer` at the `[:]` | M2-02, M2-04, M2-09, M2-14 §1.3 |
+| Case reading (`apps/`): `type-mismatch` for a function type in `state:` applies when every field has a default; a function-typed field with no default is `bad-state` (R1) | M2-15 §1.1, M2-09 §1.11 |
+| Case reading (`apps/`): the 256-byte cut of a trap detail has no marker, the cut is on the detail text, and the two-space indent is added after it (R3) | M2-06 §1.2 |
+| Case reading (`apps/`): several `note[hole]` blocks follow each other with no blank line (R4) | M2-06 §1.5 |
+| Case reading (`apps/`): an example that traps directly prints `  in example NAME`, not `called from` (R6) | M2-06 §1.2, §6 |
+| Case reading (`apps/`): `no-app` has no position and no message after the code; the reject line is `main.paka: error[no-app]` (R7) | spec/m1.md §11, M2-15 §5 |
+| Case reading (`apps/`): `bad-start` for a function name, `unknown-name` for a name that is not defined; a type name is not used (R9) | M2-15 §1.1 |
 
 ## Case reading
 
@@ -771,7 +921,7 @@ the stale-handle rule and pool iteration order not decided. There are no cases f
 kind `stale_handle` is reserved and nothing raises it.
 
 The `core/` cases leave out what the records do not pin: the wording of every message. The habit
-spellings `;` and a trailing comma are held by `lex/semicolon` and `parse/trailing_comma`. The call-depth case belongs to M2-41 and is compared on kind and status only
+spellings `;` and a trailing comma are held by `lex/semicolon` and `parse/trailing_comma`. The call-depth cases are in `apps/` (`trap_stack_*`) and are compared on kind and status only
 (M2-06 §1.4). Shift traps and the other built-in rows belong to the built-in function cases.
 
 Several M2-14 points have no case:
@@ -779,7 +929,7 @@ Several M2-14 points have no case:
 - `m[key] = v` on a new key past the cap: it needs 16,777,216 entries, and M2-14 §1.15 only names
   the position, the last `[`. The cap's exact value is a unit test (M2-14 §1.15).
 - The value text form of §1.16 beyond the details above: no program can reach it.
-- `examples` cases: this README describes run and reject cases only.
+- `examples` cases are in `apps/`; the cases that need no other file use `command`.
 - String `[i]` and String slice traps: M2-03's, not M2-14 rows. The List index and slice cases above stand in for the shared rule.
 
 Three type points have no case, because the records do not pin the position or the order:

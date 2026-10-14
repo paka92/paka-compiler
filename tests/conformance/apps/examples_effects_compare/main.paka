@@ -1,0 +1,41 @@
+type Seen { n: Int = 0 }
+
+enum Msg { Start(path: String), Loaded(text: String), Failed(why: String) }
+
+fn update(s: inout Seen, m: Msg) -> List<Effect<Msg>> {
+  s.n += 1
+  match m {
+    Start(path) => [ReadFile(path, then: Loaded, or: Failed)]
+    Loaded(text) => [Print("got {len(text)}"), Exit]
+    Failed(why) => [ExitWith(9)]
+  }
+}
+
+example asks_for_file {
+  var s = Seen {}
+  update(&s, Start("a.txt")) == [ReadFile("a.txt", then: Loaded, or: Failed)]
+}
+
+example fail_effects {
+  var s = Seen {}
+  update(&s, Failed("x")) == [ExitWith(8)]
+}
+
+example prints_and_exits {
+  var s = Seen {}
+  update(&s, Loaded("abc")) == [Print("got 3"), Exit]
+}
+
+example state_counts {
+  var s = Seen {}
+  _ = update(&s, Loaded("a"))
+  _ = update(&s, Loaded("b"))
+  s.n == 2
+}
+
+app seen {
+  state: Seen
+  start: Start
+  update: update
+  grants: []
+}
