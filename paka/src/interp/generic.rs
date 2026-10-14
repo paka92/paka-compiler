@@ -71,8 +71,7 @@ pub fn call(name: &str, args: &mut [Value], site: Site) -> Option<Out> {
         ("sort", [Value::List(xs)]) => {
             let mut scratch = Vec::with_capacity(xs.0.len());
             let mut less = |a: &mut Value, b: &mut Value| Ok(compare(&Cmp::Lt, a, b));
-            merge_sort::<Infallible>(&mut xs.0, &mut scratch, &mut less)
-                .unwrap_or_else(|e| match e {});
+            let Ok(()) = merge_sort::<Infallible>(&mut xs.0, &mut scratch, &mut less);
             Ok(Value::Unit)
         }
         ("list_of", [item, n]) => list_of(item, n.int(), site),
@@ -182,9 +181,10 @@ pub fn merge_sort<E>(
     merge_sort(right, scratch, before)?;
     let (mut i, mut j) = (0, 0);
     while i < left.len() && j < right.len() {
-        let (side, at) = match before(&mut right[j], &mut left[i])? {
-            true => (&mut *right, &mut j),
-            false => (&mut *left, &mut i),
+        let (side, at) = if before(&mut right[j], &mut left[i])? {
+            (&mut *right, &mut j)
+        } else {
+            (&mut *left, &mut i)
         };
         scratch.push(mem::take(&mut side[*at]));
         *at += 1;

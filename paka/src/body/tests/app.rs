@@ -147,6 +147,7 @@ fn rejects_a_wrong_state() {
     let held = "type Later { after: List<fn(Int) -> Int> = [] }";
     let deep = "type Deep { later: Later = Later {} }";
     let fn_state = state(&[held], "Later");
+    let bare_fn = state(&["type Bare { after: fn(Int) -> Int }"], "Bare");
     let deep_state = state(&[held, deep], "Deep");
     let held_msg = "keep a message value instead and match on it in update";
     says(&[
@@ -179,6 +180,12 @@ fn rejects_a_wrong_state() {
             "state: ^Deep",
             &format!("state Deep holds a function type in field after; {held_msg}"),
             deep_state,
+        ),
+        (
+            "type-mismatch",
+            "state: ^Bare",
+            &format!("state Bare holds a function type in field after; {held_msg}"),
+            bare_fn,
         ),
     ]);
 }

@@ -230,10 +230,14 @@ impl<'t, 'a> Cx<'t, 'a> {
 
     /// `e` has type `found` where `want` is needed; an Int and a Float name the other's repair.
     fn mismatch_at(&self, e: &Expr, want: Ty, found: Ty) -> Diagnostic {
-        let (want, found) = (self.types.show(want), self.types.show(found));
-        if want.starts_with("fn(") {
-            return self.function_mismatch(e, &want, &found);
+        if self.is_function(want) {
+            let by = match e.kind {
+                K::Name(name) if self.is_function(found) => Some(name),
+                _ => None,
+            };
+            return self.function_mismatch(span(e), want, found, by);
         }
+        let (want, found) = (self.types.show(want), self.types.show(found));
         let repair = match (want.as_str(), found.as_str()) {
             ("Float", "Int") => float_fix(e),
             ("Int", "Float") => format!("write to_int({})", render(e)),
@@ -242,15 +246,17 @@ impl<'t, 'a> Cx<'t, 'a> {
         self.mismatch(span(e), &want, &found, &repair)
     }
 
+    fn is_function(&self, ty: Ty) -> bool {
+        matches!(self.types.node(ty), Node::Fn(..))
+    }
+
     /// A function type was needed (M2-09 section 5): the types are not quoted, and a function that
     /// is named is named again.
-    fn function_mismatch(&self, e: &Expr, want: &str, found: &str) -> Diagnostic {
-        let by = match e.kind {
-            K::Name(name) if found.starts_with("fn(") => format!(" ({name})"),
-            _ => String::new(),
-        };
+    fn function_mismatch(&self, at: Span, want: Ty, found: Ty, by: Option<&str>) -> Diagnostic {
+        let (want, found) = (self.types.show(want), self.types.show(found));
+        let by = by.map_or(String::new(), |name| format!(" ({name})"));
         let message = format!("expected {want}, found {found}{by}");
-        (self.fail_at(e, "type-mismatch", message)).with_types(&want, &found)
+        (self.fail(at, "type-mismatch", message)).with_types(&want, &found)
     }
 
     fn no_value(&self, e: &Expr, want: Option<Ty>) -> Diagnostic {

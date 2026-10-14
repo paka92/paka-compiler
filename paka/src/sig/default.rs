@@ -8,6 +8,9 @@ use crate::resolve::Binding;
 
 impl<'a> Convert<'_, 'a> {
     pub(super) fn default(&mut self, field: &str, want: Ty, e: &Expr<'a>) {
+        if matches!(self.types.node(want), Node::Fn(..)) {
+            return;
+        }
         let found = self.head(e);
         if self.types.fits(found, want) {
             return;

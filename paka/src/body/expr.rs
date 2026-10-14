@@ -323,6 +323,9 @@ impl Cx<'_, '_> {
             ("Float", "Int") => float_fix(r),
             _ => String::new(),
         };
+        if self.is_function(lt) {
+            return Err(self.function_mismatch(at, lt, rt, None));
+        }
         Err(self.mismatch(at, &shown_l, &shown_r, &repair))
     }
 

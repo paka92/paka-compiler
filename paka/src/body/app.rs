@@ -74,18 +74,18 @@ impl<'a> Cx<'_, 'a> {
         let Some((ty, Item::Record(fields))) = record else {
             return Err(self.bad_state(n));
         };
-        if !fields.iter().all(|f| f.default) {
-            return Err(self.bad_state(n));
+        if let Some(field) = self.function_field(ty, "", &mut BTreeSet::new()) {
+            let message = format!(
+                "state {} holds a function type in field {field}; keep a message value instead \
+                 and match on it in update",
+                n.text
+            );
+            return Err(self.fail((n.at, n.text.len()), "type-mismatch", message));
         }
-        let Some(field) = self.function_field(ty, "", &mut BTreeSet::new()) else {
+        if fields.iter().all(|f| f.default) {
             return Ok(());
-        };
-        let message = format!(
-            "state {} holds a function type in field {field}; keep a message value instead \
-             and match on it in update",
-            n.text
-        );
-        Err(self.fail((n.at, n.text.len()), "type-mismatch", message))
+        }
+        Err(self.bad_state(n))
     }
 
     fn bad_state(&self, n: &Name) -> Diagnostic {

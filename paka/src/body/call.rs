@@ -461,13 +461,10 @@ impl<'a> Cx<'_, 'a> {
             }
         }
         if let Some((i, hint, got)) = misfit {
-            // `M` is the app's one message type, so both types show it as the call does.
-            let message: Bound = bound
-                .iter()
-                .filter(|(c, _)| **c == 'M')
-                .map(|(&c, &t)| (c, t))
-                .collect();
-            let (hint, got) = (self.subst(hint, &message), self.subst(got, &message));
+            // The row's `M` is the app's message type; name it where nothing has bound it.
+            let msg = (bound.get(&'M').copied()).unwrap_or_else(|| self.types.named("Msg", &[]));
+            let shown = Bound::from([('M', msg)]);
+            let (hint, got) = (self.subst(hint, &shown), self.subst(got, &shown));
             return Err(self.arg_mismatch(c, picked, args, i, (hint, got)));
         }
         Ok(match sig.result {

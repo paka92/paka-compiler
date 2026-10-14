@@ -729,10 +729,13 @@ impl<'a> Machine<'a> {
         let [Value::List(xs), Value::Fn(FnKey::Fn(before))] = args else {
             unreachable!("a checked sort_by");
         };
+        let mut frame = Vec::new();
         let mut ask = |right: &mut Value, left: &mut Value| -> Done<bool> {
-            let given = vec![mem::take(right), mem::take(left)];
-            let (answer, mut kept) = self.invoke(*before, given, site)?;
-            (*left, *right) = (mem::take(&mut kept[1]), mem::take(&mut kept[0]));
+            frame.extend([mem::take(right), mem::take(left)]);
+            let (answer, mut kept) = self.invoke(*before, mem::take(&mut frame), site)?;
+            (*right, *left) = (mem::take(&mut kept[0]), mem::take(&mut kept[1]));
+            kept.clear();
+            frame = kept;
             Ok(answer.bool())
         };
         let mut scratch = Vec::with_capacity(xs.0.len());
