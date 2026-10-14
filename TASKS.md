@@ -797,11 +797,12 @@ or merged during review. Ids with a letter were added during review.
 
 ### M3-15 · L3 · Write TypeScript reference solutions for ten tasks and list every test they dispute
 
+- status: done
 - needs: M3-11
 - flags: repeat
 - done when: Every task has a TypeScript solution that passes tsc with agreed flags; each failed case is listed with a reason; the diff touches no test.
 - why this level: Many small programs against given tests; hardest part is exact integers beyond what a TypeScript number holds.
-- note: One task per ten experiment tasks (two for 20 tasks).
+- note: One task per ten experiment tasks (two for 20 tasks). All 20 tasks pass every visible and hidden case with no dispute; BigInt is used in N1 and P1. Coverage gaps worth a case in M3-17: V6 has no case for an unreadable LIST file, and none for a WHICH that is neither `*` nor a valid name.
 
 ### M3-16 · L4 · Write Paka reference solutions for ten tasks and report every language or toolchain defect
 
