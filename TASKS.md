@@ -847,7 +847,7 @@ or merged during review. Ids with a letter were added during review.
 - flags: owner, model-calls
 - done when: Logs show every counted task run in Rust and TypeScript only, never Paka; each swap follows M3-03's rule and comes from the reserve list; the owner merges the amended list and tags the `run` commit. Raw logs merged.
 - why this level: No design; must follow the pre-set rule exactly.
-- note: 84 runs plus up to 24 for swapped-in reserve tasks. More than 4 swaps goes to the owner, not to a fifth swap.
+- note: First pass (logs in experiment/runs/calib-1): 108 runs, no harness fault; 15 of 18 tasks passed first try in all 6 runs, Rust first-try 88% and TypeScript 86% on the counted list, so 11 swaps were due and the reserve list could not supply them. Owner ruling: keep S3, G2 and N1, write 11 harder counted tasks (T4 T5 P4 P5 S4 G3 R4 R5 N4 F3 F4; T5 P5 R5 F4 tagged) and 4 reserves (T6 tagged, S5, N5, F5 tagged), then calibrate again. 84 runs plus up to 24 for swapped-in reserve tasks. More than 4 swaps goes to the owner, not to a fifth swap.
 
 ### M3-20 · L2 · Run the counted experiment and publish the raw logs
 
