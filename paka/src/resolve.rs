@@ -121,6 +121,19 @@ pub(crate) fn suggestion<'n>(
     }
 }
 
+/// The message for a name from another language's error handling, with what to write instead
+/// (M2-12 section 1.9).
+pub(crate) fn habit(name: &str) -> Option<String> {
+    let hint = match name {
+        "null" | "nil" => return Some(format!("Paka has no {name}; write None and a match")),
+        "unwrap" | "expect" => "write a match, `?` or unwrap_or",
+        "is_some" | "is_none" | "is_ok" | "is_err" => "match it",
+        "panic" => "write unreachable() or assert(false)",
+        _ => return None,
+    };
+    Some(format!("{name} is not defined here; {hint}"))
+}
+
 fn distance(a: &str, b: &str) -> usize {
     let mut row: Vec<usize> = (0..=b.len()).collect();
     for (i, x) in a.bytes().enumerate() {
@@ -480,6 +493,15 @@ impl<'a> Resolver<'a> {
         match local.or_else(|| self.pool_get(name, of(VALUES))) {
             Some(found) => self.record(at, found),
             None => {
+                if let Some(message) = habit(name) {
+                    return Err(Diagnostic::new(
+                        self.path,
+                        at,
+                        name.len(),
+                        "unknown-name",
+                        message,
+                    ));
+                }
                 let locals = self.locals.iter().map(|l| l.0);
                 let near = locals.chain(self.names(of(VALUES)));
                 Err(self.suggest("unknown-name", (at, name), "not defined here", near))

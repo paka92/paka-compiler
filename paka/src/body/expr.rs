@@ -4,8 +4,8 @@ use super::text::{article, float_fix, render};
 use super::{Cx, Out, Res, Span, Use, span};
 use crate::ast::{BinOp, Def, Expr, ExprKind as K, Name, Pos, StrPart, UnOp};
 use crate::diagnostic::Diagnostic;
-use crate::resolve::suggestion;
-use crate::sig::{Field, Item, Node, Ty};
+use crate::resolve::{habit, suggestion};
+use crate::sig::{Checked, Field, Item, Node, Ty};
 use paka_rt::ops::{Float, Int};
 
 /// The operand a chain continues from; the head of a chain has none.
@@ -388,6 +388,9 @@ impl Cx<'_, '_> {
             Node::User(i) => (self.types.show(bt), &defs[*i].item),
             Node::Var(_) => return Ok(Out::Val(bt)),
             _ => {
+                if let Some(message) = habit(name.text) {
+                    return Err(self.fail(at, "unknown-name", message));
+                }
                 let message = format!("{} has no fields", self.types.show(bt));
                 return Err((self.fail(at, "type-mismatch", message))
                     .with_types(&"a record", &self.types.show(bt)));
@@ -498,7 +501,7 @@ impl Cx<'_, '_> {
             ),
             None => ("no result".to_string(), "has no result".to_string()),
         };
-        let make = if enclosing.is_some() {
+        let make = if enclosing.is_some() && !self.is_update() {
             make
         } else {
             "match it".to_string()
@@ -509,6 +512,13 @@ impl Cx<'_, '_> {
             format!("? passes {up} up, but {name} {returns}; {make}")
         };
         Err((self.fail(at, "type-mismatch", message)).with_types(&want, &found))
+    }
+
+    /// Whether the definition being checked is the `update` of an app.
+    fn is_update(&self) -> bool {
+        let update =
+            |d: &Checked| matches!(d.item, Item::App { update: Some(u), .. } if u == self.def);
+        self.defs.iter().any(update)
     }
 
     /// The operand of `?` takes the function's error type where its own is open: `Ok(1)?` in a

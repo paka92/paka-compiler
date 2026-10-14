@@ -198,7 +198,9 @@ impl Cx<'_, '_> {
         let ty = match written {
             Some(t) => {
                 let ty = self.annotation(t)?;
-                self.expect(value, ty)?
+                let ty = self.expect(value, ty)?;
+                self.info.entry(span(value)).or_insert(ty);
+                ty
             }
             None => match self.expr(value, None)? {
                 Out::Val(t) if !self.free(t) => t,
