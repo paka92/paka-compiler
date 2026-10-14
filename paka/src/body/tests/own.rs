@@ -14,6 +14,8 @@ const OWN: &[&str] = &[
     "type Pair { a: List<Int>, b: List<Int> }",
     "type Graph { adj: List<List<Int>> = [] }",
     "type Cell { shape: Shape = Dot, hits: Int = 0 }",
+    "type Node { edges: List<Int> = [], name: String = \"\" }",
+    "type Net { nodes: List<Node> = [] }",
     "enum Two { Both(a: List<Int>, b: List<Int>) }",
     "fn grow(xs: inout List<Int>, more: List<Int>) {}",
     "fn mend(xs: inout List<Int>, p: P) {}",
@@ -39,11 +41,17 @@ const OWN: &[&str] = &[
     "fn move_n(a: inout Account, n: Int) {}",
     "fn visit(g: inout Graph, v: Int) {}",
     "fn next_of(x: Int) -> Int { x }",
+    "fn fe(xs: inout List<Int>, name: String) {}",
+    "fn pay(n: inout Int, name: String) {}",
+    "fn fl2(xs: inout List<Int>, n: Int) {}",
+    "fn take_k(k: inout String) -> Int { 0 }",
+    "fn drop_m(m: inout Map<String, Node>) -> Int { 0 }",
 ];
 
 /// The parameters every sample may use; each list or map is inout, so it can be passed with `&`.
 const ALL: &str = "t(xs: inout List<Int>, names: inout List<String>, rows: inout List<List<Int>>, \
     p: inout P, s: inout S, st: inout List<Int>, m: inout Map<String, Account>, g: inout Graph, \
+    gg: inout Net, mm: inout Map<String, Node>, ms: inout Map<String, List<Int>>, key: inout String, \
     doc: inout String, a: String, b: String, i: Int, j: Int, c: Bool)";
 
 /// `fn HEAD { BODY }`, then the definitions of the samples and the prelude.
@@ -668,4 +676,183 @@ fn a_deep_chain_with_one_change_fits_the_stack() {
             assert_eq!(found.iter().map(|d| d.code).collect::<Vec<_>>(), [READ]);
         });
     }
+}
+
+#[test]
+fn places_that_part_only_after_an_index_overlap() {
+    let walk = walked("gg.nodes[i].edges", "x");
+    says(&[
+        sample(
+            OVERLAP,
+            "^gg.nodes[j].name)",
+            "two items of gg.nodes in one call; bind one first",
+            &["fe(&gg.nodes[i].edges, gg.nodes[j].name)"],
+        ),
+        sample(
+            OVERLAP,
+            "^mm[b].name)",
+            "two entries of mm in one call; bind one first",
+            &["fe(&mm[a].edges, mm[b].name)"],
+        ),
+        sample(
+            OVERLAP,
+            "^m[b].name)",
+            "two entries of m in one call; bind one first",
+            &["pay(&m[a].balance, m[b].name)"],
+        ),
+        sample(
+            WALKED,
+            "^gg.nodes[j].name = ",
+            &walk,
+            &[
+                "for x in gg.nodes[i].edges {",
+                "  gg.nodes[j].name = \"\"",
+                "}",
+            ],
+        ),
+    ]);
+}
+
+#[test]
+fn a_key_read_in_an_inout_place_is_a_read() {
+    let key = |r: &str, f: &str, by: &str| {
+        format!(
+            "{r} is read by {f} and changed by {by} in the same call; bind it first: let key = {r}"
+        )
+    };
+    says(&[
+        sample(
+            READ,
+            "&ms[^key]",
+            &key("key", "fl2", "take_k(&key)"),
+            &["fl2(&ms[key], take_k(&key))"],
+        ),
+        sample(
+            READ,
+            "&ms[^mm[a].name]",
+            &key("mm[a].name", "fl2", "drop_m(&mm)"),
+            &["fl2(&ms[mm[a].name], drop_m(&mm))"],
+        ),
+    ]);
+    accepts(&[own(
+        ALL,
+        &[
+            "fl2(&ms[a], take_k(&key))",
+            "fl2(&ms[key], len(key))",
+            "fl2(&ms[mm[a].name], len(xs))",
+        ],
+    )]);
+}
+
+#[test]
+fn an_invalid_inout_target_is_not_a_change() {
+    let target = "ys is read-only; write ys: inout List<Int> and call v(&ys)";
+    let case = |line: &str| {
+        let src = own("v(ys: List<Int>)", &[line]);
+        ("bad-inout-target", "take(&^ys)", target, src)
+    };
+    says(&[
+        case("_ = merge(ys, take(&ys))"),
+        case("let z = merge(ys, take(&ys))"),
+    ]);
+}
+
+#[test]
+fn a_for_name_is_changed_by_position_only_where_that_works() {
+    let plain = |name: &str| format!("{name} is a for name; declare it with var");
+    says(&[
+        sample(
+            "assign-to-let",
+            "^x = 1",
+            &plain("x"),
+            &["for x in xs[0..<2] {", "  x = 1", "}"],
+        ),
+        say(
+            ("assign-to-let", "^y = 1"),
+            &plain("y"),
+            "v(ys: List<Int>)",
+            &["for y in ys {", "  y = 1", "}"],
+        ),
+        sample(
+            "assign-to-let",
+            "^x = 1",
+            &plain("x"),
+            &[
+                "for row in rows {",
+                "  for x in row {",
+                "    x = 1",
+                "  }",
+                "}",
+            ],
+        ),
+        sample(
+            "assign-to-let",
+            "^row[k + 1] = 1",
+            "row is a for name; write rows[i][k + 1] = 1 walking by position",
+            &["for row in rows {", "  row[k + 1] = 1", "}"],
+        ),
+    ]);
+}
+
+#[test]
+fn the_indexes_in_a_fix_are_written_out() {
+    let long = "len(xs) + len(names) + len(rows) + len(st) + 1";
+    let swap = format!("swap_lists(&rows[i], &rows[{long}])");
+    says(&[
+        sample(
+            OVERLAP,
+            "^&rows[i + 1])",
+            "two items of rows in one call; write swap_lists(&rows, i, i + 1)",
+            &["swap_lists(&rows[i], &rows[i + 1])"],
+        ),
+        sample(
+            OVERLAP,
+            "^&m[\"b\"])",
+            "two entries of m in one call; write transfer(&m, \"a\", \"b\")",
+            &["transfer(&m[\"a\"], &m[\"b\"])"],
+        ),
+        sample(
+            OVERLAP,
+            "^&rows[len(xs)",
+            "two items of rows in one call; bind one first",
+            &[&swap],
+        ),
+        sample(
+            OVERLAP,
+            &format!("^s.rules[{long}])"),
+            "s is passed with & and read in one call; bind it first",
+            &[&format!("apply(&s, s.rules[{long}])")],
+        ),
+    ]);
+    let head = "t(fs: List<fn(List<Int>, List<Int>) -> Int>, xs: inout List<Int>, i: Int) -> Int";
+    let message = read_by("fs[i + 1]", "take(&xs)");
+    says(&[(
+        READ,
+        "(^xs,",
+        &message,
+        own(head, &["fs[i + 1](xs, take(&xs))"]),
+    )]);
+}
+
+#[test]
+fn a_write_in_the_callee_changes_what_the_arguments_read() {
+    let head = "t(fs: List<fn(List<Int>) -> Int>, xs: inout List<Int>) -> Int";
+    let message = read_by("fs[drop_n(&xs)]", "drop_n(&xs)");
+    says(&[(
+        READ,
+        "](^xs)",
+        &message,
+        own(head, &["fs[drop_n(&xs)](xs)"]),
+    )]);
+}
+
+#[test]
+fn many_operands_are_checked_in_linear_time() {
+    let writes = vec!["drop_n(&xs)"; 32_000].join(", ");
+    let mixed = vec!["ys, take(&xs)"; 16_000].join(", ");
+    let head = "t(xs: inout List<Int>, ys: List<Int>)";
+    accepts(&[
+        own(head, &[&format!("let all = [{writes}]")]),
+        own(head, &[&format!("let all = [{mixed}]")]),
+    ]);
 }
