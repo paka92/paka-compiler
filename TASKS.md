@@ -736,10 +736,12 @@ or merged during review. Ids with a letter were added during review.
 
 ### M3-06 · L2 · Build the case runner: build, run and compare in three languages
 
+- status: done
 - needs: M3-01, M3-05
 - flags: none
 - done when: Tests show a known-good and a known-bad program in each language get the right verdict on hand-written cases, including a timeout. A task loader accepts a task folder in one written format (statement, cases, hidden cases) and rejects a malformed one.
 - why this level: Golden-file runner with three fixed command pairs; one module, obvious tests.
+- note: The task folder format is in harness/README.md: statement.md, cases/ and hidden/, each case with args, in/, stdout, status and out/. Cases run with only TZ and the C locale.
 
 ### M3-07 · L4 · Run submitted programs in a sandbox without network or hidden cases
 
