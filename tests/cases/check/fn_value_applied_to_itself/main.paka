@@ -1,0 +1,17 @@
+enum Msg { Start }
+
+fn twice(k: fn(Int) -> Int) -> Int { k(1) }
+
+fn probe() -> Int {
+  twice(twice)
+}
+
+fn update(m: Msg) -> List<Effect<Msg>> {
+  [Exit]
+}
+
+app callbacks {
+  start: Start
+  update: update
+  grants: []
+}

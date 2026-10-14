@@ -1,0 +1,5 @@
+handlers_in_an_effect_list pass
+in_a_list pass
+same_body_other_definition pass
+same_definition pass
+swapped_handlers pass

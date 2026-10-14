@@ -1,0 +1,21 @@
+enum Msg { Start }
+
+type Row { n: Int }
+
+fn cmp(a: Row, b: Row) -> Int { a.n - b.n }
+
+fn probe(xs: List<Row>) -> List<Row> {
+  var out = xs
+  sort_by(&out, cmp)
+  out
+}
+
+fn update(m: Msg) -> List<Effect<Msg>> {
+  [Exit]
+}
+
+app callbacks {
+  start: Start
+  update: update
+  grants: []
+}

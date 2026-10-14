@@ -1,0 +1,25 @@
+enum Msg { Start }
+
+fn always(a: Int, b: Int) -> Bool { true }
+
+fn never(a: Int, b: Int) -> Bool { false }
+
+fn odd_first(a: Int, b: Int) -> Bool { a % 2 == 1 && b % 2 == 0 }
+
+fn update(m: Msg) -> List<Effect<Msg>> {
+  var reversed = [3, 1, 2]
+  var kept = [3, 1, 2]
+  var split = [4, 3, 2, 1, 5]
+  var one = [5]
+  sort_by(&reversed, always)
+  sort_by(&kept, never)
+  sort_by(&split, odd_first)
+  sort_by(&one, always)
+  [Print("{reversed[0]} {reversed[1]} {reversed[2]} {kept[0]} {kept[1]} {kept[2]} {split[0]} {split[1]} {split[2]} {split[3]} {split[4]} {one[0]}"), Exit]
+}
+
+app callbacks {
+  start: Start
+  update: update
+  grants: [Console]
+}

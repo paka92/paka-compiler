@@ -1,0 +1,23 @@
+enum Msg { Start, Got(n: Int), Pair(a: Int, b: Int) }
+
+fn build(make: fn(Int) -> Msg, n: Int) -> Msg { make(n + 1) }
+
+fn show(m: Msg) -> String {
+  match m {
+    Start => "start"
+    Got(n) => "got {n}"
+    Pair(a, b) => "pair {a} {b}"
+  }
+}
+
+fn update(m: Msg) -> List<Effect<Msg>> {
+  let make = Pair
+  let wrapped = [Got, Got]
+  [Print("{show(build(Got, 4))} {show(make(1, 2))} {show(wrapped[1](9))} {show(Start)}"), Exit]
+}
+
+app callbacks {
+  start: Start
+  update: update
+  grants: [Console]
+}
