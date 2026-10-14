@@ -444,11 +444,12 @@ or merged during review. Ids with a letter were added during review.
 
 ### M2-20 · L3 · Check match, patterns, holes and example bodies
 
+- status: done
 - needs: M2-06, M2-19
 - flags: none
 - done when: Tests pass: missing variants are listed with a fix, a hole takes its expected type, example bodies follow the decision.
 - why this level: Exhaustiveness and expected-type holes are known techniques with easy-to-miss cases.
-- note: Follows docs/decisions/M2-02.md: the newline, comment and nesting rules of its sections 1.5 to 1.7, the grammar of section 2 and the codes of section 5. Follows docs/decisions/M2-06.md for traps, holes and examples. Follows docs/decisions/M2-12.md for Option, Result, `?` and unreachable(). Names the code for a `_` arm on an enum subject, which M2-02 leaves unnamed.
+- note: Follows docs/decisions/M2-02.md: the newline, comment and nesting rules of its sections 1.5 to 1.7, the grammar of section 2 and the codes of section 5. Follows docs/decisions/M2-06.md for traps, holes and examples. Follows docs/decisions/M2-12.md for Option, Result, `?` and unreachable(). Names the code for a `_` arm on an enum subject, which M2-02 leaves unnamed. Done in paka/src/body/ (arms.rs, pattern.rs, hole.rs, branch.rs). The `_` arm on an enum is `wildcard-on-enum`. Branches of `if`, `match` and list or map items take their type from the first branch that carries one, in any order. Example bodies are checked; apps are left to M2-32. Pattern binding types and resolved variants are not in the type map; M2-25 adds them if lowering needs them.
 
 ### M2-21 · L4 · Enforce copies, inout exclusivity and borrow rules in the checker
 
@@ -464,7 +465,7 @@ or merged during review. Ids with a letter were added during review.
 - flags: none
 - done when: Decision samples pass; the type variables of a built-in row are taken from the arguments and the expected type, and `cannot-infer` is given when neither fixes one. A test shows a function body's result never depends on any caller.
 - why this level: The language has no user generics (M2-09), so only built-in rows carry type variables; binding them wrongly accepts or refuses programs silently.
-- note: Follows docs/decisions/M2-09.md: the interface hash covers every named type a signature reaches, and no app state may hold a function type. Follows docs/decisions/M2-12.md for Option, Result, `?` and unreachable(). Settle here whether the `cannot-infer` message names the local or the expression when both exist: docs/decisions/M2-02.md and M2-12.md give both forms.
+- note: Follows docs/decisions/M2-09.md: the interface hash covers every named type a signature reaches, and no app state may hold a function type. Follows docs/decisions/M2-12.md for Option, Result, `?` and unreachable(). Settle here whether the `cannot-infer` message names the local or the expression when both exist: docs/decisions/M2-02.md and M2-12.md give both forms. Owns a hole as a later argument of a built-in or inside `Some(..)` with a known result type.
 
 ### M2-23 · L4 · Define the core form for the whole headless language
 
