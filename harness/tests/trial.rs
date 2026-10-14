@@ -105,6 +105,7 @@ impl Rig {
             ledger: Ledger::new(base.join("usage.json"), caps),
             call_limit: Duration::from_secs(30),
             root: base.join("runs"),
+            repo: None,
         };
         Rig {
             base,
@@ -297,6 +298,32 @@ fn counts_edits_tokens_and_logs_everything() {
         4
     );
     assert!(stream.lines().any(|l| l == INIT));
+}
+
+#[test]
+fn a_counted_batch_needs_the_run_tag_and_a_practice_batch_does_not() {
+    let mut rig = Rig::new("commit", big());
+    let repo = common::repo("trial-commit-repo");
+    rig.setup.repo = Some(repo.clone());
+
+    let refused = rig.run(1).unwrap_err();
+    assert_eq!(refused.status(), 20);
+    assert!(!rig.setup.root.exists(), "no run starts before the check");
+
+    let practice = rig.base.join("X1");
+    std::os::unix::fs::symlink(TASK, &practice).unwrap();
+    let spec = |task: &Path| Spec {
+        task: task.into(),
+        lang: Lang::Paka,
+        rep: 1,
+        first_call_input: None,
+    };
+    rig.queue(&[ok(&reply(GOOD), 40)]);
+    trial::run_batch(&rig.setup, &[spec(&practice)]).unwrap();
+
+    common::git(&repo, &["tag", "run"]);
+    rig.queue(&[ok(&reply(GOOD), 40)]);
+    rig.run(1).unwrap();
 }
 
 #[test]

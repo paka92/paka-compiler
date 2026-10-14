@@ -3,6 +3,7 @@
 //! - `trial`: the trial loop; runs a batch of runs with raw logs and resumes after a kill.
 //! - `client`: one `claude -p` process per run; send a turn, get the reply and its token counts,
 //!   killed by a watchdog past its time limits.
+//! - `commit`: refuses a counted batch from any commit but the one tagged `run`.
 //! - `prompt`: the system text, the first message and the feedback a run sends.
 //! - `log`: a run's append-only raw log.
 //! - `usage`: the token caps and the running total kept in a file.
@@ -12,6 +13,7 @@
 //! - `runner`: builds a submission and judges it on a task's cases.
 
 pub mod client;
+pub mod commit;
 mod error;
 pub mod json;
 pub mod log;

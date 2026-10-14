@@ -7,13 +7,12 @@ use crate::json::Value;
 use crate::log;
 use crate::prompt::SUBMISSIONS;
 use crate::runner::Lang;
+use crate::task::PRACTICE;
 use std::collections::{BTreeMap, BTreeSet};
 use std::fs;
 use std::path::Path;
 
 const LANGS: [Lang; 3] = [Lang::Paka, Lang::Rust, Lang::TypeScript];
-/// Practice tasks never enter the verdict (M3-04).
-const PRACTICE: [&str; 2] = ["X1", "X2"];
 /// More dropped tasks than this make the verdict inconclusive (M3-03 section 1.2).
 const MAX_DROPPED: usize = 2;
 
@@ -545,4 +544,30 @@ pub fn report(root: &Path, rulings: &str, reference: Option<u64>) -> Result<Repo
         text: sections.join("\n"),
         complete,
     })
+}
+
+/// The task ids on the `counted:` and `reserve:` lines of the frozen protocol.
+fn listed(protocol: &str) -> BTreeSet<&str> {
+    protocol
+        .lines()
+        .filter_map(|l| l.strip_prefix("counted:").or(l.strip_prefix("reserve:")))
+        .flat_map(str::split_whitespace)
+        .collect()
+}
+
+/// Fails when a run folder under `root` belongs to a task the protocol lists as neither counted
+/// nor reserve (M3-18). Folders that are no run folder are left to `report`.
+pub fn check_tasks(root: &Path, protocol: &str) -> Result<(), Error> {
+    let known = listed(protocol);
+    for entry in fs::read_dir(root)? {
+        let id = entry?.file_name().to_string_lossy().into_owned();
+        if let Some(task) = id.rsplitn(3, '-').nth(2)
+            && !known.contains(task)
+        {
+            return malformed(format!(
+                "{id} is not a counted or reserve task of the protocol"
+            ));
+        }
+    }
+    Ok(())
 }

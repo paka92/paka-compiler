@@ -15,11 +15,12 @@
 
 use crate::Error;
 use crate::client::{self, Config, Reply, Run};
+use crate::commit;
 use crate::json::{self, quote};
 use crate::log::{self, Line, Log, State};
 use crate::prompt::{self, SUBMISSIONS};
 use crate::runner::{CaseResult, Lang, Report, Runner, Verdict};
-use crate::task::Task;
+use crate::task::{PRACTICE, Task};
 use crate::usage::{Ledger, Tokens};
 use std::fs;
 use std::path::{Path, PathBuf};
@@ -45,6 +46,8 @@ pub struct Setup {
     pub call_limit: Duration,
     /// Where the runs' folders go.
     pub root: PathBuf,
+    /// The checkout a counted batch must come from (see `commit`); `None` skips the check.
+    pub repo: Option<PathBuf>,
 }
 
 /// One run: a task, a language and a repetition.
@@ -62,11 +65,21 @@ impl Spec {
         let task = self.task.file_name().unwrap_or_default().to_string_lossy();
         format!("{task}-{}-{}", self.lang.name(), self.rep)
     }
+
+    fn is_practice(&self) -> bool {
+        let task = self.task.file_name().unwrap_or_default().to_string_lossy();
+        PRACTICE.contains(&&*task)
+    }
 }
 
 /// Runs every run of `specs` that has not ended, in order, and gives the tokens the batch used.
 /// Stops at the usage caps and when a run is void for the third time.
 pub fn run_batch(setup: &Setup, specs: &[Spec]) -> Result<Tokens, Error> {
+    if let Some(repo) = &setup.repo
+        && specs.iter().any(|s| !s.is_practice())
+    {
+        commit::check(repo)?;
+    }
     let before = setup.ledger.used()?;
     for spec in specs {
         settle(setup, spec)?;
