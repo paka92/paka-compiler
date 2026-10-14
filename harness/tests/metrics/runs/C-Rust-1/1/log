@@ -1,0 +1,2 @@
+{"event":"start","run":"C-Rust-1","model":"claude-sonnet-5-5","effort":"medium","system":"...","at":1000}
+{"event":"end","passed":true,"first_try":true,"submissions":1,"edits":0,"input":5000,"output":120,"cut_off":0,"at":3000}

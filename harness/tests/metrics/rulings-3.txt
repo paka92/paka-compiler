@@ -1,0 +1,5 @@
+run B-Rust-2 void harness: sandbox failure, rerun as B-Rust-3
+run A-Paka-2 tagged reference gap: the reference is silent on an empty list
+task A dropped tools and reference disagree
+task C dropped tools and reference disagree
+task D dropped toolchain defect

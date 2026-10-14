@@ -111,3 +111,40 @@ Resume: run the same batch again. A run whose last attempt logged `end` is skipp
 whose log has neither `end` nor `void`, or ends in a torn line, was cut short by a kill: its
 process group is killed if its process still runs in the attempt's folder, the log is closed as
 void, and the run goes on with its next attempt.
+
+## Metrics
+
+`cargo run --release -p harness --bin metrics -- <runs-root> <rulings-file>` turns the logs under
+a runs root (the folders of "Trial loop") and a rulings file into the three metrics and the
+verdict of M3-02. A run counts through the `end` line of its last attempt that ended; void
+attempts and runs with no ended attempt are ignored, and the latter are listed at the end. Per
+language, over all counted runs not ruled out and not in a dropped task:
+
+```
+first-try  share of runs whose submission 1 passed
+edits      mean edits per run (8 for a run that never passed, as the log says)
+output     sum of output tokens
+```
+
+It prints these per language, per task (every task, dropped ones included), the verdict, and
+two tables marked "not the verdict": nothing dropped, and tagged runs removed. The verdict
+compares Paka with Rust: first-try gap held up to 10 points, close up to 20, lost above; edits
+gap 0.5 and 1.0; token ratio 1.7 and 2.0. More than 2 dropped tasks gives `inconclusive`; else
+any metric lost gives `stop`, all three held `go`, anything else `inconclusive`. Comparisons
+use whole numbers, so a gap exactly on a line is held or close, never decided by rounding.
+
+The rulings file has one ruling per line, blank lines allowed; the words after the third are a
+free reason:
+
+```
+run G2-Rust-1 void harness: sandbox failure
+run N2-Paka-3 tagged reference gap: silent on the empty list
+task F1 dropped tools and reference disagree
+```
+
+- `void`: the run is left out of every table.
+- `tagged`: the run counts in the verdict and is left out of the tagged table.
+- `dropped`: every run of the task, in all languages, is left out of the verdict tables.
+
+A run is named by its folder, `<task>-<language>-<rep>`. A ruling naming no run or task, or any
+other line, is an error. The fixture is in `tests/metrics`.
