@@ -658,6 +658,10 @@ and `status` (a warning is a diagnostic line, compared byte for byte).
 | the light program under `check` | `unused_name_light_check` |
 | a `for` name and a pattern name that are never used (M2-02 §5) | `unused_name_for_and_pattern` |
 | a `var` that is only assigned counts as used (M2-02 §5) | `unused_name_assigned_counts` |
+| an `inout` parameter that is only written is used (M2-02 §5) | `unused_name_inout_written` |
+| a use in a sibling block, or of the function a local hides, does not use the local | `unused_name_sibling_block`, `unused_name_shadowing` |
+| a local of an example warns, its definition the example | `unused_name_example_local` |
+| under `--json` warnings and notes are one object per line in position order (M2-06 §1.5) | `unused_name_json_stream` |
 
 ### Covered elsewhere
 
@@ -855,6 +859,7 @@ builds the core form.
 | one letter bound twice to different types | `generics_append_wrong_item`, `generics_unwrap_or_wrong_fallback` |
 | accepted walk: expected type, argument, assigned to a typed place | `generics_walk_accepted` |
 | a joined list type that is still open (`[None, None]`): accepted where a type is given, `cannot-infer` where none is, at the list's `[` (M2-02 §5) | `generics_open_list_annotated`, `generics_open_list_unannotated`, `generics_open_list_argument` |
+| an open map literal is `cannot-infer` at its `[` (M2-02 §5) | `generics_open_map_unannotated` |
 
 ### types/ M2-09 §1.7 to §1.11: function values
 

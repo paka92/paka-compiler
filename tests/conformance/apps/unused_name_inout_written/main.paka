@@ -1,0 +1,19 @@
+enum Msg { Start }
+
+fn reset(n: inout Int) {
+  n = 0
+}
+
+fn update(msg: Msg) -> List<Effect<Msg>> {
+  var count = 3
+  reset(&count)
+  match msg {
+    Start => [Print("{count}"), Exit]
+  }
+}
+
+app apps {
+  start: Start
+  update: update
+  grants: [Console]
+}

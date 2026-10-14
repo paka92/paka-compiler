@@ -69,14 +69,27 @@ fn first_text_line_is_what_run_prints() {
 fn accepted_program_prints_nothing_and_exits_0() {
     let used = "enum Msg { Start }\n\nfn update(m: Msg) -> List<Effect<Msg>> {\n  match m {\n    \
                 Start => [Exit]\n  }\n}\n";
-    for (name, source) in [("empty", ""), ("used", used)] {
-        let dir = program_in(name, source);
+    let scratch = program_in("used", used);
+    let cases = Path::new(env!("CARGO_MANIFEST_DIR")).join("../tests/cases/check");
+    for dir in [scratch.path(""), cases.join("empty_file")] {
         for flags in [&[][..], &["--json"]] {
-            let out = paka(&dir.path(""), &[&["check", "main.paka"], flags].concat());
-            assert_eq!(out.status.code(), Some(0), "{name}");
-            assert!(out.stdout.is_empty() && out.stderr.is_empty(), "{name}");
+            let out = paka(&dir, &[&["check", "main.paka"], flags].concat());
+            assert_eq!(out.status.code(), Some(0), "{dir:?}");
+            assert!(out.stdout.is_empty() && out.stderr.is_empty(), "{dir:?}");
         }
     }
+}
+
+/// M2-15 section 4: `check/no_app` checks, with the warning for its `m` (M2-02 section 5).
+#[test]
+fn no_app_checks_with_the_warning_for_m() {
+    let dir = Path::new(env!("CARGO_MANIFEST_DIR")).join("../tests/cases/check/no_app");
+    let text = "main.paka:3:11: warning[unused-name]: m is never used\n  definition: update\n  \
+                bytes: 30..31\n  text: \"m\"\n";
+    let out = paka(&dir, &["check", "main.paka"]);
+    assert_eq!(out.status.code(), Some(0));
+    assert!(out.stdout.is_empty());
+    assert_eq!(stderr(&out), text);
 }
 
 #[test]

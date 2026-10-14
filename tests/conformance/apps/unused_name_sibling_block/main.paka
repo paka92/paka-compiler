@@ -1,0 +1,23 @@
+enum Msg { Start }
+
+fn pick(flag: Bool) -> Int {
+  if flag {
+    let x = 1
+    x
+  } else {
+    let x = 2
+    0
+  }
+}
+
+fn update(msg: Msg) -> List<Effect<Msg>> {
+  match msg {
+    Start => [Print("{pick(true)}"), Exit]
+  }
+}
+
+app apps {
+  start: Start
+  update: update
+  grants: [Console]
+}

@@ -725,7 +725,7 @@ fn a_cannot_infer_text_fills_the_letters_that_are_known() {
         (
             "cannot-infer",
             "= ^[None, None",
-            "cannot infer the type of ..; write it: let x: List<Option<List<T>>> = ...",
+            "cannot infer the type of [..]; write it: let x: List<Option<List<T>>> = ...",
             unit(&["_ = [None, None, Some([])]"]),
         ),
         (
@@ -737,8 +737,26 @@ fn a_cannot_infer_text_fills_the_letters_that_are_known() {
         (
             "cannot-infer",
             "len(^[None",
-            "cannot infer the type of ..; write it: let x: List<Option<T>> = ...",
+            "cannot infer the type of [..]; write it: let x: List<Option<T>> = ...",
             unit(&["_ = len([None, None])"]),
+        ),
+        (
+            "cannot-infer",
+            "= ^[\"a\"",
+            "cannot infer the type of [..]; write it: let x: Map<String, Option<T>> = ...",
+            unit(&["_ = [\"a\": None, \"b\": None]"]),
+        ),
+        (
+            "cannot-infer",
+            "match ^[None]",
+            "cannot infer the type of [..]; match a value with a known type",
+            unit(&["match [None] {", "  _ => {}", "}"]),
+        ),
+        (
+            "cannot-infer",
+            "true { ^None }",
+            "cannot infer the type of None; write it: let x: Option<T> = ...",
+            unit(&["_ = if true { None } else { None }"]),
         ),
         (
             "cannot-infer",

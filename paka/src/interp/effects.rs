@@ -191,6 +191,7 @@ mod tests {
     use std::os::unix::fs::PermissionsExt;
     use std::path::PathBuf;
 
+    #[cfg(target_os = "linux")]
     #[test]
     fn a_print_to_a_full_device_is_no_space_left_on_device() {
         let full = File::options().write(true).open("/dev/full").unwrap();
@@ -246,7 +247,9 @@ mod tests {
         let ignored = File::open(&path).is_ok(); // a process that ignores permissions
         let read = Host(io::sink()).read(path.to_str().unwrap());
         fs::remove_file(&path).unwrap();
-        if !ignored {
+        if ignored {
+            eprintln!("skipped: this process ignores file permissions");
+        } else {
             assert_eq!(read, Err("no permission"));
         }
     }

@@ -1,0 +1,3 @@
+{"kind":"unused-name","definition":"first","message":"b is never used","file":"main.paka","start":37,"end":38,"line":3,"column":18,"text":"b","expected":null,"found":null,"fix":null}
+{"kind":"hole","definition":"second","message":"??two takes Int","file":"main.paka","start":84,"end":89,"line":8,"column":3,"text":"??two","expected":null,"found":null,"fix":null}
+{"kind":"unused-name","definition":"third","message":"z is never used","file":"main.paka","start":119,"end":120,"line":12,"column":7,"text":"z","expected":null,"found":null,"fix":null}

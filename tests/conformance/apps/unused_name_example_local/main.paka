@@ -1,0 +1,22 @@
+enum Msg { Start }
+
+fn double(n: Int) -> Int {
+  n * 2
+}
+
+example doubles {
+  let spare = 1
+  double(2) == 4
+}
+
+fn update(msg: Msg) -> List<Effect<Msg>> {
+  match msg {
+    Start => [Print("{double(2)}"), Exit]
+  }
+}
+
+app apps {
+  start: Start
+  update: update
+  grants: [Console]
+}
