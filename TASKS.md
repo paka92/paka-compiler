@@ -691,31 +691,39 @@ or merged during review. Ids with a letter were added during review.
 
 ### M3-01 · L5 · Decide what one run is: prompt, tools, feedback and counting rules
 
+- status: done
 - needs: nothing
 - flags: decision, owner
 - done when: Owner approves a written proposal with alternatives fixing prompt, tools, test feedback, edit, token and pass definitions, budgets, program shape and per-language build flags. It states that one edit replaces the whole file in all three languages and that Paka's per-definition tools are not measured, and rules whether the Paka reference's prompt tokens count toward the token metric.
 - why this level: Each counting rule can tilt the result toward one language, and none can change once runs start.
+- note: Done: approved by the owner on 2026-10-14; see docs/decisions/M3-01.md.
 
 ### M3-02 · L5 · Decide metric formulas, losing margin, model, repetitions and usage cap
 
+- status: done
 - needs: M3-01
 - flags: decision, owner
 - done when: Owner approves exact formulas for the three metrics, treatment of never-passing runs, repetitions, model id, usage cap, and the go, stop or inconclusive rule.
 - why this level: The margin and never-passing-run handling decide whether the project stops; weak statistics make the verdict noise.
+- note: Done: approved by the owner on 2026-10-14; see docs/decisions/M3-02.md.
 
 ### M3-03 · L5 · Decide rules for reference defects, task swaps and late changes
 
+- status: done
 - needs: M3-01, M3-02
 - flags: decision, owner
 - done when: Owner approves written rules for reference defects, toolchain defects, harness faults, tasks Paka cannot express, saturated tasks and amendments, naming who rules on each. The saturation rule that the calibration pass (M3-19b) applies is written here.
 - why this level: Must foresee ways results get bent after the fact and close each without knowing the outcome.
+- note: Done: approved by the owner on 2026-10-14; see docs/decisions/M3-03.md.
 
 ### M3-04 · L5 · Choose counted, reserve and practice tasks hard enough to separate languages
 
+- status: done
 - needs: M3-01, M3-02, M3-03
 - flags: decision, owner
 - done when: Owner approves a list of counted, reserve and practice tasks, each with an outline, what it stresses, and why Rust or TypeScript may fail. Each task names the M2-01 task class it falls in; a task outside every class is listed as such with the owner's reason.
 - why this level: Easy tasks separate nothing; tasks suited to Paka's strengths bias the verdict; difficulty must be predicted unseen.
+- note: Done: approved by the owner on 2026-10-14; see docs/decisions/M3-04.md.
 
 ### M3-05 · L2 · Pin and install the TypeScript compiler after the owner allows it
 
