@@ -48,23 +48,28 @@ fn last_of<'x, 'a>(arm: &'x Arm<'a>) -> Option<&'x Stmt<'a>> {
     }
 }
 
-/// The values that end the branches of an `if` or the arms of a `match`; none for others.
-pub(super) fn values<'x>(e: &'x Expr<'x>) -> Vec<&'x Expr<'x>> {
+/// The value that ends each branch of an `if` or arm of a `match`, in order, when it has one;
+/// none for another expression.
+pub(super) fn ends<'x>(e: &'x Expr<'x>) -> Vec<Option<&'x Expr<'x>>> {
     let lasts: Vec<_> = match &e.kind {
         K::If {
             branches,
             otherwise,
         } => (branches.iter().map(|(_, b)| b).chain(otherwise))
-            .filter_map(|b| b.stmts.last())
+            .map(|b| b.stmts.last())
             .collect(),
-        K::Match { arms, .. } => arms.iter().filter_map(last_of).collect(),
+        K::Match { arms, .. } => arms.iter().map(last_of).collect(),
         _ => return Vec::new(),
     };
-    let value = |s: &'x Stmt<'x>| match &s.kind {
+    let value = |s: Option<&'x Stmt<'x>>| match &s?.kind {
         S::Expr(x) => Some(x),
         _ => None,
     };
-    lasts.into_iter().filter_map(value).collect()
+    lasts.into_iter().map(value).collect()
+}
+
+pub(super) fn values<'x>(e: &'x Expr<'x>) -> Vec<&'x Expr<'x>> {
+    ends(e).into_iter().flatten().collect()
 }
 
 impl Cx<'_, '_> {
@@ -210,22 +215,47 @@ impl Cx<'_, '_> {
         Ok(())
     }
 
-    /// The part of `e` that lacks a type of its own: an argument, an item or a branch that is
-    /// still open.
-    pub(super) fn needs<'x>(&self, mut e: &'x Expr<'x>) -> &'x Expr<'x> {
-        let open = |x: &&Expr| self.info.get(&(x.at, x.len)).is_some_and(|&t| self.free(t));
-        loop {
-            let inner = match &e.kind {
-                K::Call(_, args) => args.iter().map(|a| &a.value).find(open),
-                K::List(items) => items.iter().find(open),
-                K::Map(pairs) => pairs.iter().flat_map(|(k, v)| [k, v]).find(open),
-                _ => values(e).into_iter().find(open),
-            };
-            match inner {
-                Some(x) => e = x,
-                None => return e,
+    pub(super) fn is_open(&self, e: &Expr) -> bool {
+        self.info.get(&span(e)).is_some_and(|&t| self.free(t))
+    }
+
+    /// The part of `e` that lacks a type of its own.
+    pub(super) fn needs<'x>(&self, e: &'x Expr<'x>) -> &'x Expr<'x> {
+        self.needs_in([e], e)
+    }
+
+    /// The part of `roots` that lacks a type of its own: a hole if any, else the first part, the
+    /// deepest, that is open and holds no open part. `fallback` when there is none.
+    pub(super) fn needs_in<'x>(
+        &self,
+        roots: impl IntoIterator<Item = &'x Expr<'x>>,
+        fallback: &'x Expr<'x>,
+    ) -> &'x Expr<'x> {
+        let mut stack: Vec<_> = roots.into_iter().collect();
+        stack.reverse();
+        let mut deepest = None;
+        while let Some(e) = stack.pop() {
+            let inner = self.open_parts(e);
+            match (&e.kind, inner.is_empty()) {
+                (K::Hole(_), _) => return e,
+                (_, true) => _ = deepest.get_or_insert(e),
+                _ => stack.extend(inner.into_iter().rev()),
             }
         }
+        deepest.unwrap_or(fallback)
+    }
+
+    /// The parts of `e` that are open: arguments, items, branches and operands.
+    fn open_parts<'x>(&self, e: &'x Expr<'x>) -> Vec<&'x Expr<'x>> {
+        let parts: Vec<&Expr> = match &e.kind {
+            K::Call(_, args) => args.iter().map(|a| &a.value).collect(),
+            K::List(items) => items.iter().collect(),
+            K::Map(pairs) => pairs.iter().flat_map(|(k, v)| [k, v]).collect(),
+            K::Unary(_, x) | K::Field(x, _) | K::Try(x, _) => vec![x],
+            K::Binary(_, _, x, y) | K::Index(x, y) | K::Range(x, y) => vec![x, y],
+            _ => values(e),
+        };
+        parts.into_iter().filter(|x| self.is_open(x)).collect()
     }
 
     /// The element type of the list a `for` goes over.
@@ -293,8 +323,7 @@ impl Cx<'_, '_> {
             return Err(self.fail_at(e, "if-needs-else", "an if used as a value needs an else"));
         }
         let bool = self.prim("Bool");
-        let n = branches.len() + usize::from(otherwise.is_some());
-        let joined = self.branches(e, n, used, |cx, i, u, again| match branches.get(i) {
+        let joined = self.branches(e, &ends(e), used, |cx, i, u, again| match branches.get(i) {
             Some((cond, block)) => {
                 if !again {
                     cx.expect(cond, bool)?;

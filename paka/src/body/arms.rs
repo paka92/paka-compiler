@@ -2,6 +2,7 @@
 
 use super::branch::Joined;
 use super::pattern::{Key, Seen, Space};
+use super::stmt::ends;
 use super::text::{called, plain};
 use super::{Cx, Out, Res, Use, span};
 use crate::ast::{Arm, ArmBody, Expr, ExprKind as K, Stmt, StmtKind as S};
@@ -26,11 +27,15 @@ impl Cx<'_, '_> {
             Err(d) => return Err(self.uncovered(e, subject, arms).unwrap_or(d)),
         };
         if self.free(ty) {
+            let part = self.needs(subject);
+            if matches!(part.kind, K::Hole(_)) {
+                return Err(self.cannot_infer(part));
+            }
             let message = format!(
                 "cannot infer the type of {}; match a value with a known type",
-                called(subject)
+                called(part)
             );
-            return Err(self.fail(plain(self.needs(subject)), "cannot-infer", message));
+            return Err(self.fail(plain(part), "cannot-infer", message));
         }
         let Some(sp) = self.space(ty) else {
             let want = "Int, String, Bool or an enum";
@@ -39,7 +44,7 @@ impl Cx<'_, '_> {
         let keys = self.keys(sp, ty, arms);
         self.covers(e, sp, &keys)?;
         let (mut keys, mut seen) = (keys.into_iter(), Seen::new());
-        let joined = self.branches(e, arms.len(), used, |cx, i, u, again| {
+        let joined = self.branches(e, &ends(e), used, |cx, i, u, again| {
             if !again {
                 for p in &arms[i].patterns {
                     let key = keys.next().unwrap_or(Ok(None))?;

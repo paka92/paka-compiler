@@ -73,7 +73,7 @@ impl Cx<'_, '_> {
         match self.expr(e, Some(want))? {
             Out::Val(ty) if self.types.fits(ty, want) => {
                 if self.free(ty) && !self.free(want) {
-                    self.settle(e, want);
+                    self.settle(e, want)?;
                     return Ok(Out::Val(want));
                 }
                 Ok(Out::Val(ty))
@@ -110,7 +110,8 @@ impl Cx<'_, '_> {
             K::Str(parts) => {
                 for part in parts {
                     if let StrPart::Expr(x) = part {
-                        let ty = self.expr_val(x, None)?;
+                        let out = self.expr(x, None)?;
+                        let ty = self.fixed(out, x)?;
                         self.text_of(x, ty)?;
                     }
                 }
@@ -181,10 +182,25 @@ impl Cx<'_, '_> {
         Err(d.with_types(&"Int, Bool or String", &shown))
     }
 
+    /// The type of `from`, a position that fixes no type: an open value there is `cannot-infer`.
+    fn fixed(&mut self, out: Out, from: &Expr) -> Res<Ty> {
+        let ty = self.val(out, from)?;
+        match out {
+            Out::Never => Err(self.open_value(from, None)),
+            _ if self.free(ty) => Err(self.open_value(from, None)),
+            _ => Ok(ty),
+        }
+    }
+
     fn link(&mut self, e: &Expr, from: &Expr, cur: Out, want: Option<Ty>) -> Res<Out> {
-        let ty = self.val(cur, from)?;
+        let ty = match &e.kind {
+            K::Field(..) | K::Index(..) | K::Call(..) | K::Unary(UnOp::Neg, _) => {
+                self.fixed(cur, from)?
+            }
+            _ => self.val(cur, from)?,
+        };
         match &e.kind {
-            K::Unary(op, _) => self.unary(*op, e, ty),
+            K::Unary(op, _) => self.unary(*op, e, from, ty),
             K::Binary(op, at, _, r) => self.binary(*op, *at, from, ty, r),
             K::Range(_, r) => self.range(from, ty, r),
             K::Index(_, i) => self.index(from, ty, i),
@@ -195,28 +211,31 @@ impl Cx<'_, '_> {
         }
     }
 
-    /// `from..<r`: a hole on one side takes the type of the other.
+    /// `from..<r`: both sides are Int, so an open one takes Int.
     fn range(&mut self, from: &Expr, ty: Ty, r: &Expr) -> Res<Out> {
         let int = self.int();
-        let hole = matches!(from.kind, K::Hole(_)) && self.free(ty);
-        if hole && matches!(r.kind, K::Hole(_)) {
-            return Err(self.cannot_infer(from));
-        }
-        if hole {
-            self.info.insert(span(from), int);
+        self.allow(span(from), ty, &["Int"], "Int")?;
+        let item = if self.free(ty) {
+            self.settle(from, int)?;
+            int
         } else {
-            self.allow(span(from), ty, &["Int"], "Int")?;
-        }
+            ty
+        };
         self.expect(r, int)?;
-        Ok(Out::Val(
-            self.types.named("List", &[if hole { int } else { ty }]),
-        ))
+        Ok(Out::Val(self.types.named("List", &[item])))
     }
 
-    fn unary(&mut self, op: UnOp, e: &Expr, ty: Ty) -> Res<Out> {
+    fn unary(&mut self, op: UnOp, e: &Expr, from: &Expr, ty: Ty) -> Res<Out> {
         match op {
             UnOp::Neg => self.allow((e.at, 1), ty, &["Int", "Float"], "Int or Float")?,
-            UnOp::Not => self.allow((e.at, 1), ty, &["Bool"], "Bool")?,
+            UnOp::Not => {
+                self.allow((e.at, 1), ty, &["Bool"], "Bool")?;
+                if self.free(ty) {
+                    let bool = self.prim("Bool");
+                    self.settle(from, bool)?;
+                    return Ok(Out::Val(bool));
+                }
+            }
         }
         Ok(Out::Val(ty))
     }
@@ -231,8 +250,8 @@ impl Cx<'_, '_> {
         self.operands((at, op.text().len()), op, (left, lt), (right, rt))?;
         match (self.free(lt), self.free(rt)) {
             (true, true) => return Err(self.open_value(left, None)),
-            (true, false) => self.settle(left, rt),
-            (false, true) => self.settle(right, lt),
+            (true, false) => self.settle(left, rt)?,
+            (false, true) => self.settle(right, lt)?,
             _ => {}
         }
         let arithmetic = matches!(
@@ -450,7 +469,10 @@ impl Cx<'_, '_> {
                 self.arg(ty, "Option", 0),
             )
         } else if self.is_var(ty) {
-            return Ok(Out::Val(ty));
+            return match self.free(ty) {
+                true => Err(self.open_value(from, None)),
+                false => Ok(Out::Val(ty)),
+            };
         } else {
             let (shown, value) = (self.types.show(ty), render(from));
             let message = format!("? needs an Option or Result; {value} is {shown}; drop the ?");
@@ -459,7 +481,12 @@ impl Cx<'_, '_> {
             );
         };
         if agrees {
-            return Ok(Out::Val(value.unwrap_or(ty)));
+            self.fill_error(from, ty, enclosing)?;
+            let value = value.unwrap_or(ty);
+            if self.free(value) {
+                return Err(self.open_value(from, None));
+            }
+            return Ok(Out::Val(value));
         }
         let (found, returns) = match enclosing {
             Some(r) => (
@@ -479,6 +506,22 @@ impl Cx<'_, '_> {
             format!("? passes {up} up, but {name} {returns}; {make}")
         };
         Err((self.fail(at, "type-mismatch", message)).with_types(&want, &found))
+    }
+
+    /// The operand of `?` takes the function's error type where its own is open: `Ok(1)?` in a
+    /// function that returns `Result<Int, String>` is a `Result<Int, String>`.
+    fn fill_error(&mut self, from: &Expr, ty: Ty, enclosing: Option<Ty>) -> Res {
+        let theirs = enclosing.and_then(|r| self.arg(r, "Result", 1));
+        let (Some(value), Some(error)) = (self.arg(ty, "Result", 0), theirs) else {
+            return Ok(());
+        };
+        let filled = self.types.named("Result", &[value, error]);
+        match self.free(filled) {
+            true => drop(self.info.insert(span(from), filled)),
+            false if self.free(ty) => self.settle(from, filled)?,
+            false => {}
+        }
+        Ok(())
     }
 
     fn list(&mut self, e: &Expr, items: &[Expr], want: Option<Ty>) -> Res<Ty> {

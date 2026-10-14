@@ -3,24 +3,31 @@
 
 use super::call::Bound;
 use super::stmt::values;
-use super::{Cx, span};
+use super::{Cx, Res, span};
 use crate::ast::{Arg, Expr, ExprKind as K};
 use crate::resolve::Binding;
 use crate::sig::Ty;
 
 impl Cx<'_, '_> {
-    /// `e` has the type `ty`; each open part is visited once, by a loop.
-    pub(super) fn settle(&mut self, e: &Expr, ty: Ty) {
+    /// `e` has the type `ty`; each open part is visited once, by a loop. A part that cannot be
+    /// of the type its place gives it is a mismatch.
+    pub(super) fn settle(&mut self, e: &Expr, ty: Ty) -> Res {
         let mut stack = vec![(e, ty)];
         while let Some((e, ty)) = stack.pop() {
             self.info.insert(span(e), ty);
             for (part, t) in self.parts(e, ty) {
-                let open = self.info.get(&span(part)).is_some_and(|&p| self.free(p));
-                if open && !self.free(t) {
+                let Some(&had) = self.info.get(&span(part)).filter(|&&p| self.free(p)) else {
+                    continue;
+                };
+                if !self.types.fits(had, t) {
+                    return Err(self.mismatch_at(part, t, had));
+                }
+                if !self.free(t) {
                     stack.push((part, t));
                 }
             }
         }
+        Ok(())
     }
 
     /// The parts of `e` whose types follow from its type `ty`.

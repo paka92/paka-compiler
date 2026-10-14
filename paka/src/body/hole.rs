@@ -28,7 +28,11 @@ impl Cx<'_, '_> {
     /// `cannot-infer` at the part of `e` that needs the type, `e` being open where nothing will fix
     /// it. A hole names itself; else the text names the local `e` is the value of, or that part.
     pub(super) fn open_value(&self, e: &Expr, local: Option<(&str, &str, Ty)>) -> Diagnostic {
-        let part = self.needs(e);
+        self.open_part(self.needs(e), local)
+    }
+
+    /// `cannot-infer` at `part`, which `needs` chose.
+    pub(super) fn open_part(&self, part: &Expr, local: Option<(&str, &str, Ty)>) -> Diagnostic {
         if matches!(part.kind, K::Hole(_)) {
             return self.cannot_infer(part);
         }

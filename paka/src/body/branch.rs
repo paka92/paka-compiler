@@ -1,7 +1,8 @@
 //! Branches that give one value, in `if`, `match` and the items of a list or a map: the first
-//! branch with a type of its own gives it to the others, whatever the order.
+//! branch with a type of its own gives it to the others, whatever the order. Branches that are
+//! all open share the type they join to.
 
-use super::{Cx, Out, Res, Use};
+use super::{Cx, Out, Res, Use, span};
 use crate::ast::{Expr, ExprKind as K};
 use crate::sig::Ty;
 
@@ -13,27 +14,37 @@ pub(super) struct Joined {
 }
 
 impl Cx<'_, '_> {
-    /// Checks the `n` branches of `e` in order. `run(cx, i, used, again)` checks branch `i`;
-    /// `again` is set when a branch before the one that gave the type is checked a second time.
+    /// Checks the branches of `e` in order, `ends` being the value that ends each. `run(cx, i,
+    /// used, again)` checks branch `i`; `again` is set when a branch before the one that gave the
+    /// type is checked a second time.
     pub(super) fn branches(
         &mut self,
         e: &Expr,
-        n: usize,
+        ends: &[Option<&Expr>],
         used: Use,
         mut run: impl FnMut(&mut Self, usize, Use, bool) -> Res<Out>,
     ) -> Res<Joined> {
         let mut carrier = used.want().filter(|&w| !self.free(w));
-        let (mut exp, mut open, mut first, mut leaves) = (used, Vec::new(), None, true);
-        for i in 0..n {
+        let (mut exp, mut open, mut quiet, mut leaves) = (used, Vec::new(), None, true);
+        let mut joined: Option<Ty> = None;
+        for (i, end) in ends.iter().enumerate() {
             let out = run(self, i, exp, false)?;
             leaves &= matches!(out, Out::Never);
             let Out::Val(t) = out else { continue };
-            first.get_or_insert(t);
             let silent = self.is_var(t) && !self.free(t);
+            if silent {
+                quiet.get_or_insert(t);
+            }
             if carrier.is_some() || silent {
                 continue;
             }
             if self.free(t) {
+                joined = Some(match joined {
+                    None => t,
+                    Some(j) => {
+                        (self.join(j, t)).ok_or_else(|| self.mismatch_at(end.unwrap_or(e), j, t))?
+                    }
+                });
                 open.push(i);
                 continue;
             }
@@ -43,20 +54,25 @@ impl Cx<'_, '_> {
                 run(self, j, exp, true)?;
             }
         }
-        if carrier.is_none() && first.is_some() {
+        if carrier.is_none() && joined.is_some() {
             let hole = self.needs(e);
             if matches!(hole.kind, K::Hole(_)) {
                 return Err(self.cannot_infer(hole));
             }
         }
+        if let (None, Some(j)) = (carrier.or(quiet), joined) {
+            for x in open.iter().filter_map(|&i| ends[i]) {
+                self.info.insert(span(x), j);
+            }
+        }
         Ok(Joined {
-            ty: carrier.or(first),
+            ty: carrier.or(quiet).or(joined),
             leaves,
         })
     }
 
-    /// The type shared by `n` items of a list or a map, `hint` when there are none. The hint is
-    /// what the first item is typed with; the whole decides whether it holds.
+    /// The type shared by `n` items of a list or a map, `hint` when there are none. Each item is
+    /// checked against the hint until one has a type of its own, then against that type.
     pub(super) fn items<'x>(
         &mut self,
         e: &Expr,
@@ -64,7 +80,8 @@ impl Cx<'_, '_> {
         item: impl Fn(usize) -> &'x Expr<'x>,
         hint: Option<Ty>,
     ) -> Res<Option<Ty>> {
-        let joined = self.branches(e, n, Use::Value(None), |cx, i, u, _| {
+        let ends: Vec<_> = (0..n).map(|i| Some(item(i))).collect();
+        let joined = self.branches(e, &ends, Use::Value(None), |cx, i, u, _| {
             match (u.want(), hint) {
                 (None, Some(h)) => {
                     let out = cx.expr(item(i), Some(h))?;

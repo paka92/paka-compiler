@@ -69,7 +69,11 @@ impl<'a> Cx<'_, 'a> {
             unreachable!("a bare name is a name")
         };
         if let Some(result) = sig.result.filter(|_| variant && sig.params.is_empty()) {
-            return Ok(Out::Val(result));
+            let mut bound = Bound::new();
+            if let Some(w) = want {
+                self.bind(result, w, &mut bound);
+            }
+            return Ok(Out::Val(self.subst(result, &bound)));
         }
         let kind = if variant { Kind::Variant } else { Kind::Fn };
         let callee = Callee {
@@ -369,7 +373,8 @@ impl<'a> Cx<'_, 'a> {
     }
 
     /// Types the arguments, binding the row's letters first from them, then from `want`; the open
-    /// ones are checked last, with the bindings put in.
+    /// ones are checked last, with the bindings put in. Of several arguments that do not fit, the
+    /// first one is reported.
     fn walk(
         &mut self,
         c: &Callee,
@@ -379,6 +384,7 @@ impl<'a> Cx<'_, 'a> {
         want: Option<Ty>,
     ) -> Res<Out> {
         let (mut bound, mut open, picked) = (Bound::new(), Vec::new(), first.is_some());
+        let mut misfit = None;
         for (i, (arg, param)) in args.iter().zip(&sig.params).enumerate() {
             let hint = self.subst(param.ty, &bound);
             let later = i > 0 || c.kind == Kind::Variant;
@@ -395,7 +401,8 @@ impl<'a> Cx<'_, 'a> {
                 self.types.fits(got, hint)
             };
             if !right {
-                return Err(self.arg_mismatch(c, picked, args, i, (hint, got)));
+                misfit = Some((i, hint, got));
+                break;
             }
             if !settled {
                 open.push((i, got));
@@ -406,17 +413,26 @@ impl<'a> Cx<'_, 'a> {
             self.bind(r, w, &mut bound);
         }
         for (i, got) in open {
-            let (value, hint) = (&args[i].value, self.subst(sig.params[i].ty, &bound));
+            let (param, value) = (sig.params[i].ty, &args[i].value);
+            let hint = self.subst(param, &bound);
             if !self.types.fits(got, hint) {
                 return Err(self.arg_mismatch(c, picked, args, i, (hint, got)));
             }
-            if !self.free(hint) {
-                self.settle(value, hint);
-            } else if self.stuck(sig, sig.params[i].ty, &bound) {
-                return Err(self.open_value(value, None));
-            } else {
-                self.bind_open(hint, got, &mut bound);
+            if misfit.is_some() {
+                continue;
             }
+            if !self.free(hint) {
+                self.settle(value, hint)?;
+            } else if self.stuck(sig, param, &bound) {
+                self.info.insert(span(value), hint);
+                let open = args.iter().map(|a| &a.value).filter(|v| self.is_open(v));
+                return Err(self.open_part(self.needs_in(open, value), None));
+            } else {
+                self.unify(param, got, &mut bound);
+            }
+        }
+        if let Some((i, hint, got)) = misfit {
+            return Err(self.arg_mismatch(c, picked, args, i, (hint, got)));
         }
         Ok(match sig.result {
             Some(r) => Out::Val(self.subst(r, &bound)),
@@ -571,25 +587,59 @@ impl<'a> Cx<'_, 'a> {
         found
     }
 
-    /// Binds a letter that only an open argument shows to what is known of it, so a message
-    /// can show the call's type: `list_of([], count: 3)` is a `List<List<T>>`.
-    fn bind_open(&self, hint: Ty, got: Ty, bound: &mut Bound) {
-        match self.types.node(hint) {
-            Node::Var(c) if !self.is_var(got) => {
-                bound.entry(*c).or_insert(got);
+    /// Binds the row's letters in `row` to what the open `found` shows of them, so a message can
+    /// show the call's type: `list_of([], count: 3)` is a `List<List<T>>`. A letter met again
+    /// keeps what both show. Only the row's letters are bound, never a letter of `found`, so a
+    /// letter of a literal that shares a name with one of the row is no alias.
+    fn unify(&self, row: Ty, found: Ty, bound: &mut Bound) {
+        match (self.types.node(row), self.types.node(found)) {
+            (Node::Var(_), Node::Var(d)) if *d != '_' => {}
+            (Node::Var(c), _) => {
+                let both = bound.get(c).and_then(|&old| self.join(old, found));
+                bound.insert(*c, both.unwrap_or(found));
             }
-            _ => {
-                self.bind(hint, got, bound);
+            (Node::Name(a, x), Node::Name(b, y)) if a == b && x.len() == y.len() => {
+                (x.iter().zip(y.iter())).for_each(|(&r, &f)| self.unify(r, f, bound));
             }
+            _ => {}
+        }
+    }
+
+    /// The type two open types share, the one that shows more of it; none when they differ. The
+    /// letters of neither are filled from the other, so `Ok(1)` and `Err("x")` stay open.
+    pub(super) fn join(&self, a: Ty, b: Ty) -> Option<Ty> {
+        self.types
+            .fits(a, b)
+            .then(|| if self.shows(b, a) { b } else { a })
+    }
+
+    /// Whether `specific` shows a type wherever `general` has a letter.
+    fn shows(&self, specific: Ty, general: Ty) -> bool {
+        match (self.types.node(general), self.types.node(specific)) {
+            (Node::Var(_), _) => true,
+            (Node::Name(a, x), Node::Name(b, y)) => {
+                a == b
+                    && x.len() == y.len()
+                    && x.iter().zip(y.iter()).all(|(&g, &s)| self.shows(s, g))
+            }
+            (a, b) => a == b,
         }
     }
 
     /// Matches `found` against the shape `row`, binding its free letters; false when a letter
-    /// meets two types or the shapes differ. A part that is not yet known binds nothing.
+    /// meets two types or the shapes differ. A part that is not yet known binds nothing; one that
+    /// cannot be known (`_`) binds to `_`, so nothing is said about it twice.
     pub(super) fn bind(&self, row: Ty, found: Ty, bound: &mut Bound) -> bool {
         match (self.types.node(row), self.types.node(found)) {
-            (Node::Var(c), _) if *c == '_' || self.is_var(found) || self.free(found) => true,
-            (Node::Var(c), _) => *bound.entry(*c).or_insert(found) == found,
+            (Node::Var('_'), _) => true,
+            (Node::Var(_), _) if self.free(found) => true,
+            (Node::Var(c), _) => self.types.fits(*bound.entry(*c).or_insert(found), found),
+            (_, Node::Var('_')) => {
+                self.letters(row).into_iter().for_each(|c| {
+                    bound.entry(c).or_insert(found);
+                });
+                true
+            }
             (_, Node::Var(_)) => true,
             (Node::Name(a, x), Node::Name(b, y)) => a == b && self.bind_all(x, y, bound),
             (Node::Fn(p, r), Node::Fn(q, s)) => {

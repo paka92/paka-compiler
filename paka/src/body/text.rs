@@ -50,6 +50,7 @@ fn atom(e: &Expr) -> String {
     match &e.kind {
         K::Name(text) | K::Int(text) | K::Float(text) => text.to_string(),
         K::Bool(b) => b.to_string(),
+        K::Hole(name) => format!("??{name}"),
         K::Inout(x) => format!("&{}", render(x)),
         K::List(items) if items.is_empty() => "[]".to_string(),
         K::Map(pairs) if pairs.is_empty() => "[:]".to_string(),
