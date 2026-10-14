@@ -24,7 +24,8 @@ A line that holds no word is blank and is skipped. Every other line is a rule:
 
 The name in the first word is the rule's target; the later names are its dependencies. The rule
 `app: lib util` says that `app` needs `lib` and `util`. A rule may have no dependencies (`lib:`).
-A dependency listed more than once in one rule counts once. A target may list itself.
+A dependency listed more than once in one rule counts once. A target may list itself: it then needs itself, is never ready, and is a cycle on
+its own.
 
 The names of the file are all the names written in it, as targets or as dependencies. A name that
 is never a target has no dependencies. The file holds at most 100 different names.

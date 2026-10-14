@@ -1,5 +1,1 @@
-book: gross 39.98 discount 2.00 net 37.98 tax 2.66 total 40.64
-lamp: gross 45.50 discount 0.00 net 45.50 tax 9.10 total 54.60
-net 83.48
-tax 11.76
-total 95.24
+error: line 2: bad tax

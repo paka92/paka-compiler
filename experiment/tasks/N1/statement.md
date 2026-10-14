@@ -59,8 +59,9 @@ Print one line per item, in input order:
 NAME: gross G discount D net N tax T total L
 ```
 
-Then three lines: `net` and the sum of nets, `tax` and the sum of taxes, and then `total` and the
-sum of totals when that sum is 0 or more, or else `refund` and the sum of totals without its `-`.
+Then three lines: `net S`, with S the sum of the items' nets; `tax S`, with the sum of their taxes;
+and `total S`, with the sum of their totals when that sum is 0 or more, or else `refund S`, with
+that sum without its `-`.
 Every printed line ends with a line feed. The exit status is 0.
 
 Example input:

@@ -36,8 +36,8 @@ For a group with `n` values:
 - the mean is the sum of the values divided by `n`;
 - the median is the middle value once the values are sorted from smallest to largest when `n` is
   odd, and the mean of the two middle values when `n` is even;
-- the standard deviation is the square root of the sum of the squares of each value's difference
-  from the mean, divided by `n - 1`.
+- the standard deviation is the square root of Q / (n - 1), with Q the sum of the squares of each
+  value's difference from the mean.
 
 The mean and median need `n` of at least 1, and the standard deviation `n` of at least 2.
 

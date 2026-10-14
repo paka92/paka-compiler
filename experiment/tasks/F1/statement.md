@@ -9,7 +9,8 @@ The program is run with exactly two arguments: the root name, then the output na
 A name is 1 to 30 characters, each a letter `A` to `Z` or `a` to `z`, a digit `0` to `9`, `.`,
 `_` or `-`, and its first character is a letter or a digit. The root name is always a name. The
 output name is 1 to 30 characters from the same set and `/`; it is never the name of a file that
-the merge reads. A file of that name may already exist; writing replaces it.
+the merge reads. A file of that name may already exist; writing replaces it. No directory is created: when a directory the output
+name passes through does not exist, the output cannot be written.
 
 ## Files
 

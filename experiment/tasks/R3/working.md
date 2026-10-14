@@ -12,10 +12,9 @@ triangle). All six names form one group: `dock farm hill mill pier town` (d, f, 
 Each triangle link has another way round its triangle, so it is not a bridge. Taking away
 town-hill leaves {pier, dock, town} and {hill, farm, mill}: a bridge, written `hill town`.
 
-## cases/2 (`chain.txt`)
+## cases/2 (`short.txt`)
 
-Links n1-n2, n2-n3, n4-n5. Groups: `n1 n2 n3` and `n4 n5`, ordered by first names n1, n4. No cycle,
-so every link is a bridge: `n1 n2`, `n2 n3`, `n4 n5` (first names n1, n2, n4).
+Line 1 `n1 n2` is a link. Line 2 `n3` holds one word: `error: line 2: bad link`, status 20.
 
 ## hidden/1 (`three.txt`)
 

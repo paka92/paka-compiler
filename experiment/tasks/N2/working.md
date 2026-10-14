@@ -59,7 +59,7 @@ c: 0, -1, -1. Codes: `B` 66, `_` 95, `b` 98, `c` 99.
 
 Line 1 has leading and repeated spaces; line 2 has no line feed.
 
-- w: `-0` is 0, `007` is 7, `-03` is -3; sorted -3 0 7. Mean 4 / 3 = 1.3333, `1.33`; median 0,
+- w: `-00` is 0, `0007` is 7, `-03` is -3; sorted -3 0 7. Mean 4 / 3 = 1.3333, `1.33`; median 0,
   `0.00`. Q = 58 - 16 / 3 = 158 / 3; Q / 2 = 79 / 3 = 26.3333; sqrt = 5.1316, `5.13`.
 - z: -4, 4, -1, 1; sorted -4 -1 1 4. Mean 0, median (-1 + 1) / 2 = 0: both `0.00`. Q = 34;
   Q / 3 = 11.3333; sqrt = 3.3665, `3.37`.

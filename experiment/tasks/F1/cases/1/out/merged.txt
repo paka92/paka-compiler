@@ -1,7 +1,0 @@
-# Guide
-
-Hello.
-Welcome.
-1. open
-2. close
-bye

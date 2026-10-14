@@ -1,5 +1,5 @@
 # Guide
 
 #include intro.txt
-#include steps.txt
+#include
 bye

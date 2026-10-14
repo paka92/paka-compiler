@@ -6,11 +6,9 @@ item and for the sums.
 
 ## cases/1 (`order.txt`)
 
-- book: 2 x 1999 = 3998. Discount 3998 x 5 / 100 = 199.9, rounds to 200. Net 3798. Tax 3798 x 700
-  / 10000 = 265.86, rounds to 266. Total 4064.
-- lamp: 1 x 4550 = 4550. Discount 0. Net 4550. Tax 4550 x 2000 / 10000 = 910. Total 5460.
-
-Sums: net 8348, tax 1176, total 9524 (check 8348 + 1176). Total is not negative: `total 95.24`.
+Line 1 `book 2 19.99 5% 7.00%` is a good item. Line 2 `lamp 1 45.50 0% 20%`: five words, name,
+quantity, price and discount good; the tax rate `20%` has no `.` and two decimals: `error: line 2:
+bad tax`, status 20.
 
 ## cases/2 (`return.txt`)
 
@@ -27,42 +25,42 @@ Line 1 is a good item. Line 2 `tea 4 2.5 0% 7.00%`: five words, name and quantit
 
 ## hidden/2 (`count.txt`)
 
-Line 1 is a good item. Line 2 `jam 1.5 3.00 7.00%` has 4 words; the count is checked before the
-quantity `1.5`: `error: line 2: expected 5 fields, got 4`, status 20.
+Line 1 `fig 1 1.00 0% 3.00%` is a good item. Line 2 `jam 1.5 3.00 7.00%` has 4 words; the count is
+checked before the quantity `1.5`: `error: line 2: expected 5 fields, got 4`, status 20.
 
 ## hidden/3 (`blank.txt`)
 
 An empty line and a line of two spaces: both blank, no item. `error: no items`, status 20.
 
-## hidden/4 (`half.txt`)
+## hidden/4 (`qty.txt`)
 
-- clip: -1 x 25 = -25. Discount -2.5, away from zero: -3. Net -25 - (-3) = -22. Tax 0. Total -22.
-- tag: 25. Discount 2.5 rounds to 3. Net 22. Tax 0. Total 22.
-- pin: -3 x 15 = -45. Discount 0. Net -45. Tax -45 x 5000 / 10000 = -22.5, away from zero: -23.
-  Total -68.
-
-Sums: net -22 + 22 - 45 = -45, tax -23, total -22 + 22 - 68 = -68: `refund 0.68`. Amounts below 100
-cents print as `0.xx`, and `-0.22` keeps its sign.
+Line 1 is empty (blank). Line 2 `saw 12 8.40 5% 6.00%` is a good item. Line 3 `cup 1000 2.00 0% 5%`:
+five words, name good; the quantity `1000` has four digits. The tax rate `5%` is bad too, but the
+quantity is checked first: `error: line 3: bad quantity`, status 20.
 
 ## hidden/5 (`edge.txt`)
 
 - gift: 2 x 1234 = 2468. Discount 100%: 2468. Net 0. Tax 0. Total 0.
-- void: quantity `-0` is 0. Every amount is 0 and prints `0.00`.
-- bolt: quantity `007` is 7, discount `050%` is 50. Gross 7 x 99 = 693. Discount 346.5 rounds to
-  347. Net 346. Tax 346 x 150 / 10000 = 5.19, rounds to 5. Total 351.
+- void: quantity `-00` is 0. Every amount is 0 and prints `0.00`.
+- bolt: quantity `-06` is -6, discount `025%` is 25. Gross -6 x 99 = -594. Discount -594 x 25 / 100
+  = -148.5, away from zero: -149. Net -594 + 149 = -445. Tax -445 x 150 / 10000 = -6.675, rounds
+  to -7. Total -452.
+- clip: -1 x 25 = -25. Discount -2.5, away from zero: -3. Net -22. Tax -22 x 40 / 10000 = -0.088,
+  rounds to 0. Total -22.
+- tag: 25. Discount 2.5 rounds to 3. Net 22. Tax 0.088 rounds to 0. Total 22.
+- pin: -3 x 15 = -45. Discount 0. Net -45. Tax -45 x 5000 / 10000 = -22.5, away from zero: -23.
+  Total -68.
+- rug: 4 x 130 = 520. Discount 0. Net 520. Tax 520 x 3 / 10000 = 0.156, rounds to 0. Total 520.
 
-Sums: net 346, tax 5, total 351.
+Sums: net -445 - 22 + 22 - 45 + 520 = 30, tax -7 - 23 = -30, total -452 - 22 + 22 - 68 + 520 = 0.
+Amounts below 100 cents print as `0.xx` with any `-` kept (`-0.30`); a total sum of 0 is not
+negative: `total 0.00`.
 
-## hidden/6 (`zero.txt`)
+## hidden/6 (`name.txt`)
 
-Line 1 has leading, doubled and tripled spaces; the words are the same. Line 4 has no line feed.
-
-- mug 2: 800, discount 0, net 800, tax 800 x 1250 / 10000 = 100, total 900.
-- mug -2: -800, 0, -800, -100, -900. The same name twice is allowed.
-- nib 1: 1, 0, 1, tax 1 x 4999 / 10000 = 0.4999, rounds to 0, total 1.
-- nib -1: -1, 0, -1, tax -0.4999 rounds to 0 and prints `0.00`, total -1.
-
-Sums: net 0, tax 0, total 0. Zero is not negative: `total 0.00`.
+Line 1 `tin 3 0.50 0% 2.00%` is a good item. Line 2 has five words; its name `abcdefghijklmnopqrstu`
+has 21 characters, one too many. The quantity `x1` is bad too, but the name is checked first:
+`error: line 2: bad name`, status 20.
 
 ## hidden/7 (`order.txt`)
 
@@ -78,6 +76,13 @@ first: `error: line 1: bad discount`, status 20. Line 2 `zz` (one word) is never
   -9989999001 + 99899990 = -9890099011. Tax 0.01% (1): -989009.9011, rounds to -989010. Total
   -9891088021.
 
-Sums: net 99899990, tax 9989000001 - 989010 = 9988010991, total 19978999002 - 9891088021 =
-10087910981 (check 99899990 + 9988010991). The largest product, 9989999001 x 9999, is about
-9.99 x 10^13, under the stated 10^14.
+Line 3 has leading, doubled and tripled spaces; the words are the same. Line 6 has no line feed.
+
+- mug 2: 800, discount 0, net 800, tax 800 x 1250 / 10000 = 100, total 900.
+- mug -2: -800, 0, -800, -100, -900. The same name twice is allowed.
+- nib 1: 1, 0, 1, tax 1 x 4999 / 10000 = 0.4999, rounds to 0, total 1.
+- nib -1: -1, 0, -1, tax -0.4999 rounds to 0 and prints `0.00`, total -1.
+
+The mug and nib lines add 0 to every sum. Sums: net 99899990, tax 9989000001 - 989010 =
+9988010991, total 19978999002 - 9891088021 = 10087910981 (check 99899990 + 9988010991). The
+largest product, 9989999001 x 9999, is about 9.99 x 10^13, under the stated 10^14.

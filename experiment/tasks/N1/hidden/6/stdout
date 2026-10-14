@@ -1,7 +1,1 @@
-mug: gross 8.00 discount 0.00 net 8.00 tax 1.00 total 9.00
-mug: gross -8.00 discount 0.00 net -8.00 tax -1.00 total -9.00
-nib: gross 0.01 discount 0.00 net 0.01 tax 0.00 total 0.01
-nib: gross -0.01 discount 0.00 net -0.01 tax 0.00 total -0.01
-net 0.00
-tax 0.00
-total 0.00
+error: line 2: bad name
