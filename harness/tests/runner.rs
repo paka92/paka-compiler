@@ -170,7 +170,10 @@ fn runner() -> Runner {
         build: Duration::from_secs(120),
         case: Duration::from_secs(5),
     };
-    Runner { paka, limits }
+    Runner {
+        limits,
+        ..Runner::new(paka).unwrap()
+    }
 }
 
 /// The verdicts of a program that builds: visible cases in name order, then hidden ones.
@@ -317,4 +320,34 @@ fn loader_rejects_malformed_folders() {
             "{what}"
         );
     }
+}
+
+#[test]
+fn case_environment_is_the_time_zone_and_locale_only() {
+    let root = scratch("env");
+    put(&root, "statement.md", "Print the environment.\n");
+    put_case(
+        &root.join("cases"),
+        "env",
+        "",
+        None,
+        "LC_ALL=C\nTZ=UTC\n",
+        "0\n",
+    );
+    put_case(
+        &root.join("hidden"),
+        "env",
+        "",
+        None,
+        "LC_ALL=C\nTZ=UTC\n",
+        "0\n",
+    );
+    let task = Task::load(&root).unwrap();
+    let source = r#"fn main() {
+        let mut vars: Vec<_> = std::env::vars().map(|(k, v)| format!("{k}={v}")).collect();
+        vars.sort();
+        for v in vars { println!("{v}"); }
+    }"#;
+    let got = verdicts(&runner(), Lang::Rust, source, &task);
+    assert_eq!(got, [Verdict::Pass; 2]);
 }
