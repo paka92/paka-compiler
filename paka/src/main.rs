@@ -1,16 +1,9 @@
 #![deny(clippy::float_arithmetic)]
 
 mod ast;
-// The body checker; a later pass wires it in, nothing calls it yet.
-#[allow(dead_code)]
 mod body;
 mod build;
-// The one table of built-in names and signatures.
-#[allow(dead_code)]
 mod builtins;
-mod check;
-// The core form; lowering builds the part M1 uses, the rest waits for M2-25.
-#[allow(dead_code)]
 mod core_form;
 mod diagnostic;
 mod interp;
@@ -19,15 +12,13 @@ mod lexer;
 mod llvm;
 mod lower;
 mod parser;
-// Used by the checker passes that follow; nothing calls it yet.
-#[allow(dead_code)]
 mod resolve;
-// The signature table; the checker passes that follow use it, nothing calls it yet.
-#[allow(dead_code)]
 mod sig;
 #[cfg(test)]
 mod vectors;
 
+use ast::Def;
+use core_form::Program;
 use diagnostic::Diagnostic;
 use lower::M1;
 use std::ffi::OsStr;
@@ -77,14 +68,10 @@ fn check_file(file: &OsStr, json: bool) -> ExitCode {
     let path = &file.to_string_lossy();
     let (d, source) = match read(file, path) {
         Err(d) => (d, vec![]),
-        Ok(source) => {
-            let result =
-                parser::parse(path, &source).and_then(|p| check::check(path, &p).map(drop));
-            match result {
-                Ok(()) => return ExitCode::SUCCESS,
-                Err(d) => (d, source),
-            }
-        }
+        Ok(source) => match check(path, &source) {
+            Ok(_) => return ExitCode::SUCCESS,
+            Err(d) => (d, source),
+        },
     };
     if json {
         report(d.json(&source).as_bytes(), 1)
@@ -93,10 +80,39 @@ fn check_file(file: &OsStr, json: bool) -> ExitCode {
     }
 }
 
-fn front_end(path: &str, source: &[u8]) -> Result<M1, Diagnostic> {
+/// Parses and checks a program, then lowers it to the core form.
+fn check(path: &str, source: &[u8]) -> Result<Program, Diagnostic> {
     let program = parser::parse(path, source)?;
-    let checked = check::check(path, &program)?;
-    let core = lower::lower(path, &program, &checked);
+    let resolved = resolve::resolve(path, &program)?;
+    let mut table = sig::Table::build(path, &program, &resolved);
+    if let Some(d) = second_app(path, &program) {
+        return Err(d);
+    }
+    let bodies = body::check(path, &program, &resolved, &mut table);
+    if let Some(d) = bodies.defs.iter().flatten().next() {
+        return Err(d.clone());
+    }
+    Ok(lower::lower(
+        path, source, &program, &resolved, &table, &bodies,
+    ))
+}
+
+fn second_app(path: &str, program: &ast::Program) -> Option<Diagnostic> {
+    let mut apps = program.defs.iter().filter_map(|d| match d {
+        Def::App { name, .. } => Some(name),
+        _ => None,
+    });
+    let second = apps.nth(1)?;
+    let message = "a program holds one app";
+    let d = Diagnostic::new(path, second.at, second.text.len(), "multiple-apps", message);
+    Some(d.in_definition(second.text))
+}
+
+fn front_end(path: &str, source: &[u8]) -> Result<M1, Diagnostic> {
+    let core = check(path, source)?;
+    if core.app.is_none() {
+        return Err(Diagnostic::tool(path, "no-app", "the program has no app"));
+    }
     lower::m1(&core).ok_or_else(|| {
         let message = "the back end runs only the milestone 1 subset";
         Diagnostic::tool(path, "unsupported-form", message)

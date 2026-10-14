@@ -1,5 +1,0 @@
-enum Msg { Start }
-
-fn update(m: Msg) -> List<Effect<Msg>> {
-  [Print("let there be light"), Exit]
-}

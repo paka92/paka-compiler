@@ -5,7 +5,6 @@
 use super::text::render;
 use super::{Cx, Res};
 use crate::ast::{Entry, Expr, ExprKind, Name, Pos};
-use crate::check::key;
 use crate::diagnostic::Diagnostic;
 use crate::resolve::Binding;
 use crate::sig::{Field, Item, Node, Ty};
@@ -194,5 +193,15 @@ impl<'a> Cx<'_, 'a> {
             }
         }
         Ok(())
+    }
+}
+
+/// The position and spelling of an entry's key.
+fn key(entry: &Entry) -> (Pos, &'static str) {
+    match entry {
+        Entry::State(at, _) => (*at, "state"),
+        Entry::Start(at, _) => (*at, "start"),
+        Entry::Update(at, _) => (*at, "update"),
+        Entry::Grants(at, _) => (*at, "grants"),
     }
 }

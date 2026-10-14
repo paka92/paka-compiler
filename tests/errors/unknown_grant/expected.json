@@ -1,1 +1,1 @@
-{"kind":"unknown-grant","definition":"light","message":"`Camera` is not a grant","file":"main.paka","start":158,"end":164,"line":10,"column":12,"text":"Camera","expected":null,"found":null,"fix":{"start":158,"end":164,"replacement":"Console"}}
+{"kind":"unknown-grant","definition":"light","message":"Camera is not a grant","file":"main.paka","start":158,"end":164,"line":10,"column":12,"text":"Camera","expected":null,"found":null,"fix":null}
