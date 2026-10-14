@@ -76,30 +76,38 @@ byte for byte. Otherwise its verdict is the first of: `Timeout`, `Stdout`, `Stat
 `src/trial.rs` runs a batch: per run one `claude -p` process (`src/client.rs`), the statement
 with the visible cases as the first message (`src/prompt.rs`), then up to eight submissions. Each
 reply is a submission; one without exactly one code block, or cut off (stop reason `max_tokens`
-or more than 32,000 output tokens), fails and counts. Each program is judged on every case; the
-feedback gives the build text, or each failing visible case in full and the hidden cases as
-counts. Hidden cases and `working.md` never reach the model.
+or more than 32,000 output tokens), fails and counts. Code blocks are fenced with backticks only
+(no `~~~`); an opening fence may name a language, and a line of backticks only, at least as many
+as opened, closes the block. Each program is judged on every case; the feedback gives the build
+text, cut after 8,000 bytes, or each failing visible case in full and the hidden cases as counts.
+Arguments are shown JSON-quoted. Hidden cases and `working.md` never reach the model.
 
 Every run and attempt has a folder, plain files only:
 
 ```
 <root>/<task>-<language>-<rep>/<attempt>/log       raw log, one JSON object per line
 <root>/<task>-<language>-<rep>/<attempt>/claude/   the process's working directory:
-                                                   stream.log (every line sent and read)
-                                                   and stderr.log
+                                                   stream.log (every line sent and read),
+                                                   stderr.log and claude.pid
 ```
 
 `log` lines, each written and synced before the next step: `start` (system text, model, effort),
 then per submission `call` (message sent, time), `reply` (text, tokens, cut off, time, duration),
-`submission` (program or why there is none) and `report` (build, diagnostic codes, every case),
-and last `end` (passed, submissions, edits, tokens) or `void` (reason). Times are milliseconds
-since the Unix epoch.
+`submission` (program or why there is none) and `report` (build and its full text, diagnostic
+codes, every case), and last `end` (passed, submissions, edits, tokens) or `void` (reason, fault).
+Times are milliseconds since the Unix epoch.
 
-A watchdog kills the process when a model call or the whole run passes its wall-clock limit; the
-run is void. Any error during a run voids it: process death, compaction, provider error, refusal,
-empty reply, the usage cap, a failed first-call guard. A void run is run again, at most twice; a
-third void attempt stops the batch with `Paused`. Reaching a usage cap stops the batch.
+The process runs in its own process group. A watchdog kills the group when a model call, writing
+the message included, passes its wall-clock limit; the run is void. Any error during a run voids
+it: process death, compaction, provider error, refusal, empty reply, the usage cap, a failed
+first-call guard. A void run is run again; a third void attempt stops the batch with `Paused`.
+Voids from the usage cap do not count towards the three, and reaching a cap stops the batch.
 
-Resume: run the same batch again. A run whose last attempt logged `end` is skipped; an attempt
-whose log has neither `end` nor `void` was cut short by a kill and is closed as void, and the run
-goes on with its next attempt.
+A run's `end` line counts only its last attempt's tokens; a void attempt's tokens live in the
+usage ledger and its `stream.log`. Tokens of a call the watchdog killed, or of a process left
+running by a killed harness, never reach the ledger, so the caps can undercount.
+
+Resume: run the same batch again. A run whose last attempt logged `end` is skipped. An attempt
+whose log has neither `end` nor `void`, or ends in a torn line, was cut short by a kill: its
+process group is killed if its process still runs in the attempt's folder, the log is closed as
+void, and the run goes on with its next attempt.

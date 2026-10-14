@@ -5,41 +5,40 @@
 use crate::json::quote;
 use crate::runner::{CaseResult, Lang, Report, Verdict};
 use crate::task::{Case, Task};
+use std::borrow::Cow;
 use std::fmt::Write;
 
 /// Submissions per run: the first try and at most seven edits (M3-01 section 1.2).
 pub const SUBMISSIONS: u32 = 8;
 /// A failing visible case's standard output and standard error are each cut here.
 const SHOWN_CAP: usize = 2_000;
+/// The compiler's text after a failed build is cut here.
+const BUILD_TEXT_CAP: usize = 8_000;
 
 /// The system text; Paka runs carry the language reference after it.
 pub fn system(lang: Lang, reference: &str) -> String {
-    let (build, rule) = match lang {
-        Lang::Paka => (
-            "paka check main.paka",
-            "the built-ins only; the app may list any grant the reference names",
-        ),
-        Lang::Rust => (
-            "rustc --edition 2024 -C debug-assertions=on -C overflow-checks=on -o main main.rs",
-            "the standard library only",
-        ),
-        Lang::TypeScript => (
+    let build = match lang {
+        Lang::Paka => "paka check main.paka",
+        Lang::Rust => {
+            "rustc --edition 2024 -C debug-assertions=on -C overflow-checks=on -o main main.rs"
+        }
+        Lang::TypeScript => {
             "tsc --strict --noEmitOnError --target es2022 --module commonjs --types node \
-             --outDir out main.ts",
-            "Node's built-in modules only",
-        ),
+             --outDir out main.ts"
+        }
     };
+    let name = lang.name();
     let mut text = format!(
-        "You write one program in {}. Reply with the whole file {} in one\n\
-         code block. Any other text is allowed; only the code block is used.\n\
+        "You write one program in {name}. Reply with the whole file {} in exactly one\n\
+         code block. Any other text is allowed; only the code block is used. A reply with no\n\
+         code block or with several counts as a failed submission.\n\
          The harness builds it with: {build}\n\
          It runs the program on cases. Input comes as files named in the arguments.\n\
          Output is standard output, the exit status and, where the task says so, written files.\n\
          There is no standard input.\n\
          After each submission you get the build result or the case results.\n\
          You have {SUBMISSIONS} submissions.\n\
-         Use {rule}.\n",
-        lang.name(),
+         Use only what {name} itself ships with: no outside packages.\n",
         lang.file(),
     );
     if lang == Lang::Paka {
@@ -75,7 +74,15 @@ pub fn no_program(why: &str, n: u32) -> String {
 /// full and the hidden cases counted.
 pub fn feedback(task: &Task, report: &Report, n: u32) -> String {
     let mut text = match &report.build {
-        Err(compiler) => format!("build: failed\n{}\n", compiler.trim_end()),
+        Err(compiler) => {
+            let (kept, cut) = cut(compiler.as_bytes(), BUILD_TEXT_CAP);
+            let note = if cut {
+                format!("\n[cut after {BUILD_TEXT_CAP} bytes]")
+            } else {
+                String::new()
+            };
+            format!("build: failed\n{}{note}\n", kept.trim_end())
+        }
         Ok(()) => "build: ok\n".into(),
     };
     if report.build.is_ok() {
@@ -104,15 +111,11 @@ fn block(label: &str, bytes: &[u8]) -> String {
 }
 
 fn args(case: &Case) -> String {
-    match case.args.is_empty() {
-        true => "(none)".into(),
-        false => case
-            .args
-            .iter()
-            .map(|a| quote(a))
-            .collect::<Vec<_>>()
-            .join(" "),
+    if case.args.is_empty() {
+        return "(none)".into();
     }
+    let quoted: Vec<String> = case.args.iter().map(|a| quote(a)).collect();
+    quoted.join(" ")
 }
 
 fn failing(n: usize, case: &Case, got: &CaseResult) -> String {
@@ -128,9 +131,10 @@ fn failing(n: usize, case: &Case, got: &CaseResult) -> String {
         quote(&String::from_utf8_lossy(&case.stdout)),
         case.status,
         shown(&got.stdout),
-        match got.stderr.is_empty() {
-            true => "(empty)".into(),
-            false => shown(&got.stderr),
+        if got.stderr.is_empty() {
+            "(empty)".into()
+        } else {
+            shown(&got.stderr)
         },
     );
     if got.verdict == Verdict::Files {
@@ -146,19 +150,27 @@ fn failing(n: usize, case: &Case, got: &CaseResult) -> String {
 
 /// Program output as a quoted string, cut after `SHOWN_CAP` bytes with a note.
 fn shown(bytes: &[u8]) -> String {
-    let kept = &bytes[..bytes.len().min(SHOWN_CAP)];
-    let text = quote(&String::from_utf8_lossy(kept));
-    match kept.len() < bytes.len() {
-        true => format!("{text} [cut after {SHOWN_CAP} bytes]"),
-        false => text,
+    let (kept, cut) = cut(bytes, SHOWN_CAP);
+    let text = quote(&kept);
+    if cut {
+        format!("{text} [cut after {SHOWN_CAP} bytes]")
+    } else {
+        text
     }
 }
 
+/// The first `cap` bytes as text, and whether anything was cut.
+fn cut(bytes: &[u8], cap: usize) -> (Cow<'_, str>, bool) {
+    let kept = String::from_utf8_lossy(&bytes[..bytes.len().min(cap)]);
+    (kept, bytes.len() > cap)
+}
+
 /// How many hidden cases pass, and each failure counted under the first way that applies:
-/// over time, wrong exit status, wrong output, wrong written file.
+/// over time or memory, wrong exit status, wrong output, wrong written file. Only a timeout is
+/// known to be over time; a program stopped by the memory cap shows as a wrong exit status.
 fn hidden(task: &Task, report: &Report) -> String {
     const WAYS: [&str; 4] = [
-        "over time",
+        "over time or memory",
         "wrong exit status",
         "wrong output",
         "wrong written file",

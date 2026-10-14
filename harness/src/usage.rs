@@ -3,7 +3,7 @@
 use crate::Error;
 use crate::json::{self, Value};
 use std::fs;
-use std::io::ErrorKind;
+use std::io::{ErrorKind, Write};
 use std::path::PathBuf;
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
@@ -71,10 +71,9 @@ impl Ledger {
         let (input, output) =
             sum.ok_or_else(|| Error::Malformed("usage total overflows".into()))?;
         let staged = self.path.with_extension("tmp");
-        fs::write(
-            &staged,
-            format!("{{\"input\":{input},\"output\":{output}}}\n"),
-        )?;
+        let mut file = fs::File::create(&staged)?;
+        writeln!(file, "{{\"input\":{input},\"output\":{output}}}")?;
+        file.sync_all()?;
         fs::rename(staged, &self.path)?;
         Ok(())
     }

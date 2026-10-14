@@ -5,7 +5,7 @@ use harness::client::{Config, Run};
 use harness::usage::{Ledger, Tokens};
 use std::fs;
 use std::path::{Path, PathBuf};
-use std::time::Duration;
+use std::time::{Duration, Instant};
 
 const FAKE: &str = concat!(env!("CARGO_MANIFEST_DIR"), "/tests/fake_claude/claude");
 const STREAMS: &str = concat!(env!("CARGO_MANIFEST_DIR"), "/tests/streams");
@@ -40,7 +40,6 @@ impl Rig {
             dir,
             first_call_input: None,
             call_limit: Duration::from_secs(30),
-            run_limit: Duration::from_secs(60),
         };
         let ledger = Ledger::new(base.join("usage.json"), caps);
         Rig {
@@ -414,6 +413,19 @@ fn a_dead_process_is_an_error() {
     let rig = Rig::new("died", "died.txt", BIG);
     let err = rig.start().unwrap().send("hello").unwrap_err();
     assert!(matches!(err, Error::Died), "{err:?}");
+}
+
+#[test]
+fn a_write_the_process_never_reads_is_bounded_by_the_call_limit() {
+    let mut rig = Rig::new("blocked-write", "ok.txt", BIG);
+    fs::write(rig.config.dir.join("script"), "@sleep 30\n").unwrap();
+    rig.config.call_limit = Duration::from_millis(500);
+    let mut run = rig.start().unwrap();
+    let start = Instant::now();
+    // Far more than a pipe holds, so the write blocks until the process reads.
+    let err = run.send(&"x".repeat(1 << 20)).unwrap_err();
+    assert!(matches!(err, Error::TimedOut), "{err:?}");
+    assert!(start.elapsed() < Duration::from_secs(5));
 }
 
 #[test]

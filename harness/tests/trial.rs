@@ -104,7 +104,6 @@ impl Rig {
             runner: common::runner(),
             ledger: Ledger::new(base.join("usage.json"), caps),
             call_limit: Duration::from_secs(30),
-            run_limit: Duration::from_secs(60),
             root: base.join("runs"),
         };
         Rig {
@@ -327,6 +326,35 @@ fn stops_after_eight_submissions() {
 }
 
 #[test]
+fn passes_on_the_eighth_submission() {
+    let rig = Rig::new("eighth", big());
+    let mut turns = vec![ok(&reply(&bad()), 10); 7];
+    turns.push(ok(&reply(GOOD), 40));
+    rig.queue(&turns);
+    rig.run(1).unwrap();
+    let end = last(&rig.attempt(1, 1));
+    assert_eq!(end.get("passed"), Some(&Value::Bool(true)));
+    assert_eq!(num(&end, "submissions"), 8);
+    assert_eq!(num(&end, "edits"), 7);
+}
+
+#[test]
+fn several_code_blocks_are_a_failed_submission() {
+    let rig = Rig::new("several", big());
+    let two = format!("{}{}", reply(GOOD), reply(GOOD));
+    rig.queue(&[ok(&two, 30), ok(&reply(GOOD), 40)]);
+    rig.run(1).unwrap();
+    let dir = rig.attempt(1, 1);
+    let end = last(&dir);
+    assert_eq!(num(&end, "submissions"), 2);
+    assert_eq!(num(&end, "edits"), 1);
+    assert_eq!(
+        sent(&dir)[1],
+        "no program: the reply has more than one code block\nsubmission 1 of 8\n"
+    );
+}
+
+#[test]
 fn cut_off_replies_are_failed_submissions() {
     let rig = Rig::new("cut-off", big());
     rig.queue(&[
@@ -350,16 +378,31 @@ fn stops_at_the_usage_cap() {
         input: 1_000_000,
         output: 150,
     };
-    let rig = Rig::new("cap", caps);
+    let mut rig = Rig::new("cap", caps);
     rig.queue(&vec![ok(&reply(&bad()), 100); 8]);
     let err = rig.run(2).unwrap_err();
     assert!(matches!(err, Error::CapReached { .. }), "{err}");
     let end = last(&rig.attempt(1, 1));
     assert_eq!(text(&end, "event"), "void");
     assert!(text(&end, "reason").starts_with("usage cap reached"));
+    assert_eq!(end.get("fault"), Some(&Value::Bool(false)));
     assert_eq!(sent(&rig.attempt(1, 1)).len(), 2);
     assert!(!rig.attempt(1, 2).exists());
     assert!(!rig.attempt(2, 1).exists());
+
+    // With the cap raised, the cap void does not use up an attempt: two faults still leave one.
+    rig.setup.ledger = Ledger::new(rig.base.join("usage.json"), big());
+    rig.queue(&[String::new()]);
+    rig.queue(&[String::new()]);
+    rig.queue(&[ok(&reply(GOOD), 40)]);
+    rig.run(1).unwrap();
+    for n in [2, 3] {
+        assert_eq!(
+            last(&rig.attempt(1, n)).get("fault"),
+            Some(&Value::Bool(true))
+        );
+    }
+    assert_eq!(text(&last(&rig.attempt(1, 4)), "event"), "end");
 }
 
 #[test]
@@ -420,20 +463,6 @@ fn the_watchdog_bounds_a_call() {
 }
 
 #[test]
-fn the_watchdog_bounds_a_run() {
-    let mut rig = Rig::new("run-limit", big());
-    rig.setup.run_limit = Duration::from_millis(500);
-    rig.queue(&[hang()]);
-    rig.queue(&[ok(&reply(GOOD), 40)]);
-    let start = Instant::now();
-    rig.run(1).unwrap();
-    assert!(start.elapsed() < Duration::from_secs(4));
-    let void = last(&rig.attempt(1, 1));
-    assert_eq!(text(&void, "reason"), "the run passed its time limit");
-    assert_eq!(text(&last(&rig.attempt(1, 2)), "event"), "end");
-}
-
-#[test]
 fn reads_the_one_code_block() {
     assert_eq!(trial::program("a\n```\nx\n```\nb").unwrap(), "x\n");
     assert_eq!(trial::program("````rust\n```\n````").unwrap(), "```\n");
@@ -446,6 +475,14 @@ fn reads_the_one_code_block() {
 }
 
 const CHILD_ROOT: &str = "TRIAL_RESUME_ROOT";
+
+fn wait_for(done: impl Fn() -> bool) {
+    let deadline = Instant::now() + Duration::from_secs(60);
+    while !done() {
+        assert!(Instant::now() < deadline, "timed out waiting");
+        std::thread::sleep(Duration::from_millis(50));
+    }
+}
 
 /// The batch the resume test kills: run 1 passes, run 2 hangs in its first call.
 #[test]
@@ -468,17 +505,25 @@ fn resumes_after_a_kill() {
         .env(CHILD_ROOT, &rig.base)
         .spawn()
         .unwrap();
-    let hanging = rig.attempt(2, 1).join("log");
-    let deadline = Instant::now() + Duration::from_secs(60);
-    while !fs::read_to_string(&hanging).is_ok_and(|log| log.contains("\"call\"")) {
-        assert!(Instant::now() < deadline, "the child never reached run 2");
-        std::thread::sleep(Duration::from_millis(50));
-    }
+    // Killed once run 2's process has taken its script and hangs in the first call.
+    let hanging = rig.attempt(2, 1);
+    wait_for(|| {
+        hanging.join("claude/script").exists()
+            && fs::read_to_string(hanging.join("log")).is_ok_and(|log| log.contains("\"call\""))
+    });
     child.kill().unwrap();
     child.wait().unwrap();
+    let orphan = fs::read_to_string(hanging.join("claude/claude.pid")).unwrap();
+    let orphan = PathBuf::from(format!("/proc/{}", orphan.trim()));
+    assert!(
+        orphan.exists(),
+        "the killed harness left its process running"
+    );
 
     rig.queue(&[ok(&reply(GOOD), 40)]);
     rig.run(2).unwrap();
+    // Resuming killed the leftover process; init reaps it.
+    wait_for(|| !orphan.exists());
     // The finished run is not run again; the cut one is closed void and run again.
     assert_eq!(text(&last(&rig.attempt(1, 1)), "event"), "end");
     assert!(!rig.attempt(1, 2).exists());

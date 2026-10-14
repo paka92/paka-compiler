@@ -4,26 +4,26 @@
 
 use crate::json::{self, Value, quote};
 use std::fmt::Display;
-use std::fs::{File, OpenOptions};
+use std::fs::{self, File, OpenOptions};
 use std::io::{self, ErrorKind, Write};
 use std::path::Path;
 use std::time::{SystemTime, UNIX_EPOCH};
 
-/// One log line under construction.
-pub struct Line(String);
+/// One log line under construction: keys and values written as JSON.
+pub struct Line(Vec<(&'static str, String)>);
 
 impl Line {
     pub fn new(event: &str) -> Line {
-        Line(format!("{{\"event\":{}", quote(event)))
+        Line(vec![("event", quote(event))])
     }
 
-    /// A number, a boolean or `null`: written as it displays.
-    pub fn raw(mut self, key: &str, value: impl Display) -> Line {
-        self.0 += &format!(",{}:{value}", quote(key));
+    /// A value already written as JSON: a number, a boolean, `null`, an array or an object.
+    pub fn raw(mut self, key: &'static str, value: impl Display) -> Line {
+        self.0.push((key, value.to_string()));
         self
     }
 
-    pub fn text(self, key: &str, value: &str) -> Line {
+    pub fn text(self, key: &'static str, value: &str) -> Line {
         self.raw(key, quote(value))
     }
 
@@ -37,7 +37,7 @@ impl Line {
 
     /// The finished object, as JSON text without the line feed.
     pub fn json(self) -> String {
-        self.0 + "}"
+        json::object(self.0)
     }
 }
 
@@ -62,44 +62,84 @@ impl Log {
 #[derive(Debug, PartialEq, Eq)]
 pub enum State {
     Ended,
-    Void,
-    /// Cut short: no closing line, or no log at all.
+    /// `fault` is false for a run stopped by the usage cap, which does not use up an attempt.
+    Void {
+        fault: bool,
+    },
+    /// Cut short: no closing line, a torn last line, or no log at all.
     Cut,
 }
 
 /// How the run logged at `path` ended.
 pub fn state(path: &Path) -> io::Result<State> {
-    let text = match std::fs::read_to_string(path) {
-        Ok(text) => text,
+    let bytes = match fs::read(path) {
+        Ok(bytes) => bytes,
         Err(e) if e.kind() == ErrorKind::NotFound => return Ok(State::Cut),
         Err(e) => return Err(e),
     };
-    // A line without its line feed was cut by the kill.
-    let last = text.strip_suffix('\n').and_then(|t| t.lines().last());
-    let event = last.and_then(|l| json::parse(l).ok());
-    Ok(
-        match event
-            .as_ref()
-            .and_then(|e| e.get("event"))
-            .and_then(Value::as_str)
-        {
-            Some("end") => State::Ended,
-            Some("void") => State::Void,
-            _ => State::Cut,
+    let Some(last) = last_event(&bytes) else {
+        return Ok(State::Cut);
+    };
+    Ok(match last.get("event").and_then(Value::as_str) {
+        Some("end") => State::Ended,
+        Some("void") => State::Void {
+            fault: last.get("fault").and_then(Value::as_bool) != Some(false),
         },
-    )
+        _ => State::Cut,
+    })
+}
+
+/// The last line of a log, when it is complete: a line without its line feed was torn by a kill.
+fn last_event(bytes: &[u8]) -> Option<Value> {
+    let body = bytes.strip_suffix(b"\n")?;
+    let start = body
+        .iter()
+        .rposition(|&b| b == b'\n')
+        .map_or(0, |at| at + 1);
+    json::parse(std::str::from_utf8(&body[start..]).ok()?).ok()
 }
 
 /// Closes the log of a run cut short with a `void` line, after ending any half-written line.
 pub fn close_cut(path: &Path, reason: &str) -> io::Result<()> {
     let mut file = OpenOptions::new().append(true).create(true).open(path)?;
-    let text = std::fs::read(path)?;
-    let feed = if text.is_empty() || text.ends_with(b"\n") {
+    let bytes = fs::read(path)?;
+    let feed = if bytes.is_empty() || bytes.ends_with(b"\n") {
         ""
     } else {
         "\n"
     };
-    let line = Line::new("void").text("reason", reason).now().json();
+    let line = Line::new("void")
+        .text("reason", reason)
+        .raw("fault", true)
+        .now()
+        .json();
     file.write_all(format!("{feed}{line}\n").as_bytes())?;
     file.sync_data()
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn a_torn_last_line_is_cut_and_closes_as_void() {
+        let dir = std::env::temp_dir().join(format!("harness-log-{}", std::process::id()));
+        fs::create_dir_all(&dir).unwrap();
+        let path = dir.join("log");
+        let _ = fs::remove_file(&path);
+        let mut log = Log::create(&path).unwrap();
+        log.write(Line::new("start")).unwrap();
+        // A kill inside the two bytes of "é".
+        let torn = Line::new("call").text("sent", "é").json();
+        fs::OpenOptions::new()
+            .append(true)
+            .open(&path)
+            .unwrap()
+            .write_all(&torn.as_bytes()[..torn.len() - 3])
+            .unwrap();
+        assert_eq!(state(&path).unwrap(), State::Cut);
+        close_cut(&path, "cut").unwrap();
+        assert_eq!(state(&path).unwrap(), State::Void { fault: true });
+        fs::remove_dir_all(dir).unwrap();
+    }
 }

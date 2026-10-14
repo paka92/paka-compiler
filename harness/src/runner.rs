@@ -15,9 +15,6 @@ use std::sync::atomic::{AtomicBool, AtomicUsize, Ordering};
 use std::thread::{self, JoinHandle};
 use std::time::{Duration, Instant};
 
-/// Compiler text sent back after a failed build is cut at this many bytes.
-const BUILD_TEXT_CAP: usize = 8_000;
-
 /// Standard output and standard error are each cut at this many bytes; reaching it kills the program.
 pub const OUTPUT_CAP: usize = 1 << 20;
 /// Memory per process of a case (M3-01) and of a build, which links with many threads.
@@ -154,7 +151,7 @@ pub struct CaseResult {
 }
 
 pub struct Report {
-    /// The compiler's text when the build failed; no case is run then.
+    /// The compiler's full text when the build failed; no case is run then.
     pub build: Result<(), String>,
     pub visible: Vec<CaseResult>,
     pub hidden: Vec<CaseResult>,
@@ -221,13 +218,7 @@ impl Runner {
             )));
         }
         let text = [done.stdout, done.stderr].concat();
-        let kept = &text[..text.len().min(BUILD_TEXT_CAP)];
-        let note = if kept.len() < text.len() {
-            format!("\n[cut after {BUILD_TEXT_CAP} bytes]")
-        } else {
-            String::new()
-        };
-        Ok(Err(String::from_utf8_lossy(kept).into_owned() + &note))
+        Ok(Err(String::from_utf8_lossy(&text).into_owned()))
     }
 
     fn run_all(&self, lang: Lang, build: &Path, cases: &[Case]) -> Result<Vec<CaseResult>, Error> {
