@@ -8,12 +8,20 @@ use std::collections::VecDeque;
 use std::fs::{self, File};
 use std::io::{self, ErrorKind, Read, Write};
 use std::mem;
+use std::os::unix::fs::OpenOptionsExt;
 
 const PRINT: usize = Effect::Print as usize;
 const READ_FILE: usize = Effect::ReadFile as usize;
 const WRITE_FILE: usize = Effect::WriteFile as usize;
 const EXIT: usize = Effect::Exit as usize;
 const EXIT_WITH: usize = Effect::ExitWith as usize;
+
+/// `O_NONBLOCK`, which std does not name: a FIFO swapped in after the first look cannot block
+/// the open. Elsewhere the open is plain.
+#[cfg(target_os = "linux")]
+const NONBLOCK: i32 = 0o4000;
+#[cfg(not(target_os = "linux"))]
+const NONBLOCK: i32 = 0;
 
 /// The effects' names, by variant number.
 const NAMES: [&str; 5] = ["Print", "ReadFile", "WriteFile", "Exit", "ExitWith"];
@@ -148,13 +156,18 @@ impl<W: Write> World for Host<W> {
             })
     }
 
+    /// The path's kind first, then the open, then the opened file's kind and size (M2-15 section
+    /// 1.7).
     fn read(&mut self, path: &str) -> Result<String, Reason> {
-        let meta = fs::metadata(path).map_err(|e| file_reason(&e))?;
+        if !fs::metadata(path).map_err(|e| file_reason(&e))?.is_file() {
+            return Err("not a file");
+        }
+        let open = File::options().read(true).custom_flags(NONBLOCK).open(path);
+        let file = open.map_err(|e| file_reason(&e))?;
+        let meta = file.metadata().map_err(|e| file_reason(&e))?;
         if !meta.is_file() {
             return Err("not a file");
         }
-        // Opened before the size is looked at: no permission comes first (M2-15 section 1.7).
-        let file = File::open(path).map_err(|e| file_reason(&e))?;
         if meta.len() > CAP as u64 {
             return Err("failed");
         }

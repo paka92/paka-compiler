@@ -14,9 +14,14 @@ pub(super) fn named<'a>(e: &Expr<'a>) -> Option<&'a str> {
     }
 }
 
-/// How a message names `e`: the function a call names, else the expression as written.
+/// How a message names `e`: the function a call names, a list or map literal `[..]` (M2-02
+/// section 5), else the expression as written.
 pub(super) fn called(e: &Expr) -> String {
-    named(e).map_or_else(|| render(e), str::to_string)
+    match &e.kind {
+        K::List(items) if !items.is_empty() => "[..]".to_string(),
+        K::Map(pairs) if !pairs.is_empty() => "[..]".to_string(),
+        _ => named(e).map_or_else(|| render(e), str::to_string),
+    }
 }
 
 /// `e` as it was written when that is short and plain; `..` stands for what is not. An index
