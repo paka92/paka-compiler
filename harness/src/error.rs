@@ -38,6 +38,19 @@ pub enum Error {
     TimedOut,
     /// A run was void three times (M3-03 section 1.1); the experiment waits for the owner.
     Paused(String),
+    /// A counted batch may not start from this checkout (M3-18).
+    Commit(String),
+}
+
+impl Error {
+    /// The exit status of a command that stops on this error: 20 for the commit check.
+    pub fn status(&self) -> u8 {
+        if matches!(self, Error::Commit(_)) {
+            20
+        } else {
+            1
+        }
+    }
 }
 
 impl fmt::Display for Error {
@@ -63,6 +76,7 @@ impl fmt::Display for Error {
             Error::Paused(run) => {
                 write!(f, "run {run} was void three times; the experiment pauses")
             }
+            Error::Commit(why) => f.write_str(why),
         }
     }
 }

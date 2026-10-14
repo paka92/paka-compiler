@@ -33,6 +33,7 @@ fn exec(runs: &Path, rulings: &Path, reference: Option<&str>) -> Output {
         .arg(runs)
         .arg(rulings)
         .args(reference)
+        .env("PAKA_PROTOCOL", Path::new(DIR).join("protocol.md"))
         .output()
         .unwrap()
 }
@@ -400,6 +401,11 @@ fn bad_input_is_refused_naming_the_culprit() {
     let case = Case::new("bad-folder");
     case.ended("X1-Paka-1", 0, 100);
     assert!(case.error("").contains("X1-Paka-1"));
+
+    // a task the protocol lists neither as counted nor as reserve
+    let case = Case::new("bad-task");
+    case.ended("Z-Paka-1", 0, 100);
+    assert!(case.error("").contains("Z-Paka-1"));
 
     let case = Case::new("bad-name");
     case.ended("notes", 0, 100);

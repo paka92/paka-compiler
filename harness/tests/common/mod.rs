@@ -38,3 +38,27 @@ pub fn runner() -> Runner {
         ..Runner::new(paka).unwrap()
     }
 }
+
+/// Runs `git` in `dir` with a fixed identity and returns its output, trimmed.
+#[allow(dead_code)] // used by the commit and trial tests only
+pub fn git(dir: &Path, args: &[&str]) -> String {
+    let out = std::process::Command::new("git")
+        .args(["-c", "user.name=t", "-c", "user.email=t@t"])
+        .args(args)
+        .current_dir(dir)
+        .output()
+        .unwrap();
+    assert!(out.status.success(), "git {args:?} failed");
+    String::from_utf8_lossy(&out.stdout).trim().to_owned()
+}
+
+/// A git repository in a new scratch folder with one commit.
+#[allow(dead_code)]
+pub fn repo(name: &str) -> PathBuf {
+    let dir = scratch(name);
+    git(&dir, &["init", "-q"]);
+    put(&dir, "a", "1");
+    git(&dir, &["add", "a"]);
+    git(&dir, &["commit", "-q", "-m", "first"]);
+    dir
+}

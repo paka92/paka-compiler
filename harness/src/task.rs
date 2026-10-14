@@ -5,6 +5,9 @@ use std::fmt::Display;
 use std::fs;
 use std::path::{Path, PathBuf};
 
+/// Practice tasks: they never enter the verdict or need the `run` tag (M3-04).
+pub const PRACTICE: [&str; 2] = ["X1", "X2"];
+
 /// A file's name and bytes.
 pub type File = (String, Vec<u8>);
 

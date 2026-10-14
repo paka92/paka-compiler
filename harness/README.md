@@ -112,6 +112,12 @@ whose log has neither `end` nor `void`, or ends in a torn line, was cut short by
 process group is killed if its process still runs in the attempt's folder, the log is closed as
 void, and the run goes on with its next attempt.
 
+## Commit check
+
+`run_batch` refuses a counted batch (any task but `X1` and `X2`) unless HEAD of `Setup.repo` is
+the commit tagged `run` and `git status --porcelain` is empty. The error is one line and its
+`status()` is 20. `Setup.repo` of `None` skips the check; the tests use it.
+
 ## Metrics
 
 `cargo run --release -p harness --bin metrics -- <runs-root> <rulings-file> [reference-tokens]`
@@ -147,8 +153,9 @@ command exits with status 20. A run that is lost to a fault is ruled `void` and 
 folder (B-Rust-2 void, rerun as B-Rust-3), so the counts meet again.
 
 Every entry of the runs root must be a run folder `<task>-<language>-<rep>`, language `Paka`,
-`Rust` or `TypeScript`. Anything else is an error, practice runs `X1` and `X2` included; tasks
-are not checked against the frozen counted list yet (M3-18). A log whose `end` line disagrees
+`Rust` or `TypeScript`. Anything else is an error, practice runs `X1` and `X2` included, and
+every task must be on the `counted:` or `reserve:` line of `experiment/protocol.md` (the file
+`PAKA_PROTOCOL` names, when set). A log whose `end` line disagrees
 with itself (edits, first-try and submissions) is an error naming the run.
 
 The rulings file has one ruling per line, blank lines allowed; the words after the third are the
