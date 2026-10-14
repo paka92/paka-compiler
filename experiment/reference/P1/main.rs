@@ -30,10 +30,9 @@ fn is_name_start(c: u8) -> bool {
 
 fn tokenize(line: &str) -> Result<Vec<Token>, Fail> {
     let bytes = line.as_bytes();
-    if let Some(i) = bytes
-        .iter()
-        .position(|&c| !(c == b' ' || c.is_ascii_alphanumeric() || c == b'_' || b"+-*/%()=".contains(&c)))
-    {
+    if let Some(i) = bytes.iter().position(|&c| {
+        !(c == b' ' || c.is_ascii_alphanumeric() || c == b'_' || b"+-*/%()=".contains(&c))
+    }) {
         return Err((i + 1, "bad character".to_string()));
     }
     let mut tokens = vec![];

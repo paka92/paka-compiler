@@ -85,9 +85,13 @@ impl Date {
 fn parse_date(s: &str) -> Option<Date> {
     let b = s.as_bytes();
     let shaped = b.len() == 10
-        && b.iter()
-            .enumerate()
-            .all(|(i, c)| if i == 4 || i == 7 { *c == b'-' } else { c.is_ascii_digit() });
+        && b.iter().enumerate().all(|(i, c)| {
+            if i == 4 || i == 7 {
+                *c == b'-'
+            } else {
+                c.is_ascii_digit()
+            }
+        });
     shaped.then(|| Date {
         year: s[0..4].parse().unwrap(),
         month: s[5..7].parse().unwrap(),

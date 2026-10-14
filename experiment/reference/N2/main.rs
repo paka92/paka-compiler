@@ -18,7 +18,11 @@ fn parse_value(word: &str) -> Option<i64> {
 /// Two decimals; a value that rounds to zero has no sign.
 fn two_decimals(x: f64) -> String {
     let text = format!("{x:.2}");
-    if text == "-0.00" { "0.00".to_string() } else { text }
+    if text == "-0.00" {
+        "0.00".to_string()
+    } else {
+        text
+    }
 }
 
 fn or_dash(stat: Option<f64>) -> String {
