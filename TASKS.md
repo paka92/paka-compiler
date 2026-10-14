@@ -529,11 +529,12 @@ or merged during review. Ids with a letter were added during review.
 
 ### M2-32 · L2 · Parse and check app definitions
 
+- status: done
 - needs: M2-15, M2-20
 - flags: none
 - done when: Tests accept the approved app forms and reject a wrong state, update signature, first message or unknown grant.
 - why this level: Clear rules from the app decision; one module.
-- note: Follows docs/decisions/M2-06.md for traps, holes and examples.
+- note: Follows docs/decisions/M2-06.md for traps, holes and examples. Done: paka/src/body/app.rs, not called by any command yet. New code `bad-state`. The update-signature text follows M2-15, not spec/m1.md section 8; M2-36 brings the spec in line.
 
 ### M2-33 · L2 · Implement the built-in String functions and every other built-in that is not a collection or pool function
 
@@ -557,7 +558,7 @@ or merged during review. Ids with a letter were added during review.
 - flags: none
 - done when: paka run tests pass for start, ending and exit codes. Where M2-15 changed the provisional start or end rule, the interpreter and paka-rt's run loop change in this pull request, and M2-18's re-expected copy is moved from tests/cases-pending over the old case with git mv and passes on both back ends.
 - why this level: The care is in message and effect ordering.
-- note: State rollback after a trapping handler is tested here only if M2-15 lets a headless app survive a trap; otherwise it arrives with M5-25b. The paka-rt change adds no unsafe beyond the one call into compiled code. Follows docs/decisions/M2-15.md for the app form, effects, grants and ending. Print moves to the raw standard-output descriptor in the interpreter and paka-rt, and docs/abi/m1.md sections 5 and 6 are corrected to match.
+- note: State rollback after a trapping handler is tested here only if M2-15 lets a headless app survive a trap; otherwise it arrives with M5-25b. The paka-rt change adds no unsafe beyond the one call into compiled code. Follows docs/decisions/M2-15.md for the app form, effects, grants and ending. Print moves to the raw standard-output descriptor in the interpreter and paka-rt, and docs/abi/m1.md sections 5 and 6 are corrected to match. Wires the app check of paka/src/body/app.rs, adds `bad-state` to the code table of spec/m1.md section 11 and updates the update-signature text there to M2-15.
 
 ### M2-37 · L3 · Perform console, file, argument and exit effects only when granted
 
