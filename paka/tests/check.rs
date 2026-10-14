@@ -1,6 +1,11 @@
 //! `paka check` against the hand-written expectations in `tests/errors/<name>/`:
-//! `expected.txt` for the text form, `expected.json` for `--json`.
+//! `expected.txt` for the text form, `expected.json` for `--json`; and the `unused-name` warning
+//! of docs/decisions/M2-02.md section 5.
 
+#[allow(dead_code)]
+mod common;
+
+use common::Scratch;
 use std::fs;
 use std::path::{Path, PathBuf};
 use std::process::{Command, Output};
@@ -63,7 +68,6 @@ fn first_text_line_is_what_run_prints() {
 fn accepted_program_prints_nothing_and_exits_0() {
     let root = Path::new(env!("CARGO_MANIFEST_DIR")).join("..");
     for (dir, file) in [
-        ("examples", "light.paka"),
         ("tests/cases/check/no_app", "main.paka"),
         ("tests/cases/check/empty_file", "main.paka"),
     ] {
@@ -73,6 +77,98 @@ fn accepted_program_prints_nothing_and_exits_0() {
             assert!(out.stdout.is_empty() && out.stderr.is_empty(), "{dir}");
         }
     }
+}
+
+#[test]
+fn light_warns_that_m_is_never_used() {
+    let dir = Path::new(env!("CARGO_MANIFEST_DIR")).join("../examples");
+    let text = "light.paka:3:11: warning[unused-name]: m is never used\n  definition: update\n  \
+                bytes: 30..31\n  text: \"m\"\n";
+    let json = r#"{"kind":"unused-name","definition":"update","message":"m is never used","file":"light.paka","start":30,"end":31,"line":3,"column":11,"text":"m","expected":null,"found":null,"fix":null}"#;
+    for (flags, want) in [
+        (&[][..], text.to_string()),
+        (&["--json"], format!("{json}\n")),
+    ] {
+        let out = paka(&dir, &[&["check", "light.paka"], flags].concat());
+        assert_eq!(out.status.code(), Some(0));
+        assert!(out.stdout.is_empty());
+        assert_eq!(stderr(&out), want);
+    }
+}
+
+/// Unused names around a hole: `pick`'s `unused` and `spare`, then the hole, then `update`'s `m`.
+const UNUSED: &str = "enum Msg { Start }
+
+fn pick(n: Int, unused: Int) -> Int {
+  let spare = 1
+  n + ??more
+}
+
+fn update(m: Msg) -> List<Effect<Msg>> {
+  _ = pick(1, 2)
+  [Exit]
+}
+
+app t {
+  start:  Start
+  update: update
+  grants: []
+}
+";
+
+fn unused_program(name: &str, source: &str) -> Scratch {
+    let dir = Scratch::new(name);
+    fs::write(dir.path("main.paka"), source).unwrap();
+    dir
+}
+
+#[test]
+fn warnings_and_notes_come_in_position_order() {
+    let dir = unused_program("unused-order", UNUSED);
+    let out = paka(&dir.path(""), &["check", "main.paka"]);
+    assert_eq!(out.status.code(), Some(0));
+    let heads: Vec<_> = (stderr(&out).lines())
+        .filter(|l| !l.starts_with("  "))
+        .map(String::from)
+        .collect();
+    let want = [
+        "main.paka:3:17: warning[unused-name]: unused is never used",
+        "main.paka:4:7: warning[unused-name]: spare is never used",
+        "main.paka:5:7: note[hole]: ??more takes Int",
+        "main.paka:8:11: warning[unused-name]: m is never used",
+    ];
+    assert_eq!(heads, want);
+    let out = paka(&dir.path(""), &["check", "main.paka", "--json"]);
+    let kinds: Vec<_> = (stderr(&out).lines())
+        .map(|l| l.split(',').next().unwrap().to_string())
+        .collect();
+    let kind = |k: &str| format!("{{\"kind\":\"{k}\"");
+    let want = ["unused-name", "unused-name", "hole", "unused-name"].map(kind);
+    assert_eq!(kinds, want);
+}
+
+#[test]
+fn only_check_prints_warnings() {
+    let dir = unused_program("unused-run", UNUSED);
+    for command in ["run", "examples"] {
+        let out = paka(&dir.path(""), &[command, "main.paka"]);
+        assert_eq!(out.status.code(), Some(0), "{command}");
+        assert!(out.stderr.is_empty(), "{command}: {}", stderr(&out));
+    }
+}
+
+#[test]
+fn an_error_hides_every_warning() {
+    let source = UNUSED.replace("let spare = 1", "let spare = nope");
+    let dir = unused_program("unused-error", &source);
+    let out = paka(&dir.path(""), &["check", "main.paka"]);
+    assert_eq!(out.status.code(), Some(1));
+    let text = stderr(&out);
+    assert!(
+        text.starts_with("main.paka:4:15: error[unknown-name]"),
+        "{text}"
+    );
+    assert!(!text.contains("warning"), "{text}");
 }
 
 #[test]

@@ -182,3 +182,71 @@ fn file_reason(e: &io::Error) -> Reason {
         _ => "failed",
     }
 }
+
+/// The host against real descriptors and files (docs/decisions/M2-15.md sections 1.6 and 1.7).
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use std::os::unix::fs::PermissionsExt;
+    use std::path::PathBuf;
+
+    #[test]
+    fn a_print_to_a_full_device_is_no_space_left_on_device() {
+        let full = File::options().write(true).open("/dev/full").unwrap();
+        assert_eq!(Host(full).print("x"), Err("no space left on device"));
+    }
+
+    #[test]
+    fn a_print_to_a_closed_pipe_is_broken_pipe() {
+        let (reader, writer) = io::pipe().unwrap();
+        drop(reader);
+        assert_eq!(Host(writer).print("x"), Err("broken pipe"));
+    }
+
+    /// What a built program's write to a closed descriptor 1 meets: `EBADF`.
+    struct Closed;
+
+    impl Write for Closed {
+        fn write(&mut self, _: &[u8]) -> io::Result<usize> {
+            Err(io::Error::from_raw_os_error(9))
+        }
+
+        fn flush(&mut self) -> io::Result<()> {
+            Ok(())
+        }
+    }
+
+    #[test]
+    fn a_print_to_a_closed_descriptor_is_write_error() {
+        assert_eq!(Host(Closed).print("x"), Err("write error"));
+    }
+
+    /// A file one byte over the String limit, sparse, whose first byte is not UTF-8.
+    fn too_big(name: &str) -> PathBuf {
+        let path = std::env::temp_dir().join(format!("paka-host-{}-{name}", std::process::id()));
+        let mut file = File::create(&path).unwrap();
+        file.write_all(&[0xff]).unwrap();
+        file.set_len(CAP as u64 + 1).unwrap();
+        path
+    }
+
+    #[test]
+    fn a_file_over_the_limit_is_failed_before_it_is_decoded() {
+        let path = too_big("over");
+        let read = Host(io::sink()).read(path.to_str().unwrap());
+        fs::remove_file(&path).unwrap();
+        assert_eq!(read, Err("failed"));
+    }
+
+    #[test]
+    fn no_permission_comes_before_the_limit() {
+        let path = too_big("locked");
+        fs::set_permissions(&path, fs::Permissions::from_mode(0o000)).unwrap();
+        let ignored = File::open(&path).is_ok(); // a process that ignores permissions
+        let read = Host(io::sink()).read(path.to_str().unwrap());
+        fs::remove_file(&path).unwrap();
+        if !ignored {
+            assert_eq!(read, Err("no permission"));
+        }
+    }
+}

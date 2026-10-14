@@ -598,3 +598,110 @@ fn a_diagnostic_names_its_definition() {
             .contains("  definition: f\n")
     );
 }
+
+/// Each `unused-name` warning: its name and position (docs/decisions/M2-02.md section 5).
+fn unused(lines: &[&str]) -> Vec<(String, Pos)> {
+    let r = resolved(&program(lines));
+    let name = |d: &Diagnostic| {
+        d.message
+            .strip_suffix(" is never used")
+            .unwrap()
+            .to_string()
+    };
+    r.unused
+        .iter()
+        .map(|d| (name(d), d.position.unwrap()))
+        .collect()
+}
+
+#[test]
+fn every_kind_of_binding_warns_when_never_named() {
+    let found = unused(&[
+        "enum Msg { Go(n: Int) }",
+        "fn f(a: Int, b: Int) -> Int {",
+        "  let c = 1",
+        "  var d = 2",
+        "  for e in 0..<3 {",
+        "  }",
+        "  match Go(1) {",
+        "    Go(g) => {}",
+        "  }",
+        "  a",
+        "}",
+    ]);
+    let want = [
+        ("b", (2, 14)),
+        ("c", (3, 7)),
+        ("d", (4, 7)),
+        ("e", (5, 7)),
+        ("g", (8, 8)),
+    ];
+    assert_eq!(found, want.map(|(n, at)| (n.to_string(), at)));
+}
+
+#[test]
+fn a_write_uses_a_name() {
+    let found = unused(&[
+        "type Box { n: Int = 0 }",
+        "fn f(s: inout Box, t: inout Box, k: Int) {",
+        "  s.n = 1",
+        "  var v = 0",
+        "  v = 2",
+        "  if true {",
+        "    t = Box { n: k }",
+        "  }",
+        "}",
+    ]);
+    assert_eq!(found, []);
+}
+
+#[test]
+fn a_name_used_in_a_sibling_block_does_not_use_this_one() {
+    let found = unused(&[
+        "fn f(c: Bool) {",
+        "  if c {",
+        "    let x = 1",
+        "    _ = x",
+        "  } else {",
+        "    let x = 2",
+        "  }",
+        "}",
+    ]);
+    assert_eq!(found, [("x".to_string(), (6, 9))]);
+}
+
+#[test]
+fn the_update_message_and_an_example_local_warn_and_underscore_never_does() {
+    let src = program(&[
+        "enum Msg { Go(n: Int) }",
+        "fn update(m: Msg) -> List<Effect<Msg>> {",
+        "  [Exit]",
+        "}",
+        "fn g(m: Msg) -> Int {",
+        "  match m {",
+        "    Go(_) => 0",
+        "  }",
+        "}",
+        "example e {",
+        "  let unused = 1",
+        "  true",
+        "}",
+    ]);
+    let r = resolved(&src);
+    let shown: Vec<_> = (r.unused.iter())
+        .map(|d| d.detailed(src.as_bytes()))
+        .collect();
+    let line = |at: &str, name: &str, def: &str, bytes: &str| {
+        format!(
+            "main.paka:{at}: warning[unused-name]: {name} is never used\n  definition: {def}\n  \
+             bytes: {bytes}\n  text: \"{name}\"\n"
+        )
+    };
+    assert_eq!(
+        shown,
+        [
+            line("2:11", "m", "update", "34..35"),
+            line("11:7", "unused", "e", "149..155"),
+        ]
+    );
+}
