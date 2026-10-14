@@ -7,21 +7,25 @@ again by finding the character's offset in the line as read.
 
 ## cases/1 (`main.c`)
 
-No `\` before a line feed, so no join. 8 lines.
+10 lines. Line 2 `#define MAX(a, b) \` ends with `\` and joins line 3, so the joined text has 9
+lines, numbered here as joined.
 
 1. `#include <stdio.h> // io`: code up to the space before `//`; the comment goes. End space removed:
    `#include <stdio.h>`.
-2. `/* header`: block comment at depth 1; the text goes, the line feed stays: empty line.
-3. `   comment */`: still in the comment; `*/` ends it at depth 0: empty line.
-4. `int main(void) {` unchanged.
-5. The string `"// not a comment /* either */\n"` is kept whole (`\n` is a `\` and an `n`, both
+2. `#define MAX(a, b) ` + `  ((a) > (b) ? (a) : (b)) // pick`: three spaces between `)` and `((`.
+   No quote or comment before `//`; the comment goes, then the end space:
+   `#define MAX(a, b)   ((a) > (b) ? (a) : (b))`.
+3. `/* header`: block comment at depth 1; the text goes, the line feed stays: empty line.
+4. `   comment */`: still in the comment; `*/` ends it at depth 0: empty line.
+5. `int main(void) {` unchanged.
+6. The string `"// not a comment /* either */\n"` is kept whole (`\n` is a `\` and an `n`, both
    kept). `);` stays, ` /* trailing */` goes, then the end space: `  printf("// not a comment /*
    either */\n");` (one line).
-6. `'"'` is a string opened by `'`; the `"` inside does not end it. ` // quote char` goes: `  char q =
+7. `'"'` is a string opened by `'`; the `"` inside does not end it. ` // quote char` goes: `  char q =
    '"';`.
-7. `/* outer /* inner */ still outer */`: depth 1, 2, 1, 0. Removed with the space before it:
+8. `/* outer /* inner */ still outer */`: depth 1, 2, 1, 0. Removed with the space before it:
    `  return 0;`.
-8. `}`.
+9. `}`.
 
 ## cases/2 (`open.c`)
 

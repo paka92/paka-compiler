@@ -13,9 +13,9 @@ The input file holds only the characters with codes 32 to 126 and the line feed 
 sequence of lines: each line ends at a line feed, and the last line may lack one. An empty file has
 no lines. Lines are numbered from 1, empty lines included. The file has at most 200 lines.
 
-An empty line is skipped. Every other line must be a command: a command word and its fields,
-separated by single spaces, with no space at the start or the end of the line. There are six
-commands:
+An empty line, one with no characters at all, is skipped. A line of only spaces is not empty.
+Every other line must be a command: a command word and its fields, separated by single spaces, with
+no space at the start or the end of the line. There are six commands:
 
 ```
 open NAME

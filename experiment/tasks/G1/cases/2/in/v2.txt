@@ -1,5 +1,6 @@
-alpha
-beta
-gamma
-DELTA
-epsilon
+north
+east
+up
+down
+south
+west

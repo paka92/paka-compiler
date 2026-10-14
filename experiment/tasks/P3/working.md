@@ -19,11 +19,12 @@ Top names limits, server, users: l 108 < s 115 < u 117.
 - users[0] has name < role (n 110 < r 114); users[1] has name with text `b"o\b`, written back as
   `b\"o\\b`.
 
-## cases/2 (`bad.conf`)
+## cases/2 (`port.conf`)
 
-Stages 1 and 2 pass. In the table of `b`, the name `c` comes twice; the later one is on line 2:
-`b`1 ` `2 `=`3 ` `4 `{`5 ` `6 `c`7 ` `8 `=`9 ` `10 `"`11 `2`12 `"`13 ` `14 `c`15.
-`error: line 2 col 15: duplicate key c`, status 20.
+Stage 1 passes: the comment is skipped and `8080` is made of name characters. Stage 2: tokens
+`host = "db" port = 8080`. After `port =` a value must follow; `8080` is a name, which is not a
+value. Line 3: `p`1 `o`2 `r`3 `t`4 ` `5 `=`6 ` `7 `8`8. `error: line 3 col 8: syntax error`,
+status 20.
 
 ## hidden/1 (`trail.conf`)
 

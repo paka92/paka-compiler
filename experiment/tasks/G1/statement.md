@@ -45,10 +45,11 @@ and an insert one new line, in order.
 
 If the list has no change, print `no differences` and a line feed.
 
-Otherwise, the changes are put in groups in list order: two changes in a row belong to the same
-group when at most `2 * C` keeps lie between them in the list. A hunk is the part of the list from
-a group's first change to its last, plus up to `C` keeps directly before it and up to `C` keeps
-directly after it (fewer where the list starts or ends first). Hunks never overlap.
+Otherwise, the changes are put in groups in list order: two changes with no other change between
+them belong to the same group when at most `2 * C` keeps lie between them in the list. A hunk is
+the part of the list from a group's first change to its last, plus up to `C` keeps directly before
+it and up to `C` keeps directly after it (fewer where the list starts or ends first). Hunks never
+overlap.
 
 Each hunk prints a header and then one line per entry, in list order: a keep as a space and the
 line, a delete as `-` and the line, an insert as `+` and the line. The header is

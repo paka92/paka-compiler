@@ -4,16 +4,11 @@ Not part of the statement. One entry per case: the checks, then each step with t
 order they are visited, written (row, column). Second check: the grain count is the same before and
 after, and the last step listed as moving nothing was re-checked grain by grain against rules 1-5.
 
-## cases/1 (`pile.txt`, `S` = 100)
+## cases/1 (`wide.txt`, `S` = 20)
 
-Grains (1,3), (2,3); 4 rows of 5.
-
-1. Rows 4, 3 empty. (2,3): (3,3) empty, down. (1,3): (2,3) now empty, down. Grains (2,3), (3,3).
-2. (3,3) down to (4,3). (2,3) down to (3,3).
-3. (4,3) is in the bottom row. (3,3): below taken; left (3,2) and (4,2) empty: to (4,2).
-4. (4,2), (4,3) bottom row. Nothing moves.
-
-Steps 1-3 moved, step 4 did not: `steps: 3, settled`. Row 4 `.oo..`.
+`20` is valid. Line 1 `.o..` is not empty: 4 cells. Lines in order: line 1 fine; line 2 `#...` fine,
+4 cells; line 3 `.o...` has only good cells but 5 of them: `error: line 3: ragged row`, status 20.
+Line 4 `..x.` has a bad cell at col 3, but line 3 comes first.
 
 ## cases/2 (`rain.txt`, `S` = 2)
 

@@ -39,8 +39,9 @@ The joined text is read from left to right, starting in code.
   block comment.
 - **A string** is kept as it is. It ends at the next quote of the same kind as the one that opened
   it (`"` or `'`), and that quote is kept too. Inside it, a `\` and the character after it both
-  belong to the string, so `\"`, `\'` and `\\` do not end it. Comment markers inside a string are
-  text. A string must end on its line of the joined text.
+  belong to the string, so `\"`, `\'` and `\\` do not end it. A `\` directly before a line feed or
+  the end of the text does not escape it; the string is unterminated. Comment markers inside a
+  string are text. A string must end on its line of the joined text.
 
 The markers `//`, `/*` and `*/` are two characters read from left to right, and two markers never
 share a character: after a marker, reading goes on after its second character. So in `/*/`, the
@@ -81,5 +82,5 @@ Reading stops at the first error met from left to right:
 
 - `unterminated string`: a string reaches a line feed or the end of the text before its closing
   quote. The position is that of its opening quote.
-- `unterminated comment`: the text ends inside a block comment. The position is that of the `/*`
-  that started the comment at depth 1.
+- `unterminated comment`: the text ends inside a block comment. The position is that of the `/` of
+  the `/*` that started the comment at depth 1.

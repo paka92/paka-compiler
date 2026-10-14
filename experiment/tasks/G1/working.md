@@ -21,14 +21,22 @@ List: K D I K K K K I K. Between the change at 3 and the one at 8 lie 4 keeps > 
 - Hunk 1: K apple, D banana, I blueberry, K cherry. Old lines 1-3, new lines 1-3: `@@ -1,3 +1,3 @@`.
 - Hunk 2: K fig (old 6, new 6), I guava (new 7), K grape (old 7, new 8): `@@ -6,2 +6,3 @@`.
 
-## cases/2 (`v1.txt`, `v2.txt`, `C` = 2)
+## cases/2 (`v1.txt`, `v2.txt`, `C` = 0)
 
-- alpha, beta, gamma: K.
-- (3,3) delta / DELTA: L(4,3) = 0 (i = n), L(3,4) = 0 (delta / epsilon); 0 >= 0: D delta.
-- (4,3): i = n, j < m: I DELTA, then (4,4): I epsilon.
+n = 3 (north, east, south), m = 6 (north, east, up, down, south, west).
 
-List: K K K D I I. One group; 2 keeps before (beta, gamma), none after. Old beta, gamma, delta =
-lines 2-4: `-2,3`. New beta, gamma, DELTA, epsilon = lines 2-5: `+2,4`.
+- north, east: K.
+- (2,2) south / up: L(3,2) = 0 (i = n) < L(2,3) = |south| = 1: I up.
+- (2,3) south / down: L(3,3) = 0 < L(2,4) = 1: I down.
+- (2,4) south = south: K.
+- (3,5): i = n: I west.
+
+List: K K I I K I. I up and I down have 0 keeps between them, <= 0: one group. Between I down and
+I west lies 1 keep > 0: a second group. No context.
+
+- Hunk 1: I up, I down. No old line; 2 old lines (north, east) used before: `-2,0`. New lines 3-4:
+  `+3,2`.
+- Hunk 2: I west. No old line; 3 old lines used before: `-3,0`. New line 6: `+6,1`.
 
 ## hidden/1 (`C` = `011`)
 

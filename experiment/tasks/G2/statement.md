@@ -33,8 +33,8 @@ row from left to right. When a visited cell holds a grain, the grain may move on
    that are empty, it moves down and right.
 5. Otherwise it stays.
 
-The grid is changed at once: each check sees the grid as it is after every move made before it in
-the same step. Rock never moves.
+Each move takes effect immediately: each check sees the grid as it is after every move made before
+it in the same step. Rock never moves.
 
 ## Running
 

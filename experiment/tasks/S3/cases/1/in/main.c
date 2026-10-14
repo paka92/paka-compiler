@@ -1,4 +1,6 @@
 #include <stdio.h> // io
+#define MAX(a, b) \
+  ((a) > (b) ? (a) : (b)) // pick
 /* header
    comment */
 int main(void) {
