@@ -1,6 +1,9 @@
 #![deny(clippy::float_arithmetic)]
 
 mod ast;
+// The body checker; a later pass wires it in, nothing calls it yet.
+#[allow(dead_code)]
+mod body;
 mod build;
 // The one table of built-in names and signatures.
 #[allow(dead_code)]

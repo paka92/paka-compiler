@@ -83,7 +83,7 @@ impl<'a> Types<'a> {
         ty
     }
 
-    fn named(&mut self, name: &'static str, args: &[Ty]) -> Ty {
+    pub fn named(&mut self, name: &'static str, args: &[Ty]) -> Ty {
         self.intern(Node::Name(name, args.into()))
     }
 
@@ -97,7 +97,7 @@ impl<'a> Types<'a> {
     }
 
     /// The unknown type, which stands for a part with an error.
-    fn unknown(&mut self) -> Ty {
+    pub fn unknown(&mut self) -> Ty {
         self.intern(Node::Var('_'))
     }
 
@@ -150,7 +150,7 @@ impl<'a> Types<'a> {
     }
 
     /// Whether a value of type `found` can stand where `want` does; a variable fits anything.
-    fn fits(&self, found: Ty, want: Ty) -> bool {
+    pub fn fits(&self, found: Ty, want: Ty) -> bool {
         match (self.node(found), self.node(want)) {
             (Node::Var(_), _) | (_, Node::Var(_)) => true,
             (Node::Name(a, x), Node::Name(b, y)) => {

@@ -36,6 +36,22 @@ const KINDS: &[(&str, bool, bool)] = &[
     ("duplicate-grant", false, false),
     // The second milestone's codes; the spec lists them once it covers that milestone.
     ("no-finite-value", false, false),
+    ("unused-result", false, false),
+    ("nothing-to-discard", false, false),
+    ("missing-value", false, false),
+    ("unreachable-code", false, false),
+    ("break-outside-loop", false, false),
+    ("if-needs-else", false, false),
+    ("return-last", false, false),
+    ("assign-to-let", false, false),
+    ("bad-assignment-target", false, false),
+    ("cannot-infer", false, false),
+    ("wrong-label", false, false),
+    ("not-a-function", false, false),
+    ("missing-inout-mark", false, false),
+    ("bad-inout-target", false, false),
+    ("not-a-value", false, false),
+    ("literal-out-of-range", false, false),
 ];
 
 fn declared(code: &str) -> &'static (&'static str, bool, bool) {
@@ -230,7 +246,25 @@ mod tests {
     }
 
     /// Codes of the second milestone, until the spec lists them.
-    const M2: [&str; 1] = ["no-finite-value"];
+    const M2: [&str; 17] = [
+        "no-finite-value",
+        "unused-result",
+        "nothing-to-discard",
+        "missing-value",
+        "unreachable-code",
+        "break-outside-loop",
+        "if-needs-else",
+        "return-last",
+        "assign-to-let",
+        "bad-assignment-target",
+        "cannot-infer",
+        "wrong-label",
+        "not-a-function",
+        "missing-inout-mark",
+        "bad-inout-target",
+        "not-a-value",
+        "literal-out-of-range",
+    ];
 
     #[test]
     fn table_lists_exactly_the_spec_codes() {
