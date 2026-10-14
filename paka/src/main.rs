@@ -1,25 +1,20 @@
 #![deny(clippy::float_arithmetic)]
 
-mod ast;
 mod body;
 mod build;
-mod builtins;
 mod core_form;
-mod diagnostic;
 mod interp;
-mod json;
-mod lexer;
 mod llvm;
 mod lower;
-mod parser;
 mod resolve;
 mod sig;
 #[cfg(test)]
 mod vectors;
 
-use ast::Def;
 use core_form::Program;
-use diagnostic::Diagnostic;
+use paka::ast::Def;
+use paka::diagnostic::Diagnostic;
+use paka::{ast, builtins, diagnostic, parser};
 use paka_rt::{Fd1, abi};
 use std::ffi::OsStr;
 use std::io::Write;
