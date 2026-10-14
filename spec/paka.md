@@ -489,10 +489,10 @@ and compare effect lists with `==`. They are checked with the program and run on
 
 | Command | Does |
 |---|---|
-| `paka check <file> [--json]` | checks; prints the error, or warnings and hole notes |
-| `paka run <file> [arguments]` | checks, then runs the app |
-| `paka examples <file>` | checks, then runs every example |
-| `paka build <file> -o <output>` | checks, then writes an executable |
+| `paka check <path> [--json]` | checks; prints the error, or warnings and hole notes |
+| `paka run <path> [arguments]` | checks, then runs the app |
+| `paka examples <path>` | checks, then runs every example |
+| `paka build <path> -o <output>` | checks, then writes an executable |
 
 Exit status: 0 good; 1 an error in the program; 2 bad usage; 3 a trap, a stop or an example that
 did not pass; 4 an internal error.
