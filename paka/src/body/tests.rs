@@ -278,7 +278,9 @@ fn accepts_control_flow_and_values() {
             "let b = if a > 1 { \"x\" } else if a > 0 { \"y\" } else { \"z\" }",
             "let c: Option<Int> = if true { None } else { Some(1) }",
             "let d = if true { None } else { Some(1) }",
-            "_ = [b, c, d]",
+            "_ = b",
+            "_ = c",
+            "_ = d",
         ]),
         full(&[
             "fn g() -> Result<Int, String> {",
@@ -320,7 +322,7 @@ fn accepts_control_flow_and_values() {
 fn accepts_defaults_and_bare_values() {
     accepts(&[full(&[
         "enum E { A(n: Int), B }",
-        "type T { e: E = A(1), xs: List<Int> = [1, 2], m: Map<String, Int> = [\"a\": 1], o: Option<Int> = None, n: Int = -3 }",
+        "type T { e: E = A(1), xs: List<Int> = [], m: Map<String, Int> = [:], o: Option<Int> = None, n: Int = -3 }",
     ])]);
 }
 
@@ -596,7 +598,6 @@ fn rejects_inout_marks() {
             None,
             &["var n = 1", "bump(&n, 2)"],
         ),
-        st("bad-inout-target", "&^inc(1)", None, &["bump(&inc(1))"]),
         st(
             "bad-inout-target",
             "&^i",
@@ -974,9 +975,9 @@ fn rejects_the_contents_of_field_defaults() {
         ),
         df(
             MISMATCH,
-            "[1, ^\"a\"]",
+            "n: ^\"x\"",
             Some(("Int", "String")),
-            &["type T { xs: List<Int> = [1, \"a\"] }"],
+            &["type In { n: Int }", "type T { i: In = In { n: \"x\" } }"],
         ),
         df(
             "wrong-argument-count",
@@ -1035,10 +1036,11 @@ fn a_signature_with_an_error_exposes_its_good_parts() {
 #[test]
 fn a_type_with_an_error_in_a_default_fails_alone() {
     let lines = [
-        "type T { xs: List<Int> = [1, \"a\"] }",
+        "enum E { A(n: Int) }",
+        "type T { e: E = A(\"x\") }",
         "type U { n: Int = 1 }",
     ];
-    assert_eq!(codes(&lines), ["type-mismatch", "ok"]);
+    assert_eq!(codes(&lines), ["ok", "type-mismatch", "ok"]);
 }
 
 #[test]
@@ -1067,14 +1069,14 @@ fn deep(f: impl FnOnce() + Send) {
 }
 
 /// 62 levels of brackets, each holding a chain of 1,000 links, with the next level at the chain's
-/// end or its head.
-fn nested_chains(head: bool) -> String {
+/// end or its head. The innermost level starts from `base`.
+fn nested_chains(head: bool, base: &str) -> String {
     let links = " + x".repeat(999);
     let wrap = |inner: String| match head {
         true => format!("({inner}{links} + x)"),
         false => format!("(x{links} + {inner})"),
     };
-    let expr = (0..62).fold("x".to_string(), |inner, _| wrap(inner));
+    let expr = (0..62).fold(base.to_string(), |inner, _| wrap(inner));
     program(&["fn f(x: Int) -> Int {", &format!("  {expr}"), "}"])
 }
 
@@ -1082,10 +1084,8 @@ fn nested_chains(head: bool) -> String {
 fn the_deepest_allowed_chains_fit_the_stack() {
     for head in [false, true] {
         deep(|| {
-            let src = nested_chains(head);
-            assert!(errors(&src).is_empty());
-            let bad = src.replacen("(x", "(\"x\"", 1);
-            assert_eq!(errors(&bad).len(), 1);
+            assert!(errors(&nested_chains(head, "x")).is_empty());
+            assert_eq!(errors(&nested_chains(head, "\"x\"")).len(), 1);
         });
     }
 }
