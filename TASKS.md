@@ -422,7 +422,7 @@ or merged during review. Ids with a letter were added during review.
 - flags: none
 - done when: Parser tests with hand-written trees pass for every new form in the two decisions, including their error cases.
 - why this level: Telling generic brackets from comparison operators is a known parser trap; a mistake mis-parses silently.
-- note: Follows docs/decisions/M2-02.md: the newline, comment and nesting rules of its sections 1.5 to 1.7, the grammar of section 2 and the codes of section 5. Follows docs/decisions/M2-09.md: the interface hash covers every named type a signature reaches, and no app state may hold a function type. Follows docs/decisions/M2-06.md for traps, holes and examples. Follows docs/decisions/M2-12.md for Option, Result, `?` and unreachable(). Done. Keeping comments in the tree (section 1.6 of M2-02) is not part of this task; it belongs to M4-15, and until then the lexer skips comments.
+- note: Follows docs/decisions/M2-02.md: the newline, comment and nesting rules of its sections 1.5 to 1.7, the grammar of section 2 and the codes of section 5. Follows docs/decisions/M2-09.md: the interface hash covers every named type a signature reaches, and no app state may hold a function type. Follows docs/decisions/M2-06.md for traps, holes and examples. Follows docs/decisions/M2-12.md for Option, Result, `?` and unreachable(). Done. Keeping comments in the tree (section 1.6 of M2-02) is not part of this task; it belongs to M4-15, and until then the lexer skips comments. M2-09 section 2 (amended by M2-30): the spellings (a, b) =>, || 3, fn(...) {...} in an expression and a nested fn get the section 5 lambda text; today they give the generic parser texts.
 
 ### M2-18 · L4 · Write the language reference from the approved decisions, within 8,000 tokens
 
@@ -525,10 +525,12 @@ or merged during review. Ids with a letter were added during review.
 
 ### M2-30 · L3 · Check, lower and run function values
 
+- status: done
 - needs: M2-09, M2-29
 - flags: none
 - done when: Golden tests from the decision samples pass, including variant constructors as functions and every rejected capture.
 - why this level: Spans checker, core and interpreter; capture rules need care.
+- note: Done: function values check, lower and run on the interpreter, with sort_by (stable merge sort, before(right, left)). Mismatches name function types unquoted in the canonical spelling; an unbound M shows as Msg. A state type that holds a function type is type-mismatch, checked before bad-state. M2-09 sections 1.8, 1.9 and 2 amended.
 
 ### M2-31 · L3 · Check, lower and run the error-handling forms
 
