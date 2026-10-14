@@ -66,11 +66,21 @@ fn bad_text_is_an_error() {
     }
 }
 
+fn nested(levels: usize) -> String {
+    format!("{}{}", "[".repeat(levels), "]".repeat(levels))
+}
+
 #[test]
-fn nesting_is_bounded() {
-    assert!(parse(&"[".repeat(10_000)).is_err());
-    let deep = format!("{}{}", "[".repeat(50), "]".repeat(50));
-    assert!(parse(&deep).is_ok());
+fn nesting_is_bounded_at_64_levels() {
+    assert!(parse(&nested(64)).is_ok());
+    assert!(parse(&nested(65)).is_err());
+    assert!(parse(&"[".repeat(100_000)).is_err());
+}
+
+#[test]
+fn unescaped_non_ascii_text_is_kept() {
+    assert_eq!(parse("\"é😀\""), Ok(Value::Str("é😀".into())));
+    assert_eq!(parse("\"\\u00e9\\ud83d\\ude00\""), Ok(Value::Str("é😀".into())));
 }
 
 #[test]

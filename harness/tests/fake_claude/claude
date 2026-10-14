@@ -2,8 +2,12 @@
 # Stand-in for `claude -p` in the client tests. Everything it needs is in its working directory:
 # `script` holds the lines to print, in blocks split by a line of three dashes. Block 0 is printed
 # at start; block n answers the n-th line read from standard input. An empty block ends the process
-# with status 3. The arguments are written to `args`, one per line, and each input line to `stdin`.
+# with status 3. The arguments are written to `args`, one per line, each input line to `stdin`, the
+# environment to `env` and the process id to `pid`; one line goes to standard error.
 printf '%s\n' "$@" > args
+env > env
+echo $$ > pid
+echo fake-stderr >&2
 block() { awk -v n="$1" '/^---$/ { b++; next } b == n' script; }
 block 0
 n=1

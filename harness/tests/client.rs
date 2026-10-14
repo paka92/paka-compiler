@@ -2,7 +2,7 @@
 
 use harness::Error;
 use harness::client::{Config, Run};
-use harness::usage::{Caps, Ledger, Tokens};
+use harness::usage::{Ledger, Tokens};
 use std::fs;
 use std::path::{Path, PathBuf};
 
@@ -11,12 +11,9 @@ const STREAMS: &str = concat!(env!("CARGO_MANIFEST_DIR"), "/tests/streams");
 
 const TURN_1: &str = "Here is the file.\n```paka\napp main\n```";
 const TURN_2: &str = "Fixed.\n```paka\napp main2\n```";
-const BIG: Caps = Caps {
-    input: 1_000_000,
-    output: 1_000_000,
-};
+const BIG: Tokens = tokens(1_000_000, 1_000_000);
 
-fn tokens(input: u64, output: u64) -> Tokens {
+const fn tokens(input: u64, output: u64) -> Tokens {
     Tokens { input, output }
 }
 
@@ -28,7 +25,7 @@ struct Rig {
 }
 
 impl Rig {
-    fn new(name: &str, stream: &str, caps: Caps) -> Rig {
+    fn new(name: &str, stream: &str, caps: Tokens) -> Rig {
         let base = std::env::temp_dir().join(format!("harness-{}-{name}", std::process::id()));
         let _ = fs::remove_dir_all(&base);
         let dir = base.join("run");
@@ -76,8 +73,7 @@ fn reply_and_token_counts_are_read_from_the_result() {
     let first = run.send("hello").unwrap();
     assert_eq!(first.text, TURN_1);
     assert_eq!(first.tokens, tokens(3 + 1000 + 200, 50));
-    assert_eq!(first.model, "claude-sonnet-5-5");
-    assert_eq!(first.attempts, 1);
+    assert!(!first.cut_off);
     let second = run.send("again").unwrap();
     assert_eq!(second.text, TURN_2);
     assert_eq!(second.tokens, tokens(2 + 80 + 1200, 70));
@@ -132,39 +128,42 @@ fn a_turn_is_written_as_one_json_line() {
 }
 
 #[test]
-fn a_retried_turn_is_counted_once() {
-    let rig = Rig::new("retry", "retry.txt", BIG);
-    let mut run = rig.start().unwrap();
-    let reply = run.send("hello").unwrap();
-    assert_eq!(reply.attempts, 2);
-    assert_eq!(reply.tokens, tokens(1203, 50));
-    assert_eq!(rig.used(), tokens(1203, 50));
-    let next = run.send("again").unwrap();
-    assert_eq!(next.attempts, 1);
-    assert_eq!(rig.used(), tokens(1203 + 1282, 120));
-    run.close().unwrap();
-    let lines = rig.run_file("stdin");
-    let lines: Vec<_> = lines.lines().collect();
-    assert_eq!(lines.len(), 3);
-    assert_eq!(lines[0], lines[1]);
-}
-
-#[test]
-fn an_error_during_execution_is_retried_too() {
-    let rig = Rig::new("execution", "error_during_execution.txt", BIG);
-    let reply = rig.start().unwrap().send("hello").unwrap();
-    assert_eq!((reply.attempts, reply.tokens), (2, tokens(1203, 50)));
-    assert_eq!(rig.used(), tokens(1203, 50));
-}
-
-#[test]
-fn retries_stop_after_three_and_count_nothing() {
-    let rig = Rig::new("exhausted", "exhausted.txt", BIG);
+fn a_failed_result_voids_the_run_and_its_tokens_are_counted() {
+    let rig = Rig::new("failed", "failed.txt", BIG);
     let mut run = rig.start().unwrap();
     let err = run.send("hello").unwrap_err();
+    assert!(matches!(&err, Error::Provider(m) if m.contains("529")), "{err:?}");
+    assert_eq!(rig.used(), tokens(27, 9));
+    assert_eq!(rig.run_file("stdin").lines().count(), 1);
+}
+
+#[test]
+fn an_error_during_execution_voids_the_run() {
+    let rig = Rig::new("execution", "error_during_execution.txt", BIG);
+    let err = rig.start().unwrap().send("hello").unwrap_err();
     assert!(matches!(err, Error::Provider(_)), "{err:?}");
     assert_eq!(rig.used(), tokens(0, 0));
-    assert_eq!(rig.run_file("stdin").lines().count(), 4);
+}
+
+#[test]
+fn a_failed_result_without_usage_counts_nothing() {
+    let rig = Rig::new("no-usage", "failed_no_usage.txt", BIG);
+    let err = rig.start().unwrap().send("hello").unwrap_err();
+    assert!(matches!(err, Error::Provider(_)), "{err:?}");
+    assert_eq!(rig.used(), tokens(0, 0));
+}
+
+#[test]
+fn after_an_error_the_run_reads_and_writes_nothing() {
+    let rig = Rig::new("poison", "failed.txt", BIG);
+    let mut run = rig.start().unwrap();
+    run.send("hello").unwrap_err();
+    for _ in 0..2 {
+        let err = run.send("again").unwrap_err();
+        assert!(matches!(err, Error::Voided), "{err:?}");
+    }
+    assert_eq!(rig.run_file("stdin").lines().count(), 1);
+    assert_eq!(rig.used(), tokens(27, 9));
 }
 
 #[test]
@@ -184,11 +183,11 @@ fn a_run_past_the_cap_is_refused_before_the_process_starts() {
 #[test]
 fn reaching_the_cap_mid_run_stops_the_next_call() {
     for caps in [
-        Caps {
+        Tokens {
             input: 1203,
             output: 1_000_000,
         },
-        Caps {
+        Tokens {
             input: 1_000_000,
             output: 50,
         },
@@ -249,6 +248,7 @@ fn compaction_voids_the_run() {
         let rig = Rig::new("compact", stream, BIG);
         let err = rig.start().unwrap().send("hello").unwrap_err();
         assert!(matches!(err, Error::Compacted), "{stream}: {err:?}");
+        assert_eq!(rig.used(), tokens(1203, 50), "{stream}");
     }
 }
 
@@ -284,13 +284,113 @@ fn an_unknown_shape_is_an_error_and_counts_nothing() {
         "fraction_usage_field.txt",
         "unknown_event.txt",
         "not_json.txt",
-        "no_model.txt",
     ] {
         let rig = Rig::new("shape", stream, BIG);
         let err = rig.start().unwrap().send("hello").unwrap_err();
         assert!(matches!(err, Error::Malformed(_)), "{stream}: {err:?}");
         assert_eq!(rig.used(), tokens(0, 0), "{stream}");
     }
+}
+
+#[test]
+fn a_reply_without_an_assistant_message_is_an_error_but_is_counted() {
+    let rig = Rig::new("no-model", "no_model.txt", BIG);
+    let err = rig.start().unwrap().send("hello").unwrap_err();
+    assert!(matches!(err, Error::Malformed(_)), "{err:?}");
+    assert_eq!(rig.used(), tokens(1203, 50));
+}
+
+#[test]
+fn one_assistant_message_from_another_model_voids_the_turn() {
+    let rig = Rig::new("mixed", "mixed_models.txt", BIG);
+    let err = rig.start().unwrap().send("hello").unwrap_err();
+    assert!(matches!(&err, Error::WrongModel { got, .. } if got == "claude-haiku-5-5"), "{err:?}");
+    assert_eq!(rig.used(), tokens(1203, 50));
+}
+
+#[test]
+fn a_refusal_voids_the_run_and_is_counted() {
+    let rig = Rig::new("refusal", "refusal.txt", BIG);
+    let err = rig.start().unwrap().send("hello").unwrap_err();
+    assert!(matches!(err, Error::Refused), "{err:?}");
+    assert_eq!(rig.used(), tokens(1203, 50));
+}
+
+#[test]
+fn a_reply_cut_at_the_token_limit_is_flagged() {
+    let rig = Rig::new("cut-off", "cut_off.txt", BIG);
+    let reply = rig.start().unwrap().send("hello").unwrap();
+    assert!(reply.cut_off);
+    assert_eq!(reply.text, TURN_1);
+}
+
+#[test]
+fn a_key_source_other_than_none_is_refused() {
+    let rig = Rig::new("api-key", "api_key.txt", BIG);
+    let err = rig.start().unwrap().send("hello").unwrap_err();
+    assert!(matches!(&err, Error::ApiKey(s) if s == "ANTHROPIC_API_KEY"), "{err:?}");
+}
+
+#[test]
+fn the_child_gets_a_cleared_environment() {
+    const INNER: &str = "HARNESS_ENV_CHECK";
+    if std::env::var_os(INNER).is_none() {
+        let this = std::env::current_exe().unwrap();
+        let status = std::process::Command::new(this)
+            .args(["--exact", "the_child_gets_a_cleared_environment", "--nocapture"])
+            .env(INNER, "1")
+            .env("ANTHROPIC_API_KEY", "not-a-key")
+            .status()
+            .unwrap();
+        assert!(status.success());
+        return;
+    }
+    let rig = Rig::new("env", "ok.txt", BIG);
+    let mut run = rig.start().unwrap();
+    run.send("hello").unwrap();
+    run.close().unwrap();
+    let env = rig.run_file("env");
+    assert!(!env.contains("ANTHROPIC_API_KEY"), "{env}");
+    assert!(!env.contains(INNER), "{env}");
+    assert!(env.lines().any(|l| l.starts_with("PATH=")), "{env}");
+}
+
+#[test]
+fn the_childs_standard_error_is_kept_in_the_run_directory() {
+    let rig = Rig::new("stderr", "ok.txt", BIG);
+    let mut run = rig.start().unwrap();
+    run.send("hello").unwrap();
+    run.close().unwrap();
+    assert_eq!(rig.run_file("stderr.log"), "fake-stderr\n");
+}
+
+#[test]
+fn dropping_a_run_kills_and_reaps_the_process() {
+    let rig = Rig::new("drop", "ok.txt", BIG);
+    let mut run = rig.start().unwrap();
+    run.send("hello").unwrap();
+    let pid = rig.run_file("pid").trim().to_string();
+    assert!(Path::new(&format!("/proc/{pid}")).exists());
+    drop(run);
+    assert!(!Path::new(&format!("/proc/{pid}")).exists());
+}
+
+#[test]
+fn closing_a_run_whose_process_exits_with_an_error_fails() {
+    let mut rig = Rig::new("close-status", "ok.txt", BIG);
+    rig.config.program = "false".into();
+    let err = rig.start().unwrap().close().unwrap_err();
+    assert!(matches!(err, Error::Died), "{err:?}");
+}
+
+#[test]
+fn a_process_that_exits_before_reading_is_a_dead_process() {
+    let mut rig = Rig::new("early-exit", "ok.txt", BIG);
+    rig.config.program = "false".into();
+    let mut run = rig.start().unwrap();
+    std::thread::sleep(std::time::Duration::from_millis(200));
+    let err = run.send("hello").unwrap_err();
+    assert!(matches!(err, Error::Died), "{err:?}");
 }
 
 #[test]
