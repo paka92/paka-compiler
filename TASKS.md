@@ -763,11 +763,12 @@ or merged during review. Ids with a letter were added during review.
 
 ### M3-09 · L4 · Build the trial loop: prompt, edits, checks, raw logs and resume
 
+- status: done
 - needs: M3-06, M3-07, M3-08
 - flags: none
 - done when: With a scripted fake model, tests show correct edit and token counts, budget stops, full raw logs with the time of each model call, and resume after a kill without rerunning trials.
 - why this level: Several modules meet; a miscount of edits or tokens silently skews two of the three metrics.
-- note: Writes each turn to the open process. A run whose process dies or compacts is void and run again under M3-03.
+- note: Readings for the protocol (M3-18): a reply holds exactly one backtick-fenced code block, and none or several is a failed submission; args are shown JSON-quoted; there is no whole-run time limit, only the per-call one; a usage-cap void does not use up an attempt, other voids do; void attempts keep their tokens out of the run end line; tokens of a killed call can be missing from the ledger, so the cap may undercount; compiler text is logged in full and cut at 8,000 bytes only in feedback; a memory kill shows as a wrong exit status, under the label over time or memory. Writes each turn to the open process. A run whose process dies or compacts is void and run again under M3-03.
 
 ### M3-10 · L3 · Build the metrics tool: raw logs to three metrics and verdict
 
