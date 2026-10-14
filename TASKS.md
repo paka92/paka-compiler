@@ -480,11 +480,12 @@ or merged during review. Ids with a letter were added during review.
 
 ### M2-25 · L3 · Lower checked programs to the core form
 
+- status: done
 - needs: M2-23
 - flags: none
 - done when: Tests compare hand-written core for each statement, expression and pattern kind; all pass.
 - why this level: Desugars match, interpolation and inout places while keeping the fixed evaluation order.
-- note: Wires the name pass, the signature table and the body check into `paka check` and `paka run` in place of the milestone 1 checker.
+- note: Wires the name pass, the signature table and the body check into `paka check` and `paka run` in place of the milestone 1 checker. Done: paka check and paka run use the name pass, signature table and body check; check.rs is gone. Lowering is paka/src/lower.rs with lower/; the body check records the chosen built-in row in Bodies.rows. run and build still go through the m1() bridge and answer unsupported-form outside the milestone 1 subset.
 
 ### M2-26 · L3 · Evaluate the core form in the interpreter
 
@@ -492,6 +493,7 @@ or merged during review. Ids with a letter were added during review.
 - flags: none
 - done when: Hand-built core programs give hand-written results for every node, each trap kind and the call-depth limit.
 - why this level: Tree-walking interpreter with inout places and traps as status returns; fiddly details.
+- note: Removes the m1() bridge in paka/src/lower.rs and the unsupported-form tool error (spec/m1.md marks it temporary).
 
 ### M2-27 · L2 · Run examples and compute each one's status
 
@@ -561,7 +563,7 @@ or merged during review. Ids with a letter were added during review.
 - flags: none
 - done when: paka run tests pass for start, ending and exit codes. Where M2-15 changed the provisional start or end rule, the interpreter and paka-rt's run loop change in this pull request, and M2-18's re-expected copy is moved from tests/cases-pending over the old case with git mv and passes on both back ends.
 - why this level: The care is in message and effect ordering.
-- note: State rollback after a trapping handler is tested here only if M2-15 lets a headless app survive a trap; otherwise it arrives with M5-25b. The paka-rt change adds no unsafe beyond the one call into compiled code. Follows docs/decisions/M2-15.md for the app form, effects, grants and ending. Print moves to the raw standard-output descriptor in the interpreter and paka-rt, and docs/abi/m1.md sections 5 and 6 are corrected to match. Wires the app check of paka/src/body/app.rs, adds `bad-state` to the code table of spec/m1.md section 11 and updates the update-signature text there to M2-15.
+- note: State rollback after a trapping handler is tested here only if M2-15 lets a headless app survive a trap; otherwise it arrives with M5-25b. The paka-rt change adds no unsafe beyond the one call into compiled code. Follows docs/decisions/M2-15.md for the app form, effects, grants and ending. Print moves to the raw standard-output descriptor in the interpreter and paka-rt, and docs/abi/m1.md sections 5 and 6 are corrected to match. Wires the app check of paka/src/body/app.rs, adds `bad-state` to the code table of spec/m1.md section 11 and updates the update-signature text there to M2-15. M2-25 already moved seven of the nine pending cases; check/unknown_grant and parse/variant_payload remain in tests/cases-pending.
 
 ### M2-37 · L3 · Perform console, file, argument and exit effects only when granted
 
