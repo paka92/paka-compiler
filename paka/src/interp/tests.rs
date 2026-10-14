@@ -922,6 +922,12 @@ fn the_call_depth_limit_is_10000() {
 }
 
 #[test]
+fn expressions_nest_past_one_stack_segment() {
+    let sum = (0..3_000).fold(int(0), |x, _| arith(Arith::Add, int(1), x));
+    assert_eq!(said(sum), "3000");
+}
+
+#[test]
 fn a_trap_names_the_frames_it_leaves() {
     let step = |name, next| func(name, &[], 0, block(vec![], Some(call(next, vec![]))));
     let fault = func(

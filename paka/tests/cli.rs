@@ -225,6 +225,20 @@ fn deep_expression_nesting_traps_stack_without_a_signal() {
 }
 
 #[test]
+fn deep_expressions_do_not_lower_the_call_depth_limit() {
+    let helper = format!(
+        "fn down(n: Int) -> Int {{\n  if n == 0 {{ 0 }} else {{ {}down(n - 1){} }}\n}}\n",
+        "(1 + ".repeat(10),
+        ")".repeat(10)
+    );
+    for (n, status) in [(9998, 0), (9999, 3)] {
+        let out = run_program("depth-limit", &helper, &format!("  let r = down({n})"));
+        assert_eq!(out.status.code(), Some(status), "down({n})");
+        assert_eq!(out.stderr.is_empty(), status == 0, "down({n})");
+    }
+}
+
+#[test]
 fn to_int_shows_its_operand_in_the_value_text_form() {
     let cases = [
         (
