@@ -816,10 +816,12 @@ or merged during review. Ids with a letter were added during review.
 
 ### M3-17 · L4 · Settle every disputed test from the statement text alone
 
+- status: done
 - needs: M3-14, M3-15, M3-16
 - flags: none
 - done when: All reference solutions pass all cases in all three languages; each changed statement or expected result has a logged reason drawn from the statement. No defect report is open.
 - why this level: Each ruling must come from the statement, not from whichever language's run looks right; errors are silent.
+- note: No reference solution disputed any case, so no statement or expected result changed. The one defect report, a match arm `V => _ = f()?` refused by the parser, is fixed: the discard now goes through the line parser that statements and arms share, with conformance cases for it. This closes the parser gap in the M3-16 note.
 
 ### M3-18 · L2 · Freeze the protocol and make the harness refuse counted runs from other commits
 
