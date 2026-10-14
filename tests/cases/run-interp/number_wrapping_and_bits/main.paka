@@ -1,0 +1,37 @@
+enum Msg { Start }
+
+fn n(i: Int) -> String { "{i}" }
+
+fn t(b: Bool) -> String { "{b}" }
+
+fn q(x: String) -> String { "[" + x + "]" }
+
+fn opt(o: Option<Int>) -> String {
+  match o {
+    Some(i) => "{i}"
+    None => "none"
+  }
+}
+
+fn lst(xs: List<String>) -> String {
+  let body = join(xs, "|")
+  "{len(xs)}[{body}]"
+}
+
+fn update(m: Msg) -> List<Effect<Msg>> {
+  [
+    Print(n(wrap_add(9223372036854775807, 1)) + " " + n(wrap_add(2, 3)) + " " + n(wrap_sub(-9223372036854775808, 1)) + " " + n(wrap_sub(5, 8))),
+    Print(n(wrap_mul(9223372036854775807, 2)) + " " + n(wrap_mul(6, 7)) + " " + n(wrap_mul(-9223372036854775808, -1))),
+    Print(n(bit_and(12, 10)) + " " + n(bit_or(12, 10)) + " " + n(bit_xor(12, 10)) + " " + n(bit_and(-1, 255))),
+    Print(n(bit_not(0)) + " " + n(bit_not(5)) + " " + n(bit_not(9223372036854775807))),
+    Print(n(shift_left(1, 10)) + " " + n(shift_left(1, 63)) + " " + n(shift_left(3, 0)) + " " + n(shift_left(-1, 1))),
+    Print(n(shift_right(-8, 1)) + " " + n(shift_right(1024, 3)) + " " + n(shift_right(-9223372036854775808, 63)) + " " + n(shift_right(5, 0)) + " " + n(shift_right(7, 1))),
+    Exit
+  ]
+}
+
+app rows {
+  start: Start
+  update: update
+  grants: [Console]
+}

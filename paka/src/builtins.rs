@@ -139,3 +139,46 @@ pub fn arity(type_name: &str) -> usize {
         _ => 0,
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use std::fs;
+    use std::path::Path;
+
+    /// Every source of a golden run case, in `tests/cases/run` and `tests/cases/run-interp`.
+    fn golden_sources() -> Vec<String> {
+        let root = Path::new(env!("CARGO_MANIFEST_DIR")).join("../tests/cases");
+        ["run", "run-interp"]
+            .iter()
+            .flat_map(|stage| fs::read_dir(root.join(stage)).unwrap())
+            .filter_map(|case| fs::read_to_string(case.unwrap().path().join("main.paka")).ok())
+            .collect()
+    }
+
+    fn calls(source: &str, name: &str) -> bool {
+        let word = |c: char| c.is_alphanumeric() || c == '_';
+        source
+            .match_indices(&format!("{name}("))
+            .any(|(at, _)| !source[..at].chars().next_back().is_some_and(word))
+    }
+
+    #[test]
+    fn every_function_has_a_golden_case() {
+        let sources = golden_sources();
+        let missing: Vec<_> = ROWS
+            .iter()
+            .filter(|(kind, _)| *kind == Kind::Fn)
+            .map(|(_, row)| name(row))
+            .filter(|name| !sources.iter().any(|s| calls(s, name)))
+            .collect();
+        assert!(missing.is_empty(), "no golden case calls {missing:?}");
+    }
+
+    #[test]
+    fn a_call_is_a_whole_name_followed_by_a_bracket() {
+        assert!(calls("let x = len(a)", "len"));
+        assert!(!calls("let x = strlen(a)", "len"));
+        assert!(!calls("let x = len (a)", "len"));
+    }
+}

@@ -3,7 +3,7 @@ enum Msg { Start, Loaded(text: String), Failed(why: String) }
 fn update(m: Msg) -> List<Effect<Msg>> {
   match m {
     Start => [ReadFile("main.paka", then: Loaded, or: Failed)]
-    Loaded(text) => [Print(text), Exit]
+    Loaded(text) => [Print("{len(text)}"), Exit]
     Failed(why) => [Print("cannot read: {why}"), ExitWith(20)]
   }
 }
