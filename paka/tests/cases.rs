@@ -1,5 +1,6 @@
 //! Case runner: every folder under `tests/cases/<stage>/` against its hand-written expectations
-//! (spec/m1.md section 11).
+//! (spec/m1.md section 11). The stage names the command: `check-text`, `check-json` and `examples`
+//! run the command they are named for, every other stage runs `paka run`.
 
 use std::fs;
 use std::path::{Path, PathBuf};
@@ -77,17 +78,28 @@ fn subfolders(dir: &Path) -> Vec<PathBuf> {
     folders
 }
 
+fn args(stage: &Path) -> &'static [&'static str] {
+    match stage.file_name().and_then(|n| n.to_str()) {
+        Some("check-text") => &["check", "main.paka"],
+        Some("check-json") => &["check", "main.paka", "--json"],
+        Some("examples") => &["examples", "main.paka"],
+        _ => &["run", "main.paka"],
+    }
+}
+
 #[test]
 fn all_cases() {
     let root = Path::new(env!("CARGO_MANIFEST_DIR")).join("../tests/cases");
     let mut count = 0;
     let mut failures = vec![];
-    for case in subfolders(&root).iter().flat_map(|stage| subfolders(stage)) {
-        count += 1;
-        let mut command = Command::new(env!("CARGO_BIN_EXE_paka"));
-        command.args(["run", "main.paka"]);
-        if let Err(e) = check(&case, command) {
-            failures.push(format!("{}: {e}", case.display()));
+    for stage in subfolders(&root) {
+        for case in subfolders(&stage) {
+            count += 1;
+            let mut command = Command::new(env!("CARGO_BIN_EXE_paka"));
+            command.args(args(&stage));
+            if let Err(e) = check(&case, command) {
+                failures.push(format!("{}: {e}", case.display()));
+            }
         }
     }
     assert!(count > 0, "no cases found");

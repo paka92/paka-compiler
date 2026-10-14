@@ -53,7 +53,12 @@ fn subfolders(dir: &Path) -> Vec<PathBuf> {
 
 fn accept_cases() -> Vec<(PathBuf, Seen)> {
     let root = Path::new(env!("CARGO_MANIFEST_DIR")).join("../tests/cases");
-    let cases = subfolders(&root).into_iter().flat_map(|s| subfolders(&s));
+    let run_stage = |s: &PathBuf| {
+        let name = s.file_name().and_then(|n| n.to_str());
+        matches!(name, Some("lex" | "parse" | "check" | "run"))
+    };
+    let stages = subfolders(&root).into_iter().filter(run_stage);
+    let cases = stages.flat_map(|s| subfolders(&s));
     cases
         .filter_map(|case| Some((case.clone(), expectation(&case)?)))
         .collect()
