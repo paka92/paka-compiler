@@ -1,0 +1,8 @@
+add first
+add last
+up
+add 
+add   spaced  
+print
+undo
+print

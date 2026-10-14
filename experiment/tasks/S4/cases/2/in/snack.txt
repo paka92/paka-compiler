@@ -1,0 +1,7 @@
+box 2 2 2 2 2 2
+load C4 1.50 3
+coin 100
+coin 25
+select C4
+cancel
+cancel

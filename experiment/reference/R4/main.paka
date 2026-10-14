@@ -1,0 +1,150 @@
+enum Msg { Start(path: String), Loaded(text: String), Failed(why: String) }
+
+// The threshold is -1 while a parsed line gives none.
+type Service { name: String, deps: List<String>, threshold: Int }
+
+// A name to check, with the line it is on.
+type Use { line: Int, name: String }
+
+fn is_name(s: String) -> Bool {
+  if len(s) < 1 || len(s) > 20 { return false }
+  for c in chars(s) {
+    let ok = (c >= "a" && c <= "z") || (c >= "A" && c <= "Z") || (c >= "0" && c <= "9") ||
+      c == "_" || c == "-"
+    if !ok { return false }
+  }
+  true
+}
+
+fn is_threshold(s: String) -> Bool {
+  if len(s) > 3 { return false }
+  for c in chars(s) {
+    if c < "0" || c > "9" { return false }
+  }
+  true
+}
+
+// The service a line defines, or None when its words are not a service line.
+fn parse_service(ws: List<String>) -> Option<Service> {
+  let head = ws[0]
+  if !ends_with(head, ":") { return None }
+  let name = head[0..<len(head) - 1]
+  if !is_name(name) { return None }
+  var deps = ws[1..<len(ws)]
+  var threshold = -1
+  let n = len(deps)
+  if n >= 2 && deps[n - 2] == "/" {
+    if !is_threshold(deps[n - 1]) { return None }
+    threshold = parse_int(deps[n - 1])?
+    deps = deps[0..<n - 2]
+  }
+  for d in deps {
+    if !is_name(d) { return None }
+  }
+  Some(Service { name: name, deps: deps, threshold: threshold })
+}
+
+fn run(text: String) -> Result<List<String>, String> {
+  var services: Map<String, Service> = [:]
+  var used: List<Use> = []
+  var down: List<String> = []
+  let all = lines(text)
+  for i in 0..<len(all) {
+    let ws = words(all[i])
+    let n = i + 1
+    if is_empty(ws) { continue }
+    if len(ws) == 2 && ws[0] == "down" {
+      if !is_name(ws[1]) { return Err("line {n}: bad line") }
+      append(&used, Use { line: n, name: ws[1] })
+      append(&down, ws[1])
+      continue
+    }
+    let s = ok_or(parse_service(ws), "line {n}: bad line")?
+    if has(services, s.name) { return Err("line {n}: duplicate service {s.name}") }
+    for j in 1..<len(s.deps) {
+      let dep = s.deps[j]
+      if contains(s.deps[0..<j], dep) { return Err("line {n}: duplicate dependency {dep}") }
+    }
+    if s.threshold == 0 || s.threshold > len(s.deps) { return Err("line {n}: bad threshold") }
+    for d in s.deps {
+      append(&used, Use { line: n, name: d })
+    }
+    let threshold = if s.threshold < 0 { len(s.deps) } else { s.threshold }
+    services[s.name] = Service { name: s.name, deps: s.deps, threshold: threshold }
+  }
+  for u in used {
+    if !has(services, u.name) { return Err("line {u.line}: unknown service {u.name}") }
+  }
+  if is_empty(down) { return Err("nothing down") }
+  Ok(cascade(services, down))
+}
+
+fn cascade(services: Map<String, Service>, first: List<String>) -> List<String> {
+  let names = keys(services)
+  var index: Map<String, Int> = [:]
+  for i in 0..<len(names) {
+    index[names[i]] = i
+  }
+  var is_down = list_of(false, count: len(names))
+  var falling = list_of(false, count: len(names))
+  for name in first {
+    falling[index[name]] = true
+  }
+  var out: List<String> = []
+  var r = 0
+  while contains(falling, true) {
+    var listed: List<String> = []
+    for i in 0..<len(names) {
+      if falling[i] {
+        append(&listed, names[i])
+        is_down[i] = true
+      }
+    }
+    let line = join(listed, " ")
+    append(&out, "round {r}: {line}")
+    r += 1
+    for i in 0..<len(names) {
+      let s = services[names[i]]
+      var count = 0
+      for d in s.deps {
+        if is_down[index[d]] { count += 1 }
+      }
+      falling[i] = !is_down[i] && s.threshold > 0 && count >= s.threshold
+    }
+  }
+  var up: List<String> = []
+  for i in 0..<len(names) {
+    if !is_down[i] { append(&up, names[i]) }
+  }
+  let rest = if is_empty(up) { "none" } else { join(up, " ") }
+  append(&out, "up: {rest}")
+  out
+}
+
+fn report(result: Result<List<String>, String>) -> List<Effect<Msg>> {
+  match result {
+    Ok(out) => {
+      var effects: List<Effect<Msg>> = []
+      for line in out {
+        append(&effects, Print(line))
+      }
+      append(&effects, Exit)
+      effects
+    }
+    Err(why) => [Print("error: {why}"), ExitWith(20)]
+  }
+}
+
+fn update(m: Msg) -> List<Effect<Msg>> {
+  match m {
+    Start(path) => [ReadFile(path, then: Loaded, or: Failed)]
+    Loaded(text) => report(run(text))
+    Failed(why) => [Print("error: cannot read file: {why}"), ExitWith(20)]
+  }
+}
+
+app failure_cascade {
+  start: Start
+  update: update
+  grants: [Console, ReadFiles]
+}

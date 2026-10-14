@@ -1,0 +1,6 @@
+add x
+add y
+down
+add z
+undo
+print

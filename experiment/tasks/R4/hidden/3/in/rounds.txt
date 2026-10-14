@@ -1,0 +1,6 @@
+a:
+b: a c / 1
+c: b d
+d: b / 1
+e: c d / 2
+down a

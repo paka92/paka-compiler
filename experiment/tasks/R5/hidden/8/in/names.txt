@@ -1,0 +1,10 @@
+one s abc 1
+one s ab 1
+one abc t 1
+one ab t 1
+one u ab 1
+one u Ab 1
+one ab v 1
+one Ab v 1
+  trip   s  t 
+trip u v
