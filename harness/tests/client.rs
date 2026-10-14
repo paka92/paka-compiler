@@ -1,8 +1,8 @@
 //! The client against a fake `claude` that prints recorded stream-json lines (tests/streams).
 
+use harness::Error;
 use harness::client::{Config, Run};
 use harness::usage::{Caps, Ledger, Tokens};
-use harness::Error;
 use std::fs;
 use std::path::{Path, PathBuf};
 
@@ -169,7 +169,10 @@ fn retries_stop_after_three_and_count_nothing() {
 
 #[test]
 fn a_run_past_the_cap_is_refused_before_the_process_starts() {
-    for used in [r#"{"input":1000000,"output":0}"#, r#"{"input":0,"output":1000000}"#] {
+    for used in [
+        r#"{"input":1000000,"output":0}"#,
+        r#"{"input":0,"output":1000000}"#,
+    ] {
         let rig = Rig::new("refused", "ok.txt", BIG);
         fs::write(rig.base.join("usage.json"), used).unwrap();
         let err = rig.start().err().unwrap();
@@ -221,10 +224,22 @@ fn the_total_persists_across_processes() {
 fn a_missing_usage_file_is_zero_and_a_broken_one_is_an_error() {
     let rig = Rig::new("usage-file", "ok.txt", BIG);
     assert_eq!(rig.used(), tokens(0, 0));
-    for text in ["", "garbage", r#"{"input":1}"#, r#"{"input":"1","output":2}"#, r#"{"input":-1,"output":2}"#] {
+    for text in [
+        "",
+        "garbage",
+        r#"{"input":1}"#,
+        r#"{"input":"1","output":2}"#,
+        r#"{"input":-1,"output":2}"#,
+    ] {
         fs::write(rig.base.join("usage.json"), text).unwrap();
-        assert!(matches!(rig.ledger.used(), Err(Error::Malformed(_))), "{text:?}");
-        assert!(matches!(rig.start().err(), Some(Error::Malformed(_))), "{text:?}");
+        assert!(
+            matches!(rig.ledger.used(), Err(Error::Malformed(_))),
+            "{text:?}"
+        );
+        assert!(
+            matches!(rig.start().err(), Some(Error::Malformed(_))),
+            "{text:?}"
+        );
     }
 }
 
@@ -243,7 +258,10 @@ fn another_model_voids_the_run_but_its_tokens_are_counted() {
     let err = rig.start().unwrap().send("hello").unwrap_err();
     match err {
         Error::WrongModel { expected, got } => {
-            assert_eq!((expected.as_str(), got.as_str()), ("claude-sonnet-5-5", "claude-haiku-5-5"));
+            assert_eq!(
+                (expected.as_str(), got.as_str()),
+                ("claude-sonnet-5-5", "claude-haiku-5-5")
+            );
         }
         other => panic!("{other:?}"),
     }
@@ -291,7 +309,13 @@ fn a_missing_program_is_an_error() {
 
 #[test]
 fn the_first_call_guard_allows_fifty_tokens_on_the_first_call_only() {
-    for (expected, ok) in [(1203, true), (1253, true), (1153, true), (1254, false), (1152, false)] {
+    for (expected, ok) in [
+        (1203, true),
+        (1253, true),
+        (1153, true),
+        (1254, false),
+        (1152, false),
+    ] {
         let mut rig = Rig::new("guard", "ok.txt", BIG);
         rig.config.first_call_input = Some(expected);
         let mut run = rig.start().unwrap();

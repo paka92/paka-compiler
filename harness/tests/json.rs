@@ -26,7 +26,10 @@ fn nested_values_keep_order() {
         ("b", Value::Array(vec![num("1"), Value::Null, obj(vec![])])),
         ("a", Value::Str("x".into())),
     ]);
-    assert_eq!(parse(r#" { "b" : [ 1 , null , { } ] , "a" : "x" } "#), Ok(want));
+    assert_eq!(
+        parse(r#" { "b" : [ 1 , null , { } ] , "a" : "x" } "#),
+        Ok(want)
+    );
 }
 
 #[test]
@@ -76,7 +79,10 @@ fn accessors() {
     assert_eq!(v.get("n").and_then(Value::as_u64), Some(12));
     assert_eq!(v.get("s").and_then(Value::as_str), Some("t"));
     assert_eq!(v.get("b").and_then(Value::as_bool), Some(true));
-    assert_eq!(v.get("l").and_then(Value::as_array).map(<[Value]>::len), Some(1));
+    assert_eq!(
+        v.get("l").and_then(Value::as_array).map(<[Value]>::len),
+        Some(1)
+    );
     assert!(v.get("missing").is_none());
     assert_eq!(v.get("s").and_then(Value::as_u64), None);
     assert_eq!(Value::Null.get("n"), None);
@@ -99,7 +105,13 @@ fn only_whole_non_negative_numbers_are_counts() {
 
 #[test]
 fn quoted_text_reads_back() {
-    for text in ["", "plain", "a\"b\\c", "line\nbreak\ttab\r", "\u{0}\u{1f}é€😀"] {
+    for text in [
+        "",
+        "plain",
+        "a\"b\\c",
+        "line\nbreak\ttab\r",
+        "\u{0}\u{1f}é€😀",
+    ] {
         assert_eq!(parse(&quote(text)), Ok(Value::Str(text.into())), "{text:?}");
     }
     assert_eq!(quote("a\nb"), r#""a\nb""#);
