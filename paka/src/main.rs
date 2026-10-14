@@ -9,6 +9,7 @@ mod build;
 #[allow(dead_code)]
 mod builtins;
 mod check;
+mod core_form;
 mod diagnostic;
 mod interp;
 mod json;
@@ -26,7 +27,7 @@ mod sig;
 mod vectors;
 
 use diagnostic::Diagnostic;
-use lower::Core;
+use lower::M1;
 use std::ffi::OsStr;
 use std::io::Write;
 use std::os::unix::ffi::OsStrExt;
@@ -65,7 +66,7 @@ fn read(file: &OsStr, path: &str) -> Result<Vec<u8>, Diagnostic> {
     fs::read(file).map_err(|e| Diagnostic::tool(path, "file-unreadable", e))
 }
 
-fn load(file: &OsStr, path: &str) -> Result<Core, Diagnostic> {
+fn load(file: &OsStr, path: &str) -> Result<M1, Diagnostic> {
     front_end(path, &read(file, path)?)
 }
 
@@ -90,10 +91,11 @@ fn check_file(file: &OsStr, json: bool) -> ExitCode {
     }
 }
 
-fn front_end(path: &str, source: &[u8]) -> Result<Core, Diagnostic> {
+fn front_end(path: &str, source: &[u8]) -> Result<M1, Diagnostic> {
     let program = parser::parse(path, source)?;
     let checked = check::check(path, &program)?;
-    Ok(lower::lower(&program, &checked))
+    let core = lower::lower(path, &program, &checked);
+    Ok(lower::m1(&core).expect("the M1 checker passes only what the M1 back ends run"))
 }
 
 /// Reports a diagnostic, which starts with the shown path, with the file argument's own bytes there.

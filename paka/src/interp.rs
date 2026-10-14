@@ -1,10 +1,10 @@
 //! The reference interpreter: performs the effects `update` returns (spec/m1.md section 9).
 
-use crate::lower::{Core, Effect, Grant};
+use crate::lower::{Effect, M1};
 use std::io::{self, ErrorKind, Write};
 
 /// Runs the program; returns its status.
-pub fn run(core: &Core, out: &mut impl Write, err: &mut impl Write) -> u8 {
+pub fn run(core: &M1, out: &mut impl Write, err: &mut impl Write) -> u8 {
     match stop(core, out) {
         None => 0,
         Some(reason) => {
@@ -15,11 +15,11 @@ pub fn run(core: &Core, out: &mut impl Write, err: &mut impl Write) -> u8 {
 }
 
 /// Performs the effects in order; the reason the program stopped, or `None` after `Exit`.
-fn stop(core: &Core, out: &mut impl Write) -> Option<String> {
+fn stop(core: &M1, out: &mut impl Write) -> Option<String> {
     for effect in &core.update {
         match effect {
             Effect::Exit => return None,
-            Effect::Print(_) if !core.grants.contains(&Grant::Console) => {
+            Effect::Print(_) if !core.console => {
                 return Some("effect Print refused: grant Console is missing".into());
             }
             Effect::Print(text) => {
@@ -49,26 +49,25 @@ fn reason(e: &io::Error) -> &'static str {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::lower::{Effect, Grant};
+    use crate::lower::Effect;
     use std::io::{self, ErrorKind};
 
     fn print(text: &str) -> Effect {
         Effect::Print(text.into())
     }
 
-    fn core(grants: Vec<Grant>, update: Vec<Effect>) -> Core {
-        Core {
+    fn core(console: bool, update: Vec<Effect>) -> M1 {
+        M1 {
             app: "light".into(),
-            variants: vec!["Start".into()],
             start: 0,
-            grants,
+            console,
             update_name: "update".into(),
             update,
         }
     }
 
     /// Runs on in-memory streams; returns (stdout, stderr, status).
-    fn go(core: &Core) -> (String, String, u8) {
+    fn go(core: &M1) -> (String, String, u8) {
         let (mut out, mut err) = (vec![], vec![]);
         let status = run(core, &mut out, &mut err);
         (
@@ -78,8 +77,8 @@ mod tests {
         )
     }
 
-    fn console(update: Vec<Effect>) -> Core {
-        core(vec![Grant::Console], update)
+    fn console(update: Vec<Effect>) -> M1 {
+        core(true, update)
     }
 
     #[test]
@@ -102,7 +101,7 @@ mod tests {
 
     #[test]
     fn exit_ends_the_list_untested() {
-        let c = core(vec![], vec![Effect::Exit, print("x")]);
+        let c = core(false, vec![Effect::Exit, print("x")]);
         assert_eq!(go(&c), ("".into(), "".into(), 0));
     }
 
@@ -123,14 +122,14 @@ mod tests {
 
     #[test]
     fn missing_grant_refuses_and_drops_the_rest() {
-        let c = core(vec![], vec![print("x"), print("y"), Effect::Exit]);
+        let c = core(false, vec![print("x"), print("y"), Effect::Exit]);
         let want = "light: effect Print refused: grant Console is missing\n";
         assert_eq!(go(&c), ("".into(), want.into(), 3));
     }
 
     #[test]
     fn missing_grant_is_tested_at_the_effects_turn() {
-        let c = core(vec![], vec![Effect::Exit, print("x")]);
+        let c = core(false, vec![Effect::Exit, print("x")]);
         assert_eq!(go(&c).2, 0);
     }
 

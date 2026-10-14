@@ -3,7 +3,7 @@
 
 use crate::diagnostic::Diagnostic;
 use crate::llvm;
-use crate::lower::Core;
+use crate::lower::M1;
 use std::env;
 use std::ffi::OsStr;
 use std::fs::{self, File};
@@ -23,7 +23,7 @@ const SYSTEM_LIBS: [&str; 7] = [
 ];
 
 /// Writes the executable for `core` to `output`; `path` is the source path for diagnostics.
-pub fn build(path: &str, core: &Core, output: &OsStr) -> Result<(), Diagnostic> {
+pub fn build(path: &str, core: &M1, output: &OsStr) -> Result<(), Diagnostic> {
     let runtime = env::current_exe()
         .map(|exe| exe.with_file_name(RUNTIME))
         .ok()

@@ -1,9 +1,9 @@
-//! The LLVM IR text emitter for the core form, written to docs/abi/m1.md sections 3, 4 and 11.
+//! The LLVM IR text emitter for the M1 view of the core form, written to docs/abi/m1.md sections 3, 4 and 11.
 
-use crate::lower::{Core, Effect, Grant};
+use crate::lower::{Effect, M1};
 
 /// The IR text of the program; layout and wording follow docs/abi/m1.md section 11.
-pub fn emit(core: &Core) -> String {
+pub fn emit(core: &M1) -> String {
     let texts: Vec<&str> = core
         .update
         .iter()
@@ -21,7 +21,7 @@ pub fn emit(core: &Core) -> String {
         true => ("null", 0),
         false => ("@fx", core.update.len()),
     };
-    let grants = core.grants.iter().fold(0, |bits, g| bits | grant_bit(g));
+    let grants = u64::from(core.console); // bit 0: Console
     let update = format!("p_{}", core.update_name);
     format!(
         "target triple = \"x86_64-pc-linux-gnu\"
@@ -42,12 +42,6 @@ define i32 @main() {{
         core.app.len(),
         core.start
     )
-}
-
-fn grant_bit(grant: &Grant) -> u64 {
-    match grant {
-        Grant::Console => 1,
-    }
 }
 
 /// A byte-string constant, every byte hex-escaped.
@@ -104,7 +98,7 @@ mod tests {
     }
 
     /// The core of a program the front end accepts.
-    fn accepted(file: &Path) -> Option<Core> {
+    fn accepted(file: &Path) -> Option<M1> {
         crate::front_end("main.paka", &fs::read(file).unwrap()).ok()
     }
 
@@ -149,12 +143,11 @@ mod tests {
             .collect()
     }
 
-    fn core(update: Vec<Effect>) -> Core {
-        Core {
+    fn core(update: Vec<Effect>) -> M1 {
+        M1 {
             app: "app".into(),
-            variants: vec!["A".into(), "B".into()],
             start: 1,
-            grants: vec![Grant::Console],
+            console: true,
             update_name: "go".into(),
             update,
         }
@@ -223,7 +216,7 @@ mod tests {
     #[test]
     fn empty_list_has_no_fx_and_stores_null() {
         let mut empty = core(vec![]);
-        empty.grants.clear();
+        empty.console = false;
         let ir = emit(&empty);
         assert!(!ir.contains("@fx"));
         assert!(ir.contains("  store { ptr, i64 } { ptr null, i64 0 }, ptr %out\n"));
