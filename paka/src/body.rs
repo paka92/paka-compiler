@@ -2,8 +2,8 @@
 //! alone, never against another definition's body (docs/decisions/M2-02.md, M2-09.md, M2-12.md).
 //! A definition's result is its first error, so an error in one never changes another's.
 //!
-//! Not here: ownership and overlap (M2-21), the corners of built-in rows (M2-22), function
-//! values (M2-30) and the error forms (M2-31), which are left unchecked.
+//! Not here: ownership and overlap (M2-21), function values (M2-30) and the error forms
+//! (M2-31), which are left unchecked.
 
 use crate::ast::{self, Block, Def, Expr, Pos, Program};
 use crate::diagnostic::Diagnostic;
@@ -20,6 +20,7 @@ mod expr;
 mod hole;
 mod pattern;
 mod place;
+mod settle;
 mod stmt;
 #[cfg(test)]
 mod tests;

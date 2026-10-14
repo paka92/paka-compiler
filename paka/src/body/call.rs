@@ -1,5 +1,6 @@
 //! Names of functions and variants, calls and record literals. A built-in row binds its type
-//! letters from the arguments and then from the type asked for (M2-09 section 1.3).
+//! letters from the arguments and then from the type asked for (M2-09 section 1.3); a letter
+//! neither fixes is `cannot-infer`, unless the row's result carries it to the call's position.
 
 use super::text::{article, float_fix, render};
 use super::{Cx, Out, Res, span};
@@ -323,7 +324,15 @@ impl<'a> Cx<'_, 'a> {
             Some((last, _)) => article(last),
             None => String::new(),
         };
-        let message = format!("{} takes {list}", c.name);
+        let message = match self.arg(ty, "List", 0) {
+            Some(item) if c.name == "sort" => {
+                let (item, xs) = (self.types.show(item), render(inner));
+                format!(
+                    "{item} has no order; write sort_by(&{xs}, before) with fn before(a: {item}, b: {item}) -> Bool"
+                )
+            }
+            _ => format!("{} takes {list}", c.name),
+        };
         let found = self.types.show(ty);
         let d = self.fail_at(&arg.value, "type-mismatch", message);
         Err(d.with_types(&shown.join(" or "), &found))
@@ -359,7 +368,8 @@ impl<'a> Cx<'_, 'a> {
         Ok(())
     }
 
-    /// Types the arguments, binding the row's letters first from them, then from `want`.
+    /// Types the arguments, binding the row's letters first from them, then from `want`; the open
+    /// ones are checked last, with the bindings put in.
     fn walk(
         &mut self,
         c: &Callee,
@@ -371,6 +381,12 @@ impl<'a> Cx<'_, 'a> {
         let (mut bound, mut open, picked) = (Bound::new(), Vec::new(), first.is_some());
         for (i, (arg, param)) in args.iter().zip(&sig.params).enumerate() {
             let hint = self.subst(param.ty, &bound);
+            let later = i > 0 || c.kind == Kind::Variant;
+            if matches!(arg.value.kind, K::Hole(_)) && later && self.free(hint) {
+                self.info.insert(span(&arg.value), hint);
+                open.push((i, hint));
+                continue;
+            }
             let got = self.argument(c, arg, param, hint, first.take())?;
             let settled = !self.free(got);
             let right = if settled {
@@ -390,11 +406,17 @@ impl<'a> Cx<'_, 'a> {
             self.bind(r, w, &mut bound);
         }
         for (i, got) in open {
-            let hint = self.subst(sig.params[i].ty, &bound);
+            let (value, hint) = (&args[i].value, self.subst(sig.params[i].ty, &bound));
             if !self.types.fits(got, hint) {
                 return Err(self.arg_mismatch(c, picked, args, i, (hint, got)));
             }
-            self.bind(hint, got, &mut bound);
+            if !self.free(hint) {
+                self.settle(value, hint);
+            } else if self.stuck(sig, sig.params[i].ty, &bound) {
+                return Err(self.open_value(value, None));
+            } else {
+                self.bind_open(hint, got, &mut bound);
+            }
         }
         Ok(match sig.result {
             Some(r) => Out::Val(self.subst(r, &bound)),
@@ -526,6 +548,39 @@ impl<'a> Cx<'_, 'a> {
                 self.types.intern(Node::Fn(params.into(), result))
             }
             Node::User(_) => ty,
+        }
+    }
+
+    /// Whether `param` has a letter that nothing has fixed and the row's result does not carry.
+    fn stuck(&self, sig: &Sig<'_>, param: Ty, bound: &Bound) -> bool {
+        let carried = sig.result.map(|r| self.letters(r)).unwrap_or_default();
+        let fixed = |c: &char| bound.get(c).is_some_and(|&t| !self.free(t));
+        (self.letters(param).iter()).any(|c| !carried.contains(c) && !fixed(c))
+    }
+
+    fn letters(&self, ty: Ty) -> Vec<char> {
+        let (mut found, mut stack) = (Vec::new(), vec![ty]);
+        while let Some(t) = stack.pop() {
+            match self.types.node(t) {
+                Node::Var(c) => found.push(*c),
+                Node::Name(_, args) => stack.extend(args.iter()),
+                Node::Fn(params, result) => stack.extend(params.iter().chain(result)),
+                Node::User(_) => {}
+            }
+        }
+        found
+    }
+
+    /// Binds a letter that only an open argument shows to what is known of it, so a message
+    /// can show the call's type: `list_of([], count: 3)` is a `List<List<T>>`.
+    fn bind_open(&self, hint: Ty, got: Ty, bound: &mut Bound) {
+        match self.types.node(hint) {
+            Node::Var(c) if !self.is_var(got) => {
+                bound.entry(*c).or_insert(got);
+            }
+            _ => {
+                self.bind(hint, got, bound);
+            }
         }
     }
 

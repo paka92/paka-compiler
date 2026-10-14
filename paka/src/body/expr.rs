@@ -73,7 +73,7 @@ impl Cx<'_, '_> {
         match self.expr(e, Some(want))? {
             Out::Val(ty) if self.types.fits(ty, want) => {
                 if self.free(ty) && !self.free(want) {
-                    self.info.insert(span(e), want);
+                    self.settle(e, want);
                     return Ok(Out::Val(want));
                 }
                 Ok(Out::Val(ty))
@@ -225,9 +225,16 @@ impl Cx<'_, '_> {
         let (lt, rt) = if matches!(left.kind, K::Hole(_)) && self.free(lt) {
             self.beside_hole(left, right)?
         } else {
-            (lt, self.expr_val(right, Some(lt))?)
+            let hint = Some(lt).filter(|&t| !self.free(t));
+            (lt, self.expr_val(right, hint)?)
         };
         self.operands((at, op.text().len()), op, (left, lt), (right, rt))?;
+        match (self.free(lt), self.free(rt)) {
+            (true, true) => return Err(self.open_value(left, None)),
+            (true, false) => self.settle(left, rt),
+            (false, true) => self.settle(right, lt),
+            _ => {}
+        }
         let arithmetic = matches!(
             op,
             BinOp::Add | BinOp::Sub | BinOp::Mul | BinOp::Div | BinOp::Rem

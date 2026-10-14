@@ -1,7 +1,7 @@
 //! Blocks and statements, and the `if` that is both.
 
 use super::branch::Joined;
-use super::text::{called, plain, render};
+use super::text::{called, render};
 use super::{Cx, How, Local, Out, Res, Use, span};
 use crate::ast::{Arm, ArmBody, Block, Expr, ExprKind as K, Name, Pos, Stmt, StmtKind as S, Type};
 use crate::builtins;
@@ -46,6 +46,25 @@ fn last_of<'x, 'a>(arm: &'x Arm<'a>) -> Option<&'x Stmt<'a>> {
         ArmBody::Block(b) => b.stmts.last(),
         ArmBody::Line(s) => Some(s),
     }
+}
+
+/// The values that end the branches of an `if` or the arms of a `match`; none for others.
+pub(super) fn values<'x>(e: &'x Expr<'x>) -> Vec<&'x Expr<'x>> {
+    let lasts: Vec<_> = match &e.kind {
+        K::If {
+            branches,
+            otherwise,
+        } => (branches.iter().map(|(_, b)| b).chain(otherwise))
+            .filter_map(|b| b.stmts.last())
+            .collect(),
+        K::Match { arms, .. } => arms.iter().filter_map(last_of).collect(),
+        _ => return Vec::new(),
+    };
+    let value = |s: &'x Stmt<'x>| match &s.kind {
+        S::Expr(x) => Some(x),
+        _ => None,
+    };
+    lasts.into_iter().filter_map(value).collect()
 }
 
 impl Cx<'_, '_> {
@@ -102,6 +121,7 @@ impl Cx<'_, '_> {
                 .local(*var, name, ty.as_ref(), value)
                 .map(|_| Out::Unit),
             S::Discard(e) => match self.expr(e, None)? {
+                Out::Val(t) if self.free(t) => Err(self.open_value(e, None)),
                 Out::Val(_) => Ok(Out::Unit),
                 _ => {
                     let message = format!("{} has no value: drop _ =", called(e));
@@ -176,16 +196,12 @@ impl Cx<'_, '_> {
                 Out::Val(t) if !self.free(t) => t,
                 Out::Unit => return Err(self.no_value(value, None)),
                 out => {
-                    let shown = match out {
-                        Out::Val(t) => self.types.show(t),
-                        _ => "T".to_string(),
+                    let ty = match out {
+                        Out::Val(t) => t,
+                        _ => self.letter('T'),
                     };
                     let keyword = if var { "var" } else { "let" };
-                    let message = format!(
-                        "cannot infer the type of {0}; write it: {keyword} {0}: {shown} = ...",
-                        name.text
-                    );
-                    return Err(self.fail(plain(self.needs(value)), "cannot-infer", message));
+                    return Err(self.open_value(value, Some((keyword, name.text, ty))));
                 }
             },
         };
@@ -198,23 +214,12 @@ impl Cx<'_, '_> {
     /// still open.
     pub(super) fn needs<'x>(&self, mut e: &'x Expr<'x>) -> &'x Expr<'x> {
         let open = |x: &&Expr| self.info.get(&(x.at, x.len)).is_some_and(|&t| self.free(t));
-        let value = |s: &'x Stmt<'x>| match &s.kind {
-            S::Expr(x) => Some(x).filter(open),
-            _ => None,
-        };
         loop {
             let inner = match &e.kind {
                 K::Call(_, args) => args.iter().map(|a| &a.value).find(open),
                 K::List(items) => items.iter().find(open),
                 K::Map(pairs) => pairs.iter().flat_map(|(k, v)| [k, v]).find(open),
-                K::If {
-                    branches,
-                    otherwise,
-                } => (branches.iter().map(|(_, b)| b).chain(otherwise))
-                    .filter_map(|b| b.stmts.last())
-                    .find_map(value),
-                K::Match { arms, .. } => arms.iter().filter_map(last_of).find_map(value),
-                _ => None,
+                _ => values(e).into_iter().find(open),
             };
             match inner {
                 Some(x) => e = x,
@@ -226,6 +231,9 @@ impl Cx<'_, '_> {
     /// The element type of the list a `for` goes over.
     fn elements(&mut self, list: &Expr) -> Res<Ty> {
         let ty = self.expr_val(list, None)?;
+        if self.free(ty) {
+            return Err(self.open_value(list, None));
+        }
         match (self.arg(ty, "List", 0), self.is_var(ty)) {
             (Some(elem), _) => Ok(elem),
             (None, true) => Ok(self.unknown()),
