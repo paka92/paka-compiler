@@ -1,0 +1,2 @@
+members ann:1 bob:1
+cost tea 3.00 bob ann bob Ann

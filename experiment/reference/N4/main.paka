@@ -1,0 +1,222 @@
+enum Msg { Start(path: String), Loaded(text: String), Failed(why: String) }
+
+type Member { name: String, weight: Int, total: Int = 0 }
+
+// The sharers are positions in member order.
+type Cost { name: String, amount: Int, sharers: List<Int> }
+
+// A sharer's remainder and position, for handing out the cents left.
+type Rest { rest: Int, at: Int }
+
+fn is_digit(c: String) -> Bool {
+  c >= "0" && c <= "9"
+}
+
+fn is_name(s: String) -> Bool {
+  if len(s) < 1 || len(s) > 20 { return false }
+  for c in chars(s) {
+    let letter = c >= "a" && c <= "z" || c >= "A" && c <= "Z"
+    if !letter && !is_digit(c) && c != "_" && c != "-" { return false }
+  }
+  true
+}
+
+// The value of 1 to `most` decimal digits and nothing else.
+fn digits(s: String, most: Int) -> Option<Int> {
+  if len(s) < 1 || len(s) > most { return None }
+  for c in chars(s) {
+    if !is_digit(c) { return None }
+  }
+  parse_int(s)
+}
+
+fn weight(s: String) -> Option<Int> {
+  let w = digits(s, 2)?
+  if w < 1 { None } else { Some(w) }
+}
+
+fn amount(s: String) -> Option<Int> {
+  let negative = starts_with(s, "-")
+  let body = if negative { s[1..<len(s)] } else { s }
+  let parts = split(body, ".")
+  if len(parts) != 2 || len(parts[1]) != 2 { return None }
+  let size = digits(parts[0], 8)? * 100 + digits(parts[1], 2)?
+  if negative { Some(-size) } else { Some(size) }
+}
+
+fn position(members: List<Member>, name: String) -> Option<Int> {
+  for i in 0..<len(members) {
+    if members[i].name == name { return Some(i) }
+  }
+  None
+}
+
+fn parse_members(ws: List<String>) -> Result<List<Member>, String> {
+  if ws[0] != "members" { return Err("expected members") }
+  if len(ws) == 1 { return Err("no members") }
+  var members: List<Member> = []
+  for word in ws[1..<len(ws)] {
+    let parts = split(word, ":")
+    if len(parts) != 2 || !is_name(parts[0]) { return Err("bad member {word}") }
+    let w = ok_or(weight(parts[1]), "bad weight {word}")?
+    let name = parts[0]
+    if position(members, name) != None { return Err("duplicate member {name}") }
+    append(&members, Member { name: name, weight: w })
+  }
+  Ok(members)
+}
+
+fn parse_cost(ws: List<String>, members: List<Member>) -> Result<Cost, String> {
+  if ws[0] != "cost" {
+    let first = ws[0]
+    return Err("unknown command {first}")
+  }
+  if len(ws) < 3 { return Err("incomplete cost") }
+  if !is_name(ws[1]) { return Err("bad cost name") }
+  let a = ok_or(amount(ws[2]), "bad amount")?
+  var listed = list_of(false, count: len(members))
+  for word in ws[3..<len(ws)] {
+    let at = ok_or(position(members, word), "unknown member {word}")?
+    if listed[at] { return Err("duplicate member {word}") }
+    listed[at] = true
+  }
+  var sharers: List<Int> = []
+  for i in 0..<len(members) {
+    if len(ws) == 3 || listed[i] { append(&sharers, i) }
+  }
+  Ok(Cost { name: ws[1], amount: a, sharers: sharers })
+}
+
+fn larger_rest(a: Rest, b: Rest) -> Bool {
+  a.rest > b.rest
+}
+
+// The shares of the sharers, in member order.
+fn split_cost(c: Cost, members: List<Member>) -> List<Int> {
+  let size = abs(c.amount)
+  var total_weight = 0
+  for i in c.sharers {
+    total_weight += members[i].weight
+  }
+  var shares: List<Int> = []
+  var rests: List<Rest> = []
+  var left = size
+  for k in 0..<len(c.sharers) {
+    let product = size * members[c.sharers[k]].weight
+    append(&shares, product / total_weight)
+    append(&rests, Rest { rest: product % total_weight, at: k })
+    left -= product / total_weight
+  }
+  sort_by(&rests, larger_rest)
+  for j in 0..<left {
+    shares[rests[j].at] += 1
+  }
+  if c.amount < 0 {
+    for k in 0..<len(shares) {
+      shares[k] = -shares[k]
+    }
+  }
+  shares
+}
+
+fn money(cents: Int) -> String {
+  let units = "{abs(cents) / 100}"
+  var grouped = ""
+  for i in 0..<len(units) {
+    if i > 0 && (len(units) - i) % 3 == 0 { grouped += "," }
+    grouped += units[i]
+  }
+  let sign = if cents < 0 { "-" } else { "" }
+  let rest = abs(cents) % 100
+  let pad = if rest < 10 { "0" } else { "" }
+  "{sign}{grouped}.{pad}{rest}"
+}
+
+// total / grand as a percent with one decimal, halves to even.
+fn percent(total: Int, grand: Int) -> String {
+  if grand == 0 { return "-" }
+  let n = if grand < 0 { -total * 1000 } else { total * 1000 }
+  let d = abs(grand)
+  let q = abs(n) / d
+  let r = abs(n) % d
+  let tenths = if 2 * r > d || 2 * r == d && q % 2 == 1 { q + 1 } else { q }
+  let sign = if n < 0 && tenths > 0 { "-" } else { "" }
+  "{sign}{tenths / 10}.{tenths % 10}%"
+}
+
+fn ranks_before(a: Member, b: Member) -> Bool {
+  a.total > b.total || a.total == b.total && a.name < b.name
+}
+
+fn report(text: String) -> Result<List<String>, String> {
+  var members: List<Member> = []
+  var costs: List<Cost> = []
+  let rows = lines(text)
+  for i in 0..<len(rows) {
+    let ws = words(rows[i])
+    if is_empty(ws) { continue }
+    let at = "error: line {i + 1}: "
+    if is_empty(members) {
+      match parse_members(ws) {
+        Ok(found) => members = found
+        Err(why) => {
+          return Err(at + why)
+        }
+      }
+    } else {
+      match parse_cost(ws, members) {
+        Ok(c) => append(&costs, c)
+        Err(why) => {
+          return Err(at + why)
+        }
+      }
+    }
+  }
+  if is_empty(members) { return Err("error: no members") }
+  if is_empty(costs) { return Err("error: no costs") }
+  var out: List<String> = []
+  var grand = 0
+  for c in costs {
+    let shares = split_cost(c, members)
+    var pairs: List<String> = []
+    for k in 0..<len(shares) {
+      let i = c.sharers[k]
+      append(&pairs, members[i].name + " " + money(shares[k]))
+      members[i].total += shares[k]
+    }
+    append(&out, c.name + ": " + join(pairs, ", "))
+    grand += c.amount
+  }
+  sort_by(&members, ranks_before)
+  for m in members {
+    append(&out, m.name + " " + money(m.total) + " " + percent(m.total, grand))
+  }
+  append(&out, "total " + money(grand))
+  Ok(out)
+}
+
+fn update(m: Msg) -> List<Effect<Msg>> {
+  match m {
+    Start(path) => [ReadFile(path, then: Loaded, or: Failed)]
+    Loaded(text) => {
+      match report(text) {
+        Ok(out) => {
+          var effects: List<Effect<Msg>> = []
+          for line in out {
+            append(&effects, Print(line))
+          }
+          append(&effects, Exit)
+          effects
+        }
+        Err(why) => [Print(why), ExitWith(20)]
+      }
+    }
+    Failed(why) => [Print("error: cannot read file: {why}"), ExitWith(20)]
+  }
+}
+
+app cost_split {
+  start: Start
+  update: update
+  grants: [Console, ReadFiles]
+}

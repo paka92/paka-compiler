@@ -1,0 +1,6 @@
+rent: alice 500.00, bob 333.33, carol 166.67
+taxi: bob -6.67, carol -3.33
+alice 500.00 50.5%
+bob 326.66 33.0%
+carol 163.34 16.5%
+total 990.00

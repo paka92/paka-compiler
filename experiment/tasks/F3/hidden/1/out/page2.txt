@@ -1,0 +1,6 @@
+alpha
+
+  indented
+> quoted
+gamma
+end

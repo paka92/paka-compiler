@@ -1,0 +1,2 @@
+See [[Intro]] and [[setup|how to set up]].
+[[faq]]

@@ -1,0 +1,201 @@
+enum Msg { Start(path: String), Loaded(text: String), Failed(why: String) }
+
+// A student's exact score is num / den; den is 0 when the student has no score.
+type Student { name: String, num: Int, den: Int }
+
+fn is_digit(c: String) -> Bool {
+  c >= "0" && c <= "9"
+}
+
+fn is_name(s: String) -> Bool {
+  if len(s) < 1 || len(s) > 20 { return false }
+  for c in chars(s) {
+    let letter = c >= "a" && c <= "z" || c >= "A" && c <= "Z"
+    if !letter && !is_digit(c) && c != "_" && c != "-" { return false }
+  }
+  true
+}
+
+// The value of 1 to 3 decimal digits and nothing else.
+fn digits(s: String) -> Option<Int> {
+  if len(s) < 1 || len(s) > 3 { return None }
+  for c in chars(s) {
+    if !is_digit(c) { return None }
+  }
+  parse_int(s)
+}
+
+// A score's value, -1 when excused.
+fn score(s: String) -> Option<Int> {
+  if s == "x" { return Some(-1) }
+  let late = ends_with(s, "L")
+  let body = if late { s[0..<len(s) - 1] } else { s }
+  let v = digits(body)?
+  if v > 100 { return None }
+  if late { Some(max(v - 10, 0)) } else { Some(v) }
+}
+
+fn parse_parts(ws: List<String>) -> Result<List<Int>, String> {
+  if ws[0] != "parts" { return Err("expected parts") }
+  if len(ws) == 1 { return Err("no parts") }
+  var names: List<String> = []
+  var weights: List<Int> = []
+  var sum = 0
+  for word in ws[1..<len(ws)] {
+    let parts = split(word, ":")
+    if len(parts) != 2 || !is_name(parts[0]) { return Err("bad part {word}") }
+    let w = ok_or(digits(parts[1]), "bad weight {word}")?
+    if w < 1 || w > 100 { return Err("bad weight {word}") }
+    let name = parts[0]
+    if contains(names, name) { return Err("duplicate part {name}") }
+    append(&names, name)
+    append(&weights, w)
+    sum += w
+  }
+  if sum != 100 { return Err("weights sum to {sum}") }
+  Ok(weights)
+}
+
+fn parse_student(ws: List<String>, weights: List<Int>, seen: List<Student>) -> Result<Student, String> {
+  let name = ws[0]
+  if !is_name(name) { return Err("bad name {name}") }
+  for st in seen {
+    if st.name == name { return Err("duplicate student {name}") }
+  }
+  let k = len(ws) - 1
+  if k != len(weights) { return Err("expected {len(weights)} scores, got {k}") }
+  var t = 0
+  var s = 0
+  for i in 0..<k {
+    let word = ws[i + 1]
+    let v = ok_or(score(word), "bad score {word}")?
+    if v >= 0 {
+      t += weights[i] * v
+      s += weights[i]
+    }
+  }
+  Ok(Student { name: name, num: t, den: s })
+}
+
+// a's score is higher than b's; both have one.
+fn higher(a: Student, b: Student) -> Bool {
+  a.num * b.den > b.num * a.den
+}
+
+fn comes_before(a: Student, b: Student) -> Bool {
+  if a.den == 0 || b.den == 0 {
+    return a.den > 0 && b.den == 0 || a.den == b.den && a.name < b.name
+  }
+  higher(a, b) || !higher(b, a) && a.name < b.name
+}
+
+// One decimal, halves up; the value is not negative.
+fn tenths(num: Int, den: Int) -> String {
+  let t = (20 * num + den) / (2 * den)
+  "{t / 10}.{t % 10}"
+}
+
+fn grade(st: Student) -> String {
+  if st.den == 0 { return "I" }
+  if st.num >= 90 * st.den { return "A" }
+  if st.num >= 80 * st.den { return "B" }
+  if st.num >= 70 * st.den { return "C" }
+  if st.num >= 60 * st.den { return "D" }
+  "F"
+}
+
+fn report(all: List<Student>) -> List<String> {
+  var students = all
+  sort_by(&students, comes_before)
+  var scored: List<Student> = []
+  for st in students {
+    if st.den > 0 { append(&scored, st) }
+  }
+  var out: List<String> = []
+  var counts: Map<String, Int> = ["A": 0, "B": 0, "C": 0, "D": 0, "F": 0, "I": 0]
+  for st in students {
+    let g = grade(st)
+    counts[g] += 1
+    if st.den == 0 {
+      append(&out, "- {st.name} - I")
+      continue
+    }
+    var rank = 1
+    for o in scored {
+      if higher(o, st) { rank += 1 }
+    }
+    append(&out, "{rank} {st.name} {tenths(st.num, st.den)} {g}")
+  }
+  let n = len(scored)
+  var median = "-"
+  if n % 2 == 1 {
+    let mid = scored[n / 2]
+    median = tenths(mid.num, mid.den)
+  } else if n > 0 {
+    let a = scored[n / 2 - 1]
+    let b = scored[n / 2]
+    median = tenths(a.num * b.den + b.num * a.den, 2 * a.den * b.den)
+  }
+  append(&out, "median {median}")
+  var parts: List<String> = []
+  for g in ["A", "B", "C", "D", "F", "I"] {
+    append(&parts, "{g}={counts[g]}")
+  }
+  append(&out, "grades " + join(parts, " "))
+  out
+}
+
+fn grade_book(text: String) -> Result<List<String>, String> {
+  var weights: List<Int> = []
+  var students: List<Student> = []
+  let rows = lines(text)
+  for i in 0..<len(rows) {
+    let ws = words(rows[i])
+    if is_empty(ws) { continue }
+    let at = "error: line {i + 1}: "
+    if is_empty(weights) {
+      match parse_parts(ws) {
+        Ok(found) => weights = found
+        Err(why) => {
+          return Err(at + why)
+        }
+      }
+    } else {
+      match parse_student(ws, weights, students) {
+        Ok(st) => append(&students, st)
+        Err(why) => {
+          return Err(at + why)
+        }
+      }
+    }
+  }
+  if is_empty(weights) { return Err("error: no parts") }
+  if is_empty(students) { return Err("error: no students") }
+  Ok(report(students))
+}
+
+fn update(m: Msg) -> List<Effect<Msg>> {
+  match m {
+    Start(path) => [ReadFile(path, then: Loaded, or: Failed)]
+    Loaded(text) => {
+      match grade_book(text) {
+        Ok(out) => {
+          var effects: List<Effect<Msg>> = []
+          for line in out {
+            append(&effects, Print(line))
+          }
+          append(&effects, Exit)
+          effects
+        }
+        Err(why) => [Print(why), ExitWith(20)]
+      }
+    }
+    Failed(why) => [Print("error: cannot read file: {why}"), ExitWith(20)]
+  }
+}
+
+app grade_book_app {
+  start: Start
+  update: update
+  grants: [Console, ReadFiles]
+}
