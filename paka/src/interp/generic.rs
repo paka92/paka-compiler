@@ -93,15 +93,15 @@ pub fn call(name: &str, args: &mut [Value], site: Site) -> Option<Out> {
     })
 }
 
-fn count(n: usize) -> Value {
+pub(super) fn count(n: usize) -> Value {
     Value::Int(Int::new(n as i64))
 }
 
-fn list(items: Vec<Value>) -> Value {
+pub(super) fn list(items: Vec<Value>) -> Value {
     Value::List(Items(items))
 }
 
-fn option(inside: Option<Value>) -> Value {
+pub(super) fn option(inside: Option<Value>) -> Value {
     match inside {
         Some(v) => Value::Variant(number(&Tag::Some), Items(vec![v])),
         None => Value::Variant(number(&Tag::None), Items(vec![])),

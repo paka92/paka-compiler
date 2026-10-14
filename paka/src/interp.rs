@@ -18,9 +18,11 @@ mod builtin;
 mod effects;
 mod eval;
 mod generic;
+mod number;
 mod show;
 #[cfg(test)]
 mod tests;
+mod text;
 mod value;
 #[cfg(test)]
 mod world_tests;
