@@ -724,9 +724,21 @@ fn a_cannot_infer_text_fills_the_letters_that_are_known() {
         ),
         (
             "cannot-infer",
-            "[^None, None",
-            "cannot infer the type of None; write it: let x: Option<List<T>> = ...",
+            "= ^[None, None",
+            "cannot infer the type of ..; write it: let x: List<Option<List<T>>> = ...",
             unit(&["_ = [None, None, Some([])]"]),
+        ),
+        (
+            "cannot-infer",
+            "None, ^??a",
+            "cannot infer the type of ??a; write it: let a: T = ??a",
+            unit(&["_ = [None, ??a]"]),
+        ),
+        (
+            "cannot-infer",
+            "len(^[None",
+            "cannot infer the type of ..; write it: let x: List<Option<T>> = ...",
+            unit(&["_ = len([None, None])"]),
         ),
         (
             "cannot-infer",
