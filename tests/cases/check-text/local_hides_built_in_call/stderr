@@ -1,0 +1,4 @@
+main.paka:3:3: error[not-a-function]: len is an Int, not a function
+  definition: size
+  bytes: 48..51
+  text: "len"
