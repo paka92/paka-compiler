@@ -700,9 +700,10 @@ impl<'a> Parser<'a> {
                 return Err(self.error("unexpected-token", message));
             }
             self.link(&mut links)?;
-            self.advance()?;
+            let at = pos(self.advance()?);
             let right = self.binary(level + 1, ranges)?;
-            left = self.node(first, ExprKind::Binary(op, Box::new(left), Box::new(right)));
+            let kind = ExprKind::Binary(op, at, Box::new(left), Box::new(right));
+            left = self.node(first, kind);
         }
         Ok(left)
     }
@@ -764,7 +765,7 @@ impl<'a> Parser<'a> {
                 Kind::Question if !place => {
                     let mark = self.advance()?;
                     self.no_default(mark)?;
-                    ExprKind::Try(Box::new(e))
+                    ExprKind::Try(Box::new(e), pos(mark))
                 }
                 _ => {
                     self.expr_end = Some(self.prev_end);
@@ -1226,6 +1227,18 @@ mod tests {
         Box::new(x)
     }
 
+    /// `l op r` written with single spaces: the operator sits one space after `l`.
+    fn binary<'a>(op: BinOp, l: Expr<'a>, r: Expr<'a>) -> ExprKind<'a> {
+        let at = (l.at.0, l.at.1 + l.len + 1);
+        ExprKind::Binary(op, at, bx(l), bx(r))
+    }
+
+    /// `x?`: the mark sits right after `x`.
+    fn try_of(x: Expr) -> ExprKind {
+        let at = (x.at.0, x.at.1 + x.len);
+        ExprKind::Try(bx(x), at)
+    }
+
     fn arg(value: Expr) -> Arg {
         Arg { label: None, value }
     }
@@ -1604,11 +1617,7 @@ mod tests {
         let list = var(12, "xs");
         let body = empty(2, 16);
         stmt("for x in xs {}", StmtKind::For { name, list, body });
-        let cond = e(
-            9,
-            5,
-            ExprKind::Binary(BinOp::Lt, bx(var(9, "x")), bx(int(13, "3"))),
-        );
+        let cond = e(9, 5, binary(BinOp::Lt, var(9, "x"), int(13, "3")));
         let body = empty(2, 17);
         stmt("while x < 3 { }", StmtKind::While { cond, body });
     }
@@ -1651,7 +1660,7 @@ mod tests {
         expr(r#""a\nb\{""#, ExprKind::Str(vec![text("a\nb{")]));
         let parts = vec![text("x"), StrPart::Expr(var(6, "n")), text("y")];
         expr(r#""x{n}y""#, ExprKind::Str(parts));
-        let sum = ExprKind::Binary(BinOp::Add, bx(var(5, "a")), bx(int(9, "1")));
+        let sum = binary(BinOp::Add, var(5, "a"), int(9, "1"));
         expr(
             r#""{a + 1}""#,
             ExprKind::Str(vec![StrPart::Expr(e(5, 5, sum))]),
@@ -1704,7 +1713,7 @@ mod tests {
         expr("a[0]", ExprKind::Index(bx(var(3, "a")), bx(int(5, "0"))));
         let range = e(5, 5, ExprKind::Range(bx(int(5, "1")), bx(int(9, "3"))));
         expr("a[1..<3]", ExprKind::Index(bx(var(3, "a")), bx(range)));
-        expr("a?", ExprKind::Try(bx(var(3, "a"))));
+        expr("a?", try_of(var(3, "a")));
         let field = e(3, 3, ExprKind::Field(bx(var(3, "a")), nm("b", 2, 5)));
         expr("a.b(1)", ExprKind::Call(bx(field), vec![arg(int(7, "1"))]));
     }
@@ -1720,7 +1729,7 @@ mod tests {
             .chain([("*", Mul), ("/", Div), ("%", Rem)])
         {
             let code = format!("a {text} b");
-            let kind = ExprKind::Binary(op, bx(var(3, "a")), bx(var(code.len() + 2, "b")));
+            let kind = binary(op, var(3, "a"), var(code.len() + 2, "b"));
             expr(&code, kind);
         }
     }
@@ -1728,7 +1737,7 @@ mod tests {
     #[test]
     fn precedence_and_grouping() {
         use BinOp::*;
-        let bin = |col, len, op, l, r| e(col, len, ExprKind::Binary(op, bx(l), bx(r)));
+        let bin = |col, len, op, l, r| e(col, len, binary(op, l, r));
         let un = |col, op, x| e(col, 2, ExprKind::Unary(op, bx(x)));
         let a = var(3, "a");
         let want = bin(3, 11, Or, a, bin(8, 6, And, var(8, "b"), var(13, "c")));
@@ -1908,11 +1917,7 @@ mod tests {
 
     #[test]
     fn an_upper_name_before_a_brace_ends_a_header() {
-        let cond = e(
-            6,
-            12,
-            ExprKind::Binary(BinOp::Eq, bx(var(6, "x")), bx(var(11, "Counter"))),
-        );
+        let cond = e(6, 12, binary(BinOp::Eq, var(6, "x"), var(11, "Counter")));
         let block = |n, text, close| Block {
             stmts: vec![node(2, n, 1, StmtKind::Expr(int(n, text)))],
             close: (2, close),
@@ -1930,11 +1935,7 @@ mod tests {
         let paren = ExprKind::Record("Counter", vec![]);
         assert_eq!(record.kind, paren);
         let record = e(11, 12, paren);
-        let cond = e(
-            6,
-            17,
-            ExprKind::Binary(BinOp::Eq, bx(var(6, "x")), bx(record)),
-        );
+        let cond = e(6, 17, binary(BinOp::Eq, var(6, "x"), record));
         let body = Block {
             stmts: vec![node(2, 26, 1, StmtKind::Expr(int(26, "1")))],
             close: (2, 28),
@@ -1951,6 +1952,7 @@ mod tests {
         let src = "fn f() {\n  a +\n    b\n}\n";
         let sum = ExprKind::Binary(
             BinOp::Add,
+            (2, 5),
             bx(var(3, "a")),
             bx(node(3, 5, 1, ExprKind::Name("b"))),
         );
@@ -2301,11 +2303,7 @@ mod tests {
     #[test]
     fn a_range_binds_tighter_than_a_comparison() {
         let range = e(16, 7, ExprKind::Range(bx(var(16, "b")), bx(var(22, "c"))));
-        let list = e(
-            12,
-            11,
-            ExprKind::Binary(BinOp::Lt, bx(var(12, "a")), bx(range)),
-        );
+        let list = e(12, 11, binary(BinOp::Lt, var(12, "a"), range));
         let name = nm("i", 2, 7);
         let body = empty(2, 26);
         stmt(
@@ -2395,11 +2393,11 @@ mod tests {
     }
 
     fn tried(col: usize, len: usize, of: Expr) -> Expr {
-        e(col, len, ExprKind::Try(bx(of)))
+        e(col, len, try_of(of))
     }
 
     fn bin<'a>(col: usize, len: usize, op: BinOp, l: Expr<'a>, r: Expr<'a>) -> Expr<'a> {
-        e(col, len, ExprKind::Binary(op, bx(l), bx(r)))
+        e(col, len, binary(op, l, r))
     }
 
     fn string(col: usize, text: &str) -> Expr<'static> {
@@ -2666,7 +2664,7 @@ mod tests {
     fn a_trailing_comparison_continues_the_line_and_a_leading_one_does_not() {
         let src = "fn f() {\n  a <\n    b\n}\n";
         let b = node(3, 5, 1, ExprKind::Name("b"));
-        let less = ExprKind::Binary(BinOp::Lt, bx(var(3, "a")), bx(b));
+        let less = binary(BinOp::Lt, var(3, "a"), b);
         let want = node(2, 3, 9, StmtKind::Expr(node(2, 3, 9, less)));
         let program = tree(src);
         let Def::Fn { body, .. } = &program.defs[0] else {
@@ -2726,7 +2724,7 @@ mod tests {
         let parse_int = |col| call(col, 12, "parse_int", vec![arg(var(col + 10, "s"))]);
         expr("parse_int(s)?", tried(3, 13, parse_int(3)).kind);
         let item = e(3, 5, ExprKind::Index(bx(var(3, "xs")), bx(var(6, "i"))));
-        expr("xs[i]?", ExprKind::Try(bx(item)));
+        expr("xs[i]?", try_of(item));
         let f = tried(3, 5, call(3, 4, "f", vec![arg(var(5, "x"))]));
         expr("f(x)?.field", ExprKind::Field(bx(f), nm("field", 2, 9)));
         let p = tried(3, 2, var(3, "p"));
@@ -2735,7 +2733,7 @@ mod tests {
         expr("g(h(x)?)?", tried(3, 9, call(3, 8, "g", vec![arg(h)])).kind);
         let ok = call(3, 17, "Ok", vec![arg(tried(6, 13, parse_int(6)))]);
         expr("Ok(parse_int(s)?)", ok.kind);
-        expr("a??", ExprKind::Try(bx(tried(3, 2, var(3, "a")))));
+        expr("a??", try_of(tried(3, 2, var(3, "a"))));
     }
 
     #[test]
@@ -2761,6 +2759,7 @@ mod tests {
         let ratio = tried(11, 12, call(11, 11, "ratio", args));
         let half = ExprKind::Binary(
             BinOp::Div,
+            (3, 8),
             bx(node(3, 6, 1, ExprKind::Name("r"))),
             bx(node(3, 10, 1, ExprKind::Int("2"))),
         );
@@ -2824,10 +2823,10 @@ mod tests {
 
     #[test]
     fn two_question_marks_before_an_operator_a_field_or_in_brackets_are_accepted() {
-        let twice = |col| e(col, 3, ExprKind::Try(bx(tried(col, 2, var(col, "a")))));
+        let twice = |col| e(col, 3, try_of(tried(col, 2, var(col, "a"))));
         expr("a?? + 1", bin(3, 7, BinOp::Add, twice(3), int(9, "1")).kind);
         expr("a??.x", ExprKind::Field(bx(twice(3)), nm("x", 2, 7)));
-        let grouped = e(3, 5, ExprKind::Try(bx(tried(4, 2, var(4, "a")))));
+        let grouped = e(3, 5, try_of(tried(4, 2, var(4, "a"))));
         expr(
             "(a??)(x)",
             ExprKind::Call(bx(grouped), vec![arg(var(9, "x"))]),

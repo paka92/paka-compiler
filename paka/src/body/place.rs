@@ -1,27 +1,35 @@
 //! What may stand left of an assignment or after `&`.
 
-use super::{Cx, Res};
+use super::text::render;
+use super::{Cx, How, Res, Ty, span};
 use crate::ast::{AssignOp, Expr, ExprKind as K};
+use crate::resolve::Binding;
 
-enum Why {
+/// Why an expression is not a place.
+enum Why<'x> {
     NotAPlace,
-    Immutable,
+    Slice,
+    /// An item of a String.
+    Text,
+    /// The root name is a `let`, a parameter or a `for` name.
+    Fixed(&'x Expr<'x>, How, Ty),
 }
 
 impl Cx<'_, '_> {
     /// A place is a `var` or `inout` name, or a field or list or map element of one.
-    fn place(&self, e: &Expr) -> Result<(), Why> {
+    fn place<'x>(&self, e: &'x Expr<'x>) -> Result<(), Why<'x>> {
         let mut cur = e;
         loop {
             match &cur.kind {
                 K::Field(x, _) => cur = x,
-                K::Index(x, i) => {
+                K::Index(_, i) if matches!(i.kind, K::Range(..)) => return Err(Why::Slice),
+                K::Index(x, _) => {
                     let text = self
                         .info
                         .get(&(x.at, x.len))
                         .is_some_and(|&t| self.is(t, "String"));
-                    if text || matches!(i.kind, K::Range(..)) {
-                        return Err(Why::NotAPlace);
+                    if text {
+                        return Err(Why::Text);
                     }
                     cur = x;
                 }
@@ -29,51 +37,72 @@ impl Cx<'_, '_> {
                 _ => return Err(Why::NotAPlace),
             }
         }
-        match self.resolved.get(cur.at) {
-            Some(crate::resolve::Binding::Local(decl)) => match self.locals.get(&decl) {
-                Some(l) if matches!(l.how, super::How::Var | super::How::Inout) => Ok(()),
-                _ => Err(Why::Immutable),
-            },
-            _ => Err(Why::NotAPlace),
+        let Some(Binding::Local(decl)) = self.resolved.get(cur.at) else {
+            return Err(Why::NotAPlace);
+        };
+        match self.locals.get(&decl) {
+            Some(l) if matches!(l.how, How::Var | How::Inout) => Ok(()),
+            Some(l) => Err(Why::Fixed(cur, l.how, l.ty)),
+            None => Err(Why::NotAPlace),
         }
     }
 
     pub(super) fn inout_target(&self, x: &Expr) -> Res {
-        self.place(x).map_err(|_| {
-            self.fail_at(
-                x,
-                "bad-inout-target",
-                "`&` takes a `var` or an `inout` name, or part of one",
-            )
-        })
+        let Err(why) = self.place(x) else {
+            return Ok(());
+        };
+        let message = match why {
+            Why::Fixed(root, How::Param, ty) => {
+                let (name, f) = (render(root), self.program.defs[self.def].name().text);
+                format!("{name} is read-only; write {name}: inout {} and call {f}(&ys)", self.types.show(ty))
+            }
+            Why::Fixed(root, How::For, _) => format!("{} is a for name; it is a copy", render(root)),
+            Why::Fixed(root, ..) => format!("{} is a let; declare it with var", render(root)),
+            Why::Slice => "a slice cannot be passed with &; pass the list and the positions".to_string(),
+            Why::Text => "a String position is not a place".to_string(),
+            Why::NotAPlace => {
+                "only a var local, an inout parameter or their fields and items can be passed with &".to_string()
+            }
+        };
+        Err(self.fail_at(x, "bad-inout-target", message))
     }
 
     /// Type of the target, then what it is, then the value.
     pub(super) fn assign(&mut self, target: &Expr, op: AssignOp, value: &Expr) -> Res {
-        let ty = self.expr_val(target, None)?;
+        self.writing = Some(target.at);
+        let ty = self.expr_val(target, None);
+        self.writing = None;
+        let (ty, at) = (ty?, span(target));
         match op {
             AssignOp::Set => {}
-            AssignOp::Add => self.allow(
-                target,
-                ty,
-                &["Int", "Float", "String"],
-                "Int, Float or String",
-            )?,
-            AssignOp::Sub | AssignOp::Mul | AssignOp::Div => {
-                self.allow(target, ty, &["Int", "Float"], "Int or Float")?
+            AssignOp::Add => {
+                self.allow(at, ty, &["Int", "Float", "String"], "Int, Float or String")?
             }
-            AssignOp::Rem => self.allow(target, ty, &["Int"], "Int")?,
+            AssignOp::Sub | AssignOp::Mul | AssignOp::Div => {
+                self.allow(at, ty, &["Int", "Float"], "Int or Float")?
+            }
+            AssignOp::Rem => self.allow(at, ty, &["Int"], "Int")?,
         }
         match self.place(target) {
-            Err(Why::NotAPlace) => {
-                return Err(self.fail_at(
-                    target,
+            Err(Why::Fixed(root, how, _)) => {
+                let kind = match how {
+                    How::Param => "a parameter",
+                    How::For => "a for name",
+                    _ => "a let",
+                };
+                let message = format!("{} is {kind}; declare it with var", render(root));
+                return Err(self.fail_at(root, "assign-to-let", message));
+            }
+            Err(Why::Text) => {
+                return Err(self.fail(
+                    at,
                     "bad-assignment-target",
-                    "this cannot be assigned to",
+                    "a String changes only as a whole",
                 ));
             }
-            Err(Why::Immutable) => {
-                return Err(self.fail_at(target, "assign-to-let", "this is not a `var`"));
+            Err(_) => {
+                let message = "only a var local, an inout parameter or their fields and items can be assigned";
+                return Err(self.fail(at, "bad-assignment-target", message));
             }
             Ok(()) => {}
         }

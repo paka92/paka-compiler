@@ -105,6 +105,22 @@ fn nearest<'n>(name: &str, candidates: impl Iterator<Item = &'n str>) -> Option<
     (d <= name.len() / 3).then_some(best)
 }
 
+/// An error at `name` with the message `head`; when a candidate is near, the message ends with
+/// the hint and the fix is the candidate.
+pub(crate) fn suggestion<'n>(
+    path: &str,
+    code: &'static str,
+    (at, name): (Pos, &str),
+    head: &str,
+    candidates: impl Iterator<Item = &'n str>,
+) -> Diagnostic {
+    let fail = |message: &str| Diagnostic::new(path, at, name.len(), code, message);
+    match nearest(name, candidates) {
+        Some(near) => fail(&format!("{head}; did you mean {near}?")).with_fix(near),
+        None => fail(head),
+    }
+}
+
 fn distance(a: &str, b: &str) -> usize {
     let mut row: Vec<usize> = (0..=b.len()).collect();
     for (i, x) in a.bytes().enumerate() {
@@ -123,10 +139,10 @@ fn distance(a: &str, b: &str) -> usize {
 fn first_operand<'a>(e: &'a Expr<'a>) -> Option<&'a Expr<'a>> {
     match &e.kind {
         ExprKind::Unary(_, x)
-        | ExprKind::Try(x)
+        | ExprKind::Try(x, _)
         | ExprKind::Inout(x)
         | ExprKind::Field(x, _)
-        | ExprKind::Binary(_, x, _)
+        | ExprKind::Binary(_, _, x, _)
         | ExprKind::Range(x, _)
         | ExprKind::Index(x, _)
         | ExprKind::Call(x, _) => Some(x.as_ref()),
@@ -158,11 +174,8 @@ impl<'a> Resolver<'a> {
         what: &str,
         candidates: impl Iterator<Item = &'n str>,
     ) -> Diagnostic {
-        let fail = |message| self.fail(at, name.len(), code, message);
-        match nearest(name, candidates) {
-            Some(near) => fail(format!("{name} is {what}; did you mean {near}?")).with_fix(near),
-            None => fail(format!("{name} is {what}")),
-        }
+        let head = format!("{name} is {what}");
+        suggestion(self.path, code, (at, name), &head, candidates)
     }
 
     fn pool_get(&self, name: &str, keep: impl Fn(Kind, Binding) -> bool) -> Option<Binding> {
@@ -408,7 +421,7 @@ impl<'a> Resolver<'a> {
     /// The operands of a chain link other than its first.
     fn rest(&mut self, link: &'a Expr<'a>) -> Res {
         match &link.kind {
-            ExprKind::Binary(_, _, x) | ExprKind::Range(_, x) | ExprKind::Index(_, x) => {
+            ExprKind::Binary(_, _, _, x) | ExprKind::Range(_, x) | ExprKind::Index(_, x) => {
                 self.expr(x)
             }
             ExprKind::Call(_, args) => args.iter().try_for_each(|a| self.expr(&a.value)),
@@ -449,7 +462,7 @@ impl<'a> Resolver<'a> {
             }
             // Links of a chain: `expr` walks them.
             ExprKind::Unary(..)
-            | ExprKind::Try(_)
+            | ExprKind::Try(..)
             | ExprKind::Inout(_)
             | ExprKind::Field(..)
             | ExprKind::Binary(..)

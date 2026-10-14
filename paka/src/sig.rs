@@ -221,7 +221,7 @@ impl<'a> Item<'a> {
             .chain(variants.iter().map(|v| &v.fields[..]))
     }
 
-    fn each_field(&self) -> impl Iterator<Item = &Field<'a>> {
+    pub fn each_field(&self) -> impl Iterator<Item = &Field<'a>> {
         self.alternatives().flatten()
     }
 }

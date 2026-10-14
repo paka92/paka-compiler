@@ -1,17 +1,19 @@
 //! Expressions: literals, operators and the chains they form.
 
-use super::{Cx, Out, Res, Use};
-use crate::ast::{BinOp, Expr, ExprKind as K, Name, StrPart, UnOp};
-use crate::sig::{Item, Node, Ty};
+use super::text::{article, float_fix, render};
+use super::{Cx, Out, Res, Span, Use, span};
+use crate::ast::{BinOp, Expr, ExprKind as K, Name, Pos, StrPart, UnOp};
+use crate::resolve::suggestion;
+use crate::sig::{Field, Item, Node, Ty};
 use paka_rt::ops::{Float, Int};
 
 /// The operand a chain continues from; the head of a chain has none.
 fn operand<'x, 'a>(e: &'x Expr<'a>) -> Option<&'x Expr<'a>> {
     match &e.kind {
         K::Unary(_, x)
-        | K::Try(x)
+        | K::Try(x, _)
         | K::Field(x, _)
-        | K::Binary(_, x, _)
+        | K::Binary(_, _, x, _)
         | K::Range(x, _)
         | K::Index(x, _)
         | K::Call(x, _) => Some(x.as_ref()),
@@ -33,7 +35,7 @@ impl Cx<'_, '_> {
         let mut cur = match (&head.kind, links.last().copied().map(|l| &l.kind)) {
             (K::Name(_), Some(K::Call(_, args))) => {
                 prev = links.pop().expect("a call");
-                self.call_named(prev, head, args, hint(&links))?
+                self.call_named(head, args, hint(&links))?
             }
             _ => self.leaf(head, hint(&links))?,
         };
@@ -100,21 +102,21 @@ impl Cx<'_, '_> {
                 for part in parts {
                     if let StrPart::Expr(x) = part {
                         let ty = self.expr_val(x, None)?;
-                        self.allow(x, ty, &["Int", "Bool", "String"], "Int, Bool or String")?;
+                        self.text_of(x, ty)?;
                     }
                 }
                 self.prim("String")
             }
             K::Hole(_) => return Ok(self.hole(Use::Value(want))),
             K::Name(_) => return self.name(e, want),
-            K::Record(_, args) => return self.record(e, args),
+            K::Record(name, args) => return self.record(e, name, args),
             K::List(items) => self.list(items, want)?,
             K::Map(pairs) => self.map(pairs, want)?,
             K::If {
                 branches,
                 otherwise,
             } => return self.if_expr(e, branches, otherwise.as_ref(), Use::Value(want)),
-            K::Match { subject, .. } => return self.match_expr(subject, Use::Value(want)),
+            K::Match { .. } => return self.match_expr(e, Use::Value(want)),
             K::Inout(x) => return self.expr(x, want),
             _ => self.unknown(),
         };
@@ -126,59 +128,163 @@ impl Cx<'_, '_> {
     }
 
     /// The built-in type of `ty` is one of `allowed`, or not yet known.
-    pub(super) fn allow(&self, at: &Expr, ty: Ty, allowed: &[&str], text: &str) -> Res {
+    pub(super) fn allow(&self, at: Span, ty: Ty, allowed: &[&str], text: &str) -> Res {
         if self.is_var(ty) || allowed.iter().any(|a| self.is(ty, a)) {
             return Ok(());
         }
         Err(self.mismatch(at, text, &self.types.show(ty), ""))
     }
 
+    /// `x`, of type `ty`, goes into a text: only an Int, a Bool or a String does.
+    fn text_of(&self, x: &Expr, ty: Ty) -> Res {
+        if self.is_var(ty) || ["Int", "Bool", "String"].iter().any(|n| self.is(ty, n)) {
+            return Ok(());
+        }
+        let (shown, value) = (self.types.show(ty), render(x));
+        let strings = self
+            .arg(ty, "List", 0)
+            .is_some_and(|t| self.is(t, "String"));
+        let repair = match self.types.node(ty) {
+            Node::Fn(..) => None,
+            Node::Name("Float", _) => Some(format!("write {{fixed({value}, digits: 2)}}")),
+            Node::Name("List", _) if strings => Some(format!("write {{join({value}, \", \")}}")),
+            Node::Name("List" | "Map", _) => Some("build the text in a loop".to_string()),
+            Node::Name(..) => Some("match it first".to_string()),
+            Node::User(i) => Some(match &self.defs[*i].item {
+                Item::Record(fields) => {
+                    let each = |f: &Field| format!("{{{value}.{}}}", f.name);
+                    let list: Vec<_> = fields.iter().take(2).map(each).collect();
+                    format!("write its fields: {}", list.join(", "))
+                }
+                _ => "match it and write each variant's text".to_string(),
+            }),
+            Node::Var(_) => None,
+        };
+        let message = match repair {
+            Some(r) => format!("{} has no text here: {r}", article(&shown)),
+            None => "a function has no text".to_string(),
+        };
+        let d = self.fail_at(x, "type-mismatch", message);
+        Err(d.with_types(&"Int, Bool or String", &shown))
+    }
+
     fn link(&mut self, e: &Expr, from: &Expr, cur: Out, want: Option<Ty>) -> Res<Out> {
         let ty = self.val(cur, from)?;
         match &e.kind {
-            K::Unary(op, _) => self.unary(*op, from, ty),
-            K::Binary(op, _, r) => self.binary(*op, from, ty, r),
+            K::Unary(op, _) => self.unary(*op, e, ty),
+            K::Binary(op, at, _, r) => self.binary(*op, *at, from, ty, r),
             K::Range(_, r) => {
-                self.allow(from, ty, &["Int"], "Int")?;
+                self.allow(span(from), ty, &["Int"], "Int")?;
                 let int = self.int();
                 self.expect(r, int)?;
                 Ok(Out::Val(self.types.named("List", &[ty])))
             }
             K::Index(_, i) => self.index(from, ty, i),
-            K::Field(_, name) => self.field(from, ty, name),
-            K::Try(_) => self.question(e, from, ty),
-            K::Call(_, args) => self.call_value(e, from, ty, args, want),
+            K::Field(_, name) => self.field(e, ty, name),
+            K::Try(_, at) => self.question((*at, 1), from, ty),
+            K::Call(_, args) => self.call_value(from, ty, args, want),
             _ => Ok(Out::Val(ty)),
         }
     }
 
-    fn unary(&mut self, op: UnOp, from: &Expr, ty: Ty) -> Res<Out> {
+    fn unary(&mut self, op: UnOp, e: &Expr, ty: Ty) -> Res<Out> {
         match op {
-            UnOp::Neg => self.allow(from, ty, &["Int", "Float"], "Int or Float")?,
-            UnOp::Not => self.allow(from, ty, &["Bool"], "Bool")?,
+            UnOp::Neg => self.allow((e.at, 1), ty, &["Int", "Float"], "Int or Float")?,
+            UnOp::Not => self.allow((e.at, 1), ty, &["Bool"], "Bool")?,
         }
         Ok(Out::Val(ty))
     }
 
-    fn binary(&mut self, op: BinOp, from: &Expr, lt: Ty, r: &Expr) -> Res<Out> {
-        use BinOp::{Add, And, Div, Eq, Ge, Gt, Le, Lt, Mul, Ne, Or, Rem, Sub};
-        let (allowed, text): (&[&str], _) = match op {
-            Or | And => (&["Bool"], "Bool"),
-            Eq | Ne => (&[], ""),
-            Lt | Le | Gt | Ge | Add => (&["Int", "Float", "String"], "Int, Float or String"),
-            Sub | Mul | Div => (&["Int", "Float"], "Int or Float"),
-            Rem => (&["Int"], "Int"),
-        };
-        if !allowed.is_empty() {
-            self.allow(from, lt, allowed, text)?;
-        }
-        let rt = self.expect(r, lt)?;
-        let ty = match op {
-            Add | Sub | Mul | Div | Rem if self.is_var(lt) => rt,
-            Add | Sub | Mul | Div | Rem => lt,
+    fn binary(&mut self, op: BinOp, at: Pos, left: &Expr, lt: Ty, right: &Expr) -> Res<Out> {
+        let rt = self.expr_val(right, Some(lt))?;
+        self.operands((at, op.text().len()), op, (left, lt), (right, rt))?;
+        let arithmetic = matches!(
+            op,
+            BinOp::Add | BinOp::Sub | BinOp::Mul | BinOp::Div | BinOp::Rem
+        );
+        let ty = match (arithmetic, self.is_var(lt)) {
+            (true, true) => rt,
+            (true, false) => lt,
             _ => self.prim("Bool"),
         };
         Ok(Out::Val(ty))
+    }
+
+    /// Whether the two operands suit `op`; errors stand at the operator.
+    fn operands(&self, at: Span, op: BinOp, (l, lt): (&Expr, Ty), (r, rt): (&Expr, Ty)) -> Res {
+        use BinOp::{Add, And, Div, Ge, Gt, Le, Lt, Mul, Or, Rem, Sub};
+        let (shown_l, shown_r) = (self.types.show(lt), self.types.show(rt));
+        let text = |message: String, want: &str, found: &str| {
+            (self.fail(at, "type-mismatch", message)).with_types(&want, &found)
+        };
+        let orderable = "Int, Float or String";
+        let either = |name| self.is(lt, name) || self.is(rt, name);
+        let plain = |name| matches!(name, "Int" | "Bool");
+        match op {
+            Add if self.is(lt, "List") => {
+                let message = format!("no + on List; write extend(&{}, {})", render(l), render(r));
+                return Err(text(message, orderable, &shown_l));
+            }
+            Add if either("String") && [&shown_l, &shown_r].iter().any(|t| plain(t.as_str())) => {
+                let other = if self.is(lt, "String") { r } else { l };
+                let message = format!(
+                    "no + between {shown_l} and {shown_r}; write an interpolation: \"{{{}}}\"",
+                    render(other)
+                );
+                return Err(text(message, &shown_l, &shown_r));
+            }
+            Rem if either("Float") => {
+                let message = "no % on Float: write x - y * trunc(x / y)".to_string();
+                return Err(text(message, "Int", "Float"));
+            }
+            Lt | Le | Gt | Ge
+                if !self.is_var(lt)
+                    && !["Int", "Float", "String"].iter().any(|n| self.is(lt, n)) =>
+            {
+                return Err(text(self.no_order(op, l, r, lt), orderable, &shown_l));
+            }
+            _ => {}
+        }
+        let (allowed, expected): (&[&str], _) = match op {
+            Or | And => (&["Bool"], "Bool"),
+            Add => (&["Int", "Float", "String"], orderable),
+            Sub | Mul | Div => (&["Int", "Float"], "Int or Float"),
+            Rem => (&["Int"], "Int"),
+            _ => (&[], ""),
+        };
+        if !allowed.is_empty() {
+            self.allow(at, lt, allowed, expected)?;
+        }
+        if self.types.fits(rt, lt) {
+            return Ok(());
+        }
+        let repair = match (shown_l.as_str(), shown_r.as_str()) {
+            ("Int", "Float") => float_fix(l),
+            ("Float", "Int") => float_fix(r),
+            _ => String::new(),
+        };
+        Err(self.mismatch(at, &shown_l, &shown_r, &repair))
+    }
+
+    /// "T has no order", with a field to compare when T is a record.
+    fn no_order(&self, op: BinOp, l: &Expr, r: &Expr, ty: Ty) -> String {
+        let head = format!("{} has no order", self.types.show(ty));
+        let field = match self.types.node(ty) {
+            Node::User(i) => match &self.defs[*i].item {
+                Item::Record(fields) => fields.first().map(|f| f.name),
+                _ => None,
+            },
+            _ => None,
+        };
+        match field {
+            Some(f) => format!(
+                "{head}; compare a field: {}.{f} {} {}.{f}",
+                render(l),
+                op.text(),
+                render(r)
+            ),
+            None => format!("{head}; write a function that says which comes first"),
+        }
     }
 
     pub(super) fn int(&mut self) -> Ty {
@@ -206,54 +312,132 @@ impl Cx<'_, '_> {
                 self.expr(i, None)?;
                 self.unknown()
             }
-            _ => return Err(self.mismatch(base, "List, Map or String", &self.types.show(bt), "")),
+            _ => {
+                return Err(self.mismatch(
+                    span(base),
+                    "List, Map or String",
+                    &self.types.show(bt),
+                    "",
+                ));
+            }
         };
         Ok(Out::Val(ty))
     }
 
-    fn field(&mut self, base: &Expr, bt: Ty, name: &Name) -> Res<Out> {
+    /// `e` is `base.name` with `base` of type `bt`.
+    fn field(&mut self, e: &Expr, bt: Ty, name: &Name) -> Res<Out> {
         let defs = self.defs;
-        let record = match self.types.node(bt) {
-            Node::User(i) => match &defs[*i].item {
-                Item::Record(fields) => Some(fields),
-                _ => None,
-            },
-            _ => None,
+        let at = (name.at, name.text.len());
+        let (shown, item) = match self.types.node(bt) {
+            Node::User(i) => (self.types.show(bt), &defs[*i].item),
+            Node::Var(_) => return Ok(Out::Val(bt)),
+            _ => {
+                let message = format!("{} has no fields", self.types.show(bt));
+                return Err((self.fail(at, "type-mismatch", message))
+                    .with_types(&"a record", &self.types.show(bt)));
+            }
         };
-        if let Some(fields) = record {
-            let Some(f) = fields.iter().find(|f| f.name == name.text) else {
-                let message = format!("`{}` has no field `{}`", self.types.show(bt), name.text);
-                return Err(self.fail(name.at, name.text.len(), "unknown-name", message));
-            };
+        if let Item::Record(fields) = item
+            && let Some(f) = fields.iter().find(|f| f.name == name.text)
+        {
             return Ok(Out::Val(f.ty));
         }
-        if self.is_var(bt) {
-            return Ok(Out::Val(bt));
+        if let Item::Enum(variants) = item
+            && let Some(v) = variants
+                .iter()
+                .find(|v| v.fields.iter().any(|f| f.name == name.text))
+        {
+            return Err(self.variant_field(e, at, &shown, v.name, name.text));
         }
-        Err(self.mismatch(base, "a record", &self.types.show(bt), ""))
+        let head = format!("{shown} has no field {}", name.text);
+        let names = item.each_field().map(|f| f.name);
+        let d = suggestion(
+            self.path,
+            "unknown-name",
+            (name.at, name.text),
+            &head,
+            names,
+        );
+        Err(d.in_definition(self.program.defs[self.def].name().text))
+    }
+
+    /// A variant's field is read by matching and changed by building the variant again.
+    fn variant_field(
+        &self,
+        e: &Expr,
+        at: Span,
+        shown: &str,
+        variant: &str,
+        field: &str,
+    ) -> crate::diagnostic::Diagnostic {
+        if self.writing == Some(e.at) {
+            let message = format!(
+                "{field} is a field of the variant {variant}; build {variant}(..) and assign the subject"
+            );
+            return self.fail_at(e, "bad-assignment-target", message);
+        }
+        let message =
+            format!("{field} is a field of the variant {variant}; match on the value to read it");
+        (self.fail(at, "type-mismatch", message)).with_types(&"a record", &shown)
     }
 
     /// `e?` where `from` has type `ty`: the function's own result must be of the same family.
-    fn question(&mut self, e: &Expr, from: &Expr, ty: Ty) -> Res<Out> {
+    fn question(&mut self, at: Span, from: &Expr, ty: Ty) -> Res<Out> {
         let enclosing = self.result;
-        let (want, agrees, value) = if let Some(error) = self.arg(ty, "Result", 1) {
+        let name = self.program.defs[self.def].name().text;
+        let (up, make, want, agrees, value) = if let Some(error) = self.arg(ty, "Result", 1) {
             let theirs = enclosing.and_then(|r| self.arg(r, "Result", 1));
             let agrees = theirs.is_some_and(|x| self.types.fits(x, error));
-            let want = format!("Result<T, {}>", self.types.show(error));
-            (want, agrees, self.arg(ty, "Result", 0))
+            let shown = self.types.show(error);
+            let make = format!("make it Result<T, {shown}> or match it");
+            (
+                format!("Err({shown})"),
+                make,
+                format!("Result<T, {shown}>"),
+                agrees,
+                self.arg(ty, "Result", 0),
+            )
         } else if self.is(ty, "Option") {
             let agrees = enclosing.is_some_and(|r| self.is(r, "Option"));
-            ("Option<T>".to_string(), agrees, self.arg(ty, "Option", 0))
+            let result = enclosing.is_some_and(|r| self.is(r, "Result"));
+            let make = if result {
+                "make it Option<T>, write ok_or(..., error)? or match it"
+            } else {
+                "make it Option<T> or match it"
+            };
+            (
+                "None".to_string(),
+                make.to_string(),
+                "Option<T>".to_string(),
+                agrees,
+                self.arg(ty, "Option", 0),
+            )
         } else if self.is_var(ty) {
             return Ok(Out::Val(ty));
         } else {
-            return Err(self.mismatch(from, "Option or Result", &self.types.show(ty), ""));
+            let (shown, value) = (self.types.show(ty), render(from));
+            let message = format!("? needs an Option or Result; {value} is {shown}; drop the ?");
+            return Err(
+                (self.fail(at, "type-mismatch", message)).with_types(&"Option or Result", &shown)
+            );
         };
         if agrees {
             return Ok(Out::Val(value.unwrap_or(ty)));
         }
-        let found = enclosing.map_or("no result".to_string(), |r| self.types.show(r));
-        Err(self.mismatch(e, &want, &found, ""))
+        let (found, returns) = match enclosing {
+            Some(r) => (
+                self.types.show(r),
+                format!("returns {}", self.types.show(r)),
+            ),
+            None => ("no result".to_string(), "has no result".to_string()),
+        };
+        let make = if enclosing.is_some() {
+            make
+        } else {
+            "match it".to_string()
+        };
+        let message = format!("? passes {up} up, but {name} {returns}; {make}");
+        Err((self.fail(at, "type-mismatch", message)).with_types(&want, &found))
     }
 
     fn list(&mut self, items: &[Expr], want: Option<Ty>) -> Res<Ty> {
@@ -273,7 +457,7 @@ impl Cx<'_, '_> {
         for (i, (k, v)) in pairs.iter().enumerate() {
             self.join(&mut key, k, key_hint)?;
             if let (0, Some(ty)) = (i, key) {
-                self.allow(k, ty, &["Int", "String"], "Int or String")?;
+                self.allow(span(k), ty, &["Int", "String"], "Int or String")?;
             }
             self.join(&mut value, v, value_hint)?;
         }

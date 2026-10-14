@@ -202,6 +202,27 @@ pub enum BinOp {
     Rem,
 }
 
+impl BinOp {
+    pub fn text(self) -> &'static str {
+        use BinOp::*;
+        match self {
+            Or => "||",
+            And => "&&",
+            Eq => "==",
+            Ne => "!=",
+            Lt => "<",
+            Le => "<=",
+            Gt => ">",
+            Ge => ">=",
+            Add => "+",
+            Sub => "-",
+            Mul => "*",
+            Div => "/",
+            Rem => "%",
+        }
+    }
+}
+
 #[derive(Debug, PartialEq)]
 pub enum ExprKind<'a> {
     /// The spelling, with a folded minus sign.
@@ -218,13 +239,14 @@ pub enum ExprKind<'a> {
     /// `[:]` is an empty map.
     Map(Vec<(Expr<'a>, Expr<'a>)>),
     Unary(UnOp, Box<Expr<'a>>),
-    Binary(BinOp, Box<Expr<'a>>, Box<Expr<'a>>),
+    /// The operator, the position of its token, then the operands.
+    Binary(BinOp, Pos, Box<Expr<'a>>, Box<Expr<'a>>),
     /// `a..<b`, only after `in` and as an index.
     Range(Box<Expr<'a>>, Box<Expr<'a>>),
     Index(Box<Expr<'a>>, Box<Expr<'a>>),
     Field(Box<Expr<'a>>, Name<'a>),
-    /// `e?`
-    Try(Box<Expr<'a>>),
+    /// `e?`, with the position of the `?`.
+    Try(Box<Expr<'a>>, Pos),
     Call(Box<Expr<'a>>, Vec<Arg<'a>>),
     /// `&place`, only as the value of an argument.
     Inout(Box<Expr<'a>>),

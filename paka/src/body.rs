@@ -10,7 +10,8 @@ use crate::ast::{self, Block, Def, Expr, Pos, Program};
 use crate::diagnostic::Diagnostic;
 use crate::resolve::Resolved;
 use crate::sig::{Checked, Item, Node, Sig, Table, Ty, Types};
-use std::collections::BTreeMap;
+use std::collections::{BTreeMap, BTreeSet};
+use text::{float_fix, named, render};
 
 mod call;
 mod expr;
@@ -19,6 +20,7 @@ mod place;
 mod stmt;
 #[cfg(test)]
 mod tests;
+mod text;
 
 /// The result of checking a program's bodies, one entry per definition.
 pub struct Bodies {
@@ -29,6 +31,13 @@ pub struct Bodies {
 }
 
 type Res<T = ()> = Result<T, Diagnostic>;
+
+/// Where an error stands: the position and the length in bytes.
+type Span = (Pos, usize);
+
+fn span(e: &Expr) -> Span {
+    (e.at, e.len)
+}
 
 /// What an expression gives.
 #[derive(Clone, Copy)]
@@ -70,10 +79,12 @@ struct Cx<'t, 'a> {
     defs: &'t [Checked<'a>],
     fns: &'t BTreeMap<&'static str, Vec<Sig<'static>>>,
     variants: &'t BTreeMap<&'static str, Sig<'static>>,
-    /// The definition being checked, its result and the position of its last statement.
+    /// The definition being checked, its result and the `return`s that end it.
     def: usize,
     result: Option<Ty>,
-    tail: Option<Pos>,
+    tails: BTreeSet<Pos>,
+    /// The start of the assignment target being checked.
+    writing: Option<Pos>,
     loops: usize,
     /// Every local met, by the position of its name.
     locals: BTreeMap<Pos, Local>,
@@ -102,7 +113,8 @@ pub fn check<'a>(
         variants,
         def: 0,
         result: None,
-        tail: None,
+        tails: BTreeSet::new(),
+        writing: None,
         loops: 0,
         locals: BTreeMap::new(),
         info: BTreeMap::new(),
@@ -127,25 +139,20 @@ fn earliest(a: Option<Diagnostic>, b: Option<Diagnostic>) -> Option<Diagnostic> 
 }
 
 impl<'t, 'a> Cx<'t, 'a> {
-    /// Names and signatures come before bodies: a table error is the result.
+    /// The first error among the resolver's, the table's and the body's. The body is checked
+    /// whatever the others found; a name or type they left unknown is silent here.
     fn definition(&mut self, i: usize, def: &'a Def<'a>) -> Option<Diagnostic> {
-        (self.def, self.loops, self.result, self.tail) = (i, 0, None, None);
+        (self.def, self.loops, self.result, self.writing) = (i, 0, None, None);
         self.locals.clear();
         let defs = self.defs;
-        let table = defs[i].error.clone();
-        match (def, &defs[i].item) {
-            (Def::Fn { params, body, .. }, Item::Fn(sig)) if table.is_none() => {
-                self.function(sig, params, body).err()
-            }
-            (Def::Type { fields, .. }, Item::Record(held)) if self.resolved.defs[i].is_ok() => {
-                let found = (fields.iter().zip(held)).find_map(|(f, h)| {
-                    let default = f.default.as_ref()?;
-                    self.expect(default, h.ty).err()
-                });
-                earliest(table, found)
-            }
-            _ => table,
-        }
+        let found = match (def, &defs[i].item) {
+            (Def::Fn { params, body, .. }, Item::Fn(sig)) => self.function(sig, params, body).err(),
+            (Def::Type { fields, .. }, Item::Record(held)) => (fields.iter().zip(held))
+                .find_map(|(f, h)| self.expect(f.default.as_ref()?, h.ty).err()),
+            (Def::Example { .. } | Def::App { .. }, _) => self.unchecked(def).err(),
+            _ => None,
+        };
+        earliest(defs[i].error.clone(), found)
     }
 
     fn function(&mut self, sig: &Sig<'_>, params: &[ast::Param<'a>], body: &'a Block<'a>) -> Res {
@@ -154,39 +161,49 @@ impl<'t, 'a> Cx<'t, 'a> {
             self.locals.insert(p.name.at, Local { ty: s.ty, how });
         }
         self.result = sig.result;
-        self.tail = body.stmts.last().map(|s| s.at);
+        self.tails = stmt::tails(body);
         let used = sig.result.map_or(Use::Dropped, |r| Use::Value(Some(r)));
         self.block(body, used).map(drop)
     }
 
-    fn fail(&self, at: Pos, len: usize, code: &'static str, message: impl ToString) -> Diagnostic {
+    fn fail(&self, (at, len): Span, code: &'static str, message: impl ToString) -> Diagnostic {
         let name = self.program.defs[self.def].name().text;
         Diagnostic::new(self.path, at, len, code, message).in_definition(name)
     }
 
     fn fail_at(&self, e: &Expr, code: &'static str, message: impl ToString) -> Diagnostic {
-        self.fail(e.at, e.len, code, message)
+        self.fail(span(e), code, message)
     }
 
-    /// `type-mismatch` at `e`; a note may name the repair.
-    fn mismatch(&self, e: &Expr, want: &str, found: &str, note: &str) -> Diagnostic {
-        let message = format!("expected {want}, found {found}{note}");
-        (self.fail_at(e, "type-mismatch", message)).with_types(&want, &found)
+    /// `type-mismatch` at `at`; a repair is the last words of the message.
+    fn mismatch(&self, at: Span, want: &str, found: &str, repair: &str) -> Diagnostic {
+        let repair = if repair.is_empty() {
+            String::new()
+        } else {
+            format!("; {repair}")
+        };
+        let message = format!("expected `{want}`, found `{found}`{repair}");
+        (self.fail(at, "type-mismatch", message)).with_types(&want, &found)
     }
 
+    /// `e` has type `found` where `want` is needed; an Int and a Float name the other's repair.
     fn mismatch_at(&self, e: &Expr, want: Ty, found: Ty) -> Diagnostic {
         let (want, found) = (self.types.show(want), self.types.show(found));
-        let note = match (want.as_str(), found.as_str()) {
-            ("Float", "Int") => "; write to_float(..), or a literal with .0",
-            ("Int", "Float") => "; write to_int(..)",
-            _ => "",
+        let repair = match (want.as_str(), found.as_str()) {
+            ("Float", "Int") => float_fix(e),
+            ("Int", "Float") => format!("write to_int({})", render(e)),
+            _ => String::new(),
         };
-        self.mismatch(e, &want, &found, note)
+        self.mismatch(span(e), &want, &found, &repair)
     }
 
     fn no_value(&self, e: &Expr, want: Option<Ty>) -> Diagnostic {
         let want = want.map_or("a value".to_string(), |w| self.types.show(w));
-        self.mismatch(e, &want, "no value", "")
+        let message = match named(e) {
+            Some(name) => format!("{name} has no result"),
+            None => format!("expected `{want}`, found `no value`"),
+        };
+        (self.fail_at(e, "type-mismatch", message)).with_types(&want, &"no value")
     }
 
     fn prim(&mut self, name: &'static str) -> Ty {
