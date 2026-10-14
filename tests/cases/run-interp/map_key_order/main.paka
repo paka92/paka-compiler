@@ -1,0 +1,23 @@
+enum Msg { Start }
+
+fn update(q: Msg) -> List<Effect<Msg>> {
+  let ints: Map<Int, String> = [3: "c", -10: "a", 0: "b", -2: "d", 100: "e"]
+  let words: Map<String, Int> = ["z": 1, "é": 2, "Z": 3, "a": 4, "ab": 5, "": 6]
+  let ik = keys(ints)
+  let iv = values(ints)
+  let wk = keys(words)
+  let wv = values(words)
+  [
+    Print("{ik[0]} {ik[1]} {ik[2]} {ik[3]} {ik[4]}"),
+    Print("{iv[0]}{iv[1]}{iv[2]}{iv[3]}{iv[4]}"),
+    Print("[{wk[0]}] [{wk[1]}] [{wk[2]}] [{wk[3]}] [{wk[4]}] [{wk[5]}]"),
+    Print("{wv[0]}{wv[1]}{wv[2]}{wv[3]}{wv[4]}{wv[5]}"),
+    Exit
+  ]
+}
+
+app generics {
+  start: Start
+  update: update
+  grants: [Console]
+}

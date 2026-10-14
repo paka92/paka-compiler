@@ -1,0 +1,20 @@
+enum Msg { Start }
+
+fn update(q: Msg) -> List<Effect<Msg>> {
+  var m: Map<String, List<Int>> = ["a": [1, 2]]
+  var vs = values(m)
+  append(&vs[0], 3)
+  var inside = unwrap_or(get(m, "a"), [])
+  append(&inside, 4)
+  var ks = keys(m)
+  ks[0] = "changed"
+  let after = m["a"]
+  let first = keys(m)
+  [Print("{len(vs[0])} {len(inside)} {len(after)} {first[0]}"), Exit]
+}
+
+app generics {
+  start: Start
+  update: update
+  grants: [Console]
+}

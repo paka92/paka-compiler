@@ -1,0 +1,13 @@
+equal_maps pass
+int_key_order fail at main.paka:2:51
+  left: ["y", "x"]
+  right: ["x", "y"]
+key_order fail at main.paka:1:44
+  left: ["a", "b"]
+  right: ["b", "a"]
+list_order fail at main.paka:3:29
+  left: [1, 2]
+  right: [2, 1]
+map_built_in_key_order fail at main.paka:4:51
+  left: ["a": 2, "b": 1]
+  right: ["a": 1, "b": 2]

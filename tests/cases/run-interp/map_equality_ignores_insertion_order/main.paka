@@ -1,0 +1,17 @@
+enum Msg { Start }
+
+fn update(q: Msg) -> List<Effect<Msg>> {
+  let a = ["x": 1, "y": 2]
+  let b = ["y": 2, "x": 1]
+  let c = ["x": 1]
+  let d = ["x": 1, "y": 3]
+  let e: Map<String, Int> = [:]
+  let f: Map<String, Int> = [:]
+  [Print("{a == b} {a == c} {a != c} {a == d} {e == f} {c == e}"), Exit]
+}
+
+app generics {
+  start: Start
+  update: update
+  grants: [Console]
+}

@@ -1,0 +1,15 @@
+enum Msg { Start }
+
+fn update(q: Msg) -> List<Effect<Msg>> {
+  var xs = [1, 2, 3]
+  let a = pop(&xs)
+  let b = pop(&xs)
+  let c = pop(&xs)
+  [Print("{a} {b} {c} {len(xs)} {is_empty(xs)}"), Exit]
+}
+
+app generics {
+  start: Start
+  update: update
+  grants: [Console]
+}

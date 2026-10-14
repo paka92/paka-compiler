@@ -1,0 +1,6 @@
+main.paka:5:12: error[type-mismatch]: expected `List`, found `Map<String, Int>`; write keys(m)
+  definition: update
+  bytes: 91..92
+  text: "m"
+  expected: List
+  found: Map<String, Int>

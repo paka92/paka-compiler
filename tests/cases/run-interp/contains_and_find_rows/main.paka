@@ -1,0 +1,26 @@
+enum Msg { Start }
+
+fn update(q: Msg) -> List<Effect<Msg>> {
+  let nan = 0.0 / 0.0
+  let fs = [2.0, nan, 3.0]
+  let zeros = [0.0]
+  let none: List<Int> = []
+  let twice = [5, 5]
+  let nested = [[1], [2, 3]]
+  let missing = unwrap_or(find(fs, nan), -1)
+  let last = unwrap_or(find(fs, 3.0), -1)
+  let first = unwrap_or(find(twice, 5), -1)
+  let inner = unwrap_or(find(nested, [2, 3]), -1)
+  let nowhere = unwrap_or(find(none, 1), -1)
+  [
+    Print("{contains(fs, nan)} {contains(fs, 3.0)} {contains(zeros, -0.0)} {contains(none, 1)}"),
+    Print("{missing} {last} {first} {inner} {nowhere}"),
+    Exit
+  ]
+}
+
+app generics {
+  start: Start
+  update: update
+  grants: [Console]
+}
