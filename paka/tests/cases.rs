@@ -3,6 +3,10 @@
 //! run the command they are named for, every other stage runs `paka run`.
 //! `run-interp` holds the run cases that only the interpreter runs until M4-40 (`native.rs` takes `run`).
 
+#[allow(dead_code)]
+mod common;
+
+use common::case_args;
 use std::fs;
 use std::path::{Path, PathBuf};
 use std::process::Command;
@@ -86,16 +90,6 @@ fn args(stage: &Path) -> &'static [&'static str] {
         Some("examples") => &["examples", "main.paka"],
         _ => &["run", "main.paka"],
     }
-}
-
-/// The lines of the case's `args` file: the arguments after `main.paka`.
-fn case_args(case: &Path) -> Vec<String> {
-    let lines = read(case, "args").map(|a| text(&a));
-    lines
-        .iter()
-        .flat_map(|l| l.lines())
-        .map(String::from)
-        .collect()
 }
 
 #[test]

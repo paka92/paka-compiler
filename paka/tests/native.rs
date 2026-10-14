@@ -4,7 +4,7 @@
 #[allow(dead_code)]
 mod common;
 
-use common::{LIGHT, PAKA, Scratch, build_native};
+use common::{LIGHT, PAKA, Scratch, build_native, case_args};
 use std::fs::{self, File};
 use std::path::{Path, PathBuf};
 use std::process::{Command, Output, Stdio};
@@ -64,17 +64,27 @@ fn accept_cases() -> Vec<(PathBuf, Seen)> {
         .collect()
 }
 
-/// The case's `args` file: one argument per line.
-fn case_args(case: &Path) -> Vec<String> {
-    let lines = fs::read_to_string(case.join("args")).unwrap_or_default();
-    lines.lines().map(String::from).collect()
-}
-
 fn interpreted(source: &Path, dir: &Path, args: &[String]) -> Command {
     let mut command = Command::new(PAKA);
     command.arg("run").arg(source).args(args).current_dir(dir);
     command
 }
+
+/// The cases the milestone 1 back end refuses with `unsupported-form` (a state, a start message
+/// with fields, `ExitWith`); the interpreter alone runs them. paka-rt's run tests list the same.
+const UNSUPPORTED: [&str; 11] = [
+    "exit_with_computed_four",
+    "exit_with_computed_high",
+    "exit_with_computed_negative",
+    "exit_with_five",
+    "exit_with_max",
+    "exit_with_skips_rest",
+    "exit_with_zero",
+    "start_two_fields",
+    "start_with_argument",
+    "state_in_handler",
+    "variant_payload",
+];
 
 #[test]
 fn every_runnable_case_runs_natively() {
@@ -82,33 +92,33 @@ fn every_runnable_case_runs_natively() {
     assert!(!cases.is_empty(), "no runnable cases found");
     let scratch = Scratch::new("native-cases");
     let mut failures = vec![];
-    let mut built_names = vec![];
     for (case, want) in &cases {
         let name = case.file_name().unwrap().to_str().unwrap();
         let source = case.join("main.paka");
         let exe = scratch.path(name);
         let built = build_native(source.to_str().unwrap(), &exe);
-        let stderr = String::from_utf8_lossy(&built.stderr);
-        if built.status.code() == Some(1) && stderr.contains("error[unsupported-form]") {
+        let refused = built.status.code() == Some(1)
+            && String::from_utf8_lossy(&built.stderr).contains("error[unsupported-form]");
+        let expected = UNSUPPORTED.contains(&name);
+        if !refused && built.status.code() != Some(0) || refused != expected {
+            failures.push(format!(
+                "{name}: build {built:?}, unsupported-form expected: {expected}"
+            ));
             continue;
         }
-        if built.status.code() != Some(0) {
-            failures.push(format!("{name}: build failed: {built:?}"));
-            continue;
-        }
-        built_names.push(name);
         let args = case_args(case);
-        let native = Command::new(&exe).args(&args).current_dir(case).output();
-        let interp = interpreted(&source, case, &args).output();
-        let (native, interp) = (Seen::from(native.unwrap()), Seen::from(interp.unwrap()));
-        for (back_end, seen) in [("native", &native), ("interpreter", &interp)] {
-            if seen != want {
+        let mut native = Command::new(&exe);
+        native.args(&args).current_dir(case);
+        let mut runs = vec![("interpreter", interpreted(&source, case, &args))];
+        if !expected {
+            runs.push(("native", native));
+        }
+        for (back_end, mut command) in runs {
+            let seen = Seen::from(command.output().unwrap());
+            if seen != *want {
                 failures.push(format!("{name}: {back_end} {seen:?}, want {want:?}"));
             }
         }
-    }
-    for name in ["light", "unknown_grant", "light_extra_argument"] {
-        assert!(built_names.contains(&name), "{name} was not built");
     }
     assert!(failures.is_empty(), "{}", failures.join("\n"));
 }

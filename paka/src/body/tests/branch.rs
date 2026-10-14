@@ -314,13 +314,21 @@ fn an_integer_out_of_range_names_the_largest() {
 #[test]
 fn an_exit_status_is_zero_or_five_to_255() {
     let exit = |n: &str| unit(&[&format!("let e: Effect<Shape> = ExitWith({n})"), "_ = e"]);
-    accepts(&["0", "5", "255", "1 + 3", "-1 + 6"].map(exit));
+    accepts(
+        &[
+            "0", "5", "255", "1 + 3", "-1 + 6", "--5", "-(-5)", "- 1", "-(1)",
+        ]
+        .map(exit),
+    );
     let message =
         |n: &str| format!("{n} is not an exit status a program may choose; write 0 or 5 to 255");
     for n in ["1", "4", "256", "-1"] {
         let (message, mark) = (message(n), format!("ExitWith(^{n})"));
         says(&[("literal-out-of-range", &mark, &message, exit(n))]);
     }
+    // the parser keeps no parentheses: the literal's node starts at the opening one
+    let (message, src) = (message("3"), exit("(3)"));
+    says(&[("literal-out-of-range", "ExitWith(^(3))", &message, src)]);
 }
 
 #[test]

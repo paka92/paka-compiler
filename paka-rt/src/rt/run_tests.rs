@@ -164,9 +164,14 @@ const BEYOND: [&str; 10] = [
     "state_in_handler",
 ];
 
-/// The arguments a case is run with: one per line of its `args` file.
+/// The arguments a case is run with: one per line of its `args` file, none without the file.
+/// A file that cannot be read as text is an error, not an empty list.
 fn argument_count(dir: &Path) -> usize {
-    fs::read_to_string(dir.join("args")).map_or(0, |text| text.lines().count())
+    match fs::read_to_string(dir.join("args")) {
+        Ok(text) => text.lines().count(),
+        Err(e) if e.kind() == ErrorKind::NotFound => 0,
+        Err(e) => panic!("{}: args: {e}", dir.display()),
+    }
 }
 
 #[test]

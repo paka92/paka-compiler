@@ -1,6 +1,7 @@
 //! Helpers for the integration tests that run `paka build`.
 
 use std::fs;
+use std::io::ErrorKind;
 use std::path::{Path, PathBuf};
 use std::process::{Command, Output};
 use std::sync::Once;
@@ -30,6 +31,16 @@ pub fn build_runtime() {
         }
         assert!(cargo.status().unwrap().success(), "building paka-rt failed");
     });
+}
+
+/// The arguments a case is run with: one per line of its `args` file, none without the file.
+/// A file that cannot be read as text is an error, not an empty list.
+pub fn case_args(case: &Path) -> Vec<String> {
+    match fs::read_to_string(case.join("args")) {
+        Ok(text) => text.lines().map(String::from).collect(),
+        Err(e) if e.kind() == ErrorKind::NotFound => vec![],
+        Err(e) => panic!("{}: args: {e}", case.display()),
+    }
 }
 
 /// The runtime archive beside the `paka` binary under test, built first.

@@ -1,5 +1,6 @@
 //! `paka build` end to end: spec/m1.md sections 10 and 13, docs/abi/m1.md section 9.
 
+#[allow(dead_code)]
 mod common;
 
 use common::{LIGHT, PAKA, Scratch, build_native, build_runtime};
