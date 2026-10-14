@@ -5,6 +5,7 @@ use super::*;
 use crate::parser::parse;
 use crate::resolve::resolve;
 
+mod app;
 mod branch;
 mod pattern;
 
