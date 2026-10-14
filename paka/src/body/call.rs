@@ -231,17 +231,11 @@ impl<'a> Cx<'_, 'a> {
     }
 
     fn not_a_function(&self, callee: &Expr, ty: Ty) -> Diagnostic {
-        let hides = |n: &str| {
-            self.fns.contains_key(n) || self.program.defs.iter().any(|d| d.name().text == n)
-        };
-        let message = match callee.kind {
-            K::Name(n) if hides(n) => format!("{n} is a local here, not a function"),
-            _ => format!(
-                "{} is {}, not a function",
-                render(callee),
-                article(&self.types.show(ty))
-            ),
-        };
+        let message = format!(
+            "{} is {}, not a function",
+            render(callee),
+            article(&self.types.show(ty))
+        );
         self.fail_at(callee, "not-a-function", message)
     }
 
