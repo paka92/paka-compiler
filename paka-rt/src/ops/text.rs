@@ -11,6 +11,12 @@ impl From<&str> for Text {
     }
 }
 
+impl From<String> for Text {
+    fn from(s: String) -> Text {
+        Text(s)
+    }
+}
+
 impl Text {
     pub fn as_str(&self) -> &str {
         &self.0
@@ -46,6 +52,11 @@ impl Text {
 
     pub fn add(&self, other: &Text) -> Text {
         Text(self.0.clone() + &other.0)
+    }
+
+    /// Appends `other` in place.
+    pub fn push(&mut self, other: &Text) {
+        self.0.push_str(&other.0);
     }
 
     pub fn min(self, other: Text) -> Text {

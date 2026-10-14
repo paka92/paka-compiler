@@ -117,7 +117,7 @@ pub enum Grant {
 }
 
 /// The variants of `Effect<M>`, in declared order.
-#[derive(Debug, PartialEq)]
+#[derive(Debug, Clone, Copy, PartialEq)]
 pub enum Effect {
     Print,
     ReadFile,

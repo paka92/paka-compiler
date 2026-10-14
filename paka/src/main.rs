@@ -20,7 +20,6 @@ mod vectors;
 use ast::Def;
 use core_form::Program;
 use diagnostic::Diagnostic;
-use lower::M1;
 use std::ffi::OsStr;
 use std::io::Write;
 use std::os::unix::ffi::OsStrExt;
@@ -59,8 +58,13 @@ fn read(file: &OsStr, path: &str) -> Result<Vec<u8>, Diagnostic> {
     fs::read(file).map_err(|e| Diagnostic::tool(path, "file-unreadable", e))
 }
 
-fn load(file: &OsStr, path: &str) -> Result<M1, Diagnostic> {
-    front_end(path, &read(file, path)?)
+/// The core form of a checked program that holds an app.
+fn load(file: &OsStr, path: &str) -> Result<Program, Diagnostic> {
+    let core = check(path, &read(file, path)?)?;
+    match core.app {
+        Some(_) => Ok(core),
+        None => Err(Diagnostic::tool(path, "no-app", "the program has no app")),
+    }
 }
 
 /// `paka check`: the diagnostic `run` would print, with its fields as extra lines or as JSON.
@@ -106,17 +110,6 @@ fn second_app(path: &str, program: &ast::Program) -> Option<Diagnostic> {
     let message = "a program holds one app";
     let d = Diagnostic::new(path, second.at, second.text.len(), "multiple-apps", message);
     Some(d.in_definition(second.text))
-}
-
-fn front_end(path: &str, source: &[u8]) -> Result<M1, Diagnostic> {
-    let core = check(path, source)?;
-    if core.app.is_none() {
-        return Err(Diagnostic::tool(path, "no-app", "the program has no app"));
-    }
-    lower::m1(&core).ok_or_else(|| {
-        let message = "the back end runs only the milestone 1 subset";
-        Diagnostic::tool(path, "unsupported-form", message)
-    })
 }
 
 /// Reports a diagnostic, which starts with the shown path, with the file argument's own bytes there.

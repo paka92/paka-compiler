@@ -1,6 +1,5 @@
-//! Lowering a checked program into the core form (docs/core.md), and the view of it the M1 back
-//! ends run. A node's type and trap site are taken once its operands are lowered, so the type
-//! table and the site table fill in that order.
+//! Lowering a checked program into the core form (docs/core.md). A node's type and trap site are
+//! taken once its operands are lowered, so the type table and the site table fill in that order.
 
 use crate::ast::{self, Def, Entry, Pos};
 use crate::body::Bodies;
@@ -17,25 +16,6 @@ mod expr;
 mod stmt;
 #[cfg(test)]
 mod tests;
-
-/// What the M1 back ends run: the effects of an `update` whose body is a constant list.
-#[derive(Debug, PartialEq)]
-pub struct M1 {
-    pub app: String,
-    /// The start variant's position in the message enum.
-    pub start: usize,
-    pub console: bool,
-    /// The Paka name of the update function.
-    pub update_name: String,
-    /// The effects `update` returns, in order.
-    pub update: Vec<Effect>,
-}
-
-#[derive(Debug, PartialEq)]
-pub enum Effect {
-    Print(String),
-    Exit,
-}
 
 struct Cx<'t, 'a> {
     core: Program,
@@ -369,47 +349,5 @@ fn builtin_tag(name: &str) -> Tag {
         "Exit" => Tag::Effect(Exit),
         "ExitWith" => Tag::Effect(ExitWith),
         _ => unreachable!("a built-in variant"),
-    }
-}
-
-/// The M1 view of `core`, or `None` when it holds what the M1 back ends cannot run.
-pub fn m1(core: &Program) -> Option<M1> {
-    let app = core.app.as_ref()?;
-    let update = &core.fns[app.update];
-    let only_console = app.grants.iter().all(|g| *g == Grant::Console);
-    if app.state.is_some() || !only_console || !update.body.stmts.is_empty() {
-        return None;
-    }
-    let Type::Enum(msg) = core.types[update.params.last()?.ty] else {
-        return None;
-    };
-    if !core.enums[msg].variants[app.start].fields.is_empty() {
-        return None;
-    }
-    let ExprKind::List(items) = &update.body.value.as_ref()?.kind else {
-        return None;
-    };
-    Some(M1 {
-        app: app.name.clone(),
-        start: app.start,
-        console: app.grants.contains(&Grant::Console),
-        update_name: update.name.clone(),
-        update: items.iter().map(effect).collect::<Option<_>>()?,
-    })
-}
-
-fn effect(e: &Expr) -> Option<Effect> {
-    match &e.kind {
-        ExprKind::Variant(Tag::Effect(core_form::Effect::Exit), _) => Some(Effect::Exit),
-        ExprKind::Variant(Tag::Effect(core_form::Effect::Print), fields) => match &fields[..] {
-            [
-                Expr {
-                    kind: ExprKind::Str(text),
-                    ..
-                },
-            ] => Some(Effect::Print(text.clone())),
-            _ => None,
-        },
-        _ => None,
     }
 }

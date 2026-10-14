@@ -1,9 +1,9 @@
 //! `paka build`: emits the IR and has clang compile and link it with the runtime
 //! (docs/abi/m1.md section 9).
 
+use crate::core_form::Program;
 use crate::diagnostic::Diagnostic;
 use crate::llvm;
-use crate::lower::M1;
 use std::env;
 use std::ffi::OsStr;
 use std::fs::{self, File};
@@ -23,7 +23,12 @@ const SYSTEM_LIBS: [&str; 7] = [
 ];
 
 /// Writes the executable for `core` to `output`; `path` is the source path for diagnostics.
-pub fn build(path: &str, core: &M1, output: &OsStr) -> Result<(), Diagnostic> {
+/// The back end builds the milestone 1 subset only.
+pub fn build(path: &str, core: &Program, output: &OsStr) -> Result<(), Diagnostic> {
+    let view = llvm::view(core).ok_or_else(|| {
+        let message = "the back end builds only the milestone 1 subset";
+        Diagnostic::tool(path, "unsupported-form", message)
+    })?;
     let runtime = env::current_exe()
         .map(|exe| exe.with_file_name(RUNTIME))
         .ok()
@@ -49,7 +54,7 @@ pub fn build(path: &str, core: &M1, output: &OsStr) -> Result<(), Diagnostic> {
     // Only a file created here is removed; one that already had the name is never touched.
     let mut file = File::create_new(&ir).map_err(write_failed)?;
     let result = file
-        .write_all(llvm::emit(core).as_bytes())
+        .write_all(llvm::emit(&view).as_bytes())
         .map_err(write_failed)
         .and_then(|()| link(path, &ir, &runtime, output));
     let _ = fs::remove_file(&ir);

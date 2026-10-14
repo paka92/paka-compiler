@@ -1,7 +1,68 @@
 //! The LLVM IR text emitter for the M1 view of the core form, written to docs/abi/m1.md
-//! sections 3, 4 and 11.
+//! sections 3, 4 and 11. The view is all the back end builds until it takes the whole core form.
 
-use crate::lower::{Effect, M1};
+use crate::core_form::{self, Expr, ExprKind, Grant, Program, Tag, Type};
+
+/// What the back end builds: the effects of an `update` whose body is a constant list.
+#[derive(Debug, PartialEq)]
+pub struct M1 {
+    pub app: String,
+    /// The start variant's position in the message enum.
+    pub start: usize,
+    pub console: bool,
+    /// The Paka name of the update function.
+    pub update_name: String,
+    /// The effects `update` returns, in order.
+    pub update: Vec<Effect>,
+}
+
+#[derive(Debug, PartialEq)]
+pub enum Effect {
+    Print(String),
+    Exit,
+}
+
+/// The M1 view of `core`, or `None` when it holds what the back end cannot build.
+pub fn view(core: &Program) -> Option<M1> {
+    let app = core.app.as_ref()?;
+    let update = &core.fns[app.update];
+    let only_console = app.grants.iter().all(|g| *g == Grant::Console);
+    if app.state.is_some() || !only_console || !update.body.stmts.is_empty() {
+        return None;
+    }
+    let Type::Enum(msg) = core.types[update.params.last()?.ty] else {
+        return None;
+    };
+    if !core.enums[msg].variants[app.start].fields.is_empty() {
+        return None;
+    }
+    let ExprKind::List(items) = &update.body.value.as_ref()?.kind else {
+        return None;
+    };
+    Some(M1 {
+        app: app.name.clone(),
+        start: app.start,
+        console: app.grants.contains(&Grant::Console),
+        update_name: update.name.clone(),
+        update: items.iter().map(effect).collect::<Option<_>>()?,
+    })
+}
+
+fn effect(e: &Expr) -> Option<Effect> {
+    match &e.kind {
+        ExprKind::Variant(Tag::Effect(core_form::Effect::Exit), _) => Some(Effect::Exit),
+        ExprKind::Variant(Tag::Effect(core_form::Effect::Print), fields) => match &fields[..] {
+            [
+                Expr {
+                    kind: ExprKind::Str(text),
+                    ..
+                },
+            ] => Some(Effect::Print(text.clone())),
+            _ => None,
+        },
+        _ => None,
+    }
+}
 
 /// The IR text of the program; layout and wording follow docs/abi/m1.md section 11.
 pub fn emit(core: &M1) -> String {
@@ -98,9 +159,9 @@ mod tests {
         Path::new(env!("CARGO_MANIFEST_DIR")).join("..")
     }
 
-    /// The core of a program the front end accepts.
+    /// The view of a program the front end accepts and the back end can build.
     fn accepted(file: &Path) -> Option<M1> {
-        crate::front_end("main.paka", &fs::read(file).unwrap()).ok()
+        view(&crate::check("main.paka", &fs::read(file).unwrap()).ok()?)
     }
 
     /// The IR of every runnable case the front end accepts.
@@ -156,6 +217,66 @@ mod tests {
 
     fn print(text: &str) -> Effect {
         Effect::Print(text.into())
+    }
+
+    const LIGHT: &str = "enum Msg { Start }
+
+fn update(m: Msg) -> List<Effect<Msg>> {
+  [Print(\"let there be light\"), Exit]
+}
+
+app light {
+  start:  Start
+  update: update
+  grants: [Console]
+}
+";
+
+    fn lowered(source: &str) -> Program {
+        crate::check("main.paka", source.as_bytes()).unwrap()
+    }
+
+    fn typed(ty: usize, kind: ExprKind) -> Expr {
+        Expr { ty: Some(ty), kind }
+    }
+
+    #[test]
+    fn light_reaches_the_back_end_as_before() {
+        let by_hand = M1 {
+            app: "light".into(),
+            start: 0,
+            console: true,
+            update_name: "update".into(),
+            update: vec![Effect::Print("let there be light".into()), Effect::Exit],
+        };
+        assert_eq!(view(&lowered(LIGHT)), Some(by_hand));
+    }
+
+    #[test]
+    fn view_refuses_what_the_back_end_cannot_build() {
+        let mut state = lowered(LIGHT);
+        state.records.push(core_form::Record {
+            name: "State".into(),
+            fields: vec![],
+        });
+        let ty = state.ty(Type::Record(0));
+        state.app.as_mut().unwrap().state = Some(typed(ty, ExprKind::Record(0, vec![])));
+        let mut grant = lowered(LIGHT);
+        grant.app.as_mut().unwrap().grants.insert(Grant::ReadFiles);
+        let mut statement = lowered(LIGHT);
+        let unused = typed(1, ExprKind::Str("unused".into()));
+        statement.fns[0]
+            .body
+            .stmts
+            .push(core_form::Stmt::Expr(unused));
+        let mut computed = lowered(LIGHT);
+        computed.fns[0].body.value = Some(Box::new(typed(2, ExprKind::Hole(0))));
+        let mut none = lowered(LIGHT);
+        none.app = None;
+        let payload = lowered(&LIGHT.replace("Start }", "Start(path: String) }"));
+        for core in [state, grant, statement, computed, none, payload] {
+            assert_eq!(view(&core), None);
+        }
     }
 
     #[test]
