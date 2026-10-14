@@ -73,7 +73,10 @@ inc_once unfinished at main.paka:8:22
   ??step
   in update, called from example inc_once
 ";
-    assert_eq!((out.as_str(), err.as_str(), status), (expected, "", Some(3)));
+    assert_eq!(
+        (out.as_str(), err.as_str(), status),
+        (expected, "", Some(3))
+    );
 }
 
 #[test]
@@ -81,7 +84,7 @@ fn all_passing_exits_0() {
     let fixed = COUNTER
         .replace("??step", "1")
         .replace("s.count == 2", "s.count == 1")
-        .replace("xs[0] == 0", "len(xs) == 0");
+        .replace("xs[0] == 0", "xs == []");
     let (out, err, status) = examples("passing", &fixed);
     let expected = "\
 dec_from_two pass
@@ -89,7 +92,10 @@ dec_stops_at_zero pass
 first_of_none pass
 inc_once pass
 ";
-    assert_eq!((out.as_str(), err.as_str(), status), (expected, "", Some(0)));
+    assert_eq!(
+        (out.as_str(), err.as_str(), status),
+        (expected, "", Some(0))
+    );
 }
 
 #[test]
@@ -114,7 +120,7 @@ example records { P { x: 3, y: 4 } == P { x: 3, y: 5 } }
 
 example shapes { [Circle(1.0), Dot] == [Circle(2.5), Dot] }
 
-example words { "a\n" != "a\n" }
+example texts { "a\n" != "a\n" }
 "#;
 
 #[test]
@@ -132,17 +138,23 @@ records fail at main.paka:13:36
 shapes fail at main.paka:15:37
   left: [Circle(1.0), Dot]
   right: [Circle(2.5), Dot]
-words fail at main.paka:17:23
+texts fail at main.paka:17:23
   left: "a\n"
   right: "a\n"
 "#;
-    assert_eq!((out.as_str(), err.as_str(), status), (expected, "", Some(3)));
+    assert_eq!(
+        (out.as_str(), err.as_str(), status),
+        (expected, "", Some(3))
+    );
 }
 
 #[test]
 fn a_program_that_does_not_check_prints_one_line_and_exits_1() {
     let (out, err, status) = examples("bad", "example bad { 1 + 1 }\n");
     assert_eq!((out.as_str(), status), ("", Some(1)));
-    assert!(err.starts_with("main.paka:1:15: error[type-mismatch]: "), "{err}");
+    assert!(
+        err.starts_with("main.paka:1:15: error[type-mismatch]: "),
+        "{err}"
+    );
     assert_eq!(err.lines().count(), 1);
 }
