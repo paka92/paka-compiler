@@ -990,6 +990,7 @@ fn abs_to_int_and_from_code() {
     assert_eq!(truncated(builtin("abs", vec![float("-2.5")])), "2");
     assert_eq!(said(builtin("from_code", vec![int(233)])), "é");
     let huge = float("100000000000000000000.0");
+    let edge = float("9223372036854775807.0");
     let cases = [
         (
             builtin("abs", vec![int(MIN)]),
@@ -1004,7 +1005,12 @@ fn abs_to_int_and_from_code() {
         (
             builtin("to_int", vec![huge]),
             "bad_conversion",
-            "to_int(100000000000000000000)",
+            "to_int(100000000000000000000.0)",
+        ),
+        (
+            builtin("to_int", vec![edge]),
+            "bad_conversion",
+            "to_int(9223372036854776000.0)",
         ),
         (
             builtin("from_code", vec![int(1_114_112)]),
@@ -1025,6 +1031,26 @@ fn abs_to_int_and_from_code() {
     for (value, kind, detail) in cases {
         assert_eq!(trapped(value), report(kind, CALL, detail, "update"));
     }
+}
+
+#[test]
+fn an_unimplemented_built_in_is_an_internal_error() {
+    let (out, err, status) = go(&plain(vec![], vec![], builtin("len", vec![list(vec![])])));
+    assert_eq!(out, "");
+    assert_eq!(
+        err,
+        "light: internal error: built-in len is not implemented yet\n"
+    );
+    assert_eq!(status, 4);
+}
+
+#[test]
+fn an_ill_typed_program_is_one_internal_error_line() {
+    let (out, err, status) = go(&plain(vec![], vec![], arith(Arith::Add, text("a"), int(1))));
+    assert_eq!((out.as_str(), status), ("", 4));
+    let reason = err.strip_prefix("light: internal error: ").expect(&err);
+    let reason = reason.strip_suffix('\n').expect(&err);
+    assert!(!reason.is_empty() && !reason.contains('\n'), "{err:?}");
 }
 
 // Argument passing

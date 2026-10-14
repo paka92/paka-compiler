@@ -172,3 +172,72 @@ fn closed_pipe_gives_status_3_and_its_line() {
     let want = "light: effect Print failed: broken pipe\n";
     assert_eq!(String::from_utf8_lossy(&out.stderr), want);
 }
+
+/// Runs `paka run` on a program whose `update` body is `body`, then `[Exit]`; `helper` goes before it.
+fn run_program(name: &str, helper: &str, body: &str) -> Output {
+    let source = format!(
+        "enum Msg {{ Start }}\n\n{helper}\n\
+         fn update(m: Msg) -> List<Effect<Msg>> {{\n{body}\n  [Exit]\n}}\n\n\
+         app t {{\n  start:  Start\n  update: update\n  grants: [Console]\n}}\n"
+    );
+    let file = std::env::temp_dir().join(format!("paka-{name}-{}.paka", std::process::id()));
+    std::fs::write(&file, source).unwrap();
+    let out = paka(&["run", file.to_str().unwrap()]);
+    std::fs::remove_file(&file).unwrap();
+    out
+}
+
+fn stderr_of(out: &Output) -> String {
+    String::from_utf8(out.stderr.clone()).unwrap()
+}
+
+#[test]
+fn an_unimplemented_built_in_is_one_internal_error_line() {
+    let out = run_program("len", "", "  let n = len([1, 2])");
+    assert_eq!(out.status.code(), Some(4));
+    assert!(out.stdout.is_empty());
+    assert_eq!(
+        stderr_of(&out),
+        "t: internal error: built-in len is not implemented yet\n"
+    );
+}
+
+#[test]
+fn deep_expression_nesting_traps_stack_without_a_signal() {
+    let not = format!(
+        "fn down(n: Int) -> Bool {{\n  {}down(n + 1)\n}}\n",
+        "!".repeat(64)
+    );
+    let sum = format!(
+        "fn down(n: Int) -> Int {{\n  {}down(n + 1){}\n}}\n",
+        "(1 + ".repeat(60),
+        ")".repeat(60)
+    );
+    for (name, helper) in [("nested-not", not), ("nested-sum", sum)] {
+        let out = run_program(name, &helper, "  let r = down(0)");
+        assert_eq!(out.status.code(), Some(3), "{name}");
+        assert!(out.stdout.is_empty(), "{name}");
+        let stderr = stderr_of(&out);
+        let (head, tail) = stderr.split_once(&format!("paka-{name}-")).unwrap();
+        assert_eq!(head, "t: trap stack at ", "{name}");
+        assert_eq!(tail.matches('\n').count(), 1, "{name}: {stderr:?}");
+    }
+}
+
+#[test]
+fn to_int_shows_its_operand_in_the_value_text_form() {
+    let cases = [
+        (
+            "1000000000000000000000000000000.0",
+            "1000000000000000000000000000000.0",
+        ),
+        ("9223372036854775807.0", "9223372036854776000.0"),
+    ];
+    for (operand, shown) in cases {
+        let out = run_program("to-int", "", &format!("  let n = to_int({operand})"));
+        assert_eq!(out.status.code(), Some(3), "{operand}");
+        let stderr = stderr_of(&out);
+        let lines: Vec<_> = stderr.lines().collect();
+        assert_eq!(lines[1], format!("  to_int({shown})"), "{operand}");
+    }
+}
