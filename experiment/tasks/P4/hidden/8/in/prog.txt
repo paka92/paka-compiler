@@ -1,0 +1,6 @@
+      set a 1
+loop: out a
+      jmp loop
+loop: halt now
+      out a
+Exit: halt

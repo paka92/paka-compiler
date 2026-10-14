@@ -1,0 +1,170 @@
+enum Msg { Start(path: String, keys: String), Loaded(text: String), Failed(why: String) }
+
+type Key { field: Int, start: Int, kind: String, down: Bool }
+
+type Sorter { keys: List<Key> = [] }
+
+// One line's text for one key, ready to compare: a text (lowered for `i`), a number in
+// millionths, or a text that is not a number.
+enum Cell { Plain(text: String, down: Bool), Num(value: Int, down: Bool), NotNum(down: Bool) }
+
+type Row { text: String, cells: List<Cell> }
+
+fn is_digit(c: String) -> Bool {
+  c >= "0" && c <= "9"
+}
+
+// The count of digits at the front of cs from position i.
+fn digit_run(cs: List<String>, i: Int) -> Int {
+  var k = i
+  while k < len(cs) && is_digit(cs[k]) { k += 1 }
+  k - i
+}
+
+// A number from 1 to 99 without a leading zero at position i, and the position after it.
+fn small(cs: List<String>, i: Int) -> Option<List<Int>> {
+  let n = digit_run(cs, i)
+  if n == 0 || n > 2 || cs[i] == "0" { return None }
+  Some([parse_int(join(cs[i..<i + n], ""))?, i + n])
+}
+
+fn parse_key(text: String) -> Option<Key> {
+  let cs = chars(text)
+  let f = small(cs, 0)?
+  var i = f[1]
+  var start = 1
+  if i < len(cs) && cs[i] == "." {
+    let s = small(cs, i + 1)?
+    start = s[0]
+    i = s[1]
+  }
+  var kind = ""
+  if i < len(cs) && (cs[i] == "n" || cs[i] == "i") {
+    kind = cs[i]
+    i += 1
+  }
+  let down = i < len(cs) && cs[i] == "-"
+  if down { i += 1 }
+  if i != len(cs) { return None }
+  Some(Key { field: f[0], start: start, kind: kind, down: down })
+}
+
+// The value of a number text in millionths, or None when it is not a number.
+fn number(text: String) -> Option<Int> {
+  let cs = chars(text)
+  var i = 0
+  if i < len(cs) && cs[i] == "-" { i = 1 }
+  let whole = digit_run(cs, i)
+  if whole < 1 || whole > 9 { return None }
+  var value = parse_int(join(cs[i..<i + whole], ""))? * 1000000
+  i += whole
+  if i < len(cs) && cs[i] == "." {
+    let frac = digit_run(cs, i + 1)
+    if frac < 1 || frac > 6 { return None }
+    value += parse_int(join(cs[i + 1..<i + 1 + frac], "") + repeat("0", 6 - frac))?
+    i += 1 + frac
+  }
+  if i != len(cs) { return None }
+  if cs[0] == "-" { Some(-value) } else { Some(value) }
+}
+
+fn cell(line: String, key: Key) -> Cell {
+  let fields = split(line, ",")
+  var text = ""
+  if key.field <= len(fields) && key.start <= len(fields[key.field - 1]) {
+    let field = fields[key.field - 1]
+    text = field[key.start - 1..<len(field)]
+  }
+  if key.kind == "i" { return Plain(lower(text), key.down) }
+  if key.kind == "" { return Plain(text, key.down) }
+  match number(text) {
+    Some(v) => Num(v, key.down)
+    None => NotNum(key.down)
+  }
+}
+
+// Below zero when a comes first under the key, ignoring its `-`.
+fn order(a: Cell, b: Cell) -> Int {
+  match a {
+    Plain(x, _) => {
+      match b {
+        Plain(y, _) => if x < y { -1 } else if x > y { 1 } else { 0 }
+        Num(_, _) | NotNum(_) => 0
+      }
+    }
+    Num(x, _) => {
+      match b {
+        Num(y, _) => if x < y { -1 } else if x > y { 1 } else { 0 }
+        NotNum(_) => 1
+        Plain(_, _) => 0
+      }
+    }
+    NotNum(_) => {
+      match b {
+        Num(_, _) => -1
+        NotNum(_) | Plain(_, _) => 0
+      }
+    }
+  }
+}
+
+fn is_down(c: Cell) -> Bool {
+  match c {
+    Plain(_, down) => down
+    Num(_, down) => down
+    NotNum(down) => down
+  }
+}
+
+fn before(a: Row, b: Row) -> Bool {
+  for k in 0..<len(a.cells) {
+    var o = order(a.cells[k], b.cells[k])
+    if is_down(a.cells[k]) { o = -o }
+    if o != 0 { return o < 0 }
+  }
+  false
+}
+
+fn sorted(text: String, keys: List<Key>) -> List<Effect<Msg>> {
+  var rows: List<Row> = []
+  for line in lines(text) {
+    var cells: List<Cell> = []
+    for key in keys {
+      append(&cells, cell(line, key))
+    }
+    append(&rows, Row { text: line, cells: cells })
+  }
+  sort_by(&rows, before)
+  var effects: List<Effect<Msg>> = []
+  for row in rows {
+    append(&effects, Print(row.text))
+  }
+  append(&effects, Exit)
+  effects
+}
+
+fn update(s: inout Sorter, m: Msg) -> List<Effect<Msg>> {
+  match m {
+    Start(path, keys) => {
+      let parts = split(keys, ",")
+      for i in 0..<len(parts) {
+        match parse_key(parts[i]) {
+          Some(key) => append(&s.keys, key)
+          None => {
+            return [Print("error: bad key {i + 1}"), ExitWith(20)]
+          }
+        }
+      }
+      [ReadFile(path, then: Loaded, or: Failed)]
+    }
+    Loaded(text) => sorted(text, s.keys)
+    Failed(why) => [Print("error: cannot read file: {why}"), ExitWith(20)]
+  }
+}
+
+app key_sort {
+  state: Sorter
+  start: Start
+  update: update
+  grants: [Console, ReadFiles]
+}

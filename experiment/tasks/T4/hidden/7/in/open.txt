@@ -1,0 +1,3 @@
+a=$nothing
+b=${x:-${y}z
+c=${Bad}

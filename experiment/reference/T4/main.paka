@@ -1,0 +1,192 @@
+enum Msg { Start(path: String), Loaded(text: String), Failed(why: String) }
+
+enum Piece {
+  Text(text: String),
+  Ref(name: String),
+  Len(name: String),
+  Default(name: String, fallback: List<Piece>)
+}
+
+// One definition line being read; `i` is the next position, and position k is column k + 1.
+type Reader { cs: List<String>, i: Int = 0, n: Int }
+
+type Expander {
+  defs: Map<String, List<Piece>> = [:],
+  done: Map<String, String> = [:],
+  chain: List<String> = []
+}
+
+fn is_lower(c: String) -> Bool {
+  len(c) == 1 && c >= "a" && c <= "z"
+}
+
+fn is_name_char(c: String) -> Bool {
+  is_lower(c) || c == "_" || (c >= "0" && c <= "9")
+}
+
+// The character at position k, or "" past the end.
+fn at(r: Reader, k: Int) -> String {
+  if k < len(r.cs) { r.cs[k] } else { "" }
+}
+
+fn bad(r: Reader, col: Int, message: String) -> String {
+  "error: line {r.n} col {col}: {message}"
+}
+
+fn name(r: inout Reader) -> String {
+  let start = r.i
+  while is_name_char(at(r, r.i)) { r.i += 1 }
+  join(r.cs[start..<r.i], "")
+}
+
+// Pieces up to the line end, or, when outer > 0, up to the `}` that closes a default.
+// `outer` is the column of the leftmost open `${`.
+fn pieces(r: inout Reader, outer: Int) -> Result<List<Piece>, String> {
+  var out: List<Piece> = []
+  while r.i < len(r.cs) {
+    let c = r.cs[r.i]
+    if c == "\}" && outer > 0 { return Ok(out) }
+    r.i += 1
+    let col = r.i
+    let next = at(r, r.i)
+    if c != "$" {
+      append(&out, Text(c))
+    } else if next == "$" {
+      r.i += 1
+      append(&out, Text("$"))
+    } else if next == "\{" {
+      r.i += 1
+      let open = if outer > 0 { outer } else { col }
+      append(&out, reference(&r, open, col)?)
+    } else if is_lower(next) {
+      append(&out, Ref(name(&r)))
+    } else {
+      return Err(bad(r, col, "bad dollar"))
+    }
+  }
+  if outer > 0 { return Err(bad(r, outer, "unclosed brace")) }
+  Ok(out)
+}
+
+// Reads a reference after its `${`; `col` is the column of its `$`.
+fn reference(r: inout Reader, outer: Int, col: Int) -> Result<Piece, String> {
+  let hash = at(r, r.i) == "#"
+  if hash { r.i += 1 }
+  if r.i == len(r.cs) { return Err(bad(r, outer, "unclosed brace")) }
+  if !is_lower(r.cs[r.i]) { return Err(bad(r, col, "bad reference")) }
+  let n = name(&r)
+  let a = at(r, r.i)
+  let b = at(r, r.i + 1)
+  if a == "" { return Err(bad(r, outer, "unclosed brace")) }
+  if a == "\}" {
+    r.i += 1
+    return Ok(if hash { Len(n) } else { Ref(n) })
+  }
+  if hash || a != ":" { return Err(bad(r, col, "bad reference")) }
+  if b == "" { return Err(bad(r, outer, "unclosed brace")) }
+  if b != "-" { return Err(bad(r, col, "bad reference")) }
+  r.i += 2
+  let fallback = pieces(&r, outer)?
+  r.i += 1
+  Ok(Default(n, fallback))
+}
+
+fn expand(x: inout Expander, n: String) -> Result<String, String> {
+  if has(x.done, n) { return Ok(x.done[n]) }
+  match find(x.chain, n) {
+    Some(k) => {
+      var names = x.chain[k..<len(x.chain)]
+      append(&names, n)
+      let text = join(names, " -> ")
+      return Err("error: cycle {text}")
+    }
+    None => {}
+  }
+  append(&x.chain, n)
+  let ps = x.defs[n]
+  let v = expand_pieces(&x, ps)?
+  _ = pop(&x.chain)
+  x.done[n] = v
+  Ok(v)
+}
+
+fn lookup(x: inout Expander, n: String) -> Result<String, String> {
+  if !has(x.defs, n) {
+    let owner = x.chain[len(x.chain) - 1]
+    return Err("error: undefined {n} in {owner}")
+  }
+  expand(&x, n)
+}
+
+fn expand_pieces(x: inout Expander, ps: List<Piece>) -> Result<String, String> {
+  var out = ""
+  for p in ps {
+    match p {
+      Text(t) => out += t
+      Ref(n) => out += lookup(&x, n)?
+      Len(n) => {
+        let v = lookup(&x, n)?
+        out += "{len(v)}"
+      }
+      Default(n, fallback) => {
+        var v = ""
+        if has(x.defs, n) { v = expand(&x, n)? }
+        if v == "" { v = expand_pieces(&x, fallback)? }
+        out += v
+      }
+    }
+  }
+  Ok(out)
+}
+
+fn run(text: String) -> Result<List<String>, String> {
+  let rows = lines(text)
+  var order: List<String> = []
+  var x = Expander {}
+  for k in 0..<len(rows) {
+    let line = rows[k]
+    if line == "" || starts_with(line, "#") { continue }
+    var r = Reader { cs: chars(line), n: k + 1 }
+    if !is_lower(r.cs[0]) { return Err(bad(r, 1, "bad name")) }
+    let n = name(&r)
+    if at(r, r.i) != "=" { return Err(bad(r, r.i + 1, "bad name")) }
+    r.i += 1
+    let ps = pieces(&r, 0)?
+    if !has(x.defs, n) { append(&order, n) }
+    x.defs[n] = ps
+  }
+  var out: List<String> = []
+  for n in order {
+    let v = expand(&x, n)?
+    append(&out, "{n}={v}")
+  }
+  Ok(out)
+}
+
+fn report(result: Result<List<String>, String>) -> List<Effect<Msg>> {
+  match result {
+    Ok(out) => {
+      var effects: List<Effect<Msg>> = []
+      for line in out {
+        append(&effects, Print(line))
+      }
+      append(&effects, Exit)
+      effects
+    }
+    Err(why) => [Print(why), ExitWith(20)]
+  }
+}
+
+fn update(m: Msg) -> List<Effect<Msg>> {
+  match m {
+    Start(path) => [ReadFile(path, then: Loaded, or: Failed)]
+    Loaded(text) => report(run(text))
+    Failed(why) => [Print("error: cannot read file: {why}"), ExitWith(20)]
+  }
+}
+
+app expand_vars {
+  start: Start
+  update: update
+  grants: [Console, ReadFiles]
+}
