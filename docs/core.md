@@ -26,7 +26,8 @@ function, local or site is its position in the list that holds it.
 - **Function.** A name, a site (its name in the definition), its parameters in order, each a type
   and whether it is `inout`, a result type or none, the types of its locals, and a body block.
   Its parameters are locals 0 to n - 1; every `let`, `var`, `for` name and pattern name gets the
-  next local number. The locals list holds the parameters first, then every local in numbering
+  next local number. A `let` value is numbered before its name, a `for` list before its name, and
+  an arm's fields in field order before its block. The locals list holds the parameters first, then every local in numbering
   order, including the ones lowering adds (the `let` of a match subject, section 7).
 - **Example.** A function with no parameters and a `Bool` result, kept in its own list so nothing
   can call it (M2-06). The driver names its frame `example NAME`.
@@ -93,7 +94,7 @@ Every expression carries its type, or none when it gives no value.
 | `< <= > >=` | `Bool` | left, right, then the order of Int, Float (IEEE) or String (code points) | never |
 | `&&`, `\|\|` | `Bool` | left; right only when the left does not decide | never |
 | call | the callee's result, or none | below | below |
-| `if c { a } else { b }` | the blocks' type, or none without `else` | `c`, then only the chosen block | never |
+| `if c { a } else { b }` | the blocks' type, or none without `else` (section 7: a match on an Int, String or Bool) | `c`, then only the chosen block | never |
 | `match` | the arms' type, or none | below | never |
 
 **Call.** The callee is a user function, a built-in, or a function value. A built-in is an index into
@@ -170,11 +171,15 @@ Each form below becomes the core nodes on its right; evaluation order and traps 
 form, so no back end sees it.
 
 - **`e?`** becomes the match of M2-12 §1.4: on `Result`, `Ok(v)` gives `v` and `Err(x)` runs
-  `return Err(x)`; on `Option`, `Some(v)` gives `v` and `None` runs `return None`. It is sugar,
+  `return Err(x)`; on `Option`, `Some(v)` gives `v` and `None` runs `return None`. The `Ok` or
+  `Some` arm comes first, so `v` is numbered before `x`. It is sugar,
   not a node, because its rewrite is one decision on a variant and a `return`, both core already.
 - **A match on an Int, String or Bool** becomes a `let` of the subject and an `if` chain testing
   `==` against each arm's patterns in order (joined by `||`), the `_` arm or the last arm being the
-  final `else`. Core `match` decides on variants only.
+  final `else`. Core `match` decides on variants only. The result is one `if true` without an
+  `else`, its block holding the `let` and then the chain as the block's value. That `if` takes the
+  match's type, the one case where an `if` without `else` gives a value; it never fails. The `let`
+  is the next local after the subject's own, before any arm's. Each `==` is at the arm's pattern.
 - **`else if`** becomes an `if` inside the `else` block.
 - **A record literal with fields left out** gets each default written in its place. A default is a
   constant (M2-02 §1.9), so where it stands in the order changes nothing.
