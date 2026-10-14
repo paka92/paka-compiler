@@ -61,14 +61,17 @@ fn first_text_line_is_what_run_prints() {
 
 #[test]
 fn accepted_program_prints_nothing_and_exits_0() {
-    let dir = Path::new(env!("CARGO_MANIFEST_DIR")).join("../examples");
-    for args in [
-        &["check", "light.paka"][..],
-        &["check", "light.paka", "--json"],
+    let root = Path::new(env!("CARGO_MANIFEST_DIR")).join("..");
+    for (dir, file) in [
+        ("examples", "light.paka"),
+        ("tests/cases/check/no_app", "main.paka"),
+        ("tests/cases/check/empty_file", "main.paka"),
     ] {
-        let out = paka(&dir, args);
-        assert_eq!(out.status.code(), Some(0));
-        assert!(out.stdout.is_empty() && out.stderr.is_empty());
+        for flags in [&[][..], &["--json"]] {
+            let out = paka(&root.join(dir), &[&["check", file], flags].concat());
+            assert_eq!(out.status.code(), Some(0), "{dir}");
+            assert!(out.stdout.is_empty() && out.stderr.is_empty(), "{dir}");
+        }
     }
 }
 

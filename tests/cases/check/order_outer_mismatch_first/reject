@@ -1,1 +1,1 @@
-main.paka:4:9: error[type-mismatch]
+main.paka:4:3: error[type-mismatch]

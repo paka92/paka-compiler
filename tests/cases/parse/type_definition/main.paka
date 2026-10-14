@@ -1,4 +1,4 @@
-type Counter {}
+type Counter { count: Int = 0 }
 enum Msg { Start }
 
 fn update(m: Msg) -> List<Effect<Msg>> {

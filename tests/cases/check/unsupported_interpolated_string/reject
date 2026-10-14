@@ -1,1 +1,1 @@
-main.paka: error[unsupported-form]
+main.paka:4:25: error[type-mismatch]

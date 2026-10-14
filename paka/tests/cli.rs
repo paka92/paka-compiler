@@ -119,6 +119,19 @@ fn run_without_the_console_grant_is_refused() {
 }
 
 #[test]
+fn run_of_a_program_the_back_ends_cannot_run_is_unsupported_form() {
+    let source = std::fs::read_to_string(LIGHT).unwrap();
+    let file = std::env::temp_dir().join(format!("paka-interpolated-{}.paka", std::process::id()));
+    std::fs::write(&file, source.replace("light\")", "{1}\")")).unwrap();
+    let out = paka(&["run", file.to_str().unwrap()]);
+    std::fs::remove_file(&file).unwrap();
+    assert_eq!(out.status.code(), Some(1));
+    assert!(out.stdout.is_empty());
+    let text = String::from_utf8_lossy(&out.stderr);
+    assert!(text.contains("error[unsupported-form]"), "{text}");
+}
+
+#[test]
 fn full_disk_gives_status_3_and_its_line() {
     let full = File::options().write(true).open("/dev/full").unwrap();
     let out = run_light_into(full.into());

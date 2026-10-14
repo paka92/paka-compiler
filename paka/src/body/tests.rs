@@ -903,6 +903,18 @@ fn rejects_calls_by_count_label_and_type() {
         st("wrong-argument-count", "= ^Dot()", None, &["let s = Dot()"]),
         st(
             MISMATCH,
+            "= ^inc(",
+            Some(("String", "Int")),
+            &["let s: String = inc(\"a\")"],
+        ),
+        st(
+            MISMATCH,
+            "= ^Circle(",
+            Some(("String", "Shape")),
+            &["let s: String = Circle(\"a\")"],
+        ),
+        st(
+            MISMATCH,
             "Circle(^\"a\"",
             Some(("Float", "String")),
             &["let s = Circle(\"a\")"],
@@ -969,8 +981,8 @@ fn rejects_built_in_calls_by_row() {
         ),
         st(
             MISMATCH,
-            "= ^[\"a\"]",
-            Some(("List<Int>", "List<String>")),
+            "= [^\"a\"]",
+            Some(("Int", "String")),
             &["let xs: List<Int> = [\"a\"]"],
         ),
         st(

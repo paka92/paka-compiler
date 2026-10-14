@@ -213,7 +213,8 @@ fn m1_refuses_what_its_back_ends_cannot_run() {
     computed.fns[0].body.value = Some(Box::new(ex(2, ExprKind::Hole(0))));
     let mut none = lowered(LIGHT);
     none.app = None;
-    for core in [state, grant, statement, computed, none] {
+    let payload = lowered(&[&["enum Msg { Start(path: String) }"], &LIGHT[1..]].concat());
+    for core in [state, grant, statement, computed, none, payload] {
         assert_eq!(m1(&core), None);
     }
 }
@@ -757,6 +758,70 @@ fn match_on_an_int_is_a_chain_of_equality_tests() {
     );
     assert_eq!(types, [Type::Int, Type::String, Type::Bool]);
     assert_eq!(sites, [site(1, 4), site(3, 5), site(4, 5), site(4, 9)]);
+}
+
+#[test]
+fn match_on_an_int_tests_a_negative_pattern() {
+    let core = lowered(&[
+        "fn f(n: Int) -> String {",
+        "  match n {",
+        "    -1 => \"minus\"",
+        "    _ => \"other\"",
+        "  }",
+        "}",
+    ]);
+    let test = binary(2, Bin::Eq(1), read(0, 1), int(0, "-1"));
+    let chain = ExprKind::If(
+        Box::new(test),
+        valued(vec![], text(1, "minus")),
+        Some(valued(vec![], text(1, "other"))),
+    );
+    let whole = ExprKind::If(
+        Box::new(flag(2, true)),
+        valued(vec![Stmt::Let(1, read(0, 0))], ex(1, chain)),
+        None,
+    );
+    let (f, _, sites) = first(&core);
+    let body = valued(vec![], ex(1, whole));
+    assert_eq!(f, &func(0, &[0], &[0, 0], Some(1), body));
+    assert_eq!(sites, [site(1, 4), site(3, 5)]);
+}
+
+#[test]
+fn a_subject_with_locals_of_its_own_numbers_them_before_the_held_one() {
+    let core = lowered(&[
+        "fn f(o: Option<Int>) -> Option<String> {",
+        "  match o? {",
+        "    0 => Some(\"zero\")",
+        "    _ => None",
+        "  }",
+        "}",
+    ]);
+    let subject = ExprKind::Match(
+        Box::new(read(1, 0)),
+        vec![
+            arm(vec![Tag::Some], vec![Some(1)], valued(vec![], read(0, 1))),
+            arm(
+                vec![Tag::None],
+                vec![],
+                stmts(vec![Stmt::Return(Some(variant(3, Tag::None, vec![])))]),
+            ),
+        ],
+    );
+    let test = binary(4, Bin::Eq(1), read(0, 2), int(0, "0"));
+    let some = variant(3, Tag::Some, vec![text(2, "zero")]);
+    let chain = ExprKind::If(
+        Box::new(test),
+        valued(vec![], some),
+        Some(valued(vec![], variant(3, Tag::None, vec![]))),
+    );
+    let whole = ExprKind::If(
+        Box::new(flag(4, true)),
+        valued(vec![Stmt::Let(2, ex(0, subject))], ex(3, chain)),
+        None,
+    );
+    let body = valued(vec![], ex(3, whole));
+    assert_eq!(core.fns, [func(0, &[1], &[1, 0, 0], Some(3), body)]);
 }
 
 #[test]
