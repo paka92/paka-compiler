@@ -2,9 +2,10 @@
 
 use super::value::{Entries, FnKey, Items, Key, Value, equals, number, position};
 use super::{RUN_THREAD, STACK, builtin};
+use crate::core_form::Fn as Func;
 use crate::core_form::{
     App, Arg, Arith, Arm, Bin, Block, Callee, Cmp, Compound, Expr, ExprKind, FloatArith, FnId,
-    FnRef, Local, Place, Program, Root, Site, Step, Stmt, Un, Walk,
+    FnRef, Local, Place, Program, Root, Site, Step, Stmt, Ty, Un, Walk,
 };
 use paka_rt::ops::{self, Float, Int, Text};
 use std::cmp::Ordering;
@@ -109,6 +110,36 @@ impl From<Trap> for Stop {
 
 pub type Done<T = Value> = Result<T, Stop>;
 
+/// Both sides of a failed comparison and their type.
+pub type Sides = (Value, Value, Ty);
+
+/// Why an example is false: its `&&` operand, counted from 0, and for a comparison its sides.
+pub struct Fail {
+    pub claim: usize,
+    pub sides: Option<Sides>,
+}
+
+impl Fail {
+    /// A `return` ended the example: the first claim stands for it.
+    fn unplaced() -> Fail {
+        Fail {
+            claim: 0,
+            sides: None,
+        }
+    }
+}
+
+/// The operands of a `&&` chain in written order.
+fn operands<'e>(e: &'e Expr, out: &mut Vec<&'e Expr>) {
+    match &e.kind {
+        ExprKind::Binary(Bin::And, a, b) => {
+            operands(a, out);
+            operands(b, out);
+        }
+        _ => out.push(e),
+    }
+}
+
 /// The locals of one call.
 pub struct Frame {
     locals: Vec<Value>,
@@ -195,6 +226,62 @@ impl<'a> Machine<'a> {
         }
         args.push(Value::Variant(app.start, Items::default()));
         Ok(self.invoke(app.update, args, site)?.0)
+    }
+
+    /// Runs an example at depth 1: `None` when its Bool is true, else why it is false.
+    pub fn example(&mut self, f: &Func) -> Done<Option<Fail>> {
+        let mut fr = Frame {
+            locals: Vec::new(),
+            params: 0,
+            site: f.site,
+        };
+        fr.locals.resize_with(f.locals.len(), Value::default);
+        self.depth = 1;
+        match self.verdict(&mut fr, &f.body) {
+            Err(Stop::Return(held)) => Ok((!held.bool()).then(Fail::unplaced)),
+            Err(Stop::Trap(mut trap)) => {
+                trap.leave(&format!("example {}", f.name));
+                Err(Stop::Trap(trap))
+            }
+            done => done,
+        }
+    }
+
+    /// The statements, then the operands of the final `&&` chain until one is false.
+    fn verdict(&mut self, fr: &mut Frame, b: &Block) -> Done<Option<Fail>> {
+        for s in &b.stmts {
+            self.stmt(fr, s)?;
+        }
+        let Some(last) = &b.value else {
+            unreachable!("an example ends in a value");
+        };
+        let mut claims = vec![];
+        operands(last, &mut claims);
+        for (claim, e) in claims.into_iter().enumerate() {
+            let (held, sides) = self.claim(fr, e)?;
+            if !held {
+                return Ok(Some(Fail { claim, sides }));
+            }
+        }
+        Ok(None)
+    }
+
+    /// Whether the operand holds; for a comparison, also its two sides and their type.
+    fn claim(&mut self, fr: &mut Frame, e: &Expr) -> Done<(bool, Option<Sides>)> {
+        let ExprKind::Binary(op @ (Bin::Eq(_) | Bin::Ne(_) | Bin::Order(_)), a, b) = &e.kind else {
+            return Ok((self.truth(fr, e)?, None));
+        };
+        let (x, y) = (self.eval(fr, a)?, self.eval(fr, b)?);
+        let held = match op {
+            Bin::Eq(site) | Bin::Ne(site) => {
+                let same = equals(&x, &y).ok_or_else(|| Trap::bare(Kind::Stack, *site))?;
+                same == matches!(op, Bin::Eq(_))
+            }
+            Bin::Order(cmp) => compare(cmp, &x, &y),
+            _ => unreachable!("a comparison"),
+        };
+        let ty = a.ty.expect("a typed operand");
+        Ok((held, Some((x, y, ty))))
     }
 
     /// Runs function `id` on its parameters; gives its value and its final locals, whose first

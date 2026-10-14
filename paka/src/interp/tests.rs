@@ -233,6 +233,7 @@ fn func(name: &str, inouts: &[bool], locals: usize, body: Block) -> Func {
         locals: vec![0; locals.max(inouts.len())],
         result: None,
         body,
+        claims: vec![],
     }
 }
 

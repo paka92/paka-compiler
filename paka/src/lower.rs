@@ -1,7 +1,7 @@
 //! Lowering a checked program into the core form (docs/core.md). A node's type and trap site are
 //! taken once its operands are lowered, so the type table and the site table fill in that order.
 
-use crate::ast::{self, Def, Entry, Pos};
+use crate::ast::{self, BinOp, Def, Entry, ExprKind as K, Pos, StmtKind};
 use crate::body::Bodies;
 use crate::core_form::{
     self, App, Enum, Expr, ExprKind, Field, Fn, Grant, Local, Param, Program, Record, Site, Tag,
@@ -166,14 +166,52 @@ impl<'a> Cx<'_, 'a> {
             Some(s) => s.result.map(|r| self.ty(r)),
             None => Some(self.core.ty(Type::Bool)),
         };
-        let body = self.block(body, self.result.is_some());
+        let block = self.block(body, self.result.is_some());
+        let claims = if sig.is_none() {
+            self.claims(body)
+        } else {
+            vec![]
+        };
         Fn {
             name: name.text.into(),
             site,
             params,
             locals: std::mem::take(&mut self.locals),
             result: self.result,
-            body,
+            body: block,
+            claims,
+        }
+    }
+
+    /// The sites of an example's final `&&` chain: a comparison's operator, else the first token.
+    fn claims(&mut self, body: &ast::Block<'a>) -> Vec<Site> {
+        match body.stmts.last().map(|s| &s.kind) {
+            Some(StmtKind::Expr(last)) => self.operands(last),
+            _ => vec![],
+        }
+    }
+
+    fn operands(&mut self, e: &ast::Expr<'a>) -> Vec<Site> {
+        let (mut rights, mut head) = (vec![], e);
+        while let K::Binary(BinOp::And, _, left, right) = &head.kind {
+            rights.push(&**right);
+            head = left;
+        }
+        let mut sites = vec![self.claim(head)];
+        for right in rights.into_iter().rev() {
+            sites.extend(self.operands(right));
+        }
+        sites
+    }
+
+    fn claim(&mut self, e: &ast::Expr<'a>) -> Site {
+        match &e.kind {
+            K::Binary(
+                BinOp::Eq | BinOp::Ne | BinOp::Lt | BinOp::Le | BinOp::Gt | BinOp::Ge,
+                at,
+                ..,
+            ) => self.site(*at),
+            _ => self.site(e.at),
         }
     }
 

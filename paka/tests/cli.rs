@@ -2,7 +2,7 @@ use std::fs::File;
 use std::io::pipe;
 use std::process::{Command, Output, Stdio};
 
-const USAGE: &str = "usage: paka run <file>\n       paka build <file> -o <output>\n       paka check <file> [--json]\n";
+const USAGE: &str = "usage: paka run <file>\n       paka build <file> -o <output>\n       paka check <file> [--json]\n       paka examples <file>\n";
 
 fn paka(args: &[&str]) -> Output {
     Command::new(env!("CARGO_BIN_EXE_paka"))

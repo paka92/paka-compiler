@@ -3,7 +3,9 @@
 //! M2-36's.
 
 use crate::core_form::{App, Effect, Field, Grant, Program, Type};
+use crate::core_form::{Fn as Func, Site};
 use eval::{Kind, Machine, Stop, Trap};
+use show::show;
 use std::any::Any;
 use std::io::{self, ErrorKind, Write};
 use std::sync::Once;
@@ -12,6 +14,7 @@ use value::Value;
 
 mod builtin;
 mod eval;
+mod show;
 #[cfg(test)]
 mod tests;
 mod value;
@@ -107,23 +110,94 @@ fn panic_reason(payload: &(dyn Any + Send)) -> String {
 
 /// The trap report of M2-06 section 1.2.
 fn report(core: &Program, app: &str, trap: &Trap) -> String {
-    let site = &core.sites[trap.site];
-    let file = core.file.rsplit('/').next().unwrap_or_default();
     let kind = trap.kind.name();
-    let mut text = format!("{app}: trap {kind} at {file}:{}:{}\n", site.line, site.col);
-    if !matches!(trap.kind, Kind::Assert | Kind::Stack | Kind::Memory) {
-        let cut = trap.detail.floor_char_boundary(DETAIL);
-        let named = trap.frames.iter().take(NAMED);
-        let chain = named.map(String::as_str).collect::<Vec<_>>();
-        let more = if trap.frames.len() > NAMED {
-            ", ..."
-        } else {
-            ""
-        };
-        let chain = chain.join(", called from ");
-        text += &format!("  {}\n  in {chain}{more}\n", &trap.detail[..cut]);
+    format!(
+        "{app}: trap {kind} at {}\n{}",
+        place(core, trap.site),
+        help(trap)
+    )
+}
+
+/// `file:line:col` of a site; the file without its directory.
+fn place(core: &Program, site: Site) -> String {
+    let at = &core.sites[site];
+    let file = core.file.rsplit('/').next().unwrap_or_default();
+    format!("{file}:{}:{}", at.line, at.col)
+}
+
+/// A trap's detail line and call chain, which `assert`, `stack` and `memory` do not have.
+fn help(trap: &Trap) -> String {
+    if matches!(trap.kind, Kind::Assert | Kind::Stack | Kind::Memory) {
+        return String::new();
     }
-    text
+    let cut = trap.detail.floor_char_boundary(DETAIL);
+    let named = trap.frames.iter().take(NAMED);
+    let chain = named.map(String::as_str).collect::<Vec<_>>();
+    let more = if trap.frames.len() > NAMED {
+        ", ..."
+    } else {
+        ""
+    };
+    let chain = chain.join(", called from ");
+    format!("  {}\n  in {chain}{more}\n", &trap.detail[..cut])
+}
+
+/// Runs every example in name order and prints its status (M2-06 section 1.6); the status is 0
+/// when all pass, else 3.
+pub fn examples(core: &Program, out: &mut impl Write, err: &mut impl Write) -> u8 {
+    let mut order: Vec<_> = core.examples.iter().collect();
+    order.sort_by(|a, b| a.name.cmp(&b.name));
+    let entries = on_big_stack(|| {
+        order
+            .iter()
+            .map(|f| entry(core, f))
+            .collect::<Result<Vec<_>, _>>()
+    });
+    match entries {
+        Ok(Ok(entries)) => {
+            let text: String = entries.iter().map(|(_, text)| text.as_str()).collect();
+            let _ = out.write_all(text.as_bytes());
+            if entries.iter().all(|(passed, _)| *passed) {
+                0
+            } else {
+                3
+            }
+        }
+        Ok(Err(reason)) | Err(reason) => {
+            let _ = writeln!(err, "internal error: {reason}");
+            4
+        }
+    }
+}
+
+/// Whether the example passed, and its entry; the reason if the interpreter faults.
+fn entry(core: &Program, f: &Func) -> Result<(bool, String), String> {
+    let name = &f.name;
+    Ok(match Machine::new(core).example(f) {
+        Ok(None) => (true, format!("{name} pass\n")),
+        Ok(Some(fail)) => {
+            let mut text = format!("{name} fail at {}\n", place(core, f.claims[fail.claim]));
+            if let Some((left, right, ty)) = fail.sides {
+                let (left, right) = (show(core, ty, &left), show(core, ty, &right));
+                text += &format!("  left: {left}\n  right: {right}\n");
+            }
+            (false, text)
+        }
+        Err(Stop::Trap(trap)) => {
+            let at = place(core, trap.site);
+            let text = match trap.kind {
+                Kind::Hole => format!("{name} unfinished at {at}\n{}", help(&trap)),
+                kind => format!(
+                    "{name} trapped at {at}\n  trap {}\n{}",
+                    kind.name(),
+                    help(&trap)
+                ),
+            };
+            (false, text)
+        }
+        Err(Stop::Internal(reason)) => return Err(reason),
+        Err(_) => unreachable!("a loop holds its break"),
+    })
 }
 
 /// Performs the effects in order; `None` after `Exit`, or the status and line that end the run.

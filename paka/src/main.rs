@@ -26,7 +26,7 @@ use std::os::unix::ffi::OsStrExt;
 use std::process::ExitCode;
 use std::{env, fs, io};
 
-const USAGE: &str = "usage: paka run <file>\n       paka build <file> -o <output>\n       paka check <file> [--json]\n";
+const USAGE: &str = "usage: paka run <file>\n       paka build <file> -o <output>\n       paka check <file> [--json]\n       paka examples <file>\n";
 
 fn main() -> ExitCode {
     let args: Vec<_> = env::args_os().skip(1).collect();
@@ -36,6 +36,7 @@ fn main() -> ExitCode {
         [Some("build"), _, Some("-o"), _] => (&args[1], Some(&args[3])),
         [Some("check"), _] => return check_file(&args[1], false),
         [Some("check"), _, Some("--json")] => return check_file(&args[1], true),
+        [Some("examples"), _] => return examples_file(&args[1]),
         _ => return report(USAGE.as_bytes(), 2),
     };
     let path = &file.to_string_lossy();
@@ -64,6 +65,18 @@ fn load(file: &OsStr, path: &str) -> Result<Program, Diagnostic> {
     match core.app {
         Some(_) => Ok(core),
         None => Err(Diagnostic::tool(path, "no-app", "the program has no app")),
+    }
+}
+
+/// `paka examples`: the program needs no app, since each example starts with a fresh world.
+fn examples_file(file: &OsStr) -> ExitCode {
+    let path = &file.to_string_lossy();
+    match read(file, path).and_then(|source| check(path, &source)) {
+        Ok(core) => {
+            let (mut out, mut err) = (io::stdout().lock(), io::stderr());
+            ExitCode::from(interp::examples(&core, &mut out, &mut err))
+        }
+        Err(d) => report_at(file, &format!("{d}\n")),
     }
 }
 

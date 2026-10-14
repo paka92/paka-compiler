@@ -1,5 +1,6 @@
 //! `paka examples`: the four statuses, written out by hand from M2-06 section 1.6.
 
+#[allow(dead_code)]
 mod common;
 
 use common::{PAKA, Scratch};

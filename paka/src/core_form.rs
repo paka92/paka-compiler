@@ -90,6 +90,8 @@ pub struct Fn {
     pub locals: Vec<Ty>,
     pub result: Option<Ty>,
     pub body: Block,
+    /// Of an example: where each operand of its final `&&` chain is reported when false.
+    pub claims: Vec<Site>,
 }
 
 #[derive(Debug, PartialEq)]

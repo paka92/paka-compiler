@@ -119,6 +119,7 @@ fn func(site: Site, params: &[Ty], locals: &[Ty], result: Option<Ty>, body: Bloc
         locals: locals.into(),
         result,
         body,
+        claims: vec![],
     }
 }
 
@@ -978,10 +979,12 @@ fn an_app_with_state_an_inout_handler_and_an_example() {
             vec![Stmt::Assign(count, add, int(0, "1"))],
             ex(5, ExprKind::List(vec![exit])),
         ),
+        claims: vec![],
     };
     let sum = binary(0, Bin::Int(Arith::Add, 3), int(0, "1"), int(0, "1"));
     let one = Fn {
         name: "one".into(),
+        claims: vec![5],
         ..func(
             2,
             &[],
@@ -1037,6 +1040,7 @@ fn an_app_with_state_an_inout_handler_and_an_example() {
             site(5, 11),
             site(9, 9),
             site(9, 17),
+            site(9, 21),
             site(9, 21),
         ],
     };
