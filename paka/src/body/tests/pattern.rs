@@ -4,16 +4,16 @@
 use super::*;
 
 /// `fn HEAD { BODY }` and the prelude.
-fn func(head: &str, body: &[&str]) -> String {
+pub(super) fn func(head: &str, body: &[&str]) -> String {
     let open = format!("fn {head} {{");
     full(&[&[open.as_str()][..], body, &["}"]].concat())
 }
 
-fn bad<'a>(code: &'a str, mark: &'a str, head: &str, body: &[&str]) -> Case<'a> {
+pub(super) fn bad<'a>(code: &'a str, mark: &'a str, head: &str, body: &[&str]) -> Case<'a> {
     (code, mark, None, func(head, body))
 }
 
-fn typed<'a>(
+pub(super) fn typed<'a>(
     (code, mark): (&'a str, &'a str),
     types: (&'a str, &'a str),
     head: &str,
@@ -22,7 +22,7 @@ fn typed<'a>(
     (code, mark, Some(types), func(head, body))
 }
 
-fn say<'a>(
+pub(super) fn say<'a>(
     (code, mark): (&'a str, &'a str),
     message: &'a str,
     head: &str,
@@ -31,12 +31,12 @@ fn say<'a>(
     (code, mark, message, func(head, body))
 }
 
-const SHAPE: &str = "area(s: Shape) -> Int";
-const OPTION: &str = "f(o: Option<Int>) -> Int";
-const INT: &str = "f(n: Int) -> Int";
-const TEXT: &str = "f(t: String) -> Int";
-const BOOL: &str = "f(b: Bool) -> Int";
-const RESULT: &str = "f(r: Result<Int, String>) -> Int";
+pub(super) const SHAPE: &str = "area(s: Shape) -> Int";
+pub(super) const OPTION: &str = "f(o: Option<Int>) -> Int";
+pub(super) const INT: &str = "f(n: Int) -> Int";
+pub(super) const TEXT: &str = "f(t: String) -> Int";
+pub(super) const BOOL: &str = "f(b: Bool) -> Int";
+pub(super) const RESULT: &str = "f(r: Result<Int, String>) -> Int";
 
 #[test]
 fn accepts_matches_on_enums() {
@@ -348,31 +348,31 @@ fn lists_the_variants_a_match_leaves_out() {
     says(&[
         say(
             ("missing-arm", "^match o"),
-            "no arm for variant None",
+            "no arm for variant None; add None => ...",
             OPTION,
             &["match o {", "  Some(v) => v", "}"],
         ),
         say(
             ("missing-arm", "^match r"),
-            "no arm for variant Ok",
+            "no arm for variant Ok; add Ok(_) => ...",
             RESULT,
             &["match r {", "  Err(_) => 0", "}"],
         ),
         say(
             ("missing-arm", "^match s"),
-            "no arm for variants Circle, Rect",
+            "no arm for variants Circle, Rect; add Circle(_) => ... and Rect(_, _) => ...",
             SHAPE,
             &["match s {", "  Dot => 0", "}"],
         ),
         say(
             ("missing-arm", "^match s"),
-            "no arm for variant Rect",
+            "no arm for variant Rect; add Rect(_, _) => ...",
             SHAPE,
             &["match s {", "  Dot | Circle(_) => 0", "}"],
         ),
         say(
             ("missing-arm", "^match b"),
-            "no arm for false",
+            "no arm for false; add false => ...",
             BOOL,
             &["match b {", "  true => 1", "}"],
         ),
@@ -622,7 +622,7 @@ fn a_pattern_has_the_type_of_the_subject() {
         ),
         typed(
             (MISMATCH, "^Some(v)"),
-            ("Shape", "Option<T>"),
+            ("Shape", "Option"),
             SHAPE,
             &["match s {", "  Some(v) => 1", "  None => 2", "}"],
         ),
@@ -634,7 +634,7 @@ fn a_pattern_has_the_type_of_the_subject() {
         ),
         typed(
             (MISMATCH, "^Ok(v)"),
-            ("Option<Int>", "Result<T, E>"),
+            ("Option<Int>", "Result"),
             OPTION,
             &["match o {", "  Ok(v) => 1", "  None => 2", "}"],
         ),
@@ -762,7 +762,7 @@ fn a_pattern_name_is_a_copy() {
 fn rejects_a_pattern_integer_that_does_not_exist() {
     says(&[say(
         ("literal-out-of-range", "^99999999999999999999 =>"),
-        "not a Int that exists",
+        "largest Int is 9223372036854775807",
         INT,
         &["match n {", "  99999999999999999999 => 1", "  _ => 2", "}"],
     )]);
@@ -805,7 +805,7 @@ fn takes_the_type_asked_for_in_a_hole() {
 }
 
 /// The type held for the expression at `at` of length `len` in the first definition.
-fn type_at(src: &str, at: Pos, len: usize) -> Option<String> {
+pub(super) fn type_at(src: &str, at: Pos, len: usize) -> Option<String> {
     let program = parse("main.paka", src.as_bytes()).unwrap();
     let resolved = resolve("main.paka", &program).unwrap();
     let mut table = Table::build("main.paka", &program, &resolved);
@@ -848,12 +848,6 @@ fn a_hole_with_no_type_is_cannot_infer() {
         st("cannot-infer", "in ^??xs", None, &["for x in ??xs {", "}"]),
         st(
             "cannot-infer",
-            "[^??a, 1]",
-            None,
-            &["let xs = [??a, 1]", "_ = xs"],
-        ),
-        st(
-            "cannot-infer",
             "match ^??s",
             None,
             &["match ??s {", "  _ => {}", "}"],
@@ -865,7 +859,7 @@ fn a_hole_with_no_type_is_cannot_infer() {
             "cannot-infer",
             "{ ^??a }",
             None,
-            &["let c = true", "let x = if c { ??a } else { 1 }", "_ = x"],
+            &["let c = true", "let x = if c { ??a } else { ??b }", "_ = x"],
         ),
     ]);
     says(&[
@@ -1061,7 +1055,7 @@ fn a_large_enum_with_many_arms_is_checked_in_one_pass() {
     let [d] = &errors(&large(n).replace(&last, ""))[..] else {
         panic!("want one error")
     };
-    let want = format!("no arm for variant V{}", n - 1);
+    let want = format!("no arm for variant V{0}; add V{0} => ...", n - 1);
     assert_eq!((d.code, d.message.as_str()), ("missing-arm", want.as_str()));
     let twice = large(n).replace("V0 | V1", "V0 | V0 | V1");
     let [d] = &errors(&twice)[..] else {

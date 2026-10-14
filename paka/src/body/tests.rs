@@ -5,6 +5,7 @@ use super::*;
 use crate::parser::parse;
 use crate::resolve::resolve;
 
+mod branch;
 mod pattern;
 
 /// Definitions the cases use; they follow the function under test, so a mark finds the test first.
