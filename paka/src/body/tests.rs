@@ -1131,7 +1131,7 @@ fn pins_the_message_of_each_text() {
         (
             "unused-result",
             "^o?",
-            "the value of o? is not used; write `_ = o?`",
+            "the value of o is not used; write `_ = o?`",
             full(&["fn h(o: Option<Int>) -> Option<Int> {", "  o?", "  o", "}"]),
         ),
         (

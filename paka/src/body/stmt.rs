@@ -188,7 +188,7 @@ impl Cx<'_, '_> {
                 "the value of {name} is not used; it is {}: match it, pass it up with {call}?, or write `_ = {call}`",
                 self.types.show(ty)
             ),
-            K::Try(..) => format!("the value of {name} is not used; write `_ = {call}`"),
+            K::Try(x, _) => format!("the value of {} is not used; write `_ = {call}`", called(x)),
             _ => format!("the value of {name} is not used; write _ = ..."),
         };
         self.fail_at(e, "unused-result", message)
@@ -198,9 +198,7 @@ impl Cx<'_, '_> {
         let ty = match written {
             Some(t) => {
                 let ty = self.annotation(t)?;
-                let ty = self.expect(value, ty)?;
-                self.info.entry(span(value)).or_insert(ty);
-                ty
+                self.expect(value, ty)?
             }
             None => match self.expr(value, None)? {
                 Out::Val(t) if !self.free(t) => t,

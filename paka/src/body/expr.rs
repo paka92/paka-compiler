@@ -36,7 +36,11 @@ impl Cx<'_, '_> {
         let mut cur = match (&head.kind, links.last().copied().map(|l| &l.kind)) {
             (K::Name(_), Some(K::Call(_, args))) => {
                 prev = links.pop().expect("a call");
-                self.call_named(head, args, hint(&links))?
+                let out = self.call_named(head, args, hint(&links))?;
+                if let (Out::Never, Some(ty)) = (&out, hint(&links)) {
+                    self.info.insert(span(prev), ty);
+                }
+                out
             }
             (K::Hole(_), Some(K::Binary(BinOp::And | BinOp::Or, ..) | K::Unary(UnOp::Not, _))) => {
                 Out::Val(self.prim("Bool"))
@@ -388,7 +392,7 @@ impl Cx<'_, '_> {
             Node::User(i) => (self.types.show(bt), &defs[*i].item),
             Node::Var(_) => return Ok(Out::Val(bt)),
             _ => {
-                if let Some(message) = habit(name.text) {
+                if let Some(message) = habit(name.text).filter(|_| !self.defined(name.text)) {
                     return Err(self.fail(at, "unknown-name", message));
                 }
                 let message = format!("{} has no fields", self.types.show(bt));
@@ -512,6 +516,13 @@ impl Cx<'_, '_> {
             format!("? passes {up} up, but {name} {returns}; {make}")
         };
         Err((self.fail(at, "type-mismatch", message)).with_types(&want, &found))
+    }
+
+    /// Whether the program or the built-ins define `name`.
+    fn defined(&self, name: &str) -> bool {
+        (self.program.defs.iter()).any(|d| d.name().text == name)
+            || self.fns.contains_key(name)
+            || self.variants.contains_key(name)
     }
 
     /// Whether the definition being checked is the `update` of an app.

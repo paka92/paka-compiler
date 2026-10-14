@@ -127,10 +127,9 @@ impl<'a> Cx<'_, 'a> {
         seen: &mut Seen<'p>,
     ) -> Res {
         if matches!(key, Some(Key::Wild)) && sp.is_enum() {
-            let message = format!(
-                "_ is for Int, String and Bool; name each variant of {}",
-                self.types.show(ty)
-            );
+            let shown = self.types.show(ty);
+            let head = shown.split('<').next().unwrap_or_default();
+            let message = format!("_ is for Int, String and Bool; name each variant of {head}");
             return Err(self.fail(span(p), "wildcard-on-enum", message));
         }
         let mut fields = None;

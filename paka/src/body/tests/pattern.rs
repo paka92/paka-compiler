@@ -542,7 +542,7 @@ fn a_wildcard_is_for_int_string_and_bool() {
     says(&[
         say(
             ("wildcard-on-enum", "^_ => 0"),
-            "_ is for Int, String and Bool; name each variant of Option<Int>",
+            "_ is for Int, String and Bool; name each variant of Option",
             OPTION,
             &["match o {", "  Some(v) => v", "  _ => 0", "}"],
         ),
@@ -554,7 +554,7 @@ fn a_wildcard_is_for_int_string_and_bool() {
         ),
         say(
             ("wildcard-on-enum", "^_ => 0"),
-            "_ is for Int, String and Bool; name each variant of Result<Int, String>",
+            "_ is for Int, String and Bool; name each variant of Result",
             RESULT,
             &[
                 "match r {",

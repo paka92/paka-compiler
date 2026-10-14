@@ -532,7 +532,13 @@ impl<'a> Cx<'_, 'a> {
             }
             _ => match done {
                 Some(ty) => Ok(ty),
-                None => self.expr_val(v, Some(hint)),
+                None => match self.expr(v, Some(hint))? {
+                    Out::Never => {
+                        self.info.insert(span(v), hint);
+                        Ok(hint)
+                    }
+                    out => self.val(out, v),
+                },
             },
         }
     }
