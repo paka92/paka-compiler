@@ -856,3 +856,66 @@ fn many_operands_are_checked_in_linear_time() {
         own(head, &[&format!("let all = [{mixed}]")]),
     ]);
 }
+
+#[test]
+fn a_function_value_read_is_fresh() {
+    let head = "t(o: inout Holder)";
+    let defs = [
+        "type Holder { f: fn(Int) -> Int, name: String }",
+        "fn reset(o: inout Holder) -> fn(Int) -> Int { o.f }",
+        "fn run(f: fn(Int) -> Int, n: Int) {}",
+        "fn poke(o: inout Holder) -> Int { 0 }",
+    ];
+    let build = |body: &str| {
+        let open = format!("fn {head} {{");
+        full(&[&[open.as_str(), body, "}"][..], &defs, OWN].concat())
+    };
+    accepts(&[
+        build("_ = o.f(1)"),
+        build("run(o.f, 1)"),
+        build("run(reset(&o), 1)"),
+        build("run(o.f, poke(&o))"),
+    ]);
+}
+
+#[test]
+fn a_write_in_a_function_callee_still_changes_what_it_reads() {
+    let defs = [
+        "type Holder { f: fn(Int) -> Int, name: String }",
+        "fn reset(o: inout Holder) -> fn(String) -> Int { tally_len }",
+        "fn tally_len(s: String) -> Int { len(s) }",
+    ];
+    let message = "o.name is read by reset(&o) and changed by reset(&o) in the same call; bind it \
+first: let name = o.name";
+    let code = full(
+        &[
+            &["fn t(o: inout Holder) {", "  _ = reset(&o)(o.name)", "}"][..],
+            &defs,
+            OWN,
+        ]
+        .concat(),
+    );
+    says(&[(READ, "^o.name)", message, code)]);
+}
+
+#[test]
+fn a_walked_slice_of_a_place_is_that_place() {
+    let message = walked("xs[0..<2]", "x");
+    says(&[sample(
+        WALKED,
+        "^&xs, x)",
+        &message,
+        &["for x in xs[0..<2] {", "  append(&xs, x)", "}"],
+    )]);
+}
+
+#[test]
+fn a_two_type_cycle_is_reported_at_the_first_type() {
+    let message = "A holds itself through b with nothing between; write b: Option<B> or put it in a \
+                   List or an enum variant";
+    let src = full(&["type A { b: B }", "type B { a: A }", "fn t() {}"]);
+    let first = &errors(&src)[0];
+    assert_eq!(first.code, "no-finite-value");
+    assert_eq!(first.position, at(&src, "type ^A"));
+    assert_eq!(first.message, message);
+}
