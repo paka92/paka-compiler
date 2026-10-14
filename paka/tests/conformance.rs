@@ -5,6 +5,8 @@
 
 #[allow(dead_code)]
 mod common;
+#[path = "conformance/gate.rs"]
+mod gate;
 
 use common::{PAKA, Scratch, build_runtime};
 use std::collections::{BTreeMap, BTreeSet};
@@ -13,6 +15,7 @@ use std::fs;
 use std::os::unix::ffi::OsStrExt;
 use std::path::{Path, PathBuf};
 use std::process::{Command, Output};
+use std::sync::OnceLock;
 
 const ROOT: &str = concat!(env!("CARGO_MANIFEST_DIR"), "/../tests/conformance");
 const KNOWN: &[&str] = &[
@@ -351,20 +354,29 @@ fn cases() -> Vec<PathBuf> {
     areas.iter().flat_map(|a| subfolders(a)).collect()
 }
 
+/// Every case with its outcome, run once for all tests.
+fn results() -> &'static [(PathBuf, Result<(), String>)] {
+    static RESULTS: OnceLock<Vec<(PathBuf, Result<(), String>)>> = OnceLock::new();
+    RESULTS.get_or_init(|| {
+        let run = |case: PathBuf| (run_case(&case), case);
+        cases().into_iter().map(run).map(|(r, c)| (c, r)).collect()
+    })
+}
+
 #[test]
 fn every_case_passes() {
-    let cases = cases();
-    assert!(cases.len() > 900, "only {} cases found", cases.len());
-    let failures: Vec<_> = cases
+    let results = results();
+    assert!(results.len() > 900, "only {} cases found", results.len());
+    let failures: Vec<_> = results
         .iter()
-        .filter_map(|case| run_case(case).err().map(|e| (case, e)))
+        .filter_map(|(case, result)| result.as_ref().err().map(|e| (case, e)))
         .map(|(case, e)| format!("{}: {e}", case.strip_prefix(ROOT).unwrap().display()))
         .collect();
     assert!(
         failures.is_empty(),
         "{} of {} cases fail:\n{}",
         failures.len(),
-        cases.len(),
+        results.len(),
         failures.join("\n")
     );
 }

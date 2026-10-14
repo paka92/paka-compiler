@@ -1,9 +1,9 @@
 //! The language reference stays within its size limit (TASKS.md M2-18).
 
-/// The one counting rule: a token is three bytes, rounded up.
-fn tokens(text: &str) -> usize {
-    text.len().div_ceil(3)
-}
+#[allow(dead_code)]
+mod common;
+
+use common::tokens;
 
 #[test]
 fn reference_fits_in_8000_tokens() {
