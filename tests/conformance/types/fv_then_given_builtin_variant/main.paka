@@ -1,0 +1,11 @@
+enum Msg { Start, Loaded(text: String), Failed(why: String, code: Int) }
+
+fn update(msg: Msg) -> List<Effect<Msg>> {
+  [ReadFile("a", then: Some, or: Loaded)]
+}
+
+app types {
+  start: Start
+  update: update
+  grants: [Console]
+}

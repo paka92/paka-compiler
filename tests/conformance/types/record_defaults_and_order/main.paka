@@ -1,0 +1,41 @@
+enum Msg { Start }
+
+enum Mood { Calm, Busy(why: String) }
+
+type Inner { x: Int = 7 }
+
+type Job {
+  name: String
+  prio: Int = -3
+  ratio: Float = 0.5
+  done: Bool = false
+  notes: List<String> = []
+  tags: Map<String, Int> = [:]
+  inner: Inner = Inner { x: 7 }
+  mood: Mood = Busy("none")
+  best: Option<Int> = None
+}
+
+fn why(m: Mood) -> String {
+  match m {
+    Calm => "calm"
+    Busy(w) => w
+  }
+}
+
+fn describe(j: Job) -> String {
+  "{j.name} {j.prio} {fixed(j.ratio, digits: 1)} {j.done} {len(j.notes)} {len(j.tags)} {j.inner.x} {why(j.mood)} {unwrap_or(j.best, -1)}"
+}
+
+fn update(msg: Msg) -> List<Effect<Msg>> {
+  let a = Job { name: "a" }
+  let b = Job { name: "b", prio: 2, notes: ["x"] }
+  let c = Job { name: "c", ratio: 1.5, mood: Calm, best: Some(4) }
+  [Print(describe(a)), Print(describe(b)), Print(describe(c)), Exit]
+}
+
+app types {
+  start: Start
+  update: update
+  grants: [Console]
+}

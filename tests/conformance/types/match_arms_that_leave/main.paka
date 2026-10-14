@@ -1,0 +1,38 @@
+enum Msg { Start }
+
+fn first_or(o: Option<Int>) -> Int {
+  let fallback = -1
+  match o {
+    Some(v) => { return v }
+    None => {}
+  }
+  fallback
+}
+
+fn first_big(xs: List<Int>) -> Int {
+  var found = -1
+  for x in xs {
+    match x > 10 {
+      true => {
+        found = x
+        break
+      }
+      false => { continue }
+    }
+  }
+  found
+}
+
+fn update(msg: Msg) -> List<Effect<Msg>> {
+  let a = first_or(Some(4))
+  let b = first_or(None)
+  let c = first_big([1, 20, 30])
+  let d = first_big([1, 2])
+  [Print("{a} {b} {c} {d}"), Exit]
+}
+
+app types {
+  start: Start
+  update: update
+  grants: [Console]
+}

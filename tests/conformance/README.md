@@ -12,6 +12,9 @@ bear on these).
 edges of its text, List, Map, sort and trap rules, the seven samples, and the check-time rejections
 it pins.
 
+`types/` covers user types, `match`, generics, function values and errors (M2-02, M2-09, M2-12, the
+type rows of M2-14).
+
 ## Case format
 
 A case is a folder `<area>/<name>/`, `<name>` matching `[a-z0-9_]+`, holding a full program in
@@ -575,6 +578,137 @@ Not in the table, since a program cannot reach them in a file:
 `unused-name` is a warning and has no kind. `unsupported-form` is temporary (spec/m1.md §10): drop
 its case when the back end builds the core form.
 
+### types/ M2-02: records, enums, names
+
+| Point | Case(s) |
+|---|---|
+| record fields, defaults, order of fields in a literal | `record_defaults_and_order` |
+| field omitted with no default | `record_field_omitted` |
+| label not a field / out of order | `record_label_not_a_field`, `record_label_out_of_order` |
+| duplicate field name | `record_duplicate_field` |
+| unknown field read; field read on a non-record, on a variant | `record_field_read_unknown`, `field_on_non_record`, `field_read_on_variant` |
+| field default is a constant: call, sum, non-empty list | `field_default_call`, `field_default_sum`, `field_default_list_of_values` |
+| field default: bare variant that has fields | `field_default_bare_variant_with_fields` |
+| record literal in an `if` header | `record_literal_in_header_unparenthesized`, `record_literal_in_header_parenthesized` |
+| variant arguments: too few, too many, wrong type, labelled | `variant_too_few_fields`, `variant_too_many_fields`, `variant_wrong_field_type`, `variant_labelled_argument` |
+| fieldless variant called | `fieldless_variant_called_empty`, `fieldless_variant_called_with_value` |
+| bare variant with fields as a value | `bare_variant_with_fields_as_value` |
+| duplicate variant, variant field names | `duplicate_variant_name`, `variant_duplicate_field` |
+| names are one pool with types, variants, built-ins | `type_named_like_builtin`, `variant_named_like_builtin`, `variant_named_like_type`, `function_named_like_row` |
+| a local hides a built-in name; calling it is `not-a-function` | `local_hides_builtin_not_a_function` |
+
+### types/ M2-02: `match`
+
+| Point | Case(s) |
+|---|---|
+| arm forms: block, single line, alternatives, `_`, nested patterns | `match_arm_forms`, `match_enum_arms`, `match_int_string_bool` |
+| `Option` and `Result` subjects | `match_option_result` |
+| an arm that leaves: bare after `=>` is refused at the keyword; as a block it runs | `match_arm_return`, `match_arm_break`, `match_arm_continue`, `match_arms_that_leave` |
+| arm types differ | `match_arm_type_differs` |
+| empty `match`; comma after an arm | `match_empty`, `match_comma_after_arm` |
+| name in an alternatives arm | `match_alternative_binds_name` |
+| subject type: Float, List, record | `match_subject_float`, `match_subject_list`, `match_subject_record` |
+| `missing-arm` at `match`: Int, String, Bool, user enum (one, several), Option, Result | `match_missing_int_wildcard`, `match_missing_string_wildcard`, `match_missing_bool_arm`, `match_missing_one_variant`, `match_missing_several_variants`, `match_missing_option_arm`, `match_missing_result_arm` |
+| `wildcard-on-enum` at `_`: user enum, Option, Result, `_` alone | `wildcard_on_user_enum`, `wildcard_on_option`, `wildcard_on_result`, `wildcard_only_arm_on_enum` |
+| `duplicate-arm` at the later pattern: Int, String, Bool, variant, in alternatives | `duplicate_arm_int`, `duplicate_arm_string`, `duplicate_arm_bool`, `duplicate_arm_variant`, `duplicate_arm_in_alternatives` |
+| `duplicate-arm`: arm after `_`; `_` after both Bool arms | `duplicate_arm_after_wildcard`, `duplicate_arm_wildcard_after_both_bools` |
+| pattern type: Int on Bool, String on Int, variant of another enum | `pattern_int_on_bool`, `pattern_string_on_int`, `pattern_variant_of_other_enum` |
+| pattern names: unknown variant, field count too few / too many | `pattern_unknown_variant`, `pattern_too_few_fields`, `pattern_too_many_fields` |
+| pattern shape: fieldful variant bare, fieldless variant with a name | `pattern_fieldful_variant_bare`, `pattern_fieldless_variant_with_name` |
+
+### types/ M2-09 §1.4 to §1.6, M2-03: equality, order, text, arithmetic types
+
+| Point | Case(s) |
+|---|---|
+| `==` on scalars and text | `eq_scalars_and_text` |
+| `==` on Float: NaN, zero | `eq_float_nan_and_zero`, `eq_nan_inside_values` |
+| `==` on records, enums, lists, maps, `Option`, `Result`, effect lists | `eq_records_and_enums`, `eq_lists_and_maps`, `eq_option_and_result`, `eq_effect_lists` |
+| `==` across types, Int against Float | `eq_different_types`, `eq_int_float` |
+| `<` on Bool, List, `Option`, record | `order_on_bool`, `order_on_list`, `order_on_option`, `order_on_record` |
+| comparison chain | `compare_chain` |
+| `+` on lists, String with Int, Int with Float; `max` on mixed numbers | `plus_on_lists`, `plus_string_int`, `sum_int_float`, `max_mixed` |
+| `len` on an Int | `len_of_int` |
+| interpolation takes Int, String, Bool only | `interp_float`, `interp_list`, `interp_option`, `interp_record`, `interp_enum`, `interp_fn_value` |
+| `sort` on Int, Float, String; on records | `sort_int_float_string`, `sort_on_records` |
+
+### types/ M2-09 §1.3: generics, the four-step walk
+
+| Point | Case(s) |
+|---|---|
+| a bare `[]`, `[:]`, `None`, `Ok(..)`, `Err(..)` has no type | `generics_bare_empty_list`, `generics_bare_empty_map`, `generics_bare_none`, `generics_bare_ok`, `generics_bare_err` |
+| `len([])`, `[] == []`, `None == None`, `match None`, `[[]]` | `generics_len_of_empty_list`, `generics_empty_equals_empty`, `generics_none_equals_none`, `generics_match_subject_open`, `generics_list_of_empty_list` |
+| branches that both stay open | `generics_ok_err_branches_open` |
+| a typed side or branch closes the other | `generics_branch_typing`, `generics_result_branches_typed`, `generics_list_literal_typing` |
+| one letter bound twice to different types | `generics_append_wrong_item`, `generics_unwrap_or_wrong_fallback` |
+| accepted walk: expected type, argument, assigned to a typed place | `generics_walk_accepted` |
+
+### types/ M2-09 §1.7 to §1.11: function values
+
+| Point | Case(s) |
+|---|---|
+| a `fn` name is a value of type `fn(P) -> R`; stored, passed, returned, called | `fv_store_pass_call`, `fv_stored_in_values`, `fv_returned_from_function` |
+| a variant is a constructor value | `fv_variant_as_constructor` |
+| labels are not in the type; the value is positional | `fv_labels_not_in_type`, `fv_call_with_label` |
+| `fn` type with no parameter and no result | `fv_zero_parameter_and_no_result` |
+| `==` on function values | `fv_equality`, `fv_equality_of_different_types` |
+| call: not a function, too few / too many arguments, wrong type, `&` mark | `fv_call_of_int`, `fv_call_too_few_arguments`, `fv_call_too_many_arguments`, `fv_call_wrong_argument_type`, `fv_call_with_inout_mark` |
+| built-in as a value is `not-a-value` | `fv_builtin_fixed_not_a_value`, `fv_builtin_len_not_a_value`, `fv_sort_by_builtin_as_before` |
+| built-in variant with fields as a value | `fv_variant_some_not_a_value`, `fv_variant_ok_not_a_value`, `fv_variant_print_not_a_value`, `fv_variant_exit_with_not_a_value` |
+| fieldless variant where a function is expected | `fv_fieldless_variant_for_fn_type` |
+| `inout` function: not a value, not an argument, not in a `fn` type | `fv_inout_fn_not_a_value`, `fv_inout_fn_as_argument`, `fv_inout_in_function_type` |
+| a type name as a value | `fv_type_name_as_value` |
+| a function passed to itself | `fv_pass_function_to_itself` |
+| a bare `fn` name where its own result is expected | `fv_bare_fn_where_result_expected` |
+| effect-list functions: `then`, `or`, bare `Print` | `fv_then_given_message`, `fv_then_given_builtin_variant`, `fv_then_too_many_fields`, `fv_or_given_effect`, `fv_effect_list_bare_print` |
+| `sort_by` before: built-in, result not Bool, wrong item type | `fv_sort_by_builtin_as_before`, `fv_sort_by_result_not_bool`, `fv_sort_by_wrong_item_type` |
+| app state reaches a function type | `fv_state_reaches_function_type` |
+| a record holding a function outside the state | `fv_state_unrelated_record_holds_function` |
+
+### types/ habit spellings (M2-09 §2, M2-12 §1.9)
+
+| Spelling | Case(s) |
+|---|---|
+| `fn` in an expression, inside a body | `habit_fn_in_expression`, `habit_fn_inside_body` |
+| lambda: `\|a, b\| ..`, `\|\| ..`, `a -> ..`, `(a, b) => ..` | `habit_lambda_pipes`, `habit_lambda_empty_pipes`, `habit_lambda_arrow_single`, `habit_lambda_arrow_tuple` |
+| generic `fn`, `type`, `enum` with `<T>` | `habit_generic_fn`, `habit_generic_type`, `habit_generic_enum` |
+| `impl`, `trait`, `interface`, `protocol`, `extension` | `habit_impl`, `habit_trait`, `habit_interface`, `habit_protocol`, `habit_extension` |
+| `if let` | `habit_if_let` |
+| `null`, `nil` | `habit_null`, `habit_nil` |
+| `unwrap`, `expect`, `is_some`, `is_ok`, `panic` | `habit_unwrap`, `habit_expect`, `habit_is_some`, `habit_is_ok`, `habit_panic` |
+| `??` | `habit_double_question` |
+
+### types/ M2-14 §1.13: `sort_by`
+
+| Point | Case(s) |
+|---|---|
+| `before(a, b)` true puts `a` first; descending | `sort_by_descending` |
+| stable on ties | `sort_by_stable_on_ties` |
+| calls `before(right, left)`; always true reverses pairs | `sort_by_always_true_reverses` |
+| always false keeps the order | `sort_by_always_false_keeps_order` |
+| a `before` that contradicts itself | `sort_by_contradicting_before` |
+| fewer than two items: no call | `sort_by_short_lists_call_nothing` |
+| labelled `before` function | `sort_by_labelled_before` |
+| a trap in `before`; the frame chain | `sort_by_trap_in_before`, `sort_by_trap_chain` |
+
+### types/ M2-12: errors
+
+| Point | Case(s) |
+|---|---|
+| `?` on `Option` and on `Result` | `err_question_on_option`, `err_question_on_result` |
+| `?` on a plain value; on a field of a plain record | `err_question_on_plain_value`, `err_question_field_of_plain_record` |
+| `?` in a function with no result, Int result, `update`, an example | `err_question_in_function_without_result`, `err_question_in_int_function`, `err_question_in_update`, `err_question_in_example` |
+| `?` on `Option` in a `Result` function and the reverse | `err_question_option_in_result_function`, `err_question_result_in_option_function` |
+| `?` with a different error type | `err_question_error_type_differs` |
+| `?` as a whole statement | `err_question_as_whole_statement` |
+| `inout` write before a failing `?` stays | `err_inout_write_before_question_stays` |
+| `unused-result` on `parse_int` | `err_unused_parse_int` |
+| `parse_int` used as an Int | `err_parse_int_as_int` |
+| `unreachable`: reached, with argument, code after it, and `assert` | `err_unreachable_reached`, `err_unreachable_with_argument`, `err_code_after_unreachable`, `err_unreachable_and_assert_not_reached` |
+| `assert` false; with a message | `err_assert_false`, `err_assert_with_message` |
+| names ask, brackets claim | `err_names_ask_brackets_claim` |
+| traps: divide by zero, index past end, missing key | `err_divide_by_zero`, `err_list_index_past_end`, `err_map_missing_key` |
+| trap report with a three-frame chain | `err_trap_chain_three_frames` |
+
 ## Settled readings
 
 Where the records leave a point open, the owner settled it. The cases follow these readings. A row
@@ -616,6 +750,20 @@ confirmation.
 | `duplicate-name` for a row's name sits at the name after `fn`; `sort` on an item type with no order sits at the `&` of the argument; `wrong-label` and `type-mismatch` sit at the argument; `wrong-argument-count` at the function name; `cannot-infer` at the empty literal, `None` or the name | M2-02, M2-04, M2-09, M2-14 |
 | An unlabelled argument to a labelled row (`insert(xs, 1, 0)`) is `wrong-label` at that argument; `unreachable(1)` is `wrong-argument-count` at the name; `type Option` is `duplicate-name` at the name after `type`; `len([:])` is `cannot-infer` at the `[:]` | M2-02, M2-04, M2-09, M2-14 §1.3 |
 
+## Case reading
+
+Where the records leave a point open, the case follows the reading closest to them.
+
+| Reading | Record | Case(s) |
+|---|---|---|
+| A binary type error on `==`, `+` is at the operator, as `>` is for order | M2-09 §1.5, §5 | `eq_int_float`, `eq_different_types`, `sum_int_float`, `plus_string_int`, `plus_on_lists`, `fv_equality_of_different_types` |
+| `max(1, 2.0)` is at the second argument, where the §1.3 walk finds the second binding | M2-09 §1.3, §5 | `max_mixed` |
+| A pattern with the wrong number of fields is `wrong-argument-count` at the variant name in the pattern | M2-02 §5 | `pattern_too_few_fields`, `pattern_too_many_fields`, `pattern_fieldful_variant_bare`, `pattern_fieldless_variant_with_name` |
+| An Upper name followed by `{` ends a header, so the `{` opens the body and the first token that cannot continue a statement is `unexpected-token`: the `:` of `count: 1` | M2-02 §1.9 | `record_literal_in_header_unparenthesized` |
+| A field default is reported at the first token not part of a constant: the name for a call, the operator for a sum, the first item for a non-empty list | M2-02 §1.9 | `field_default_call`, `field_default_sum`, `field_default_list_of_values` |
+| An empty `match` is `unexpected-token` at the `}` | M2-02 §1.9 | `match_empty` |
+| A comparison chain is `unexpected-token` at the second comparison operator | spec/paka.md, M2-02 §2 | `compare_chain` |
+
 ## Not decided
 
 Pools are not built (M2-01 §3), and M2-10 §1.4 leaves a shared immutable type, pools, handles,
@@ -633,3 +781,9 @@ Several M2-14 points have no case:
 - The value text form of §1.16 beyond the details above: no program can reach it.
 - `examples` cases: this README describes run and reject cases only.
 - String `[i]` and String slice traps: M2-03's, not M2-14 rows. The List index and slice cases above stand in for the shared rule.
+
+Three type points have no case, because the records do not pin the position or the order:
+`missing-value` on a single-line arm, a joined list type that is still open (`[None, None]`), and
+which of `bad-state` and the function-type `type-mismatch` comes first when a state has both. NaN in
+`sort` and `sort_by` is a built-in row (M2-39b), and the `stack` trap inside `sort_by` belongs to
+M2-41.

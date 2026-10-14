@@ -1,0 +1,23 @@
+enum Msg { Start }
+
+fn negate(n: Int) -> Int { 0 - n }
+
+fn double(n: Int) -> Int { n * 2 }
+
+fn chooser(neg: Bool) -> fn(Int) -> Int {
+  if neg { negate } else { double }
+}
+
+fn update(msg: Msg) -> List<Effect<Msg>> {
+  let f = chooser(true)
+  let g = chooser(false)
+  let a = f(3)
+  let b = g(3)
+  [Print("{a} {b}"), Exit]
+}
+
+app types {
+  start: Start
+  update: update
+  grants: [Console]
+}

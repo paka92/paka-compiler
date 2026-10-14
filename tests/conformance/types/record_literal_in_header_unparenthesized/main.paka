@@ -1,0 +1,15 @@
+enum Msg { Start }
+
+type Counter { count: Int = 0 }
+
+fn update(msg: Msg) -> List<Effect<Msg>> {
+  let c = Counter {}
+  if Counter { count: 1 } == c { _ = 1 }
+  [Print("done"), Exit]
+}
+
+app types {
+  start: Start
+  update: update
+  grants: [Console]
+}

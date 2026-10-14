@@ -1,0 +1,38 @@
+enum Msg { Start }
+
+enum Shape { Dot, Circle(r: Float), Rect(w: Float, h: Float) }
+
+fn flip(s: Shape) -> Shape {
+  var out = s
+  match s {
+    Dot => out = Rect(1.0, 1.0)
+    Circle(r) => out = Rect(r, r)
+    Rect(w, h) => { out = Circle(w + h) }
+  }
+  out
+}
+
+fn kind(s: Shape) -> String {
+  let k = match s {
+    Dot => "dot"
+    Circle(_) => "circle"
+    Rect(_, _) => {
+      let n = "rect"
+      n
+    }
+  }
+  k
+}
+
+fn update(msg: Msg) -> List<Effect<Msg>> {
+  let a = kind(flip(Dot))
+  let b = kind(flip(Circle(1.0)))
+  let c = kind(flip(Rect(1.0, 2.0)))
+  [Print("{a} {b} {c}"), Exit]
+}
+
+app types {
+  start: Start
+  update: update
+  grants: [Console]
+}

@@ -1,0 +1,27 @@
+enum Msg { Start }
+
+fn show_opt(o: Option<Int>) -> String {
+  match o {
+    Some(v) => "some {v}"
+    None => "none"
+  }
+}
+
+fn after_colon(text: String) -> Option<Int> {
+  let i = find(text, ":")?
+  let rest = parse_int(text[i + 1..<len(text)])?
+  Some(rest + i)
+}
+
+fn update(msg: Msg) -> List<Effect<Msg>> {
+  let a = show_opt(after_colon("a:5"))
+  let b = show_opt(after_colon("ab"))
+  let c = show_opt(after_colon("a:x"))
+  [Print(a + "," + b + "," + c), Exit]
+}
+
+app types {
+  start: Start
+  update: update
+  grants: [Console]
+}

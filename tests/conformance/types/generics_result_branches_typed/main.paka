@@ -1,0 +1,24 @@
+enum Msg { Start }
+
+fn check(n: Int) -> Result<Int, String> {
+  if n < 0 { Err("negative") } else { Ok(n) }
+}
+
+fn show(r: Result<Int, String>) -> String {
+  match r {
+    Ok(v) => "ok {v}"
+    Err(e) => "err {e}"
+  }
+}
+
+fn update(msg: Msg) -> List<Effect<Msg>> {
+  let flag = 2 > 1
+  let r: Result<Int, String> = if flag { Ok(1) } else { Err("x") }
+  [Print(show(check(-1)) + "," + show(check(2)) + "," + show(r)), Exit]
+}
+
+app types {
+  start: Start
+  update: update
+  grants: [Console]
+}

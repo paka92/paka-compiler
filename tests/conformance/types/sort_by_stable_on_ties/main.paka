@@ -1,0 +1,19 @@
+enum Msg { Start }
+
+type Item { key: Int, tag: String }
+
+fn lower(a: Item, b: Item) -> Bool { a.key < b.key }
+
+fn update(msg: Msg) -> List<Effect<Msg>> {
+  var items = [Item { key: 1, tag: "a" }, Item { key: 0, tag: "b" }, Item { key: 1, tag: "c" }, Item { key: 0, tag: "d" }, Item { key: 1, tag: "e" }]
+  sort_by(&items, lower)
+  var tags: List<String> = []
+  for it in items { append(&tags, it.tag) }
+  [Print(join(tags, " ")), Exit]
+}
+
+app types {
+  start: Start
+  update: update
+  grants: [Console]
+}

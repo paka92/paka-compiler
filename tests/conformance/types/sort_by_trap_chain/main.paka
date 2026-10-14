@@ -1,0 +1,22 @@
+enum Msg { Start }
+
+fn guard(a: Int, b: Int) -> Bool {
+  a / (b - 2) > 0
+}
+
+fn rank(xs: List<Int>) -> List<Int> {
+  var out = xs
+  sort_by(&out, guard)
+  out
+}
+
+fn update(msg: Msg) -> List<Effect<Msg>> {
+  let r = rank([1, 2, 3])
+  [Print("{len(r)}"), Exit]
+}
+
+app types {
+  start: Start
+  update: update
+  grants: [Console]
+}

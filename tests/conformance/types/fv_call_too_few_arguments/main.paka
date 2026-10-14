@@ -1,0 +1,15 @@
+enum Msg { Start }
+
+fn lt(a: Int, b: Int) -> Bool { a < b }
+
+fn update(msg: Msg) -> List<Effect<Msg>> {
+  let less = lt
+  let r = less(1)
+  [Print("done"), Exit]
+}
+
+app types {
+  start: Start
+  update: update
+  grants: [Console]
+}

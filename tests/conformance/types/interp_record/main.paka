@@ -1,0 +1,15 @@
+enum Msg { Start }
+
+type P { x: Int, y: Int }
+
+fn update(msg: Msg) -> List<Effect<Msg>> {
+  let p = P { x: 1, y: 2 }
+  let s = "p = {p}"
+  [Print("done"), Exit]
+}
+
+app types {
+  start: Start
+  update: update
+  grants: [Console]
+}

@@ -1,0 +1,15 @@
+enum Msg { Start }
+
+enum Line { Text(text: String), Blank }
+
+fn update(msg: Msg) -> List<Effect<Msg>> {
+  let l = Text("a")
+  let t = l.text
+  [Print("done"), Exit]
+}
+
+app types {
+  start: Start
+  update: update
+  grants: [Console]
+}

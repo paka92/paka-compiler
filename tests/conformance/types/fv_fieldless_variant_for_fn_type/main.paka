@@ -1,0 +1,14 @@
+enum Msg { Start }
+
+enum Mode { Idle, Busy(n: Int) }
+
+fn update(msg: Msg) -> List<Effect<Msg>> {
+  let f: fn(Int) -> Mode = Idle
+  [Print("done"), Exit]
+}
+
+app types {
+  start: Start
+  update: update
+  grants: [Console]
+}
