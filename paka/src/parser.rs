@@ -652,11 +652,6 @@ impl<'a> Parser<'a> {
                     value,
                 }
             }
-            Kind::Underscore => {
-                self.advance()?;
-                self.eat(Kind::Eq)?;
-                StmtKind::Discard(self.expr()?)
-            }
             Kind::Return => {
                 self.advance()?;
                 let bare = matches!(self.cur.kind, Kind::Newline | Kind::RBrace | Kind::End);
@@ -691,8 +686,12 @@ impl<'a> Parser<'a> {
         Ok(self.node(first, kind))
     }
 
-    /// An expression, or an assignment when an assignment operator follows it.
+    /// A discard `_ = e`, an expression, or an assignment when an assignment operator follows it.
     fn assign_or_expr(&mut self) -> Parse<StmtKind<'a>> {
+        if self.accept(Kind::Underscore)? {
+            self.eat(Kind::Eq)?;
+            return Ok(StmtKind::Discard(self.expr()?));
+        }
         let target = self.expr()?;
         let Some(op) = assign_op(self.cur.kind) else {
             return Ok(StmtKind::Expr(target));
@@ -1945,6 +1944,34 @@ mod tests {
             panic!("not a fn")
         };
         assert_eq!(body.stmts, vec![matched]);
+    }
+
+    fn only_arm<'x, 'a>(program: &'x Program<'a>) -> &'x ArmBody<'a> {
+        let Def::Fn { body, .. } = &program.defs[0] else {
+            panic!("not a fn")
+        };
+        let StmtKind::Expr(Node {
+            kind: ExprKind::Match { arms, .. },
+            ..
+        }) = &body.stmts[0].kind
+        else {
+            panic!("not a match")
+        };
+        &arms[0].body
+    }
+
+    /// An arm's line is the statement the same code makes inside a block, at the same place.
+    #[test]
+    fn an_arm_line_is_a_statement_of_a_block() {
+        for code in ["_ = f()?", "x = 1", "xs[i] -= 1", "p.f = g()"] {
+            let line = format!("fn f() {{\n  match x {{\n    V =>   {code}\n  }}\n}}\n");
+            let block = format!("fn f() {{\n  match x {{\n    V => {{ {code} }}\n  }}\n}}\n");
+            let (line, block) = (tree(&line), tree(&block));
+            let (ArmBody::Line(s), ArmBody::Block(b)) = (only_arm(&line), only_arm(&block)) else {
+                panic!("{code}: not a line and a block")
+            };
+            assert_eq!(s, &b.stmts[0], "{code}");
+        }
     }
 
     #[test]
