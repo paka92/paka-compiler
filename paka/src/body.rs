@@ -13,6 +13,7 @@ use std::collections::{BTreeMap, BTreeSet};
 use text::{float_fix, named, render};
 
 mod arms;
+mod branch;
 mod call;
 mod expr;
 mod hole;
@@ -56,6 +57,16 @@ enum Use {
     Dropped,
     /// As the value of the block, of this type when it is known.
     Value(Option<Ty>),
+}
+
+impl Use {
+    /// The type the value is wanted to have, when it is known.
+    fn want(self) -> Option<Ty> {
+        match self {
+            Use::Value(want) => want,
+            Use::Dropped => None,
+        }
+    }
 }
 
 #[derive(Clone, Copy, PartialEq)]

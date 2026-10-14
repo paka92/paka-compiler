@@ -1,5 +1,6 @@
 //! How expressions and types are spelled inside messages.
 
+use super::{Span, span};
 use crate::ast::{Arg, Expr, ExprKind as K};
 
 /// The name of the function a call names.
@@ -52,6 +53,35 @@ fn atom(e: &Expr) -> String {
         K::Inout(x) => format!("&{}", render(x)),
         _ => "..".to_string(),
     }
+}
+
+/// Where `e` stands without the parentheses around it. The parser gives a parenthesised
+/// expression the span of the parentheses, so this reads the span back from the leaf it holds;
+/// `e`'s own span when that is not found.
+pub(super) fn plain(e: &Expr) -> Span {
+    let mut head = e;
+    while let K::Call(x, _) | K::Field(x, _) | K::Index(x, _) | K::Try(x, _) = &head.kind {
+        head = x;
+    }
+    let width = match &head.kind {
+        K::Name(t) | K::Int(t) | K::Float(t) => t.len(),
+        K::Bool(b) => 4 + usize::from(!b),
+        K::Hole(name) => name.len() + 2,
+        _ => return span(e),
+    };
+    let ((line, col), (head_line, head_col)) = (e.at, head.at);
+    if std::ptr::eq(head, e) {
+        let outer = e.len.saturating_sub(width);
+        return if outer > 0 && outer % 2 == 0 {
+            ((line, col + outer / 2), width)
+        } else {
+            span(e)
+        };
+    }
+    if head.len == width && head_line == line && head_col > col {
+        return (head.at, e.len - 2 * (head_col - col));
+    }
+    span(e)
 }
 
 /// `text` with its article: "an Int", "a String".

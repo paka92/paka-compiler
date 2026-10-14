@@ -1,5 +1,6 @@
 //! Holes: `??name` stands for a value the program does not have yet.
 
+use super::text::plain;
 use super::{Cx, Out, Res, span};
 use crate::ast::{Expr, ExprKind as K};
 use crate::diagnostic::Diagnostic;
@@ -14,13 +15,13 @@ impl Cx<'_, '_> {
         }
     }
 
-    fn cannot_infer(&self, e: &Expr) -> Diagnostic {
+    pub(super) fn cannot_infer(&self, e: &Expr) -> Diagnostic {
         let K::Hole(name) = e.kind else {
             unreachable!("a hole")
         };
         let message =
             format!("cannot infer the type of ??{name}; write it: let {name}: T = ??{name}");
-        self.fail_at(e, "cannot-infer", message)
+        self.fail(plain(e), "cannot-infer", message)
     }
 
     /// A hole left of an operator takes the type of the right operand; gives both types.

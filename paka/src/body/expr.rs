@@ -3,6 +3,7 @@
 use super::text::{article, float_fix, render};
 use super::{Cx, Out, Res, Span, Use, span};
 use crate::ast::{BinOp, Def, Expr, ExprKind as K, Name, Pos, StrPart, UnOp};
+use crate::diagnostic::Diagnostic;
 use crate::resolve::suggestion;
 use crate::sig::{Field, Item, Node, Ty};
 use paka_rt::ops::{Float, Int};
@@ -37,7 +38,10 @@ impl Cx<'_, '_> {
                 prev = links.pop().expect("a call");
                 self.call_named(head, args, hint(&links))?
             }
-            (K::Hole(_), Some(K::Binary(..))) => Out::Val(self.letter('T')),
+            (K::Hole(_), Some(K::Binary(BinOp::And | BinOp::Or, ..) | K::Unary(UnOp::Not, _))) => {
+                Out::Val(self.prim("Bool"))
+            }
+            (K::Hole(_), Some(K::Binary(..) | K::Range(..))) => Out::Val(self.letter('T')),
             (K::Hole(_), _) => self.hole(head, if links.is_empty() { raw } else { None })?,
             _ => self.leaf(head, hint(&links))?,
         };
@@ -68,8 +72,11 @@ impl Cx<'_, '_> {
     pub(super) fn expect_out(&mut self, e: &Expr, want: Ty) -> Res<Out> {
         match self.expr(e, Some(want))? {
             Out::Val(ty) if self.types.fits(ty, want) => {
-                let open = self.free(ty) && !self.free(want);
-                Ok(Out::Val(if open { want } else { ty }))
+                if self.free(ty) && !self.free(want) {
+                    self.info.insert(span(e), want);
+                    return Ok(Out::Val(want));
+                }
+                Ok(Out::Val(ty))
             }
             Out::Val(ty) => Err(self.mismatch_at(e, want, ty)),
             Out::Unit => Err(self.no_value(e, Some(want))),
@@ -88,14 +95,14 @@ impl Cx<'_, '_> {
         let ty = match &e.kind {
             K::Int(text) => {
                 if Int::parse(text).is_none() {
-                    return Err(self.out_of_range(span(e), "Int"));
+                    return Err(self.out_of_range(span(e), "Int", text));
                 }
                 self.int()
             }
             K::Float(text) => {
                 let finite = Float::parse(text).is_some_and(|f| (f.bits() >> 52) & 0x7ff != 0x7ff);
                 if !finite {
-                    return Err(self.out_of_range(span(e), "Float"));
+                    return Err(self.out_of_range(span(e), "Float", text));
                 }
                 self.prim("Float")
             }
@@ -111,8 +118,8 @@ impl Cx<'_, '_> {
             }
             K::Name(_) => return self.name(e, want),
             K::Record(name, args) => return self.record(e, name, args),
-            K::List(items) => self.list(items, want)?,
-            K::Map(pairs) => self.map(pairs, want)?,
+            K::List(items) => self.list(e, items, want)?,
+            K::Map(pairs) => self.map(e, pairs, want)?,
             K::If {
                 branches,
                 otherwise,
@@ -124,12 +131,13 @@ impl Cx<'_, '_> {
         Ok(Out::Val(ty))
     }
 
-    pub(super) fn out_of_range(&self, at: Span, ty: &str) -> crate::diagnostic::Diagnostic {
-        self.fail(
-            at,
-            "literal-out-of-range",
-            format!("not a {ty} that exists"),
-        )
+    /// A number `text` that is no `ty`; a negative Int has no limit named.
+    pub(super) fn out_of_range(&self, at: Span, ty: &str, text: &str) -> Diagnostic {
+        let message = match (ty, text.starts_with('-')) {
+            ("Int", false) => format!("largest Int is {}", i64::MAX),
+            _ => format!("not a {ty} that exists"),
+        };
+        self.fail(at, "literal-out-of-range", message)
     }
 
     /// The built-in type of `ty` is one of `allowed`, or not yet known.
@@ -178,18 +186,31 @@ impl Cx<'_, '_> {
         match &e.kind {
             K::Unary(op, _) => self.unary(*op, e, ty),
             K::Binary(op, at, _, r) => self.binary(*op, *at, from, ty, r),
-            K::Range(_, r) => {
-                self.allow(span(from), ty, &["Int"], "Int")?;
-                let int = self.int();
-                self.expect(r, int)?;
-                Ok(Out::Val(self.types.named("List", &[ty])))
-            }
+            K::Range(_, r) => self.range(from, ty, r),
             K::Index(_, i) => self.index(from, ty, i),
             K::Field(_, name) => self.field(e, ty, name),
             K::Try(_, at) => self.question((*at, 1), from, ty),
             K::Call(_, args) => self.call_value(from, ty, args, want),
             _ => Ok(Out::Val(ty)),
         }
+    }
+
+    /// `from..<r`: a hole on one side takes the type of the other.
+    fn range(&mut self, from: &Expr, ty: Ty, r: &Expr) -> Res<Out> {
+        let int = self.int();
+        let hole = matches!(from.kind, K::Hole(_)) && self.free(ty);
+        if hole && matches!(r.kind, K::Hole(_)) {
+            return Err(self.cannot_infer(from));
+        }
+        if hole {
+            self.info.insert(span(from), int);
+        } else {
+            self.allow(span(from), ty, &["Int"], "Int")?;
+        }
+        self.expect(r, int)?;
+        Ok(Out::Val(
+            self.types.named("List", &[if hole { int } else { ty }]),
+        ))
     }
 
     fn unary(&mut self, op: UnOp, e: &Expr, ty: Ty) -> Res<Out> {
@@ -453,43 +474,23 @@ impl Cx<'_, '_> {
         Err((self.fail(at, "type-mismatch", message)).with_types(&want, &found))
     }
 
-    fn list(&mut self, items: &[Expr], want: Option<Ty>) -> Res<Ty> {
+    fn list(&mut self, e: &Expr, items: &[Expr], want: Option<Ty>) -> Res<Ty> {
         let hint = want.and_then(|w| self.arg(w, "List", 0));
-        let mut elem = None;
-        for item in items {
-            self.join(&mut elem, item, hint)?;
-        }
-        let elem = elem.or(hint).unwrap_or_else(|| self.letter('T'));
+        let elem = self.items(e, items.len(), |i| &items[i], hint)?;
+        let elem = elem.unwrap_or_else(|| self.letter('T'));
         Ok(self.types.named("List", &[elem]))
     }
 
-    fn map(&mut self, pairs: &[(Expr, Expr)], want: Option<Ty>) -> Res<Ty> {
+    fn map(&mut self, e: &Expr, pairs: &[(Expr, Expr)], want: Option<Ty>) -> Res<Ty> {
         let hint = |i| want.and_then(|w| self.arg(w, "Map", i));
         let (key_hint, value_hint) = (hint(0), hint(1));
-        let (mut key, mut value) = (None, None);
-        for (i, (k, v)) in pairs.iter().enumerate() {
-            self.join(&mut key, k, key_hint)?;
-            if let (0, Some(ty)) = (i, key) {
-                self.allow(span(k), ty, &["Int", "String"], "Int or String")?;
-            }
-            self.join(&mut value, v, value_hint)?;
+        let key = self.items(e, pairs.len(), |i| &pairs[i].0, key_hint)?;
+        if let (Some(ty), Some((k, _))) = (key, pairs.first()) {
+            self.allow(span(k), ty, &["Int", "String"], "Int or String")?;
         }
-        let mut or = |found: Option<Ty>, hint: Option<Ty>, c| {
-            found.or(hint).unwrap_or_else(|| self.letter(c))
-        };
-        let (key, value) = (or(key, key_hint, 'K'), or(value, value_hint, 'V'));
+        let value = self.items(e, pairs.len(), |i| &pairs[i].1, value_hint)?;
+        let key = key.unwrap_or_else(|| self.letter('K'));
+        let value = value.unwrap_or_else(|| self.letter('V'));
         Ok(self.types.named("Map", &[key, value]))
-    }
-
-    /// Adds `e` to a run of values that must agree: the first sets the type, the rest must fit it.
-    fn join(&mut self, acc: &mut Option<Ty>, e: &Expr, hint: Option<Ty>) -> Res {
-        let ty = match *acc {
-            Some(a) => self.expect(e, a)?,
-            None => self.expr_val(e, hint)?,
-        };
-        if acc.is_none_or(|a| self.free(a)) {
-            *acc = Some(ty);
-        }
-        Ok(())
     }
 }

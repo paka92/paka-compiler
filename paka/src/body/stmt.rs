@@ -1,6 +1,7 @@
 //! Blocks and statements, and the `if` that is both.
 
-use super::text::{called, render};
+use super::branch::Joined;
+use super::text::{called, plain, render};
 use super::{Cx, How, Local, Out, Res, Use, span};
 use crate::ast::{Arm, ArmBody, Block, Expr, ExprKind as K, Name, Pos, Stmt, StmtKind as S, Type};
 use crate::builtins;
@@ -74,10 +75,16 @@ impl Cx<'_, '_> {
         }
     }
 
+    /// `e` as a value: of type `want`, or of its own type; a hole stays open for the branches.
     pub(super) fn tail(&mut self, e: &Expr, want: Option<Ty>) -> Res<Out> {
-        match want {
-            Some(w) => self.expect_out(e, w),
-            None => {
+        match (want, &e.kind) {
+            (Some(w), _) => self.expect_out(e, w),
+            (None, K::Hole(_)) => {
+                let out = Out::Val(self.letter('T'));
+                self.note(e, &out);
+                Ok(out)
+            }
+            (None, _) => {
                 let out = self.expr(e, None)?;
                 self.val(out, e).map(|_| out)
             }
@@ -178,7 +185,7 @@ impl Cx<'_, '_> {
                         "cannot infer the type of {0}; write it: {keyword} {0}: {shown} = ...",
                         name.text
                     );
-                    return Err(self.fail_at(self.needs(value), "cannot-infer", message));
+                    return Err(self.fail(plain(self.needs(value)), "cannot-infer", message));
                 }
             },
         };
@@ -187,18 +194,26 @@ impl Cx<'_, '_> {
         Ok(())
     }
 
-    /// The part of `e` that lacks a type of its own: an argument or a branch that is still open.
-    fn needs<'x>(&self, mut e: &'x Expr<'x>) -> &'x Expr<'x> {
+    /// The part of `e` that lacks a type of its own: an argument, an item or a branch that is
+    /// still open.
+    pub(super) fn needs<'x>(&self, mut e: &'x Expr<'x>) -> &'x Expr<'x> {
         let open = |x: &&Expr| self.info.get(&(x.at, x.len)).is_some_and(|&t| self.free(t));
+        let value = |s: &'x Stmt<'x>| match &s.kind {
+            S::Expr(x) => Some(x).filter(open),
+            _ => None,
+        };
         loop {
             let inner = match &e.kind {
                 K::Call(_, args) => args.iter().map(|a| &a.value).find(open),
-                K::If { branches, .. } => branches.iter().find_map(|(_, b)| match b.stmts.last() {
-                    Some(Stmt {
-                        kind: S::Expr(x), ..
-                    }) => Some(x).filter(open),
-                    _ => None,
-                }),
+                K::List(items) => items.iter().find(open),
+                K::Map(pairs) => pairs.iter().flat_map(|(k, v)| [k, v]).find(open),
+                K::If {
+                    branches,
+                    otherwise,
+                } => (branches.iter().map(|(_, b)| b).chain(otherwise))
+                    .filter_map(|b| b.stmts.last())
+                    .find_map(value),
+                K::Match { arms, .. } => arms.iter().filter_map(last_of).find_map(value),
                 _ => None,
             };
             match inner {
@@ -235,9 +250,13 @@ impl Cx<'_, '_> {
                 self.expect(v, r)?;
             }
             (Some(v), None) => {
+                let name = self.program.defs[self.def].name().text;
+                if matches!(v.kind, K::Hole(_)) {
+                    let message = format!("{name} has no result; drop the value");
+                    return Err(self.fail_at(v, "type-mismatch", message));
+                }
                 if let Out::Val(t) = self.expr(v, None)? {
-                    let (name, found) =
-                        (self.program.defs[self.def].name().text, self.types.show(t));
+                    let found = self.types.show(t);
                     let message =
                         format!("{name} has no result; drop the value or write -> {found}");
                     return Err(self
@@ -254,39 +273,33 @@ impl Cx<'_, '_> {
         Ok(Out::Never)
     }
 
-    /// `if` with its `else if` branches; as a value, every branch fits the first one's type.
+    /// `if` with its `else if` branches; as a value, the branches share one type.
     pub(super) fn if_expr(
         &mut self,
         e: &Expr,
         branches: &[(Expr, Block)],
         otherwise: Option<&Block>,
-        mut used: Use,
+        used: Use,
     ) -> Res<Out> {
         if matches!(used, Use::Value(_)) && otherwise.is_none() {
             return Err(self.fail_at(e, "if-needs-else", "an if used as a value needs an else"));
         }
         let bool = self.prim("Bool");
-        let mut all_leave = true;
-        for block in branches
-            .iter()
-            .map(|(c, b)| (Some(c), b))
-            .chain(otherwise.map(|b| (None, b)))
-        {
-            if let (Some(cond), _) = block {
-                self.expect(cond, bool)?;
+        let n = branches.len() + usize::from(otherwise.is_some());
+        let joined = self.branches(e, n, used, |cx, i, u, again| match branches.get(i) {
+            Some((cond, block)) => {
+                if !again {
+                    cx.expect(cond, bool)?;
+                }
+                cx.block(block, u)
             }
-            let out = self.block(block.1, used)?;
-            all_leave &= matches!(out, Out::Never);
-            if let (Out::Val(t), Use::Value(acc)) = (out, used)
-                && acc.is_none_or(|a| self.free(a))
-            {
-                used = Use::Value(Some(t));
+            None => cx.block(otherwise.expect("an else"), u),
+        })?;
+        Ok(match (used, joined) {
+            (Use::Value(_), Joined { ty, leaves: false }) => {
+                Out::Val(ty.unwrap_or_else(|| self.unknown()))
             }
-        }
-        Ok(match used {
-            Use::Value(Some(t)) if !all_leave => Out::Val(t),
-            Use::Value(_) if !all_leave => Out::Val(self.unknown()),
-            _ if all_leave && otherwise.is_some() => Out::Never,
+            (_, Joined { leaves: true, .. }) if otherwise.is_some() => Out::Never,
             _ => Out::Unit,
         })
     }
