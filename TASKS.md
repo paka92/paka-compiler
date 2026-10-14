@@ -507,10 +507,12 @@ or merged during review. Ids with a letter were added during review.
 
 ### M2-28 · L2 · Extend the golden-file runner to check and example tests
 
+- status: done
 - needs: M2-04, M2-27
 - flags: none
 - done when: The runner passes one hand-written case of each kind and has no mode that rewrites expected files.
 - why this level: Known pattern; output formats are fixed by earlier tasks.
+- note: Done: the stage folder names the command: check-text, check-json and examples hold accept cases (spec/m1.md section 11); every other stage runs paka run. paka/tests/native.rs builds only the lex, parse, check and run stages.
 
 ### M2-29 · L3 · Run generic functions and interface calls in the interpreter
 
