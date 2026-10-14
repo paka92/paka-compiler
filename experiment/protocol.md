@@ -83,8 +83,8 @@ randomness, network or standard input.
 Machine-read lines (the metrics tool checks run folders against `counted:` and `reserve:`):
 
 ```
-counted: T1 T2 P1 P3 S2 S3 G1 G2 R1 R3 N1 N2 F1 F2
-reserve: T3 V2 N3 V6
+counted: T4 T5 P4 P5 S3 S4 G2 G3 R4 R5 N1 N4 F3 F4
+reserve: T6 S5 N5 F5
 practice: X1 X2
 ```
 
@@ -92,30 +92,36 @@ Counted (14), two per class. Tag = expected to cost Paka (M3-04.4); 5 of 14.
 
 | Task | Class | Tag | Outline |
 |---|---|---|---|
-| T1 | text processing | | Wrap and justify paragraphs to a width, spread spaces left first, split long words |
-| T2 | text processing | | Column table from quoted comma-separated rows, numeric columns right-aligned, total line |
-| P1 | parsing and interpreters | | Integer calculator: precedence, brackets, variables across lines, truncating division, error column |
-| P3 | parsing and interpreters | tagged | Nested brace config with strings, escapes, lists; sorted flat key paths; exact first error |
-| S2 | state machines | | Ledger with holds in whole cents: open, deposit, hold, capture, release, transfer |
+| T4 | text processing | | Variable expansion with defaults expanded only when used; cycle, undefined and syntax errors in a set order |
+| T5 | text processing | tagged | Multi-key line sort: field and column keys, numeric or case-blind, non-numbers last, stable reverse |
+| P4 | parsing and interpreters | | Register machine: labels, call and return, truncating division, exact step limit |
+| P5 | parsing and interpreters | tagged | Tiny Lisp: lexical scope, parallel `let`, `define`, six built-ins, call-depth limit |
 | S3 | state machines | | Comment stripper for C-like text: strings, escapes, nested block comments, line joins |
-| G1 | grids and dynamic programming | | LCS line diff with a fixed tie-break and hunk format |
+| S4 | state machines | | Vending machine: slots, coins, credit cap, greedy change that can fail, cancel |
 | G2 | grids and dynamic programming | tagged | Falling sand on a grid until nothing moves or a step limit |
-| R1 | graphs by list index | | Build order with ASCII tie-break; cycle printed in a fixed form, exit 20 |
-| R3 | graphs by list index | | Islands and bridges by removing each link and recounting |
+| G3 | grids and dynamic programming | | Cheapest grid path with right, down and diagonal moves; three-way tie-break |
+| R4 | graphs by list index | | Failure cascade in simultaneous rounds by share of failed dependencies |
+| R5 | graphs by list index | tagged | Cheapest trips: least cost, then fewest roads, then earliest place by ASCII |
 | N1 | integer and float reports | | Invoice in cents: discounts, tax in hundredths of a percent, round half up per line |
-| N2 | integer and float reports | tagged | Per-group count, mean, median, standard deviation to two decimals |
-| F1 | file tools | tagged | Include resolver: nested includes, each file read once, cycle chain named, merged file written |
-| F2 | file tools | tagged | Split one input file into one output file per key plus an index file |
+| N4 | integer and float reports | | Shared costs split by weight in whole cents; totals and shares per member |
+| F3 | file tools | | Apply an edit script to a text file and write the result, possibly over the target |
+| F4 | file tools | tagged | Rewrite links in a set of wiki pages after renames, following a rename map |
 
-Reserve (4), in swap order; a swap brings the reserve task's own tag (T3 and V6 tagged, V2 and
-N3 not):
+Reserve (4), in swap order; a swap brings the reserve task's own tag (T6 and F5 tagged, S5 and
+N5 not):
 
 | Order | Task | Class | Tag | Outline |
 |---|---|---|---|---|
-| 1 | T3 | text processing | tagged | Natural sort: digit runs as numbers, case-blind, stable |
-| 2 | V2 | state machines | | Car-park billing: tariff bands, daily cap, minute arithmetic |
-| 3 | N3 | integer and float reports | | Calendar 1900 to 2100: days between, weekday, working days with holidays |
-| 4 | V6 | file tools | tagged | Pack files into one text archive and unpack it |
+| 1 | T6 | text processing | tagged | Canvas: lines, boxes, text, fill and copy on a character grid |
+| 2 | S5 | state machines | | Line editor with grouped undo, capped undo list, redo |
+| 3 | N5 | integer and float reports | | Grade book: weighted scores, grades and ranks |
+| 4 | F5 | file tools | tagged | Split a book into one file per chapter and write a table of contents |
+
+Amendment after calibration (M3-03.4): the first calibration found 11 of the first 14 tasks too
+easy (every run passed first try) against 4 reserves. S3, G2 and N1 stay; the other eleven
+counted tasks and all four reserves were replaced by the harder tasks above. The replaced
+tasks' folders stay in `experiment/tasks/` and their calibration logs in
+`experiment/runs/calib-1/`; they are not part of the experiment.
 
 Practice (2), harness shake-down only, never in the verdict: X1 word counts (top N words, tie
 rules; text); X2 numbered join (two files joined with line numbers, missing file is an error; file
