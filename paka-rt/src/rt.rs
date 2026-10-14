@@ -1,7 +1,9 @@
 //! The run loop of ABI section 5 and the safe decoding around it.
 
 use crate::abi::{List, Str, Update};
+use std::fs::File;
 use std::io::{self, ErrorKind, Write};
+use std::os::fd::AsFd;
 use std::panic::{AssertUnwindSafe, catch_unwind};
 
 /// The status of a stop that is the program's doing (ABI section 7).
@@ -56,9 +58,13 @@ pub fn decode_grants(word: u64) -> Result<Grants, Refused> {
     }
 }
 
+/// The status of a wrong number of arguments (ABI section 7).
+const USAGE: i32 = 2;
+
 /// Why a run stopped, short of `Exit`.
 #[derive(Debug, PartialEq, Eq)]
 enum Stop {
+    Usage(usize),
     Ended,
     Missing,
     Failed(&'static str),
@@ -75,6 +81,7 @@ impl Stop {
     fn status(&self) -> i32 {
         match self {
             Stop::Internal(_) => INTERNAL_ERROR,
+            Stop::Usage(_) => USAGE,
             _ => STOPPED,
         }
     }
@@ -82,6 +89,7 @@ impl Stop {
     /// The line's text after `<app>: `, in two pieces.
     fn pieces(&self) -> [&'static str; 2] {
         match self {
+            Stop::Usage(_) => ["expected 0 arguments, got ", ""],
             Stop::Ended => ["ended without Exit", ""],
             Stop::Missing => ["effect Print refused: grant Console is missing", ""],
             Stop::Failed(reason) => ["effect Print failed: ", reason],
@@ -90,14 +98,51 @@ impl Stop {
     }
 }
 
-/// Runs on the real standard streams.
+/// File descriptor 1 itself, which `Print` writes to. Rust's `Stdout` is buffered and calls a
+/// closed descriptor a success. Closed at start, this holds the error and every write fails.
+pub struct Fd1(io::Result<File>);
+
+impl Fd1 {
+    pub fn new() -> Fd1 {
+        Fd1(io::stdout().as_fd().try_clone_to_owned().map(File::from))
+    }
+}
+
+impl Default for Fd1 {
+    fn default() -> Fd1 {
+        Fd1::new()
+    }
+}
+
+impl Write for Fd1 {
+    fn write(&mut self, buf: &[u8]) -> io::Result<usize> {
+        match &mut self.0 {
+            Ok(file) => file.write(buf),
+            Err(e) => Err(e.kind().into()),
+        }
+    }
+
+    fn flush(&mut self) -> io::Result<()> {
+        Ok(())
+    }
+}
+
+/// Runs on descriptor 1 and standard error, with the arguments the process was started with.
 pub fn run(name: Str, update: Option<Update>, start: u64, grants: u64) -> i32 {
-    let (mut out, mut err) = (io::stdout(), io::stderr());
-    run_with(&mut out, &mut err, name.bytes(), update, start, grants)
+    let args = std::env::args_os().count().saturating_sub(1);
+    run_with(
+        &mut Fd1::new(),
+        &mut io::stderr(),
+        name.bytes(),
+        update,
+        start,
+        grants,
+        args,
+    )
 }
 
 /// The run loop of ABI section 5, on any sinks. `name` is the decoded app name, `None` when it
-/// was refused.
+/// was refused; `args` counts the command-line arguments after the program's name.
 pub(crate) fn run_with(
     out: &mut dyn Write,
     err: &mut dyn Write,
@@ -105,11 +150,12 @@ pub(crate) fn run_with(
     update: Option<Update>,
     start: u64,
     grants: u64,
+    args: usize,
 ) -> i32 {
     let mut app: &[u8] = b"?";
     let caught = catch_unwind(AssertUnwindSafe(|| {
         app = name.ok_or(Refused::AppName)?;
-        perform(out, update, start, grants)
+        perform(out, update, start, grants, args)
     }));
     match caught {
         Ok(Ok(())) => 0,
@@ -118,15 +164,20 @@ pub(crate) fn run_with(
     }
 }
 
-/// Calls `update` once and performs its effects; `Ok` after `Exit`.
+/// Calls `update` once and performs its effects; `Ok` after `Exit`. The start message has no
+/// fields, so any argument is a usage error.
 fn perform(
     out: &mut dyn Write,
     update: Option<Update>,
     start: u64,
     grants: u64,
+    args: usize,
 ) -> Result<(), Stop> {
     let grants = decode_grants(grants)?;
     let update = update.ok_or(Refused::UpdateNull)?;
+    if args != 0 {
+        return Err(Stop::Usage(args));
+    }
     let mut slot = List::UNWRITTEN;
     if update(start, &mut slot) != 0 {
         return Err(Stop::Internal("update returned a non-zero status"));
@@ -141,15 +192,13 @@ fn perform(
     Err(Stop::Ended)
 }
 
-/// The text and a line feed in one buffer, one write, then a flush.
+/// The text and a line feed in one buffer, one write.
 fn print(out: &mut dyn Write, text: &[u8]) -> Result<(), Stop> {
     // The reservation covers the line feed, so the push cannot reallocate.
     let mut line = buffer(text.len() + 1)?;
     line.extend_from_slice(text);
     line.push(b'\n');
-    out.write_all(&line)
-        .and_then(|()| out.flush())
-        .map_err(|e| Stop::Failed(reason(&e)))
+    out.write_all(&line).map_err(|e| Stop::Failed(reason(&e)))
 }
 
 fn buffer(len: usize) -> Result<Vec<u8>, Stop> {
@@ -162,7 +211,7 @@ fn buffer(len: usize) -> Result<Vec<u8>, Stop> {
 
 fn reason(e: &io::Error) -> &'static str {
     match e.kind() {
-        ErrorKind::StorageFull => "no space left on device",
+        ErrorKind::StorageFull | ErrorKind::QuotaExceeded => "no space left on device",
         ErrorKind::BrokenPipe => "broken pipe",
         _ => "write error",
     }
@@ -171,8 +220,12 @@ fn reason(e: &io::Error) -> &'static str {
 /// Writes the stop's line piece by piece, without allocating; a failure to write is ignored.
 fn stop(err: &mut dyn Write, app: &[u8], why: Stop) -> i32 {
     let [text, reason] = why.pieces();
-    let line = [app, b": ", text.as_bytes(), reason.as_bytes(), b"\n"];
+    let line = [app, b": ", text.as_bytes(), reason.as_bytes()];
     let _ = line.iter().try_for_each(|piece| err.write_all(piece));
+    if let Stop::Usage(count) = why {
+        let _ = write!(err, "{count}");
+    }
+    let _ = err.write_all(b"\n");
     why.status()
 }
 

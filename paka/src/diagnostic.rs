@@ -253,7 +253,7 @@ mod tests {
     }
 
     /// Codes of the second milestone, until the spec lists them.
-    const M2: [&str; 24] = [
+    const M2: [&str; 22] = [
         "no-finite-value",
         "unused-result",
         "nothing-to-discard",
@@ -270,11 +270,9 @@ mod tests {
         "missing-inout-mark",
         "bad-inout-target",
         "not-a-value",
-        "literal-out-of-range",
         "missing-arm",
         "duplicate-arm",
         "wildcard-on-enum",
-        "bad-state",
         "inout-overlap",
         "changed-while-read",
         "changed-while-walked",
@@ -284,7 +282,7 @@ mod tests {
     fn table_lists_exactly_the_spec_codes() {
         let mut table: Vec<_> = KINDS.iter().map(|k| k.0.to_string()).collect();
         let mut spec = spec_codes();
-        assert_eq!(spec.len(), 30);
+        assert_eq!(spec.len(), 32);
         spec.extend(M2.map(String::from));
         table.sort();
         spec.sort();

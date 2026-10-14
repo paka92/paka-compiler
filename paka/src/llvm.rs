@@ -26,8 +26,7 @@ pub enum Effect {
 pub fn view(core: &Program) -> Option<M1> {
     let app = core.app.as_ref()?;
     let update = &core.fns[app.update];
-    let only_console = app.grants.iter().all(|g| *g == Grant::Console);
-    if app.state.is_some() || !only_console || !update.body.stmts.is_empty() {
+    if app.state.is_some() || !update.body.stmts.is_empty() {
         return None;
     }
     let Type::Enum(msg) = core.types[update.params.last()?.ty] else {
@@ -261,8 +260,6 @@ app light {
         });
         let ty = state.ty(Type::Record(0));
         state.app.as_mut().unwrap().state = Some(typed(ty, ExprKind::Record(0, vec![])));
-        let mut grant = lowered(LIGHT);
-        grant.app.as_mut().unwrap().grants.insert(Grant::ReadFiles);
         let mut statement = lowered(LIGHT);
         let unused = typed(1, ExprKind::Str("unused".into()));
         statement.fns[0]
@@ -274,9 +271,18 @@ app light {
         let mut none = lowered(LIGHT);
         none.app = None;
         let payload = lowered(&LIGHT.replace("Start }", "Start(path: String) }"));
-        for core in [state, grant, statement, computed, none, payload] {
+        for core in [state, statement, computed, none, payload] {
             assert_eq!(view(&core), None);
         }
+    }
+
+    #[test]
+    fn grants_beyond_console_do_not_change_the_view() {
+        let mut core = lowered(LIGHT);
+        let plain = view(&core);
+        core.app.as_mut().unwrap().grants.insert(Grant::ReadFiles);
+        assert!(plain.is_some());
+        assert_eq!(view(&core), plain);
     }
 
     #[test]

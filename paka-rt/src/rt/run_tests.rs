@@ -69,8 +69,18 @@ extern "C" fn stores_nothing(_msg: u64, _out: &mut List) -> i32 {
 type Run = (String, String, i32);
 
 fn go_with(app: Option<&'static [u8]>, update: Option<Update>, start: u64, grants: u64) -> Run {
+    go_with_args(app, update, start, grants, 0)
+}
+
+fn go_with_args(
+    app: Option<&'static [u8]>,
+    update: Option<Update>,
+    start: u64,
+    grants: u64,
+    args: usize,
+) -> Run {
     let (mut out, mut err) = (vec![], vec![]);
-    let status = run_with(&mut out, &mut err, app, update, start, grants);
+    let status = run_with(&mut out, &mut err, app, update, start, grants, args);
     (
         String::from_utf8(out).unwrap(),
         String::from_utf8(err).unwrap(),
@@ -109,7 +119,7 @@ const fn case(dir: &'static str, update: Update, grants: u64) -> Case {
 
 // Transcribed by hand from each case's main.paka: the app name, the position of `start:` in its
 // enum, the `grants:` list (Console is bit 0) and the list `update` returns.
-const CASES: [Case; 15] = [
+const CASES: [Case; 17] = [
     case("app_first", light, 1),
     case("empty_list", nothing, 0),
     case("empty_string", empty_print, 1),
@@ -120,7 +130,9 @@ const CASES: [Case; 15] = [
         ..case("keyword_like_names", light, 1)
     },
     case("light", light, 1),
+    case("light_extra_argument", light, 1),
     case("light_no_console", light, 0),
+    case("light_two_arguments", light, 1),
     Case {
         app: b"light_2",
         ..case("names_with_digits", light, 1)
@@ -137,6 +149,26 @@ const CASES: [Case; 15] = [
     case("unused_definitions", light, 1),
 ];
 
+/// The cases the milestone 1 back end cannot build (a state, a start message with fields,
+/// `ExitWith`); the interpreter alone runs them.
+const BEYOND: [&str; 10] = [
+    "exit_with_computed_four",
+    "exit_with_computed_high",
+    "exit_with_computed_negative",
+    "exit_with_five",
+    "exit_with_max",
+    "exit_with_skips_rest",
+    "exit_with_zero",
+    "start_two_fields",
+    "start_with_argument",
+    "state_in_handler",
+];
+
+/// The arguments a case is run with: one per line of its `args` file.
+fn argument_count(dir: &Path) -> usize {
+    fs::read_to_string(dir.join("args")).map_or(0, |text| text.lines().count())
+}
+
 #[test]
 fn every_run_case_gets_its_expected_output_and_status() {
     let root = Path::new(env!("CARGO_MANIFEST_DIR")).join("../tests/cases/run");
@@ -148,7 +180,9 @@ fn every_run_case_gets_its_expected_output_and_status() {
         .collect();
     found.sort();
     assert!(!found.is_empty(), "no cases found");
-    let faked: Vec<&str> = CASES.iter().map(|case| case.dir).collect();
+    let mut faked: Vec<&str> = CASES.iter().map(|case| case.dir).collect();
+    faked.extend(BEYOND);
+    faked.sort();
     assert_eq!(found, faked, "the cases on disk and the fakes differ");
     for case in &CASES {
         let dir = root.join(case.dir);
@@ -156,7 +190,14 @@ fn every_run_case_gets_its_expected_output_and_status() {
         let stderr = fs::read_to_string(dir.join("stderr")).unwrap_or_default();
         let status = fs::read_to_string(dir.join("status")).unwrap();
         let want = (stdout, stderr, status.trim().parse().unwrap());
-        let got = go_with(Some(case.app), Some(case.update), case.start, case.grants);
+        let args = argument_count(&dir);
+        let got = go_with_args(
+            Some(case.app),
+            Some(case.update),
+            case.start,
+            case.grants,
+            args,
+        );
         assert_eq!(got, want, "case {}", case.dir);
     }
 }
@@ -194,27 +235,39 @@ fn exit_ends_the_list_without_decoding_the_rest() {
 }
 
 #[test]
-fn a_print_is_one_write_of_text_and_line_feed_then_a_flush() {
-    let mut out = Sink::default();
-    let status = run_with(
-        &mut out,
-        &mut vec![],
-        Some(b"light"),
-        Some(print_twice),
-        0,
-        1,
-    );
+fn a_print_is_one_write_of_text_and_line_feed_and_nothing_is_flushed() {
+    let (out, _, status) = with_out(Sink::default(), print_twice);
     assert_eq!(status, 0);
     assert_eq!(out.calls, ["let there be light\n", "and there was light\n"]);
-    assert_eq!(
-        out.log,
-        [
-            "let there be light\n",
-            "FLUSH",
-            "and there was light\n",
-            "FLUSH"
-        ]
-    );
+    assert_eq!(out.flushes, 0);
+}
+
+// Arguments: the start message of every program this ABI carries has no fields.
+
+#[test]
+fn any_argument_is_a_usage_error_before_update_is_called() {
+    for (args, line) in [(1, "1"), (2, "2"), (40, "40")] {
+        let got = go_with_args(Some(b"light"), Some(status_1), 0, 1, args);
+        let want = format!("light: expected 0 arguments, got {line}\n");
+        assert_eq!(got, ("".into(), want, 2));
+    }
+}
+
+#[test]
+fn the_usage_line_is_written_without_allocating_in_pieces() {
+    let mut err = Sink::default();
+    let mut out = Sink::default();
+    let status = run_with(&mut out, &mut err, Some(b"light"), Some(light), 0, 1, 3);
+    assert_eq!(err.calls.concat(), "light: expected 0 arguments, got 3\n");
+    assert_eq!((out.calls.len(), status), (0, 2));
+}
+
+#[test]
+fn refused_inputs_come_before_the_arguments_are_counted() {
+    let got = go_with_args(Some(b"light"), None, 0, 1, 1);
+    assert_eq!(got, ("".into(), internal("update is null"), 4));
+    let got = go_with_args(Some(b"light"), Some(light), 0, 2, 1);
+    assert_eq!(got, ("".into(), internal("bad grants"), 4));
 }
 
 // Internal errors: status 4 and the reasons of ABI section 7.
@@ -320,7 +373,7 @@ impl Write for Panics {
 #[test]
 fn a_panic_is_caught_and_names_the_app() {
     let mut err = vec![];
-    let status = run_with(&mut Panics, &mut err, Some(b"light"), Some(light), 0, 1);
+    let status = run_with(&mut Panics, &mut err, Some(b"light"), Some(light), 0, 1, 0);
     assert_eq!(err, internal("runtime panicked").as_bytes());
     assert_eq!(status, 4);
 }
@@ -328,13 +381,13 @@ fn a_panic_is_caught_and_names_the_app() {
 // Failing sinks.
 
 /// Accepts at most `chunk` bytes per call. After `room` accepted calls it fails with `fail`.
-/// `calls` holds the bytes of each accepted call, `log` the calls and the flushes in order.
+/// `calls` holds the bytes of each accepted call, `flushes` counts the flushes asked for.
 struct Sink {
     chunk: usize,
     room: usize,
     fail: Option<ErrorKind>,
     calls: Vec<String>,
-    log: Vec<String>,
+    flushes: usize,
 }
 
 impl Default for Sink {
@@ -344,7 +397,7 @@ impl Default for Sink {
             room: usize::MAX,
             fail: None,
             calls: vec![],
-            log: vec![],
+            flushes: 0,
         }
     }
 }
@@ -356,13 +409,12 @@ impl Write for Sink {
         }
         let taken = buf.len().min(self.chunk);
         let text = String::from_utf8_lossy(&buf[..taken]).into_owned();
-        self.calls.push(text.clone());
-        self.log.push(text);
+        self.calls.push(text);
         Ok(taken)
     }
 
     fn flush(&mut self) -> io::Result<()> {
-        self.log.push("FLUSH".into());
+        self.flushes += 1;
         Ok(())
     }
 }
@@ -377,7 +429,7 @@ fn failing(kind: ErrorKind, room: usize) -> Sink {
 
 fn with_out(mut out: Sink, update: Update) -> (Sink, String, i32) {
     let mut err = vec![];
-    let status = run_with(&mut out, &mut err, Some(b"light"), Some(update), 0, 1);
+    let status = run_with(&mut out, &mut err, Some(b"light"), Some(update), 0, 1, 0);
     (out, String::from_utf8(err).unwrap(), status)
 }
 
@@ -385,6 +437,7 @@ fn with_out(mut out: Sink, update: Update) -> (Sink, String, i32) {
 fn a_failed_write_gives_the_specs_reason_and_status_3() {
     for (kind, reason) in [
         (ErrorKind::StorageFull, "no space left on device"),
+        (ErrorKind::QuotaExceeded, "no space left on device"),
         (ErrorKind::BrokenPipe, "broken pipe"),
         (ErrorKind::PermissionDenied, "write error"),
     ] {
@@ -397,7 +450,7 @@ fn a_failed_write_gives_the_specs_reason_and_status_3() {
 #[test]
 fn a_failed_write_drops_the_rest_and_keeps_what_was_written() {
     let (out, err, status) = with_out(failing(ErrorKind::BrokenPipe, 1), print_twice);
-    assert_eq!(out.log, ["let there be light\n", "FLUSH"]);
+    assert_eq!(out.calls, ["let there be light\n"]);
     assert_eq!(err, "light: effect Print failed: broken pipe\n");
     assert_eq!(status, 3);
 }
@@ -425,10 +478,9 @@ fn a_write_that_accepts_nothing_is_a_failure() {
     assert_eq!(status, 3);
 }
 
-/// Interrupts its first write when told to, and fails every flush when told to.
+/// Interrupts its first write when told to, and fails every flush.
 struct Flaky {
     interrupt_once: bool,
-    flush_fails: bool,
     bytes: Vec<u8>,
 }
 
@@ -442,10 +494,7 @@ impl Write for Flaky {
     }
 
     fn flush(&mut self) -> io::Result<()> {
-        match self.flush_fails {
-            true => Err(ErrorKind::BrokenPipe.into()),
-            false => Ok(()),
-        }
+        Err(ErrorKind::BrokenPipe.into())
     }
 }
 
@@ -453,24 +502,24 @@ impl Write for Flaky {
 fn an_interrupted_write_is_retried() {
     let mut out = Flaky {
         interrupt_once: true,
-        flush_fails: false,
         bytes: vec![],
     };
-    let status = run_with(&mut out, &mut vec![], Some(b"light"), Some(light), 0, 1);
+    let status = run_with(&mut out, &mut vec![], Some(b"light"), Some(light), 0, 1, 0);
     assert_eq!((out.bytes, status), (b"let there be light\n".to_vec(), 0));
 }
 
 #[test]
-fn a_failed_flush_is_a_failed_print() {
+fn a_flush_is_never_asked_for() {
     let mut out = Flaky {
         interrupt_once: false,
-        flush_fails: true,
         bytes: vec![],
     };
     let mut err = vec![];
-    let status = run_with(&mut out, &mut err, Some(b"light"), Some(light), 0, 1);
-    assert_eq!(err, b"light: effect Print failed: broken pipe\n");
-    assert_eq!(status, 3);
+    let status = run_with(&mut out, &mut err, Some(b"light"), Some(light), 0, 1, 0);
+    assert_eq!(
+        (out.bytes, err, status),
+        (b"let there be light\n".to_vec(), vec![], 0)
+    );
 }
 
 #[test]
@@ -483,6 +532,7 @@ fn a_standard_error_line_is_written_in_pieces() {
         Some(nothing),
         0,
         1,
+        0,
     );
     assert_eq!(err.calls, ["light", ": ", "ended without Exit", "\n"]);
     assert_eq!(status, 3);
@@ -501,6 +551,7 @@ fn a_failed_standard_error_changes_no_status() {
             update,
             0,
             grants,
+            0,
         );
         assert_eq!(status, want);
     }

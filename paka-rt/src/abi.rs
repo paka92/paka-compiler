@@ -20,6 +20,7 @@ const PRINT: u64 = 0;
 const EXIT: u64 = 1;
 
 const SIGPIPE: i32 = 13;
+const SIGXFSZ: i32 = 25;
 const SIG_IGN: usize = 1;
 
 const _: () = assert!(size_of::<usize>() == 8);
@@ -181,12 +182,16 @@ unsafe extern "C" {
     fn signal(signum: i32, handler: usize) -> usize;
 }
 
-/// Sets SIGPIPE to ignored, so a write to a closed pipe fails with EPIPE.
-pub fn ignore_sigpipe() {
-    // SAFETY: `signal` asks for a signal whose action may be changed and a handler that is
-    // `SIG_DFL`, `SIG_IGN` or a function. 13 is SIGPIPE and 1 is `SIG_IGN` on Linux, so no code
-    // is installed. The call touches no memory of ours and may be made from any thread.
-    unsafe { signal(SIGPIPE, SIG_IGN) };
+/// Sets SIGPIPE and SIGXFSZ to ignored, so a write to a closed pipe or past a file-size limit
+/// fails with EPIPE or EFBIG.
+pub fn ignore_signals() {
+    for signum in [SIGPIPE, SIGXFSZ] {
+        // SAFETY: `signal` asks for a signal whose action may be changed and a handler that is
+        // `SIG_DFL`, `SIG_IGN` or a function. 13 is SIGPIPE, 25 is SIGXFSZ and 1 is `SIG_IGN` on
+        // Linux, so no code is installed. The call touches no memory of ours and may be made
+        // from any thread.
+        unsafe { signal(signum, SIG_IGN) };
+    }
 }
 
 /// The entry `main` calls (ABI section 4).
@@ -212,7 +217,7 @@ pub unsafe extern "C" fn paka_rt1_run(
     start: u64,
     grants: u64,
 ) -> i32 {
-    ignore_sigpipe();
+    ignore_signals();
     // SAFETY: the caller promises that `name` and `name_len` are an ABI string, which is what
     // `from_raw` asks for.
     let name = unsafe { Str::from_raw(name, name_len) };
@@ -529,10 +534,14 @@ mod tests {
         assert!(update.is_none());
     }
 
+    fn set_action(signum: i32, handler: usize) -> usize {
+        // SAFETY: 13 and 25 are signals whose action may be changed, and the two handlers the
+        // test passes, 0 (`SIG_DFL`) and 1 (`SIG_IGN`), install no code.
+        unsafe { signal(signum, handler) }
+    }
+
     fn set_sigpipe(handler: usize) -> usize {
-        // SAFETY: 13 is a signal whose action may be changed, and the two handlers the test
-        // passes, 0 (`SIG_DFL`) and 1 (`SIG_IGN`), install no code.
-        unsafe { signal(SIGPIPE, handler) }
+        set_action(13, handler)
     }
 
     /// The error of a write to a pipe whose read end is closed. With SIGPIPE at its default the
@@ -548,7 +557,7 @@ mod tests {
     #[test]
     fn the_wrapper_and_the_entry_set_sigpipe_to_ignored() {
         set_sigpipe(0);
-        ignore_sigpipe();
+        ignore_signals();
         assert_eq!(write_to_closed_pipe(), ErrorKind::BrokenPipe);
         assert_eq!(set_sigpipe(0), 1);
         // SAFETY: the name is 5 constant bytes and there is no update function.
@@ -556,6 +565,15 @@ mod tests {
         assert_eq!(write_to_closed_pipe(), ErrorKind::BrokenPipe);
         assert_eq!(set_sigpipe(1), 1);
         assert_eq!(status, INTERNAL_ERROR);
+    }
+
+    // Own test and own signal: the file-size signal's action is also process-wide, but no other
+    // test touches it. 25 is SIGXFSZ, written out as above.
+    #[test]
+    fn the_wrapper_sets_sigxfsz_to_ignored() {
+        set_action(25, 0);
+        ignore_signals();
+        assert_eq!(set_action(25, 0), 1);
     }
 
     // The limits, at their edges. `span` forms no slice, so no memory has to be there.

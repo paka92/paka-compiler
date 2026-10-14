@@ -211,21 +211,33 @@ impl<'a> Machine<'a> {
         }
     }
 
-    /// The state built once, then the handler's answer to the start message; it ends in a trap or
-    /// an internal fault.
-    pub fn handle(&mut self, app: &App) -> Done {
+    /// The state, built once from the defaults the core form writes in; `None` without a `state:`.
+    pub fn state(&mut self, app: &App) -> Done<Option<Value>> {
+        let Some(state) = &app.state else {
+            return Ok(None);
+        };
         let site = self.core.fns[app.update].site;
         let mut fr = Frame {
             locals: vec![],
             params: 0,
             site,
         };
-        let mut args = vec![];
-        if let Some(state) = &app.state {
-            args.push(self.eval(&mut fr, state)?);
-        }
-        args.push(Value::Variant(app.start, Items::default()));
-        Ok(self.invoke(app.update, args, site)?.0)
+        self.eval(&mut fr, state).map(Some)
+    }
+
+    /// The handler's effects for one message, and the state it leaves; it ends in a trap or an
+    /// internal fault.
+    pub fn update(
+        &mut self,
+        app: &App,
+        state: Option<Value>,
+        message: Value,
+    ) -> Done<(Value, Option<Value>)> {
+        let site = self.core.fns[app.update].site;
+        let owned = state.is_some();
+        let args = state.into_iter().chain([message]).collect();
+        let (effects, locals) = self.invoke(app.update, args, site)?;
+        Ok((effects, locals.into_iter().next().filter(|_| owned)))
     }
 
     /// Runs an example at depth 1: `None` when its Bool is true, else why it is false.

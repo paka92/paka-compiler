@@ -88,6 +88,16 @@ fn args(stage: &Path) -> &'static [&'static str] {
     }
 }
 
+/// The lines of the case's `args` file: the arguments after `main.paka`.
+fn case_args(case: &Path) -> Vec<String> {
+    let lines = read(case, "args").map(|a| text(&a));
+    lines
+        .iter()
+        .flat_map(|l| l.lines())
+        .map(String::from)
+        .collect()
+}
+
 #[test]
 fn all_cases() {
     let root = Path::new(env!("CARGO_MANIFEST_DIR")).join("../tests/cases");
@@ -97,7 +107,7 @@ fn all_cases() {
         for case in subfolders(&stage) {
             count += 1;
             let mut command = Command::new(env!("CARGO_BIN_EXE_paka"));
-            command.args(args(&stage));
+            command.args(args(&stage)).args(case_args(&case));
             if let Err(e) = check(&case, command) {
                 failures.push(format!("{}: {e}", case.display()));
             }

@@ -1692,7 +1692,7 @@ fn a_built_in_row_is_picked_by_the_first_argument() {
 #[test]
 fn a_bare_built_in_variant_fits_its_own_type_only() {
     accepts(&[unit(&[
-        "let es: List<Effect<Shape>> = [Exit, Print(\"a\"), ExitWith(2)]",
+        "let es: List<Effect<Shape>> = [Exit, Print(\"a\"), ExitWith(5)]",
         "_ = es",
     ])]);
 }

@@ -161,7 +161,7 @@ fn accepts_every_row() {
             "  Dot",
             "}",
             "fn effects() -> List<Effect<Shape>> {",
-            "  [Print(\"a\"), ReadFile(\"p\", then: got, or: got), Exit, ExitWith(1)]",
+            "  [Print(\"a\"), ReadFile(\"p\", then: got, or: got), Exit, ExitWith(5)]",
             "}",
             "fn more() -> List<Effect<Shape>> {",
             "  [WriteFile(\"p\", \"t\", then: Dot, or: got)]",

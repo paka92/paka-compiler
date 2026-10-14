@@ -2,7 +2,7 @@ use std::fs::File;
 use std::io::pipe;
 use std::process::{Command, Output, Stdio};
 
-const USAGE: &str = "usage: paka run <file>\n       paka build <file> -o <output>\n       paka check <file> [--json]\n       paka examples <file>\n";
+const USAGE: &str = "usage: paka run <file> [argument...]\n       paka build <file> -o <output>\n       paka check <file> [--json]\n       paka examples <file>\n";
 
 fn paka(args: &[&str]) -> Output {
     Command::new(env!("CARGO_BIN_EXE_paka"))
@@ -22,7 +22,6 @@ fn assert_usage(args: &[&str]) {
 fn bad_arguments_print_usage_and_exit_2() {
     assert_usage(&[]);
     assert_usage(&["run"]);
-    assert_usage(&["run", "a.paka", "b.paka"]);
     assert_usage(&["build", "a.paka"]);
     assert_usage(&["build", "a.paka", "-o"]);
     assert_usage(&["build", "a.paka", "out", "-o"]);
@@ -51,6 +50,11 @@ fn missing_file_is_one_line_and_exit_1() {
     assert_unreadable(&["run", "no/such/file.paka"], "no/such/file.paka");
     let args = ["build", "no/such/file.paka", "-o", "out"];
     assert_unreadable(&args, "no/such/file.paka");
+}
+
+#[test]
+fn arguments_after_the_file_are_not_files() {
+    assert_unreadable(&["run", "no/such/file.paka", "b.paka"], "no/such/file.paka");
 }
 
 #[test]

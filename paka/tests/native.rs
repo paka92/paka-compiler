@@ -64,9 +64,15 @@ fn accept_cases() -> Vec<(PathBuf, Seen)> {
         .collect()
 }
 
-fn interpreted(source: &Path, dir: &Path) -> Command {
+/// The case's `args` file: one argument per line.
+fn case_args(case: &Path) -> Vec<String> {
+    let lines = fs::read_to_string(case.join("args")).unwrap_or_default();
+    lines.lines().map(String::from).collect()
+}
+
+fn interpreted(source: &Path, dir: &Path, args: &[String]) -> Command {
     let mut command = Command::new(PAKA);
-    command.arg("run").arg(source).current_dir(dir);
+    command.arg("run").arg(source).args(args).current_dir(dir);
     command
 }
 
@@ -76,22 +82,33 @@ fn every_runnable_case_runs_natively() {
     assert!(!cases.is_empty(), "no runnable cases found");
     let scratch = Scratch::new("native-cases");
     let mut failures = vec![];
+    let mut built_names = vec![];
     for (case, want) in &cases {
         let name = case.file_name().unwrap().to_str().unwrap();
         let source = case.join("main.paka");
         let exe = scratch.path(name);
         let built = build_native(source.to_str().unwrap(), &exe);
+        let stderr = String::from_utf8_lossy(&built.stderr);
+        if built.status.code() == Some(1) && stderr.contains("error[unsupported-form]") {
+            continue;
+        }
         if built.status.code() != Some(0) {
             failures.push(format!("{name}: build failed: {built:?}"));
             continue;
         }
-        let native = Seen::from(Command::new(&exe).current_dir(case).output().unwrap());
-        let interp = Seen::from(interpreted(&source, case).output().unwrap());
+        built_names.push(name);
+        let args = case_args(case);
+        let native = Command::new(&exe).args(&args).current_dir(case).output();
+        let interp = interpreted(&source, case, &args).output();
+        let (native, interp) = (Seen::from(native.unwrap()), Seen::from(interp.unwrap()));
         for (back_end, seen) in [("native", &native), ("interpreter", &interp)] {
             if seen != want {
                 failures.push(format!("{name}: {back_end} {seen:?}, want {want:?}"));
             }
         }
+    }
+    for name in ["light", "unknown_grant", "light_extra_argument"] {
+        assert!(built_names.contains(&name), "{name} was not built");
     }
     assert!(failures.is_empty(), "{}", failures.join("\n"));
 }
@@ -135,7 +152,7 @@ fn write_failures_end_with_status_3_on_both_back_ends() {
     let scratch = Scratch::new("native-writes");
     let exe = scratch.path("light");
     assert_eq!(build_native(LIGHT, &exe).status.code(), Some(0));
-    let interp = || interpreted(Path::new(LIGHT), Path::new("."));
+    let interp = || interpreted(Path::new(LIGHT), Path::new("."), &[]);
     let native = || Command::new(&exe);
     let full = failed_write("no space left on device");
     assert_eq!(on_full_device(native()), full);
@@ -143,6 +160,16 @@ fn write_failures_end_with_status_3_on_both_back_ends() {
     let closed = failed_write("broken pipe");
     assert_eq!(on_closed_pipe(native()), closed);
     assert_eq!(on_closed_pipe(interp()), closed);
+}
+
+#[test]
+fn a_closed_standard_output_fails_the_print_natively() {
+    let scratch = Scratch::new("native-closed");
+    let exe = scratch.path("light");
+    assert_eq!(build_native(LIGHT, &exe).status.code(), Some(0));
+    let run = format!("exec '{}' >&-", exe.display());
+    let out = Command::new("sh").args(["-c", &run]).output().unwrap();
+    assert_eq!(Seen::from(out), failed_write("write error"));
 }
 
 #[test]

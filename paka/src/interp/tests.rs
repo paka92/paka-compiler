@@ -11,6 +11,7 @@ use crate::core_form::{
 };
 use paka_rt::ops::{Float, Int};
 use std::collections::BTreeSet;
+use std::ffi::OsStr;
 use std::io::{self, ErrorKind, Write};
 
 const MAX: i64 = i64::MAX;
@@ -288,6 +289,10 @@ fn exit() -> Expr {
     variant(Tag::Effect(Effect::Exit), vec![])
 }
 
+fn exit_with(status: i64) -> Expr {
+    variant(Tag::Effect(Effect::ExitWith), vec![int(status)])
+}
+
 /// A handler that runs `stmts` (locals 1 to 8), then prints `value` and exits.
 fn plain(fns: Vec<Func>, stmts: Vec<Stmt>, value: Expr) -> Program {
     let effects = list(vec![print(show(value)), exit()]);
@@ -309,8 +314,14 @@ fn light(console: bool, effects: Vec<Expr>) -> Program {
 
 /// Runs on in-memory streams; returns (stdout, stderr, status).
 fn go(p: &Program) -> Out {
+    go_with(p, &[])
+}
+
+/// The same with the command-line arguments after the file.
+fn go_with(p: &Program, args: &[&OsStr]) -> Out {
+    let args: Vec<_> = args.iter().map(|a| a.to_os_string()).collect();
     let (mut out, mut err) = (vec![], vec![]);
-    let status = run(p, &mut out, &mut err);
+    let status = run(p, &args, &mut out, &mut err);
     let text = |bytes| String::from_utf8(bytes).unwrap();
     (text(out), text(err), status)
 }
@@ -1219,12 +1230,9 @@ fn a_missing_grant_refuses_and_drops_the_rest() {
 
 #[test]
 fn effects_beyond_print_and_exit_are_not_run_yet() {
-    let exit_with = variant(Tag::Effect(Effect::ExitWith), vec![int(1)]);
+    let read = variant(Tag::Effect(Effect::ReadFile), vec![text("p")]);
     let want = "light: internal error: effect not implemented yet\n";
-    assert_eq!(
-        go(&light(true, vec![exit_with])),
-        ("".into(), want.into(), 4)
-    );
+    assert_eq!(go(&light(true, vec![read])), ("".into(), want.into(), 4));
 }
 
 #[test]
@@ -1237,21 +1245,77 @@ fn the_state_is_built_once_and_passed_first() {
     assert_eq!(go(&p), ("42\n".into(), "".into(), 0));
 }
 
-#[test]
-fn a_start_variant_with_fields_gets_the_usage_line() {
-    let needing = |names: &[&str]| {
-        let mut p = light(true, vec![exit()]);
-        let field = |name: &&str| Field {
-            name: name.to_string(),
-            ty: 3,
-        };
-        p.enums[0].variants[0].fields = names.iter().map(field).collect();
-        go(&p)
+/// A handler that exits, for an app whose start variant has fields called `names`.
+fn needing(names: &[&str], args: &[&OsStr]) -> Out {
+    let mut p = light(true, vec![exit()]);
+    let field = |name: &&str| Field {
+        name: name.to_string(),
+        ty: 3,
     };
+    p.enums[0].variants[0].fields = names.iter().map(field).collect();
+    go_with(&p, args)
+}
+
+#[test]
+fn a_wrong_argument_count_gets_the_usage_line() {
+    let none: [&OsStr; 0] = [];
     let one = "light: expected 1 argument (text), got 0\n";
-    assert_eq!(needing(&["text"]), ("".into(), one.into(), 2));
-    let two = "light: expected 2 arguments (a, b), got 0\n";
-    assert_eq!(needing(&["a", "b"]), ("".into(), two.into(), 2));
+    assert_eq!(needing(&["text"], &none), ("".into(), one.into(), 2));
+    let two = "light: expected 2 arguments (a, b), got 1\n";
+    assert_eq!(
+        needing(&["a", "b"], &["x".as_ref()]),
+        ("".into(), two.into(), 2)
+    );
+    let extra = "light: expected 0 arguments, got 2\n";
+    assert_eq!(
+        needing(&[], &["x".as_ref(), "y".as_ref()]),
+        ("".into(), extra.into(), 2)
+    );
+}
+
+#[test]
+fn arguments_fill_the_start_fields_by_position() {
+    assert_eq!(
+        needing(&["a", "b"], &["x".as_ref(), "y".as_ref()]),
+        ("".into(), "".into(), 0)
+    );
+}
+
+#[test]
+fn an_argument_that_is_not_text_names_its_position() {
+    use std::os::unix::ffi::OsStrExt;
+    let bad = OsStr::from_bytes(&[0xff, 0x61]);
+    let want = "light: argument 2 is not text\n";
+    assert_eq!(
+        needing(&["a", "b"], &["x".as_ref(), bad]),
+        ("".into(), want.into(), 2)
+    );
+}
+
+#[test]
+fn exit_with_ends_with_its_status() {
+    for status in [0, 5, 7, 255] {
+        let p = light(false, vec![exit_with(status), print(text("x"))]);
+        assert_eq!(go(&p), ("".into(), "".into(), status as u8), "{status}");
+    }
+}
+
+#[test]
+fn exit_with_outside_its_range_is_a_stop_after_the_earlier_effects() {
+    for status in [1, 2, 3, 4, 256, -1, i64::MAX] {
+        let p = light(true, vec![print(text("p")), exit_with(status), exit()]);
+        let want = format!("light: effect ExitWith failed: status {status} is not 0 or 5 to 255\n");
+        assert_eq!(go(&p), ("p\n".into(), want, 3), "{status}");
+    }
+}
+
+#[test]
+fn an_empty_queue_without_exit_is_the_fourth_stop() {
+    let p = light(true, vec![print(text("p"))]);
+    assert_eq!(
+        go(&p),
+        ("p\n".into(), "light: ended without Exit\n".into(), 3)
+    );
 }
 
 #[test]
@@ -1293,15 +1357,15 @@ fn faulty(room: usize, kind: ErrorKind, effects: Vec<Expr>) -> (Faulty, String, 
         log: vec![],
     };
     let mut err = vec![];
-    let status = run(&light(true, effects), &mut out, &mut err);
+    let status = run(&light(true, effects), &[], &mut out, &mut err);
     (out, String::from_utf8(err).unwrap(), status)
 }
 
 #[test]
-fn short_writes_are_continued_and_each_print_is_flushed() {
+fn short_writes_are_continued_and_nothing_is_flushed() {
     let effects = vec![print(text("ab")), print(text("c")), exit()];
     let (out, err, status) = faulty(9, ErrorKind::Other, effects);
-    assert_eq!(out.log, ["a", "b", "\n", "flush", "c", "\n", "flush"]);
+    assert_eq!(out.log, ["a", "b", "\n", "c", "\n"]);
     assert_eq!((err.as_str(), status), ("", 0));
 }
 
@@ -1309,6 +1373,7 @@ fn short_writes_are_continued_and_each_print_is_flushed() {
 fn failed_write_reasons() {
     let reasons = [
         (ErrorKind::StorageFull, "no space left on device"),
+        (ErrorKind::QuotaExceeded, "no space left on device"),
         (ErrorKind::BrokenPipe, "broken pipe"),
         (ErrorKind::PermissionDenied, "write error"),
     ];
@@ -1323,7 +1388,7 @@ fn failed_write_reasons() {
 fn a_failed_write_drops_the_rest_and_keeps_the_bytes_written() {
     let effects = vec![print(text("a")), print(text("b")), exit()];
     let (out, err, status) = faulty(2, ErrorKind::BrokenPipe, effects);
-    assert_eq!(out.log, ["a", "\n", "flush"]);
+    assert_eq!(out.log, ["a", "\n"]);
     assert_eq!(err, "light: effect Print failed: broken pipe\n");
     assert_eq!(status, 3);
 }
@@ -1342,6 +1407,7 @@ fn a_write_that_accepts_nothing_is_a_failure() {
     let mut err = vec![];
     let status = run(
         &light(true, vec![print(text("x")), exit()]),
+        &[],
         &mut Zero,
         &mut err,
     );
@@ -1360,5 +1426,5 @@ fn a_failed_standard_error_changes_no_status() {
             Ok(())
         }
     }
-    assert_eq!(run(&light(true, vec![]), &mut vec![], &mut Broken), 3);
+    assert_eq!(run(&light(true, vec![]), &[], &mut vec![], &mut Broken), 3);
 }

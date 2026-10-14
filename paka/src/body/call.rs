@@ -4,10 +4,11 @@
 
 use super::text::{article, float_fix, render};
 use super::{Cx, Out, Res, span};
-use crate::ast::{Arg, Expr, ExprKind as K};
+use crate::ast::{Arg, Expr, ExprKind as K, UnOp};
 use crate::diagnostic::Diagnostic;
 use crate::resolve::Binding;
 use crate::sig::{Item, Node, Param, Sig, Ty};
+use paka_rt::ops::Int;
 use std::collections::BTreeMap;
 use std::slice::from_ref;
 
@@ -176,7 +177,11 @@ impl<'a> Cx<'_, 'a> {
                 self.invoke(&to(Kind::Variant), &[sig], args, want)
             }
             Some(Binding::Builtin(b)) if variants.contains_key(b) => {
-                self.invoke(&to(Kind::Variant), from_ref(&variants[b]), args, want)
+                let out = self.invoke(&to(Kind::Variant), from_ref(&variants[b]), args, want)?;
+                if b == "ExitWith" {
+                    self.exit_status(args)?;
+                }
+                Ok(out)
             }
             Some(Binding::Builtin(b)) if fns.contains_key(b) => {
                 let out = self.invoke(&to(Kind::Fn), &fns[b], args, want)?;
@@ -188,6 +193,29 @@ impl<'a> Cx<'_, 'a> {
             }
             _ => self.unbound(args),
         }
+    }
+
+    /// An `ExitWith` written with an Int literal must name a status a program may choose.
+    fn exit_status(&self, args: &[Arg]) -> Res {
+        let [Arg { value, .. }] = args else {
+            return Ok(());
+        };
+        let (sign, text) = match &value.kind {
+            K::Int(text) => ("", text),
+            K::Unary(UnOp::Neg, x) => match x.kind {
+                K::Int(ref text) => ("-", text),
+                _ => return Ok(()),
+            },
+            _ => return Ok(()),
+        };
+        let shown = format!("{sign}{text}");
+        let chosen = |n| n == Int::new(0) || (Int::new(5)..=Int::new(255)).contains(&n);
+        if Int::parse(&shown).is_some_and(chosen) {
+            return Ok(());
+        }
+        let message =
+            format!("{shown} is not an exit status a program may choose; write 0 or 5 to 255");
+        Err(self.fail_at(value, "literal-out-of-range", message))
     }
 
     /// A call of a name that is not known: the arguments are checked, the call is silent.

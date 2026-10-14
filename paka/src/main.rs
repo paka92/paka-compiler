@@ -20,19 +20,20 @@ mod vectors;
 use ast::Def;
 use core_form::Program;
 use diagnostic::Diagnostic;
+use paka_rt::{Fd1, abi};
 use std::ffi::OsStr;
 use std::io::Write;
 use std::os::unix::ffi::OsStrExt;
 use std::process::ExitCode;
 use std::{env, fs, io};
 
-const USAGE: &str = "usage: paka run <file>\n       paka build <file> -o <output>\n       paka check <file> [--json]\n       paka examples <file>\n";
+const USAGE: &str = "usage: paka run <file> [argument...]\n       paka build <file> -o <output>\n       paka check <file> [--json]\n       paka examples <file>\n";
 
 fn main() -> ExitCode {
     let args: Vec<_> = env::args_os().skip(1).collect();
     let words: Vec<_> = args.iter().map(|a| a.to_str()).collect();
     let (file, output) = match words[..] {
-        [Some("run"), _] => (&args[1], None),
+        [Some("run"), _, ..] => (&args[1], None),
         [Some("build"), _, Some("-o"), _] => (&args[1], Some(&args[3])),
         [Some("check"), _] => return check_file(&args[1], false),
         [Some("check"), _, Some("--json")] => return check_file(&args[1], true),
@@ -41,11 +42,15 @@ fn main() -> ExitCode {
     };
     let path = &file.to_string_lossy();
     let result = load(file, path).and_then(|core| match output {
-        None => Ok(interp::run(
-            &core,
-            &mut io::stdout().lock(),
-            &mut io::stderr(),
-        )),
+        None => {
+            abi::ignore_signals();
+            Ok(interp::run(
+                &core,
+                &args[2..],
+                &mut Fd1::new(),
+                &mut io::stderr(),
+            ))
+        }
         Some(output) => build::build(path, &core, output).map(|()| 0),
     });
     match result {
