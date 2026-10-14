@@ -532,11 +532,12 @@ or merged during review. Ids with a letter were added during review.
 
 ### M2-31 · L3 · Check, lower and run the error-handling forms
 
+- status: done
 - needs: M2-12, M2-29
 - flags: none
 - done when: Golden tests from the decision samples pass; an unhandled failure is rejected with a suggested fix.
 - why this level: Spans checker, lowering and interpreter; known desugaring with easy-to-miss paths.
-- note: Follows docs/decisions/M2-12.md for Option, Result, `?` and unreachable().
+- note: Follows docs/decisions/M2-12.md for Option, Result, `?` and unreachable(). Done: the ? forms, the habit spellings and unreachable() check, lower and run on the interpreter, with full-text cases for every M2-12 section 1.9 and section 5 text. An argument that leaves control keeps its parameter type. Ok and Err in different branches do not join (M2-02 section 5 amended). Runs that need parse_int or ReadFile are only checked here; M2-33 runs them.
 
 ### M2-32 · L2 · Parse and check app definitions
 
@@ -553,7 +554,7 @@ or merged during review. Ids with a letter were added during review.
 - flags: none
 - done when: Every function in the approved list outside M2-34 has hand-written golden tests (String functions for normal, empty and non-ASCII input); all pass; a test fails if an entry of the built-in table has no golden test.
 - why this level: Each function is small with a clear spec; routine code.
-- note: Follows docs/decisions/M2-14.md for the built-in table.
+- note: Follows docs/decisions/M2-14.md for the built-in table. M2-31 checks the parse_int samples and the M2-12 section 1.7 app but cannot run them; add run cases for them once parse_int and ReadFile run.
 
 ### M2-34 · L3 · Implement the built-in collection types and their functions
 
@@ -657,6 +658,7 @@ or merged during review. Ids with a letter were added during review.
 - flags: open-ended
 - done when: The gate command passes with nothing missing; every reference or case change cites its decision; size stays within budget. A new case is written by an agent without the paka binary, as in M2-38. The gate runs as a required test under `cargo test --workspace --locked --offline`.
 - why this level: Edits must stay exact and in budget; one wrong sentence silently misleads every model.
+- note: The unused-name warning (M2-02 section 2 and section 5) is decided but no task implements it; close it here if no earlier task does.
 
 ## M3 — The experiment: go or stop
 
