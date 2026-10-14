@@ -602,11 +602,12 @@ or merged during review. Ids with a letter were added during review.
 
 ### M2-39b · L3 · Write conformance tests for the built-in functions and collection types
 
+- status: done
 - needs: M2-18, M2-28
 - flags: none
 - done when: Expected results merged before any run, written without access to a built paka; every decision point in scope has a case.
 - why this level: Hand-computing exact results for every built-in, including iteration order and bounds traps.
-- note: The caller runs this agent with no paka binary and no way to build one (no cargo, or a checkout holding only the reference, the decision records and the tests folder); the agent must not build or run paka; the cases land in a not-yet-required list. M2-41b runs them.
+- note: The caller runs this agent with no paka binary and no way to build one (no cargo, or a checkout holding only the reference, the decision records and the tests folder); the agent must not build or run paka; the cases land in a not-yet-required list. M2-41b runs them. Done: 163 cases in tests/conformance/builtins, one or more for each of the 63 rows, written from the records alone. A run case for a stack or memory trap holds a trap file (kind only, any position); memory cases use only sizes no cap allows. M2-14 settled: the += report on a new key, the huge Float text, len of a bare empty literal.
 
 ### M2-40 · L4 · Write conformance tests for ownership, shared data and pools
 
@@ -623,7 +624,7 @@ or merged during review. Ids with a letter were added during review.
 - flags: none
 - done when: Expected results merged before any run, written without access to a built paka; every decision point in scope has a case.
 - why this level: Many runtime paths: refusal, failure, unfinished; results worked out by hand.
-- note: The caller runs this agent with no paka binary and no way to build one (no cargo, or a checkout holding only the reference, the decision records and the tests folder); the agent must not build or run paka; the cases land in a not-yet-required list. M2-41b runs them. paka build refuses a program with a hole as unsupported-form; paka run reports the hole. The cases decide which form the build side takes. M2-38 left call depth to this task (kind and status only); order_call_arguments and order_assignment_right_first in tests/conformance/core are the M2-06 section 1.3 first-trap samples and are reused here.
+- note: The caller runs this agent with no paka binary and no way to build one (no cargo, or a checkout holding only the reference, the decision records and the tests folder); the agent must not build or run paka; the cases land in a not-yet-required list. M2-41b runs them. paka build refuses a program with a hole as unsupported-form; paka run reports the hole. The cases decide which form the build side takes. M2-38 left call depth to this task (kind and status only); order_call_arguments and order_assignment_right_first in tests/conformance/core are the M2-06 section 1.3 first-trap samples and are reused here. Stack and memory cases use the trap file of tests/conformance/README.md (kind and status, any position).
 
 ### M2-41b · L4 · Run the conformance suite and rule on every mismatch
 
