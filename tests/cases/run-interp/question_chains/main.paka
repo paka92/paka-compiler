@@ -1,0 +1,74 @@
+type Pair { a: Int, b: Int }
+
+fn pair(y: Int) -> Result<Pair, String> {
+  if y < 0 {
+    return Err("negative")
+  }
+  Ok(Pair { a: y, b: y + 1 })
+}
+
+fn second(y: Int) -> Result<Int, String> {
+  Ok(pair(y)?.b)
+}
+
+fn at(xs: List<Option<Int>>, i: Int) -> Option<Int> {
+  let v = xs[i]?
+  Some(v + 1)
+}
+
+fn h(x: Int) -> Result<Int, String> {
+  if x == 0 {
+    return Err("zero")
+  }
+  Ok(x)
+}
+
+fn g(x: Int) -> Result<Int, String> {
+  Ok(x + 1)
+}
+
+fn both(x: Int) -> Result<Int, String> {
+  let v = g(h(x)?)?
+  Ok(v)
+}
+
+fn one() -> Result<Int, String> {
+  let n = Ok(1)?
+  Ok(n + 1)
+}
+
+fn show(r: Result<Int, String>) -> String {
+  match r {
+    Ok(n) => "ok {n}"
+    Err(why) => "err {why}"
+  }
+}
+
+fn show_option(o: Option<Int>) -> String {
+  match o {
+    Some(n) => "some {n}"
+    None => "none"
+  }
+}
+
+enum Msg { Start }
+
+fn update(m: Msg) -> List<Effect<Msg>> {
+  let xs = [Some(4), None]
+  [
+    Print(show(second(2))),
+    Print(show(second(-1))),
+    Print(show_option(at(xs, 0))),
+    Print(show_option(at(xs, 1))),
+    Print(show(both(5))),
+    Print(show(both(0))),
+    Print(show(one())),
+    Exit
+  ]
+}
+
+app tool {
+  start: Start
+  update: update
+  grants: [Console]
+}

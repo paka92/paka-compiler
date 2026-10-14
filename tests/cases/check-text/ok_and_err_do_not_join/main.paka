@@ -1,0 +1,16 @@
+fn f(c: Bool) {
+  let r = if c { Ok(1) } else { Err("x") }
+  _ = r
+}
+
+enum Msg { Start }
+
+fn update(m: Msg) -> List<Effect<Msg>> {
+  [Exit]
+}
+
+app tool {
+  start: Start
+  update: update
+  grants: []
+}

@@ -1,0 +1,16 @@
+fn first(s: String) -> Option<Int> {
+  parse_int(s)?
+  Some(1)
+}
+
+enum Msg { Start }
+
+fn update(m: Msg) -> List<Effect<Msg>> {
+  [Exit]
+}
+
+app tool {
+  start: Start
+  update: update
+  grants: []
+}

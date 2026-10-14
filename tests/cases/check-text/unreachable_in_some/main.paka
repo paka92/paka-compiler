@@ -1,0 +1,16 @@
+fn f() {
+  let x = Some(unreachable())
+  _ = x
+}
+
+enum Msg { Start }
+
+fn update(m: Msg) -> List<Effect<Msg>> {
+  [Exit]
+}
+
+app tool {
+  start: Start
+  update: update
+  grants: []
+}

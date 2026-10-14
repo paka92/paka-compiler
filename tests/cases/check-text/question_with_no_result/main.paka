@@ -1,0 +1,16 @@
+fn show(s: String) {
+  let n = parse_int(s)?
+  _ = n
+}
+
+enum Msg { Start }
+
+fn update(m: Msg) -> List<Effect<Msg>> {
+  [Exit]
+}
+
+app tool {
+  start: Start
+  update: update
+  grants: []
+}

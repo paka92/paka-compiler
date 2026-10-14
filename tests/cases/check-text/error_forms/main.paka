@@ -86,14 +86,99 @@ fn keep(s: String) -> Int {
   0
 }
 
-enum Msg { Start }
+fn a_none() -> Option<Int> {
+  let a: Option<Int> = None
+  a
+}
+
+fn from_first(ok: Bool, n: Int) -> Option<Int> {
+  let b = if ok { Some(n) } else { None }
+  b
+}
+
+fn from_second(ok: Bool, n: Int) -> Option<Int> {
+  let c = if ok { None } else { Some(n) }
+  c
+}
+
+fn sign(n: Int) -> Result<Int, String> {
+  if n < 0 { Err("negative") } else { Ok(n) }
+}
+
+fn digits(s: String) -> Result<Int, String> {
+  let n = match parse_int(s) {
+    Some(n) => n
+    None => 0
+  }
+  Ok(n)
+}
+
+fn block_arm(s: String) -> Result<Int, String> {
+  let n = match parse_int(s) {
+    Some(n) => n
+    None => {
+      return Err("missing")
+    }
+  }
+  Ok(n)
+}
+
+fn one() -> Result<Int, String> {
+  let n = Ok(1)?
+  Ok(n)
+}
+
+type Pair { a: Int, b: Int }
+
+fn pair(y: Int) -> Result<Pair, String> {
+  Ok(Pair { a: y, b: y + 1 })
+}
+
+fn second(y: Int) -> Result<Int, String> {
+  Ok(pair(y)?.b)
+}
+
+fn at(xs: List<Option<Int>>, i: Int) -> Option<Int> {
+  let v = xs[i]?
+  Some(v + 1)
+}
+
+fn h(x: Int) -> Result<Int, String> {
+  Ok(x)
+}
+
+fn g(x: Int) -> Result<Int, String> {
+  Ok(x + 1)
+}
+
+fn both(x: Int) -> Result<Int, String> {
+  let v = g(h(x)?)?
+  Ok(v)
+}
+
+fn records(text: String) -> List<List<String>> {
+  var out: List<List<String>> = []
+  for line in lines(text) {
+    append(&out, split(line, ","))
+  }
+  out
+}
+
+enum Msg { Start, Loaded(text: String), Failed(why: String) }
 
 fn update(m: Msg) -> List<Effect<Msg>> {
-  [Exit]
+  match m {
+    Start => [ReadFile("scores.csv", then: Loaded, or: Failed)]
+    Loaded(text) => match total(records(text)) {
+      Ok(sum) => [Print("{sum}"), Exit]
+      Err(why) => [Print(why), ExitWith(20)]
+    }
+    Failed(why) => [Print("cannot read: {why}"), ExitWith(20)]
+  }
 }
 
 app scores {
   start: Start
   update: update
-  grants: []
+  grants: [Console, ReadFiles]
 }

@@ -1,0 +1,4 @@
+main.paka:2:3: error[unknown-name]: is_some is not defined here; match it
+  definition: has_digits
+  bytes: 37..44
+  text: "is_some"

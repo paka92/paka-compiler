@@ -1,0 +1,4 @@
+main.paka:2:11: error[cannot-infer]: cannot infer the type of d; write it: let d: Option<T> = ...
+  definition: f
+  bytes: 19..23
+  text: "None"

@@ -1,0 +1,6 @@
+main.paka:8:27: error[type-mismatch]: an example has no ?; match it
+  definition: half
+  bytes: 142..143
+  text: "?"
+  expected: Result<T, String>
+  found: Bool

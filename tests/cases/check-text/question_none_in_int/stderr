@@ -1,0 +1,6 @@
+main.paka:2:15: error[type-mismatch]: ? passes None up, but f returns Int; make it Option<T> or match it
+  definition: f
+  bytes: 39..40
+  text: "?"
+  expected: Option<T>
+  found: Int
