@@ -8,6 +8,7 @@ use crate::resolve::resolve;
 mod app;
 mod branch;
 mod pattern;
+mod rows;
 
 /// Definitions the cases use; they follow the function under test, so a mark finds the test first.
 const PRELUDE: &[&str] = &[
