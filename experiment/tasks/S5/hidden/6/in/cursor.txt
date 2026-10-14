@@ -1,0 +1,12 @@
+add a
+add b
+add c
+up
+up
+set A
+down
+down
+undo
+down
+redo
+print

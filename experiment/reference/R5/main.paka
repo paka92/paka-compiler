@@ -1,0 +1,168 @@
+enum Msg { Start(path: String), Loaded(text: String), Failed(why: String) }
+
+type Road { from: String, to: String, cost: Int }
+
+type Trip { from: String, to: String }
+
+type Edge { place: Int, cost: Int }
+
+// Places are positions in `names`, which is in ASCII order.
+type Net {
+  names: List<String>,
+  index: Map<String, Int>,
+  out: List<List<Edge>>,
+  into: List<List<Edge>>
+}
+
+// The best cost and number of roads from every place to one end; cost -1 when there is no route.
+type Dist { cost: List<Int>, roads: List<Int> }
+
+fn is_name(s: String) -> Bool {
+  if len(s) < 1 || len(s) > 20 { return false }
+  for c in chars(s) {
+    let ok = (c >= "a" && c <= "z") || (c >= "A" && c <= "Z") || (c >= "0" && c <= "9") ||
+      c == "_" || c == "-"
+    if !ok { return false }
+  }
+  true
+}
+
+fn is_cost(s: String) -> Bool {
+  if len(s) > 6 { return false }
+  for c in chars(s) {
+    if c < "0" || c > "9" { return false }
+  }
+  true
+}
+
+fn build(roads: List<Road>) -> Net {
+  var seen: Map<String, Bool> = [:]
+  for r in roads {
+    seen[r.from] = true
+    seen[r.to] = true
+  }
+  let names = keys(seen)
+  var index: Map<String, Int> = [:]
+  for i in 0..<len(names) {
+    index[names[i]] = i
+  }
+  var out: List<List<Edge>> = list_of([], count: len(names))
+  var into: List<List<Edge>> = list_of([], count: len(names))
+  for r in roads {
+    append(&out[index[r.from]], Edge { place: index[r.to], cost: r.cost })
+    append(&into[index[r.to]], Edge { place: index[r.from], cost: r.cost })
+  }
+  Net { names: names, index: index, out: out, into: into }
+}
+
+fn shorter(cost: Int, roads: Int, d: Dist, v: Int) -> Bool {
+  d.cost[v] < 0 || cost < d.cost[v] || (cost == d.cost[v] && roads < d.roads[v])
+}
+
+fn to_end(net: Net, end: Int) -> Dist {
+  let n = len(net.names)
+  var d = Dist { cost: list_of(-1, count: n), roads: list_of(0, count: n) }
+  var done = list_of(false, count: n)
+  d.cost[end] = 0
+  while true {
+    var u = -1
+    for v in 0..<n {
+      if !done[v] && d.cost[v] >= 0 && (u < 0 || shorter(d.cost[v], d.roads[v], d, u)) { u = v }
+    }
+    if u < 0 { break }
+    done[u] = true
+    for e in net.into[u] {
+      let cost = d.cost[u] + e.cost
+      let roads = d.roads[u] + 1
+      if !done[e.place] && shorter(cost, roads, d, e.place) {
+        d.cost[e.place] = cost
+        d.roads[e.place] = roads
+      }
+    }
+  }
+  d
+}
+
+fn trip(net: Net, t: Trip) -> String {
+  if !has(net.index, t.from) { return "unknown {t.from}" }
+  if !has(net.index, t.to) { return "unknown {t.to}" }
+  let start = net.index[t.from]
+  let end = net.index[t.to]
+  let d = to_end(net, end)
+  if d.cost[start] < 0 { return "no route" }
+  var path = [t.from]
+  var u = start
+  while u != end {
+    var next = -1
+    for e in net.out[u] {
+      let v = e.place
+      let on_best = d.cost[v] >= 0 && d.cost[v] + e.cost == d.cost[u] &&
+        d.roads[v] + 1 == d.roads[u]
+      if on_best && (next < 0 || v < next) { next = v }
+    }
+    u = next
+    append(&path, net.names[u])
+  }
+  let roads = d.roads[start]
+  let word = if roads == 1 { "road" } else { "roads" }
+  let places = join(path, " ")
+  "cost {d.cost[start]}, {roads} {word}: {places}"
+}
+
+fn run(text: String) -> Result<List<String>, String> {
+  var roads: List<Road> = []
+  var trips: List<Trip> = []
+  let all = lines(text)
+  for i in 0..<len(all) {
+    let ws = words(all[i])
+    let n = len(ws)
+    if n == 0 { continue }
+    if n == 3 && ws[0] == "trip" && is_name(ws[1]) && is_name(ws[2]) {
+      append(&trips, Trip { from: ws[1], to: ws[2] })
+    } else if n == 4 && (ws[0] == "one" || ws[0] == "two") && is_name(ws[1]) && is_name(ws[2]) &&
+      is_cost(ws[3]) {
+      if ws[1] == ws[2] { return Err("line {i + 1}: loop road") }
+      let cost = unwrap_or(parse_int(ws[3]), 0)
+      append(&roads, Road { from: ws[1], to: ws[2], cost: cost })
+      if ws[0] == "two" { append(&roads, Road { from: ws[2], to: ws[1], cost: cost }) }
+    } else {
+      return Err("line {i + 1}: bad line")
+    }
+  }
+  if is_empty(trips) { return Err("no trips") }
+  let net = build(roads)
+  var out: List<String> = []
+  for t in trips {
+    let answer = trip(net, t)
+    append(&out, "{t.from} to {t.to}: {answer}")
+  }
+  Ok(out)
+}
+
+fn report(result: Result<List<String>, String>) -> List<Effect<Msg>> {
+  match result {
+    Ok(out) => {
+      var effects: List<Effect<Msg>> = []
+      for line in out {
+        append(&effects, Print(line))
+      }
+      append(&effects, Exit)
+      effects
+    }
+    Err(why) => [Print("error: {why}"), ExitWith(20)]
+  }
+}
+
+fn update(m: Msg) -> List<Effect<Msg>> {
+  match m {
+    Start(path) => [ReadFile(path, then: Loaded, or: Failed)]
+    Loaded(text) => report(run(text))
+    Failed(why) => [Print("error: cannot read file: {why}"), ExitWith(20)]
+  }
+}
+
+app cheapest_trips {
+  start: Start
+  update: update
+  grants: [Console, ReadFiles]
+}

@@ -1,0 +1,6 @@
+one a b 0
+one b c 0
+one a c 0
+one c d 5
+trip a c
+trip a d

@@ -1,0 +1,9 @@
+[3/4]
+ 1|first
+ 2|
+>3|  spaced  
+ 4|last
+[1/2]
+>1|first
+ 2|last
+undo 1, redo 1
