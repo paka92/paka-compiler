@@ -649,11 +649,12 @@ or merged during review. Ids with a letter were added during review.
 
 ### M2-43 · L2 · Add the paper's wc and counter samples as tests
 
+- status: done
 - needs: M2-33, M2-37
 - flags: none
 - done when: Both run with hand-written expected output; every difference from the paper's text is listed beside the decision that required it.
 - why this level: Programs are given; only count_words and the change list are new.
-- note: The counter is tested as its type, enum, update and example only, through paka examples. The view and app definitions are left out as a scope cut (M5) and listed as such, not tied to a decision.
+- note: The counter is tested as its type, enum, update and example only, through paka examples. The view and app definitions are left out as a scope cut (M5) and listed as such, not tied to a decision. Done: tests/cases/run-interp/sample_wc_* (count, empty file, missing file, no argument) and tests/cases/examples/sample_counter; the difference lists are the README.md files in sample_wc_count and sample_counter.
 
 ### M2-44 · L3 · Add the exit gates: reference samples, size, construct and built-in coverage
 
