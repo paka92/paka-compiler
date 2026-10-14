@@ -232,6 +232,11 @@ Each is the smallest reading consistent with M2-03, M2-05 and M2-06.
     assignment that can add.
 12. An allocation the host refuses is reported at the node's site, or the function's site for a
     literal or a copy, which have none of their own (section 6).
+13. A copy or a compare of values nested deeper than 10,000 levels traps `stack` (the same limit
+    as the call depth), so that neither needs more native stack than a call does.
+14. A start variant with fields is refused with the usage line before the state is built.
+15. `to_int` reports a finite value outside the Int range with its exact decimal digits in the
+    detail (`to_int(1e30)` shows all digits); the value text form is owned by M2-27.
 
 ## 10. Recorded text this page changes
 
