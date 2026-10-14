@@ -117,10 +117,10 @@ step 4. Every call has one site: the callee's name, or the function value's firs
 where all of the call's traps are reported, including `stack` for a user function that a built-in
 calls back.
 
-A call carries no type arguments. A generic row (M2-09 §1.3: letters T, K, V, E) is one routine for
-every item type: the row index names it, and the checker has already made every use agree on one
-type. `==` and `!=` are structural on every type (M2-09 §1.1), so the core has one equality for
-all of them.
+A call carries no type arguments. A generic row (letters T, K, V, E: M2-14 §1.2; bound by M2-09
+§1.3's walk) is one routine for every item type: the row index names it, and the checker has
+already made every use agree on one type. `==` and `!=` are structural on every type (M2-09 §1.4),
+so the core has one equality for all of them.
 
 **Match.** The subject is a user enum, `Option`, `Result` or `Effect`; the decision is on its
 variant number. Each arm holds one or more variants and a block, and every variant is in exactly
