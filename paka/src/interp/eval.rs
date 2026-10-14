@@ -242,6 +242,17 @@ impl<'a> Machine<'a> {
         Ok((effects, locals.into_iter().next()))
     }
 
+    /// The message an answer's function makes of its text, called at depth 1 like the handler.
+    pub fn answer(&mut self, f: FnKey, arg: Value) -> Done {
+        match f {
+            FnKey::Ctor(_, variant) => Ok(Value::Variant(variant, Items(vec![arg]))),
+            FnKey::Fn(id) => {
+                let site = self.core.fns[id].site;
+                Ok(self.invoke(id, vec![arg], site)?.0)
+            }
+        }
+    }
+
     /// Runs an example at depth 1: `None` when its Bool is true, else why it is false.
     pub fn example(&mut self, f: &Func) -> Done<Option<Fail>> {
         let mut fr = Frame {

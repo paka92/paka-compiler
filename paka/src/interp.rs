@@ -1,25 +1,29 @@
 //! The reference interpreter: runs the core form (docs/core.md) and performs the effects the
-//! handler returns (spec/m1.md section 9, M2-15). The file effects are M2-37's.
+//! handler returns (spec/m1.md section 9, M2-15).
 
-use crate::core_form::{App, Effect, Field, Grant, Program, Type};
+use crate::core_form::{App, Field, Program, Type};
 use crate::core_form::{Fn as Func, Site};
+use effects::{End, Host, Queued, World, perform};
 use eval::{Done, Kind, Machine, Stop, Trap};
 use show::show;
 use std::any::Any;
 use std::collections::VecDeque;
 use std::ffi::OsString;
-use std::io::{self, ErrorKind, Write};
+use std::io::Write;
 use std::sync::Once;
 use std::{panic, thread};
 use value::{Items, Value};
 
 mod builtin;
+mod effects;
 mod eval;
 mod generic;
 mod show;
 #[cfg(test)]
 mod tests;
 mod value;
+#[cfg(test)]
+mod world_tests;
 
 /// Host stack of the run thread and of every segment the evaluation adds to it (`eval::BUDGET`
 /// levels each); the pages are only committed when used.
@@ -31,23 +35,27 @@ const RUN_THREAD: &str = "paka-run";
 /// The most frames a trap report names.
 const NAMED: usize = 8;
 
-const PRINT: usize = Effect::Print as usize;
-const EXIT: usize = Effect::Exit as usize;
-const EXIT_WITH: usize = Effect::ExitWith as usize;
-
-/// A status and the line that explains it; the line is empty when the program chose its end.
-type End = (u8, String);
-
-/// Runs the program with the command-line arguments after its file; returns its status.
+/// Runs the program with the command-line arguments after its file, `out` being descriptor 1 and
+/// the files those of the working directory; returns its status.
 pub fn run(
     core: &Program,
     args: &[OsString],
     out: &mut (impl Write + Send),
     err: &mut impl Write,
 ) -> u8 {
+    run_in(core, args, &mut Host(out), err)
+}
+
+/// The same in any world.
+pub fn run_in(
+    core: &Program,
+    args: &[OsString],
+    world: &mut (impl World + Send),
+    err: &mut impl Write,
+) -> u8 {
     let app = core.app.as_ref().expect("a program with an app");
     let (status, line) = match start_message(core, app, args) {
-        Ok(start) => serve(core, app, start, out),
+        Ok(start) => serve(core, app, start, world),
         Err(stop) => stop,
     };
     let _ = err.write_all(line.as_bytes());
@@ -85,14 +93,18 @@ fn start_message(core: &Program, app: &App, args: &[OsString]) -> Result<Value, 
 
 /// The message loop: the handler answers each message in turn and its effects are performed.
 /// The whole loop runs on one big-stack thread.
-fn serve(core: &Program, app: &App, start: Value, out: &mut (impl Write + Send)) -> End {
+fn serve(core: &Program, app: &App, start: Value, world: &mut (impl World + Send)) -> End {
     let run = guest(core, app, |machine| {
         let mut state = machine.state(app)?;
-        let mut queue = VecDeque::from([start]);
-        while let Some(message) = queue.pop_front() {
-            let (effects, next) = machine.update(app, state, message)?;
+        let mut queue = VecDeque::from([Queued::Message(start)]);
+        while let Some(next) = queue.pop_front() {
+            let message = match next {
+                Queued::Message(message) => message,
+                Queued::Answer(f, arg) => machine.answer(f, arg)?,
+            };
+            let (mut effects, next) = machine.update(app, state, message)?;
             state = next;
-            if let Some(end) = perform(app, &effects, out) {
+            if let Some(end) = perform(app, &mut effects, world, &mut queue) {
                 return Ok(end);
             }
         }
@@ -246,60 +258,4 @@ fn entry(core: &Program, f: &Func) -> Result<(bool, String), String> {
         Err(Stop::Internal(reason)) => return Err(reason),
         Err(_) => unreachable!("a loop holds its break"),
     })
-}
-
-/// Performs the effects in order; `Some` when one ends the run, `None` after the last.
-fn perform(app: &App, answer: &Value, out: &mut impl Write) -> Option<End> {
-    let Value::List(effects) = answer else {
-        unreachable!("a checked List");
-    };
-    let stop = |status, reason: &str| Some((status, format!("{}: {reason}\n", app.name)));
-    for effect in &effects.0 {
-        let Value::Variant(number, fields) = effect else {
-            unreachable!("a checked Effect");
-        };
-        match (*number, &fields.0[..]) {
-            (EXIT, _) => return Some((0, String::new())),
-            (EXIT_WITH, [Value::Int(status)]) => {
-                return match exit_code(*status) {
-                    Some(code) => Some((code, String::new())),
-                    None => stop(
-                        3,
-                        &format!("effect ExitWith failed: status {status} is not 0 or 5 to 255"),
-                    ),
-                };
-            }
-            (PRINT, _) if !app.grants.contains(&Grant::Console) => {
-                return stop(3, "effect Print refused: grant Console is missing");
-            }
-            (PRINT, [Value::Str(text)]) => {
-                if let Err(e) = print(out, text.as_str()) {
-                    return stop(3, &format!("effect Print failed: {}", reason(&e)));
-                }
-            }
-            _ => return stop(4, "internal error: effect not implemented yet"),
-        }
-    }
-    None
-}
-
-/// The status a program may choose: 0 or 5 to 255.
-#[allow(clippy::disallowed_methods)] // the value leaves Paka as the process status
-fn exit_code(status: paka_rt::ops::Int) -> Option<u8> {
-    u8::try_from(status.get())
-        .ok()
-        .filter(|c| matches!(c, 0 | 5..))
-}
-
-/// The text and its line feed in one buffer, one write.
-fn print(out: &mut impl Write, text: &str) -> io::Result<()> {
-    out.write_all(format!("{text}\n").as_bytes())
-}
-
-fn reason(e: &io::Error) -> &'static str {
-    match e.kind() {
-        ErrorKind::StorageFull | ErrorKind::QuotaExceeded => "no space left on device",
-        ErrorKind::BrokenPipe => "broken pipe",
-        _ => "write error",
-    }
 }
