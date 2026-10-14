@@ -788,11 +788,12 @@ or merged during review. Ids with a letter were added during review.
 
 ### M3-14 · L3 · Write Rust reference solutions for ten tasks and list every test they dispute
 
+- status: done
 - needs: M3-11
 - flags: repeat
 - done when: Every task has a Rust solution built with the agreed flags; each case it fails is listed with a reason; the diff touches no test.
 - why this level: Many small programs against given tests; hardest part is not bending a test to Rust's habits.
-- note: One task per ten experiment tasks (two for 20 tasks).
+- note: One task per ten experiment tasks (two for 20 tasks). All 20 tasks pass every visible and hidden case with no dispute. Points a writer had to settle by reading, all agreeing with the cases: V6 entry lines of the wrong form and partly right headers, S3 a last comment-only line with no line feed, P1 the failing token as the one where recursive descent stops. Kept rustfmt-clean by hand, since cargo fmt does not cover experiment/.
 
 ### M3-15 · L3 · Write TypeScript reference solutions for ten tasks and list every test they dispute
 
