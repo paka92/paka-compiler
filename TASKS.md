@@ -727,11 +727,12 @@ or merged during review. Ids with a letter were added during review.
 
 ### M3-05 · L2 · Pin and install the TypeScript compiler after the owner allows it
 
+- status: done
 - needs: M3-01
 - flags: download, owner
 - done when: With the network off, one command prints the pinned tsc version, then type-checks and runs a hello-world file; lockfile committed.
 - why this level: No single given command: needs the exact version, the package, and a script that installs offline.
-- note: The owner allowed this download on 2026-10-13. Version: the newest stable TypeScript on the day of the task, pinned exactly; the task names the package, source and size before it fetches. Node 22.22.1 and npm are installed; tsc is not.
+- note: The owner allowed this download on 2026-10-13. Version: the newest stable TypeScript on the day of the task, pinned exactly; the task names the package, source and size before it fetches. Node 22.22.1 and npm are installed; tsc is not. Pinned typescript 7.0.2 with @types/node 22.20.5 in harness/ts; check.sh is the one command. Programs are compiled with tsc, then run with node.
 
 ### M3-06 · L2 · Build the case runner: build, run and compare in three languages
 
