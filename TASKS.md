@@ -683,7 +683,7 @@ or merged during review. Ids with a letter were added during review.
 - If Paka loses by more than the pre-set margin, the project stops here. M4 to M7 assume "go".
 - Live model calls happen only in M3-19, M3-19b and M3-20. They go through the Claude Code command line (`claude -p`) with no API key and no paid service. M3-19 measures what one run uses before M3-20 is planned.
 - One edit = replace the whole file, in all three languages. The experiment does not measure Paka's per-definition tools; M3-01 must state that limit.
-- Tasks flagged `repeat` are run once per batch; with 30 experiment tasks this milestone has 11 more tasks than listed.
+- Tasks flagged `repeat` are run once per batch; with 20 experiment tasks this milestone has 6 more tasks than listed.
 - Tried on 2026-10-13 with no key set: `claude -p PROMPT --model ID --system-prompt TEXT --tools "" --setting-sources "" --strict-mcp-config --no-session-persistence --disable-slash-commands --output-format json < /dev/null` answers and reports input, cache and output tokens. About 800 tokens of harness text ride along on every call, the same for all three languages. `--bare` must not be used: it accepts only an API key.
 - Can start first: M3-01.
 - The owner is needed in: M3-01, M3-02, M3-03, M3-04, M3-05, M3-18, M3-19, M3-19b, M3-20, M3-21, M3-23.
@@ -746,7 +746,7 @@ or merged during review. Ids with a letter were added during review.
 - flags: none
 - done when: Against a fake `claude` command: the reply and its token counts are read correctly from the JSON output, retries are not double counted, and the usage cap stops calls.
 - why this level: Own JSON reader, retry accounting and the usage cap; each is easy to get wrong.
-- note: Runs the installed `claude -p` as a process with a pinned model, a fixed system prompt, no tools and no user settings; M3-01 fixes the exact flags and M3-18 freezes them. No key is involved.
+- note: Runs the installed `claude -p` as a process with a pinned model, a fixed system prompt, no tools and no user settings; M3-01 fixes the exact flags and M3-18 freezes them. No key is involved. M3-01 sets one open `claude -p` process per run with stream-json in and out, and a check that the first call carries no outside text. Token caps: 16M input and 9.5M output, which the owner may lower; per-batch use is reported.
 
 ### M3-09 · L4 · Build the trial loop: prompt, edits, checks, raw logs and resume
 
@@ -754,6 +754,7 @@ or merged during review. Ids with a letter were added during review.
 - flags: none
 - done when: With a scripted fake model, tests show correct edit and token counts, budget stops, full raw logs with the time of each model call, and resume after a kill without rerunning trials.
 - why this level: Several modules meet; a miscount of edits or tokens silently skews two of the three metrics.
+- note: Writes each turn to the open process. A run whose process dies or compacts is void and run again under M3-03.
 
 ### M3-10 · L3 · Build the metrics tool: raw logs to three metrics and verdict
 
@@ -761,6 +762,7 @@ or merged during review. Ids with a letter were added during review.
 - flags: none
 - done when: On a small hand-made log set with a hand-made rulings file (runs excluded or re-classed under M3-03), one command prints the three metrics per language and per task and the verdict, equal to values worked out by hand; the set includes a never-passing run and a ruled-out run.
 - why this level: Never-passing runs and per-task grouping are easy to get subtly wrong, and this number decides the project.
+- note: Formulas are pooled over runs (M3-02). More than 2 dropped tasks of 14 makes the verdict inconclusive: a third dropped task is enough.
 
 ### M3-11 · L4 · Write statements and hand-made tests for one batch of at most five tasks
 
@@ -768,7 +770,7 @@ or merged during review. Ids with a letter were added during review.
 - flags: repeat
 - done when: Task loader accepts the batch; each expected result has written hand working; a second-agent review finds no behaviour a statement leaves to the language. Each statement defines at least one error condition with an exact message and the one error status.
 - why this level: A vague statement or one wrong hand-derived answer silently corrupts every run of that task.
-- note: One task per batch; M3-04's list fixes how many (six for 30 tasks).
+- note: One task per batch; M3-04's list fixes how many (four for 20 tasks).
 
 ### M3-14 · L3 · Write Rust reference solutions for ten tasks and list every test they dispute
 
@@ -776,7 +778,7 @@ or merged during review. Ids with a letter were added during review.
 - flags: repeat
 - done when: Every task has a Rust solution built with the agreed flags; each case it fails is listed with a reason; the diff touches no test.
 - why this level: Many small programs against given tests; hardest part is not bending a test to Rust's habits.
-- note: One task per ten experiment tasks.
+- note: One task per ten experiment tasks (two for 20 tasks).
 
 ### M3-15 · L3 · Write TypeScript reference solutions for ten tasks and list every test they dispute
 
@@ -784,7 +786,7 @@ or merged during review. Ids with a letter were added during review.
 - flags: repeat
 - done when: Every task has a TypeScript solution that passes tsc with agreed flags; each failed case is listed with a reason; the diff touches no test.
 - why this level: Many small programs against given tests; hardest part is exact integers beyond what a TypeScript number holds.
-- note: One task per ten experiment tasks.
+- note: One task per ten experiment tasks (two for 20 tasks).
 
 ### M3-16 · L4 · Write Paka reference solutions for ten tasks and report every language or toolchain defect
 
@@ -792,7 +794,7 @@ or merged during review. Ids with a letter were added during review.
 - flags: repeat
 - done when: Every task has a Paka solution the interpreter runs, or a filed defect report; each failed case has a reason; the diff touches no test.
 - why this level: No Paka code exists to copy; author must tell own error from interpreter or reference defect.
-- note: One task per ten experiment tasks. For each filed defect the caller adds one level 4 task: done when a regression case written before the fix passes, the M2 exit check still passes, any reference change follows M3-03's rule, and the blocked Paka solution is added. All merge before M3-17.
+- note: One task per ten experiment tasks (two for 20 tasks). For each filed defect the caller adds one level 4 task: done when a regression case written before the fix passes, the M2 exit check still passes, any reference change follows M3-03's rule, and the blocked Paka solution is added. All merge before M3-17. Confirm or correct the five counted tags and the two reserve tags (T3, V6) against the approved M2 rules.
 
 ### M3-17 · L4 · Settle every disputed test from the statement text alone
 
@@ -807,6 +809,7 @@ or merged during review. Ids with a letter were added during review.
 - flags: owner
 - done when: Before any model call the owner merges and tags (`protocol`) a protocol naming tasks, model, metrics, margin and toolchain versions; the harness refuses a counted run from any commit but the one tagged `run`.
 - why this level: Assembles approved decisions into one file and adds one commit check; little to decide.
+- note: The protocol carries the 20 task outlines, their classes, the tags, the reserve order, the band lines, the two token caps and error status 20.
 
 ### M3-19 · L3 · Dry-run the harness on practice tasks and fix its faults
 
@@ -814,7 +817,7 @@ or merged during review. Ids with a letter were added during review.
 - flags: owner, open-ended, model-calls
 - done when: Practice tasks finish in all three languages on live model calls with zero harness faults in the last pass; fixes and amendments merged by owner. The run records the language reference's real token count from the model's usage report; over 8,000 is a protocol amendment. Raw logs merged.
 - why this level: Faults can sit in any harness module; fixes must leave tasks, tests and counting rules untouched.
-- note: A fault in the sandbox (M3-07) or in edit and token counting (M3-09) is fixed as its own level 4 pull request.
+- note: A fault in the sandbox (M3-07) or in edit and token counting (M3-09) is fixed as its own level 4 pull request. Each pass is 12 runs (2 practice tasks x 3 languages x 2 runs), at most three passes; a fourth needs the owner's yes. It reports measured tokens per run and the projection for the rest.
 
 ### M3-19b · L2 · Run the Rust and TypeScript calibration pass and apply the swap rule
 
@@ -822,6 +825,7 @@ or merged during review. Ids with a letter were added during review.
 - flags: owner, model-calls
 - done when: Logs show every counted task run in Rust and TypeScript only, never Paka; each swap follows M3-03's rule and comes from the reserve list; the owner merges the amended list and tags the `run` commit. Raw logs merged.
 - why this level: No design; must follow the pre-set rule exactly.
+- note: 84 runs plus up to 24 for swapped-in reserve tasks. More than 4 swaps goes to the owner, not to a fifth swap.
 
 ### M3-20 · L2 · Run the counted experiment and publish the raw logs
 
@@ -829,6 +833,7 @@ or merged during review. Ids with a letter were added during review.
 - flags: owner, model-calls
 - done when: One command confirms every counted task, language and repetition has a finished trial log from the `run` commit; raw logs are merged.
 - why this level: No design, but it spends the budget and must stop and report on any deviation, not improvise.
+- note: 168 runs (14 tasks x 3 languages x 4 repetitions), in batches of one task; 126 if the fallback in M3-02 applies. Stops at the token caps.
 
 ### M3-21 · L4 · Rule on reviewed runs under the pre-set defect rules
 
@@ -836,6 +841,7 @@ or merged during review. Ids with a letter were added during review.
 - flags: decision, owner
 - done when: Every run the rules send to review has a recorded cause and ruling; a second agent re-rules a sample blind; the owner approves the list.
 - why this level: Separating model error from reference or toolchain defect in transcripts is judgement that biases the result silently.
+- note: Toolchain defects are ruled like mismatches and recorded as dropped tasks.
 
 ### M3-22 · L2 · Publish the report: three metrics per language with raw data
 

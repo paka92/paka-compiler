@@ -97,25 +97,28 @@ Not decided, because each waits on a measurement or a result: M3-21, M3-23, M4-0
 | M3-01 | Do the tokens of the Paka reference in the prompt count toward the token metric? | Output tokens decide |
 | M3-01 | A Paka submission fails only on a harmless spelling slip the checker can name a fix for. Does that cost a counted edit? | Counted like any error |
 | M3-01 | Is a TypeScript type error a failed submission, or does the program run anyway? | Strict check must pass |
+| M3-01 | How is the conversation kept, and which flags does every call carry? | One open process, stream-json |
 | M3-02 | Which model writes the programs? | Sonnet 5.5 |
 | M3-02 | Which language is Paka's result measured against for the stop rule? | Rust decides, TypeScript reported |
 | M3-02 | How does a run that never passes enter the edit and token numbers? | Cap plus one, real tokens |
-| M3-02 | How many times is each task run in each language? | Five per task |
+| M3-02 | How many times is each task run in each language? | Four per task |
 | M3-02 | How far behind Rust must Paka be on a metric to have lost it? | Just beyond published gaps |
 | M3-02 | How is chance kept from deciding the verdict? | Fixed band, no statistics |
 | M3-02 | How many of the three metrics must be lost for the verdict to be stop? | Any one lost |
-| M3-02 | What is the usage cap for all model calls in M3? | Twice the expected tokens |
+| M3-02 | What is the usage cap for all model calls in M3? | 16 million input, 9.5 million output |
+| M3-02 | What are the exact formulas for the three metrics? | Pooled over runs |
 | M3-03 | After the owner tags the `run` commit, may anything be fixed and run again? | Only harness faults rerun |
 | M3-03 | A counted run fails because the Paka tools and the reference disagree: the checker or interpreter does not do what the text says. What happens? | Drop the task everywhere |
 | M3-03 | A counted Paka run fails because the reference was silent or unclear, while the tools do what the text says. Does the run count? | It counts as it fell |
 | M3-03 | When is a counted task too easy or too hard to keep, as measured by the Rust and TypeScript calibration runs? | Swap at 6 of 6 |
 | M3-03 | A chosen task turns out to be impossible, or just clumsy, to write in Paka. What happens to it? | Fix bugs, swap gaps |
 | M3-03 | Between the `protocol` and `run` tags, what may be changed using what the dry run shows? | Wording yes, rules no |
-| M3-04 | How many counted, reserve and practice tasks are there? | Thirty tasks, 22 counted |
+| M3-03 | A Rust or TypeScript toolchain defect changes a counted run. What happens? | Drop the task everywhere |
+| M3-04 | How many counted, reserve and practice tasks are there? | 20 tasks: 14 counted, 4 reserve, 2 practice |
 | M3-04 | Are the tasks written fresh for this experiment or taken from public exercise sets? | Written fresh |
 | M3-04 | What makes a task hard? | Many exact rules |
-| M3-04 | Does the list deliberately include tasks where Paka is expected to pay? | Yes, eight tagged |
-| M3-04 | How are the 22 counted tasks spread over the seven task classes of M2-01? | Even spread |
+| M3-04 | Does the list deliberately include tasks where Paka is expected to pay? | Yes, 5 of 14 tagged |
+| M3-04 | How are the 14 counted tasks spread over the seven task classes of M2-01? | Two per class |
 | M4-01 | What does the stopwatch cover when a generator compiles one definition? | Core form to first call |
 | M4-01 | How do the same three definitions reach each generator? | Two lowerings from core form |
 | M4-01 | What goes into the three test definitions, and how long are they? | 6, 40, 200 lines, numbers |
@@ -2041,15 +2044,31 @@ node out/main.js <args>
 - Locks: TypeScript's numbers in the verdict tables, and the pinned packages of M3-05.
 - Not chosen: Types ignored, just run (Node strips the types and runs the file. No install at all, but the baseline is then JavaScript, not the TypeScript the paper names (GENESIS 370).)
 
+### M3-01.7 How is the conversation kept, and which flags does every call carry?
+
+**One open process, stream-json** (owner, 2026-10-14). The harness starts one `claude -p` process per run, in a fresh empty directory, and writes each user turn to it as one JSON line. It reads each reply, with its `usage` block and model name, from the output stream, and closes the process when the run ends. Never passed: `--bare` (it accepts only an API key), `--fallback-model`, `--max-budget-usd`, `--resume`, `--continue`.
+
+```
+claude -p --model claude-sonnet-5-5 --effort medium \
+  --system-prompt "<run rules>" \
+  --tools "" --setting-sources "" --strict-mcp-config \
+  --no-session-persistence --disable-slash-commands \
+  --input-format stream-json --output-format stream-json --verbose
+```
+
+- Why: Earlier turns stay exactly as they were, because the harness never resends them. Nothing is written to a session store, and the CLI's own caching keeps input cheap. A guard backs it: the input tokens of the first call must equal the system text, the statement and (Paka only) the reference, plus the fixed CLI text measured in the dry run, within 50 tokens. Anything more means outside text rode along, and the run is a harness fault (M3-03). A compaction event in the stream also voids the run. The longest conversation is about 45,000 tokens (a Paka run at submission 8), far below the point where the CLI compacts.
+- Locks: M3-08's call layer and M3-09's trial loop. The harness checks every flag on the fake model before the first live call.
+- Not chosen: Resume a saved session per call (Each call starts a new process and reloads the session from the CLI's store, which the harness does not control.) · Fresh call per turn, transcript pasted (Full control, but the model sees its own earlier code as user text, which changes the conversation the paper describes.)
+
 ### M3-01 · settled without asking
 
 - Prompt: One fixed system text, the same for all three languages except the language name, the file name and the build line. Paka runs add the whole language reference and one line saying the app may list any grant the reference names; Rust and TypeScript get no extra material. The user message is the task statement with its two visible cases.
-- What the model sees on later turns: Each run is one `claude -p` conversation: the first call sends the system text and the statement, each later call adds the result of the last submission. Nothing earlier is edited and the model's replies stay as they were. M3-08 picks how the conversation is kept (one open process or a resumed session) and proves on the fake that earlier turns are unchanged. Input grows with each edit, but input is outside the verdict.
+- What the model sees on later turns: Each run is one open `claude -p` process (see the last point). The first call sends the system text and the statement, each later call adds the result of the last submission. Nothing earlier is edited and the model's replies stay as they were. Input grows with each edit, but input is outside the verdict.
 - Stated limit: The protocol says in these words: one edit replaces the whole file in all three languages; Paka's per-definition Find, View and Edit tools are not measured; nothing about GUI, build speed or run speed is measured.
 - Pass: A submission passes when it builds and every visible and hidden case matches: standard output byte for byte, the exit status the statement names, and every file the statement says is written. Standard error and any other file are not compared.
 - First try, edit: First try is submission 1. An edit is each later submission. A reply with no code block, with more than one, or cut off at the reply limit is a failed submission and counts.
 - Token count: Taken from the `usage` block `claude -p` prints for each call. Output tokens, thinking included, are the counted number. Input is reported as the sum of its three input counts (plain, cache write, cache read), because `claude -p` caches on its own and adds about 800 tokens of its own text to every call, the same in all three languages. A call that failed or was refused and then retried is not counted.
-- Budgets per run: Eight submissions; 32,000 output tokens per reply, thinking included, or the model's own ceiling if lower (written down at M3-18); 120 seconds per build; 10 seconds and 1 GB per case. A timeout or memory stop fails that case. The report counts cut-off replies per language.
+- Budgets per run: Eight submissions; 32,000 output tokens per reply, thinking included (a longer reply counts as cut off); 120 seconds per build; 10 seconds and 1 GB per case. A timeout or memory stop fails that case. The report counts cut-off replies per language.
 - Program shape: One file: main.paka, main.rs or main.ts. Input comes as files named in the arguments; output is standard output, an exit status and, in file-tool tasks, written files. No standard input. Rust uses the standard library only; TypeScript uses Node's built-in modules only; Paka uses its built-ins.
 - Build lines: Paka: `paka check main.paka`, then `paka run main.paka` with the arguments, in the interpreter. Rust: `rustc --edition 2024 -C debug-assertions=on -C overflow-checks=on -o main main.rs` with the toolchain M1-01 pins, then `./main`; an overflow stops the program as it does in Paka. TypeScript: the strict line of the last point. A build passes when its line exits 0. Toolchain versions are written into the protocol.
 - Compiler feedback: Each language's own diagnostic text, unchanged, suggested fixes included, cut after 8,000 bytes with a note. Warnings are shown only when the build fails.
@@ -2065,8 +2084,8 @@ node out/main.js <args>
 - M3-05: Grows slightly: it pins and installs the TypeScript compiler and the Node type package with a lockfile, it names every package in that lockfile with source and size before fetching (the owner allowed the download on 2026-10-13), and it proves the strict build line works offline.
 - M3-06: The three command pairs and the task folder shape (statement, 2 visible cases, 8 hidden cases, expected output, status and written files) are now fixed.
 - M3-07: The limits to enforce are fixed: 120 s per build, 10 s and 1 GB per case, a fresh directory per case, an empty environment except TZ=UTC and the C locale. It reports how each case ended: exit status, over time, or over memory.
-- M3-08: Calls `claude -p` with no key. Counts tokens from its `usage` block, never passes `--fallback-model`, and checks the reported model name. `claude -p` has no flag for a reply limit, so the 32,000 output-token limit is held by counting: a longer reply counts as cut off. A refused or empty reply is retried as a provider error and logged.
-- M3-09: Sends the whole conversation with earlier replies unchanged, stops at eight submissions, builds the feedback text in the shape shown here, logs the diagnostic codes of each failed check, and counts cut-off replies.
+- M3-08: Calls `claude -p` with no key, with the flag line and the one-process method of the last point. Counts tokens from the `usage` block, never passes `--fallback-model`, checks the reported model name and runs the first-call token guard. `claude -p` has no flag for a reply limit, so the 32,000 output-token limit is held by counting: a longer reply counts as cut off. A refused or empty reply is retried as a provider error and logged.
+- M3-09: Writes each turn to the open process, stops at eight submissions, builds the feedback text in the shape shown here, logs the diagnostic codes of each failed check, and counts cut-off replies. A run whose process dies or compacts is void and run again under M3-03.
 - M3-17: Also checks that every Paka reference solution finishes every case in under 1 second in the interpreter.
 - M3-18: The protocol records the reply limit actually used and the three build lines with versions.
 - M3-22: The report also prints input tokens with and without the reference, the share of Paka edits that were spelling slips only, and cut-off and refused replies per language.
@@ -2116,17 +2135,17 @@ tokens(run) = output tokens spent, passed or not
 
 ### M3-02.4 How many times is each task run in each language?
 
-**Five per task** (recommended). 22 counted tasks x 3 languages x 5 = 330 counted runs, 110 per language. Chance alone then moves the first-try gap by about 7 points, at about two thirds more cost than three per task.
+**Four per task** (owner, 2026-10-14). 14 counted tasks x 3 languages x 4 = 168 counted runs, 56 per language. Chance alone moves the first-try gap by about 9 points. Runs of one task tend to fail together, so the true movement is somewhat larger.
 
 ```
-chance movement of the first-try gap
-  = square root of (2 x 0.25 / runs per language)
-110 runs -> 6.7 points | 66 runs -> 8.7 | 220 runs -> 4.8
+chance movement of the first-try gap = square root of (0.5 / runs per language)
+42 runs -> 10.9 points | 56 runs -> 9.4 | 70 runs -> 8.5 | 110 runs -> 6.7
 ```
 
-- Why: Five keeps chance movement at about 7 points for 330 runs, small enough for the margin and band that follow to mean something. Runs of one task tend to fail together, so the true movement is larger, and more repetitions cannot fix that.
-- Locks: The budget and the run matrix the harness must complete.
-- Not chosen: Three per task (198 counted runs, 66 per language. Cheapest, but chance movement rises to about 9 points, which a 10-point line cannot tell from a real gap.) · Ten per task (660 counted runs. Chance movement falls to about 5 points; cost doubles, and repeating the same 22 tasks adds less than more tasks would.)
+- Why: It gives a clear signal at a modest size. At 56 runs per language a true first-try gap of 30 points or more is caught 6 times in 7, and a Paka that matches Rust is almost never stopped (a true gap of 0 is read as lost about 2 times in 100). A true gap of 10 points is read as lost about 1 time in 7 and as held about 1 time in 2. The middle ground is read as close, which goes to the owner.
+- Locks: The budget and the run matrix the harness must complete (168 counted runs).
+- Not chosen: Three per task (126 counted runs. About 2.4 million tokens less, but a true 10-point gap is read as lost about 1 time in 5.) · Five per task (210 counted runs. About 2.4 million tokens more for 1 point less movement; one more task would buy more than one more repetition.)
+- Look again when: If the dry run projects the rest above the cap, drop to three per task before calibration. If that is still above the cap, the owner decides.
 
 ### M3-02.5 How far behind Rust must Paka be on a metric to have lost it?
 
@@ -2145,7 +2164,7 @@ T = total output tokens, all runs    lost if T_paka / T_rust > 2.0
 
 ### M3-02.6 How is chance kept from deciding the verdict?
 
-**Fixed band, no statistics** (recommended). Each metric has two lines: held within 10 points, 0.5 edits or 1.7 times of Rust, lost beyond the margin, and close in between. Every value can be checked by hand, but the lines are a rule of thumb and not a probability.
+**Fixed band, no statistics** (owner, 2026-10-14). Each metric has two lines: held within 10 points, 0.5 edits or 1.7 times of Rust, lost beyond the margin, and close in between. Every value can be checked by hand, but the lines are a rule of thumb and not a probability.
 
 ```
 first-try gap:  held <= 10 points < close <= 20 points < lost
@@ -2153,65 +2172,106 @@ edits gap:      held <= 0.5     < close <= 1.0      < lost
 token ratio:    held <= 1.7     < close <= 2.0      < lost
 ```
 
-- Why: The band is about one and a half times the chance movement, so a true gap at the held line is read as lost about 1 time in 15, and the rule stays three comparisons a person can redo. For edits this assumes a spread of about 2.5 edits per run, which is a guess.
+- Why: At 56 runs per language the band is about one chance movement wide, not one and a half. A true gap at the held line is read as lost about 1 time in 7. That is the price of the smaller design, and the report says so. The rule stays three comparisons a person can redo. For edits this assumes a spread of about 2.5 edits per run, which is a guess.
 - Locks: The words held, close and lost in M3-10, M3-18 and M3-22.
 - Not chosen: Bootstrap interval over tasks (Resample the tasks many times and call a metric lost only if the whole 90% interval lies beyond the margin. Sounder, but it adds a random procedure to the tool whose output M3-10 must match by hand.) · Single threshold only (One line per metric: beyond it lost, otherwise held. Simplest, and a 19-point and a 21-point gap get opposite verdicts on noise.)
 - Against: A statistician would want the interval. The raw logs are published, so anyone can compute one; it is just not the rule.
 
 ### M3-02.7 How many of the three metrics must be lost for the verdict to be stop?
 
-**Any one lost** (recommended). One lost metric gives stop, all three held gives go, and anything else is inconclusive. Plain reading of the paper; with margins this wide a single loss is already a clear one, but there are three chances to stop by bad luck.
+**Any one lost** (owner, 2026-10-14). One lost metric gives stop, all three held gives go, and anything else is inconclusive. More than 2 of the 14 counted tasks dropped makes it inconclusive first. Plain reading of the paper; with margins this wide a single loss is already a clear one, but there are three chances to stop by bad luck.
 
 ```
-inconclusive  if more than three tasks were dropped (M3-03)
+inconclusive  if more than 2 of the 14 tasks were dropped (M3-03)
 stop          else if any metric is lost
 go            else if all three are held
 inconclusive  otherwise
 ```
 
-- Why: It is what the paper says, and it needs no weighing of one metric against another.
+- Why: It is what the paper says, and it needs no weighing of one metric against another. The dropped-task limit falls from 3 of 22 to 2 of 14, the same share of about one in seven.
 - Locks: The verdict rule in M3-10 and what M3-23 may conclude. Inconclusive means the owner decides in M3-23 with the limits written out; no extra runs are made under this protocol.
 - Not chosen: Two of three (Stop needs two lost metrics. Paka could lose a quarter of its first tries and still pass.) · First-try rate alone (Only correctness decides; edits and tokens are reported. Ignores the published finding that the cost of a less-seen language shows in tokens (GENESIS 380).)
 
 ### M3-02.8 What is the usage cap for all model calls in M3?
 
-**Twice the expected tokens** (recommended). Cap: 20 million input tokens and 11 million output tokens across dry run, calibration and counted runs. The harness stops when either is reached, and going on needs the owner's yes.
+**16 million input, 9.5 million output** (owner, 2026-10-14). Cap: 16 million input tokens and 9.5 million output tokens across dry run, calibration and counted runs together. The harness stops when either counter reaches its cap. Going on needs the owner's yes.
 
 ```
-runs: counted 330 + calibration 132 + swap checks 36 + dry run 54 = 552
-per run (guess): 2.5 calls, 10k output tokens, thinking included
-input per run (guess): 13.5k, or 33.5k for Paka (reference in each call)
-expected: about 10.0M input, 5.5M output
-cap = 2 x expected = 20M input, 11M output
-money: none; share of the usage limit: measured in the dry run
+estimate per call:
+  fixed text   1,500  (CLI text about 800 + run rules about 700)
+  reference    8,000  (Paka only)
+  statement    1,500  (with 2 visible cases)
+  reply        7,000  output (program about 3,000 + thinking about 4,000)
+  feedback       800
+  each later call resends the last program and its feedback: +3,800 per earlier call
+assumed: earlier thinking is not resent
+
+a run of n calls:
+  input(n)  = n x base + 3,800 x n(n-1)/2     base 3,000 (Rust, TS) or 11,000 (Paka)
+  output(n) = 7,000 x n
+
+           Rust or TypeScript         Paka
+  n = 1      3.0k +  7k =  10.0k      11.0k +  7k =  18.0k
+  n = 3     20.4k + 21k =  41.4k      44.4k + 21k =  65.4k
+  n = 6     75.0k + 42k = 117.0k     123.0k + 42k = 165.0k
+  n = 8    130.4k + 56k = 186.4k     194.4k + 56k = 250.4k
+
+planning mix: 45% pass at call 1, 35% at about 3, 10% at about 6, 10% use all 8 (mean 2.9 calls)
+mean per run:  Rust or TypeScript 29.0k input + 20.3k output = 49.3k
+               Paka               52.2k input + 20.3k output = 72.5k
+
+phase         runs                       Rust/TS  Paka  input   output  total
+dry run       2 x 3 langs x 2, 3 passes    24      12   1.32M   0.73M   2.05M
+calibration   14 x 2 langs x 3             84           2.44M   1.71M   4.15M
+swap checks   up to 4 tasks x 6            24           0.70M   0.49M   1.18M
+counted       14 x 3 langs x 4            112      56   6.18M   3.41M   9.59M
+total         312 runs                    244      68  10.63M   6.33M  16.97M
+
+cap = about 1.5 x expected, rounded: 16M input, 9.5M output
 ```
 
-- Why: The per-run figures are guesses until the dry run measures them, and thinking counts as output. Twice gives room for five calls per run on average without leaving the usage open.
-- Locks: Little. The cap can be changed by the owner at any time; it changes no result.
-- Not chosen: Expected tokens exactly (Cap at 10 million input and 5.5 million output. Lowest ceiling, but the per-run guess is unmeasured and a stop in the middle of the counted runs needs the owner before it can resume.) · No cap, watch by hand (The owner watches the usage page. Nothing to configure, but nothing stops a harness fault that loops, and M3-08's done-when asks for a cap.)
-- Look again when: After the dry run: if measured tokens per run differ from the guess by more than half, recompute the cap before calibration. The dry run also reports how much of the usage limit it took, and the caller projects the counted runs from that. Under rule 11 the runs pause at the limit and go on when it resets, so M3 may take more than one week.
+- Why: It leaves room for runs to be half again as costly as planned, with a hard ceiling well under the worst case. If every run used all eight calls, the same 312 runs would take about 45M input and 17.5M output, so the cap also stops a harness fault that loops.
+- Locks: Little. The owner can lower the cap at any time; it changes no result. Counted runs go in batches of one task (12 runs, about 0.7 million tokens expected). The harness checks the usage limit between batches and pauses under rule 11 when it is near; the runs go on when it resets.
+- Not chosen: The recorded design: 552 runs (22 counted tasks and 5 repetitions. It needs about 30 million tokens under these estimates, so the recorded 20M/11M cap is about the expected use, not twice it.) · A pilot (7 counted tasks x 3 repetitions, 153 runs, about 8.3 million tokens. Its only firm answer is stop on a gross loss; anything else is inconclusive and goes to the owner.)
+- Look again when: After the dry run: if measured tokens per run differ from the estimate by more than a third, the cap and the projection are recomputed before calibration, and the fallback of the repetitions point applies. If earlier thinking turns out to be resent, input grows faster; this recheck catches it.
 - Owner must still: A restart of the counted runs is outside this cap and needs your yes.
+
+### M3-02.9 What are the exact formulas for the three metrics?
+
+**Pooled over runs** (owner, 2026-10-14). Per language, over all counted runs that are not dropped. F is the share of runs whose submission 1 passed. E is the mean edits per run. T is the sum of output tokens, thinking included. Also printed, each labelled as not the verdict: solve rate within eight submissions; input tokens with and without the reference; the same metrics for TypeScript; the metrics with nothing dropped; one table with tagged runs removed (M3-03); cut-off and refused replies per language; each metric per task.
+
+```
+F = runs whose submission 1 passed / runs
+E = mean over runs of edits(run)
+      edits(run) = submissions - 1   if the run passed
+                 = 8                 if it never passed
+T = sum over runs of output tokens (thinking included)
+
+first-try gap = F_rust - F_paka         (in points)
+edits gap     = E_paka - E_rust
+token ratio   = T_paka / T_rust
+```
+
+- Why: These are three numbers a person can redo by hand from the raw logs.
+- Locks: M3-10's formulas and test set, and the words held, close and lost in the report.
+- Not chosen: Mean of per-task ratios (A single task where Rust is cheap can swing the token ratio a long way.) · Medians (They separate nothing on edits (see M3-02.3).)
 
 ### M3-02 · settled without asking
 
-- First-try pass rate: Per language: runs whose first submission passes, divided by all counted runs of that language. Also printed per task.
-- Edits to a passing program: Per language: the mean over all counted runs of edits(run), where a passing run has submissions minus 1 and a never-passing run has 8. Also printed per task.
-- Tokens to a passing program: Per language: the sum of output tokens over all counted runs. The verdict uses the ratio of Paka's sum to Rust's. Also printed per task.
-- Extra figures, not in the verdict: Solve rate within eight submissions; input tokens with and without the reference; the same three metrics for TypeScript; the three metrics with no task dropped; one table with tagged runs removed (M3-03); cut-off and refused replies per language. Each is labelled as not the verdict.
 - Effort, thinking and sampling: Effort medium, sent on every call because the provider's default for this model is high; medium is the provider's suggested starting level for coding work and the lighter one. Thinking stays at the provider's default and is counted as output. Sampling is the provider's default; this model rejects other values. All of it is written into the protocol and confirmed on the first dry-run call.
-- Calibration repetitions: Three runs per counted task in Rust and in TypeScript: 22 x 2 x 3 = 132 runs, plus up to 36 for swapped-in reserve tasks.
-- Dry-run size: 2 practice tasks x 3 languages x 3 runs = 18 runs per pass, at most three passes (54 runs). A fourth pass needs the owner's yes.
-- Rulings: Runs voided as harness faults are rerun inside the cap and so do not change the counts. Tasks dropped under M3-03 are removed from all three languages before any formula is applied. More than three dropped tasks makes the verdict inconclusive whatever the metrics say.
+- Calibration repetitions: Three runs per counted task in Rust and in TypeScript: 14 x 2 x 3 = 84 runs, plus up to 24 for swapped-in reserve tasks.
+- Dry-run size: 2 practice tasks x 3 languages x 2 runs = 12 runs per pass, at most three passes (36 runs). A fourth pass needs the owner's yes.
+- Rulings: Runs voided as harness faults are rerun inside the cap and so do not change the counts. Tasks dropped under M3-03 are removed from all three languages before any formula is applied. More than 2 dropped tasks makes the verdict inconclusive whatever the metrics say.
 - Go: Go means only that the verdict rule did not stop the project. The owner still records go or stop himself in M3-23.
 
 ### M3-02 · what this changes in TASKS.md
 
-- M3-08: The cap is two token counters (20M input, 11M output) that the owner may lower; the model id and effort come from the protocol file, and effort is sent on every call. Calls go through `claude -p`; no key.
-- M3-10: Implements exactly the three formulas, the cap-plus-one rule, the two-line band against Rust and the four-line verdict; no resampling; also prints the extra figures.
-- M3-18: The protocol also names the model id as the dry run's replies reported it, the effort setting, the two token caps, the band lines and Rust as the deciding baseline.
-- M3-19: Sized at 18 runs per pass and three passes; it must report measured input and output tokens per run so the cap can be rechecked.
-- M3-19b: Sized at 132 runs plus up to 36 for swaps.
-- M3-20: Sized at 330 runs: 22 tasks, 3 languages, 5 repetitions.
+- M3-08: Two token counters with caps of 16M input and 9.5M output, which the owner may lower; it reports per-batch use. The model id and effort come from the protocol file, and effort is sent on every call. Calls go through `claude -p`; no key.
+- M3-10: Implements the three formulas of the last point, the cap-plus-one rule, the two-line band against Rust and the four-line verdict with a limit of 2 dropped tasks; no resampling; also prints the extra figures.
+- M3-18: The protocol names the model id as the dry run's replies reported it, the effort setting, the two token caps, the band lines and Rust as the deciding baseline.
+- M3-19: Sized at 12 runs per pass and at most three passes; it must report measured input and output tokens per run and the projection for the rest, so the cap can be rechecked.
+- M3-19b: Sized at 84 runs plus up to 24 for swaps.
+- M3-20: Sized at 168 runs: 14 tasks, 3 languages, 4 repetitions, in batches of one task; 126 runs if the fallback applies.
 - M3-23: An inconclusive verdict is decided by the owner from the written limits; the analysis must show the TypeScript gap even though it is not in the rule.
 
 ## M3-03 · Decide rules for reference defects, task swaps and late changes
@@ -2233,12 +2293,12 @@ run 0207  tagged   reference gap: section 4.2 silent on empty list
 
 ### M3-03.2 A counted run fails because the Paka tools and the reference disagree: the checker or interpreter does not do what the text says. What happens?
 
-**Drop the task everywhere** (recommended). When such a mismatch changed the outcome of any run of a task, the task leaves the verdict in all three languages, whichever side is wrong; it needs a small program that shows the mismatch against a sentence of the reference. More than 3 dropped tasks of 22 makes the verdict inconclusive by rule.
+**Drop the task everywhere** (owner, 2026-10-14). When such a mismatch changed the outcome of any run of a task, the task leaves the verdict in all three languages, whichever side is wrong; it needs a small program that shows the mismatch against a sentence of the reference. More than 2 dropped tasks of 14 makes the verdict inconclusive by rule.
 
-- Why: Dropping the same task for all three languages keeps the comparison like for like and needs no new runs. The limit of three, and a table with nothing dropped, stop the rule from quietly removing Paka's bad tasks.
+- Why: Dropping the same task for all three languages keeps the comparison like for like and needs no new runs. The limit of two, and a table with nothing dropped, stop the rule from quietly removing Paka's bad tasks.
 - Locks: The rulings file format M3-10 reads and the work of M3-21.
 - Not chosen: It counts as it fell (The failure stays in Paka's numbers. Simplest and strictest, but one interpreter bug on a common construct could decide the project.) · Fix and rerun Paka (Fix the tool and repeat that task's Paka runs. It takes usage again, comes late, and Paka alone gets a second attempt.)
-- Against: The strict view: a language is its toolchain, so tool bugs should count. The M2 conformance suite and the M3-16 reference solutions exist to make such drops rare; if more than three are needed, the tools were not ready and the verdict says so.
+- Against: The strict view: a language is its toolchain, so tool bugs should count. The M2 conformance suite and the M3-16 reference solutions exist to make such drops rare; if more than two are needed, the tools were not ready and the verdict says so.
 - Owner must still: Approve each dropped task in M3-21.
 
 ### M3-03.3 A counted Paka run fails because the reference was silent or unclear, while the tools do what the text says. Does the run count?
@@ -2251,7 +2311,7 @@ run 0207  tagged   reference gap: section 4.2 silent on empty list
 
 ### M3-03.4 When is a counted task too easy or too hard to keep, as measured by the Rust and TypeScript calibration runs?
 
-**Swap at 6 of 6** (recommended). A task is swapped when all six calibration runs (3 Rust, 3 TypeScript) pass first try, or when none of the six passes at all; the replacement is the unused reserve task of the same class, else the next in list order, calibrated the same way. The final list may be tagged `run` only if Rust's first-try rate on it is between 30% and 85% and TypeScript's is at most 85%.
+**Swap at 6 of 6** (owner, 2026-10-14). A task is swapped when all six calibration runs (3 Rust, 3 TypeScript) pass first try, or when none of the six passes at all. The replacement is the unused reserve task of the same class, else the next in reserve order, calibrated the same way. The final list may be tagged `run` only if Rust's first-try rate on it is between 30% and 85% and TypeScript's is at most 85%.
 
 ```
 task T2: rust 3/3 first try, ts 3/3 first try -> swap
@@ -2263,7 +2323,7 @@ kept list: rust first try 58% (30..85), ts 71% (<= 85) -> may tag `run`
 - Why: It removes only tasks that showed no failure at all, by a rule a script can apply. The window is on Rust because Rust decides (M3-02): above 85% little is left to see, and near 20% Paka could not lose the first-try metric at all.
 - Locks: What M3-19b does, and the size of the reserve list in M3-04.
 - Not chosen: Swap at 5 of 6 (Also swaps a task with a single failed first try. Keeps only clearly hard tasks, but needs a larger reserve and treats one unlucky run as proof.) · No swaps, ceiling only (Tasks are never swapped; only the overall check applies. Less to do, but up to a third of the tasks could separate nothing.)
-- Look again when: If more than six tasks qualify for a swap, or the window fails with the reserve used up, the list cannot be repaired from the reserve. New tasks then mean a new protocol and a new `protocol` tag before any counted run.
+- Look again when: If more than 4 tasks qualify for a swap, or the window fails with the reserve used up, the list cannot be repaired from the reserve. The owner then decides whether to write new tasks under a new `protocol` tag before any counted run.
 - Owner must still: Merge the amended task list into `development` yourself and tag `run`. If the window fails, decide whether to restart with new tasks; the old logs are kept and listed.
 
 ### M3-03.5 A chosen task turns out to be impossible, or just clumsy, to write in Paka. What happens to it?
@@ -2284,14 +2344,22 @@ kept list: rust first try 58% (30..85), ts 71% (<= 85) -> may tag `run`
 - Not chosen: Frozen at protocol (Nothing about Paka changes after the first tag. Cleanest, but a misleading sentence found on day one stays in every counted run, and a reference measured over 8,000 tokens could not be trimmed as M3-19 requires.) · Anything until run (Language rules may change too. That is language design steered by a run of a few practice tasks, and M2's conformance work would have to be redone.)
 - Owner must still: Merge each amendment into `development` yourself, then tag `run`.
 
+### M3-03.7 A Rust or TypeScript toolchain defect changes a counted run. What happens?
+
+**Drop the task everywhere** (owner, 2026-10-14). It applies when a small program shows the pinned compiler or runtime breaking its own documentation, and the defect changed the outcome of any run of the task. The task leaves the verdict in all three languages and counts toward the same limit of 2 dropped tasks.
+
+- Why: It is the same rule as a Paka mismatch, so no language is treated better.
+- Locks: The dropped-task lines in the rulings file that M3-10 reads, and the work of M3-21.
+- Not chosen: It counts as it fell (The baseline would be scored on a tool bug, against the Paka rule.) · Pin another version and rerun that language (Rust or TypeScript alone gets a second attempt, after the results are known.)
+- Owner must still: Approve each dropped task in M3-21.
+
 ### M3-03 · settled without asking
 
 - Who rules on what: Harness faults: the harness flags them from its own logs; the owner sees the list. Mismatches and reference gaps: the M3-21 agent proposes from the transcript and the reference text, a second agent re-rules a sample blind, the owner approves. Inexpressible tasks: the M3-16 author files, its reviewer confirms, the owner decides the swap. Saturation: applied mechanically in M3-19b. Amendments: the owner merges each.
 - Mismatch or gap: It is a mismatch only when a small program behaves differently from what a sentence of the reference says. Everything else about the reference is a gap, and the run counts as it fell.
-- What a harness fault is: Provider error, a usage limit reached mid-run, refused or empty reply, lost network, sandbox failure, harness crash, full disk. A wrong program, a slow program or a reply cut off at the reply limit is not one.
+- What a harness fault is: Provider error, a usage limit reached mid-run, refused or empty reply, lost network, sandbox failure, harness crash, full disk, a failed first-call token guard or a compaction event (M3-01). A wrong program, a slow program or a reply cut off at the reply limit is not one.
 - Runs sent to review: Every never-passing run in any language, every run in which a tool crashed or printed an internal error, and every run the harness flagged.
-- Wrong test or unclear statement found after the run tag: If the statement text proves an expected result wrong, the task is dropped in all three languages and counts toward the same limit of three.
-- Rust or TypeScript toolchain defect: Treated like a Paka mismatch: the task is dropped in all three languages.
+- Wrong test or unclear statement found after the run tag: If the statement text proves an expected result wrong, the task is dropped in all three languages and counts toward the same limit of 2.
 - Harness fault limit: A void run is rerun at most twice from the same commit, inside the approved token cap. If the same run faults a third time, the experiment pauses and the owner is told.
 - Sandbox or counting fault: A `run` commit never changes. If a test on a fake model proves the sandbox or the counting wrong during counted runs: stop, fix the harness only, tag a new `run` commit, run all counted runs again and publish the old logs. The owner says yes first, because it takes the usage a second time.
 - Model id changes or disappears: All counted runs use the one pinned id. If the provider withdraws it mid-run, the experiment stops; a new id means a new `run` tag and all counted runs again, with the owner's yes, because it takes the usage again.
@@ -2302,25 +2370,25 @@ kept list: rust first try 58% (30..85), ts 71% (<= 85) -> may tag `run`
 
 ### M3-03 · what this changes in TASKS.md
 
-- M3-10: The rulings file has three kinds of line (void run, dropped task, tagged run); a fourth dropped task turns the verdict to inconclusive; the tool also prints the metrics with nothing dropped and the table with tagged runs removed.
+- M3-10: The rulings file has three kinds of line (void run, dropped task, tagged run); a third dropped task (not a fourth) turns the verdict to inconclusive; the tool also prints the metrics with nothing dropped and the table with tagged runs removed.
 - M3-16: A task Paka cannot express at all is swapped and listed, not fixed; only bugs get the level 4 defect task; long or clumsy is not a defect.
 - M3-18: The protocol states the swap rule, the Rust window (30% to 85%), the TypeScript ceiling (85%) and that a failed window goes to the owner.
 - M3-19: Reference changes after the dry run are limited to wording and trimming backed by practice-task evidence, one pull request each.
-- M3-19b: Applies the 6-of-6 rule in both directions, then the window, and refuses to proceed outside it. Its done-when and exit check 1 cannot be met as written if the window fails with the reserve used up; that case goes to the owner, not to a seventh swap.
+- M3-19b: Applies the 6-of-6 rule in both directions, then the window, and refuses to proceed outside it. More than 4 swaps goes to the owner, not to a fifth swap. Its done-when and exit check 1 cannot be met as written if the window fails with the reserve used up; that case goes to the owner.
 - M3-20: Reruns a void run at most twice, inside the cap, and pauses on a third fault.
-- M3-21: Reviews the fixed set of runs named here and outputs only the three kinds of ruling.
+- M3-21: Reviews the fixed set of runs named here and outputs only the three kinds of ruling. Toolchain defects are ruled like mismatches and recorded as dropped tasks.
 - M3-22: Also lists tasks under 'Paka could not express' and prints the not-the-verdict tables.
 
 ## M3-04 · Choose counted, reserve and practice tasks hard enough to separate languages
 
 ### M3-04.1 How many counted, reserve and practice tasks are there?
 
-**Thirty tasks, 22 counted** (recommended). 22 counted, 6 reserve and 2 practice tasks, so the six test-writing batches and three reference-solution groups in TASKS.md stand. 110 counted runs per language, at the cost of 300 hand-worked cases.
+**20 tasks: 14 counted, 4 reserve, 2 practice** (owner, 2026-10-14). 168 counted runs, 56 per language (M3-02.4). Four batches of five tasks for the statements and two groups of ten for each set of reference solutions.
 
-- Why: It is the plan TASKS.md was already cut for, and 110 runs per language keep chance movement at about two thirds of the 10-point band. Twelve tasks would give about 9 points, and each task would carry 8% of the verdict.
-- Locks: Batch counts of M3-11 and M3-14 to M3-16, and the budget of M3-02.
-- Not chosen: Forty tasks, 30 counted (30 counted, 8 reserve, 2 practice. Chance movement of the first-try gap falls from about 7 to about 6 points, for a third more task writing and model calls.) · Eighteen tasks, 12 counted (12 counted, 4 reserve, 2 practice. Much less writing, but 60 runs per language moves the gap by about 9 points, nearly the whole band.)
-- Look again when: If more than six tasks need replacing (M3-03), the reserve is too small and the owner decides.
+- Why: Each task costs a long statement, 10 hand-worked cases and three reference solutions, and each counted task costs about 0.7 million tokens of counted runs. Two per class still covers every class.
+- Locks: The batch counts of M3-11 and M3-14 to M3-16, and the budget of M3-02.
+- Not chosen: 30 tasks, 22 counted (The recorded list. About 30 million tokens in all, and half again the writing.) · 11 tasks, 7 counted (The pilot of M3-02.8: one task per class. Its only firm answer is stop on a gross loss.)
+- Look again when: If more than 4 tasks need swapping (M3-03.4), the reserve is too small and the owner decides.
 
 ### M3-04.2 Are the tasks written fresh for this experiment or taken from public exercise sets?
 
@@ -2349,7 +2417,7 @@ statement extract (task R1, build order):
 
 ### M3-04.4 Does the list deliberately include tasks where Paka is expected to pay?
 
-**Yes, eight tagged** (recommended). 8 of the 22 counted tasks are tagged as expected to cost Paka: three file tools, and one each needing a custom sort order, a priority queue, a tree type that contains itself, in-place grid changes, and mixed Int and Float maths. The tags are published before the runs; Paka's headline numbers will be lower than on a neutral list.
+**Yes, 5 of 14 tagged** (owner, 2026-10-14). 5 of the 14 counted tasks are tagged as expected to cost Paka, about a third, as recorded. The tags are published before the runs: a tree type that contains itself (P3), in-place grid changes (G2), mixed Int and Float maths (N2), and two file tools (F1, F2). Lost from the recorded tags: a priority queue (R2, left out) and a custom sort order (T3, now first in the reserve). The report says that the priority-queue cost is not measured. Paka's headline numbers will be lower than on a neutral list.
 
 ```
 enum Msg { Start(src: String), Loaded(text: String), Saved }
@@ -2368,47 +2436,50 @@ fn update(m: Msg) -> List<Effect<Msg>> {
 - Not chosen: Neutral tasks only (Avoid anything that leans on a known Paka weakness or strength. Sounds fair, but it hides exactly the costs the decisions said the experiment should see.) · Spread by class only (Pick by class and let weak spots fall where they may. Nobody can then say afterwards whether the list was kind to Paka.)
 - Look again when: When M2-05, M2-09, M2-12 and M2-14 are approved: recheck each tag against the real rules (for example whether a sort takes a function) before the protocol tag.
 
-### M3-04.5 How are the 22 counted tasks spread over the seven task classes of M2-01?
+### M3-04.5 How are the 14 counted tasks spread over the seven task classes of M2-01?
 
-**Even spread** (recommended). Four text tasks and three in each of the other six classes; one reserve task in each class except text. A swapped-out text task is therefore replaced from another class.
+**Two per class** (owner, 2026-10-14). Two counted tasks in each of the seven classes.
 
 ```
-text processing 4 | parsing and interpreters 3 | state machines 3
-grids and dynamic programming 3 | graphs by list index 3
-integer and float reports 3 | file tools 3
+text processing 2 | parsing and interpreters 2 | state machines 2
+grids and dynamic programming 2 | graphs by list index 2
+integer and float reports 2 | file tools 2
 ```
 
-- Why: With thin evidence on which class matters most, equal weight is the choice that needs no argument and is easy to check.
+- Why: With thin evidence on which class matters most, equal weight is the choice that needs no argument and is easy to check. Two per class still covers every class.
 - Locks: Class counts in the frozen list; the swap rule's same-class preference.
-- Not chosen: Weighted to everyday work (More text, report and file tasks, fewer graph and grid tasks. Closer to daily agent work, but these are the classes most likely to be passed first try by every language.)
+- Not chosen: Weighted to everyday work (More text, report and file tasks. Closer to daily agent work, but these are the classes most likely to be passed first try by every language.) · Three in the classes that separate best (It needs evidence that does not exist yet.)
 
 ### M3-04 · settled without asking
 
-- Counted, text processing (4): T1 wrap and justify: wrap paragraphs to a given width, spread spaces left first, split over-long words. Stresses index arithmetic. Rust may fail on unsigned underflow and off-by-one widths; TypeScript on off-by-one spacing no type catches. T2 column table: quoted delimited rows to an aligned table with right-aligned numeric columns and totals. Stresses telling numbers from text. Rust: mixed-column number parsing; TypeScript: `Number("")` and `"1e3"` count as numbers. T3 natural sort (tagged): sort lines with digit runs as numbers, case-blind, stable. Stresses a custom sort order. TypeScript: default sort is by text; Rust: comparator over mixed chunks. T4 run-length codec: encode and decode with escapes, report the position of malformed input. Stresses escapes and error positions. Rust: position bookkeeping; TypeScript: undefined past the end reads as text.
-- Counted, parsing and small interpreters (3): P1 calculator: integer expressions with precedence, variables across lines, truncating division, errors with column. Stresses a recursive parser. Rust: a type that contains itself needs boxing, error plumbing; TypeScript: `/` gives fractions. P2 stack machine: a small assembly language with labels, jumps, calls, a step limit and defined errors. Stresses a dispatch loop with many defined errors. Rust: index type conversions; TypeScript: stack underflow gives undefined, then NaN. P3 nested config (tagged): parse a brace-nested format with strings, escapes and lists, print sorted flat key paths, exact first error. Stresses a tree type that contains itself. Rust: ownership of the tree; TypeScript: union types under strict mode.
-- Counted, state machines and simulations (3): S1 lift simulation: timed requests, a fixed scheduling rule, an event log. Stresses rule order over many steps. Fails on rule order and tie-breaks in any language; Rust also on changing state while walking it. S2 ledger with holds: open, deposit, hold, capture, release, transfer, with rejection rules, in whole cents. Stresses many rejection rules on shared state. Rust: two accounts changed at once; TypeScript: cents parsed as fractions. S3 comment stripper: remove comments from C-like text with strings, escapes, nested block comments and line joins. Stresses a character-by-character state machine. Rust: look-ahead over characters; TypeScript: silent reads past the end.
-- Counted, grids and dynamic programming (3): G1 line diff: longest-common-subsequence diff of two files with a fixed tie-break and hunk format. Stresses walking back through a table. Rust: unsigned index minus one; TypeScript: rows that share one array. G2 falling sand (tagged): move grains on a grid until stable under fixed rules. Stresses in-place grid changes. Rust: reading and writing the grid at once; TypeScript: shared rows. G3 packing: best value under a weight limit, with the chosen items and tie-breaks (fewest items, then names in order). Stresses rebuilding the answer from the table. Fails on reconstruction and ties in any language.
-- Counted, graph algorithms by list index (3): R1 build order: dependency file to an order with ASCII tie-break; on a cycle print it in a fixed form and exit with the error status. Stresses a graph kept as lists by index. Rust: name-to-index maps and borrowing; TypeScript: Map lookups that may be undefined. R2 cheapest route (tagged): weighted routes with ties broken by fewest hops, then path order; unreachable case. Stresses a priority order with ties. Rust: the built-in heap is largest-first and the tie order must be built into it; TypeScript: no built-in queue, so a hand-made one or a careful scan. R3 islands and bridges: connected groups and the links whose loss splits one; inputs are small, so removing each link and recounting is enough. Stresses graph search with state restored between tries. Rust: search over shared arrays; TypeScript: stale state between tries.
-- Counted, integer and float reports (3): N1 invoice: quantities, cent prices, percentage discounts, tax in hundredths of a percent, round half up per line. Stresses exact money rounding. TypeScript: fractional arithmetic on money; Rust: rounding negative values. N2 group statistics (tagged): mean, median and standard deviation per group to two decimals, with rules for empty and single groups. Stresses mixed Int and Float. Rust: ordering fractions; TypeScript: the default sort orders numbers as text; Paka: explicit Int to Float steps. N3 calendar: days between dates 1900 to 2100, weekday, add working days skipping listed holidays. Stresses date arithmetic. TypeScript: the built-in date type has zero-based months and rolls bad days over silently; Rust: no date type, all by hand.
-- Counted, file tools (3, all tagged): F1 include resolver: follow nested include lines, each file once, name the chain on a cycle, write the merged file. The number of reads is known only at run time. F2 split by key: one input file to one output file per key plus an index file; file names are worked out at run time. F3 three-way merge: base, ours and theirs to a merged file and a conflict report, with the error status on conflict. All three stress many chained file steps. Rust may fail on error handling across many file steps; TypeScript on missing-file errors thrown instead of reported; Paka pays for chaining messages by hand.
-- Reserve, in swap order (6): V1 parsing: validator and pretty-printer for a small data format with exact error positions. Stresses position tracking through nested input. Rust: line and column bookkeeping, boxing; TypeScript: reads past the end give undefined. V2 state machines: car-park billing from entry and exit events. Stresses rule order and minute arithmetic. Rust: a map entry changed while it is read; TypeScript: division gives fractions. V3 grids: edit distance with the printed alignment and a tie-break. Stresses a table walk-back. Rust: unsigned minus one; TypeScript: shared rows. V4 graphs: longest chain of dependent jobs with slack per job. Stresses an ordering pass and two sweeps. Rust: index maps and borrowing; TypeScript: undefined Map lookups. V5 reports: loan repayment table in whole cents with a corrected last payment; the payment amount is an input, because working it out needs a power function M2-01 leaves out. Stresses integer money and rounding. TypeScript: fractions; Rust: integer division and casts. V6 file tools (tagged): pack several files into one text archive and unpack it. Stresses many file steps and exact framing. Rust: error plumbing; TypeScript: thrown missing-file errors. Each is written, tested and solved in three languages like a counted task.
-- Practice (2): X1 text: word counts with the top N words and tie rules. Stresses sorting by two keys. Rust: two-key comparator; TypeScript: default text sort. X2 file tools: join two files with line numbers into a written file, missing-file error with the error status. Stresses the written-file check and the error path. Rust: error plumbing; TypeScript: a thrown missing-file error. They exist to shake down the harness; their results never enter the verdict.
+- Counted, text processing (2): T1 wrap and justify: wrap paragraphs to a given width, spread extra spaces left first, split words longer than the width. Stresses index arithmetic. Rust: unsigned underflow and off-by-one widths. TypeScript: off-by-one spacing that no type catches. Paka: `words`, `len`, `repeat`, string joins. T2 column table: quoted, delimited rows to an aligned table; numeric columns right-aligned with a total line. Stresses telling numbers from text. Rust: parsing mixed columns. TypeScript: `Number("")` and `"1e3"` count as numbers. Paka: `chars` with a quote state, `parse_int`, `pad_left`, `pad_right`.
+- Counted, parsing and interpreters (2): P1 calculator: integer expressions with precedence and brackets, variables across lines, division truncating toward zero, errors with a column. Stresses a recursive parser. Rust: boxing a type that contains itself, error plumbing. TypeScript: `/` gives fractions. Paka: an `inout` position, `Result` with `?`, a `Map<String, Int>` of variables, Int `/`. P3 nested config (tagged): parse a brace-nested format with strings, escapes and lists; print sorted flat key paths; report the exact first error. Stresses a tree type that contains itself. Rust: ownership of the tree. TypeScript: union types under strict mode. Paka: `enum Value { Text(s: String), Items(list: List<Value>), Table(map: Map<String, Value>) }`, legal because the enum has another variant; `keys` gives sorted order.
+- Counted, state machines (2): S2 ledger with holds: open, deposit, hold, capture, release and transfer, with rejection rules, in whole cents. Stresses many rules on shared state. Rust: two accounts changed at once. TypeScript: cents parsed as fractions. Paka: a `Map<String, Account>` of records changed through `&accounts[name]`; a transfer binds one side first, as the overlap rule requires. S3 comment stripper: remove comments from C-like text with strings, escapes, nested block comments and line joins. Stresses a character state machine. Rust: look-ahead over characters. TypeScript: silent reads past the end. Paka: `chars`, a `while` loop over positions, an enum state.
+- Counted, grids and dynamic programming (2): G1 line diff: longest-common-subsequence diff of two files with a fixed tie-break and hunk format. Stresses walking back through a table. Rust: unsigned index minus one. TypeScript: rows that share one array. Paka: two `ReadFile` steps, a `List<List<Int>>` table, `lines`. G2 falling sand (tagged): move grains on a grid under fixed rules until nothing moves. Stresses in-place grid changes. Rust: reading and writing the grid at once. TypeScript: shared rows. Paka: a `List<List<String>>` grid set by index; moving a grain reads the cell into a `let` first.
+- Counted, graphs by list index (2): R1 build order: a dependency file to an order with an ASCII tie-break; on a cycle print it in a fixed form and exit 20. Stresses a graph kept as lists by index. Rust: name-to-index maps and borrowing. TypeScript: `Map` lookups that may be `undefined`. Paka: `Map<String, Int>` to positions, `List<List<Int>>` edges, a scan for the smallest ready name. R3 islands and bridges: connected groups and the links whose loss splits one; inputs are small, so the plain method removes each link, recounts and puts it back. Stresses search with state restored between tries, and it is the class 5 task that changes the graph during the algorithm (M2-01). Rust: search over shared arrays. TypeScript: stale state between tries. Paka: `remove_at` and `insert` on `&g.adj[a]` inside a `while` walk, `List<Bool>` seen.
+- Counted, integer and float reports (2): N1 invoice: quantities, cent prices, percentage discounts, tax in hundredths of a percent, round half up per line. Stresses exact money rounding. TypeScript: fractional arithmetic on money. Rust: rounding negative values. Paka: Int arithmetic only, `/` and `%`. N2 group statistics (tagged): mean, median and standard deviation per group to two decimals, with rules for empty and single groups. Stresses mixed Int and Float. Rust: ordering floats. TypeScript: the default sort orders numbers as text. Paka: explicit `to_float` steps, `sort`, `sqrt`, `fixed(x, digits: 2)`.
+- Counted, file tools (2, both tagged): F1 include resolver: follow nested include lines, read each file once, name the chain on a cycle, write the merged file. The number of reads is known only at run time; a missing file is an error case. Stresses chained file steps. Rust: error handling across many file steps. TypeScript: missing-file errors thrown instead of reported. Paka: `ReadFile` chained through `update`, the waiting path kept in state because answers carry no path, `WriteFile`, `ReadFiles` and `WriteFiles`. F2 split by key: one input file to one output file per key plus an index file; file names are worked out at run time. Stresses many writes and exact names. Rust: error plumbing over many writes. TypeScript: write errors thrown. Paka: one `update` returns a `WriteFile` per key, with the count of answers kept in state.
+- Reserve, in swap order (4): A swapped task is replaced by the unused reserve task of its class, else the next in this order. T3 natural sort (text, tagged): sort lines with digit runs compared as numbers, case-blind, stable. Stresses a custom sort order. TypeScript: the default sort is by text. Rust: a comparator over mixed chunks. Paka: `sort_by` with a named `fn`; the sort is stable. V2 car-park billing (state machines): fees from entry and exit events with tariff bands and a daily cap. Stresses rule order and minute arithmetic. Rust: a map entry changed while read. TypeScript: division gives fractions. Paka: `Map<String, Int>` of entry minutes, Int arithmetic. N3 calendar (reports): days between dates from 1900 to 2100, weekday, add working days skipping listed holidays. Stresses date arithmetic. TypeScript: the built-in date type counts months from zero and rolls bad days over. Rust: no date type, all by hand. Paka: Int arithmetic, `Map<Int, Bool>` of holidays. V6 pack and unpack (file tools, tagged): pack several files into one text archive and unpack it. Stresses many file steps and exact framing. Rust: error plumbing. TypeScript: thrown missing-file errors. Paka: chained `ReadFile`, one `WriteFile` per entry, a length line per entry.
+- Practice (2): Used only to shake down the harness and the reference wording. Their results never enter the verdict. X1 word counts (text): the top N words with tie rules. Stresses sorting by two keys. Rust: a two-key comparator. TypeScript: the default text sort. Paka: `words`, a count `Map`, `sort_by`. X2 numbered join (file tools): join two files with line numbers into a written file; a missing file is an error. Stresses the written-file check and the error path. Rust: error plumbing. TypeScript: a thrown missing-file error. Paka: two `ReadFile` steps, the `or:` reason, `WriteFile`, `ExitWith(20)`.
+- Left out of the recorded list: T4 run-length codec and P2 stack machine: each class keeps two, and these overlap with P1 and S3. S1 lift simulation and G3 packing: the recorded page says they fail on rule order or ties in any language, so they separate the languages least. R2 cheapest route: a third graph task; its priority-queue tag is lost and the report says so. F3 three-way merge: a third file tool; F1 and F2 already cover chained reads and run-time names. V1, V3, V4, V5: the reserve shrinks from 6 to 4, and the kept reserve covers the classes with tagged tasks first.
 - Tasks outside every class: None. Every task names one M2-01 class.
-- Cases per task: 2 visible and 8 hidden, each with written hand working: 300 cases in all. Hidden cases sit on the edges the statement names.
-- Limits on inputs: ASCII only; files under 200 lines; every number the statement defines, and every value the plain method works out on the way, fits in plus or minus 2^53 - 1 so no language is tripped by number width; float inputs are chosen so no result sits on a rounding tie; recursion in the plain solution stays under 200 deep and well under the call-depth limit M2-06 sets, checked in M3-16. No clock, randomness, network or standard input.
-- Error status: A defined error prints its message on standard output, which is compared, and exits with one fixed status, the same in every task. The number is set in M3-11 once M2-15 is approved: 20 if a Paka program may choose its status freely. It must not be 1 or 2 (the paka tool's own), 3 (a trap), 101 (a Rust panic) or 1 again (a crashing Node program).
-- Tags under swaps: A reserve task that replaces a counted one brings its own tag; V6 is tagged, V1 to V5 are not. The report gives the final number of tagged tasks.
+- Cases per task: 2 visible and 8 hidden, each with written hand working: 200 cases in all. Hidden cases sit on the edges the statement names.
+- Limits on inputs: ASCII only; files under 200 lines; every number the statement defines, and every value the plain method works out on the way, fits in plus or minus 2^53 - 1 so no language is tripped by number width; float inputs are chosen so no result sits on a rounding tie; recursion in the plain solution stays under 200 deep and well under the call-depth limit M2-06 sets, checked in M3-16; a fixed number of arguments. No clock, randomness, network or standard input.
+- Error status: Every task has at least one error case. A defined error prints its message on standard output, which is compared, and exits with status 20, the same in every task. Missing files are tested only in file-tool tasks.
+- Tags under swaps: A reserve task that replaces a counted one brings its own tag: T3 and V6 are tagged, V2 and N3 are not. The report gives the final number of tagged tasks.
 - Statement neutrality: Statements describe arguments, files, standard output and exit status only, and name no language feature and no grant. M3-11's reviewer checks that nothing is left to a language's default behaviour.
 - Outlines to full statements: The outlines above are the approved list. The full statements and cases are written in M3-11 and may sharpen rules but not change what a task stresses or its class.
 
 ### M3-04 · what this changes in TASKS.md
 
-- M3-11: Stays at six batches of five tasks; each task has exactly 2 visible and 8 hidden cases and follows the 'many exact rules' style, the input limits and the one error status.
-- M3-14: Stays at three groups of ten; the list of expected Rust failure causes per task gives the author what to watch.
-- M3-15: Stays at three groups of ten; with all stated values inside 2^53 - 1, wide integers are no longer its hardest part, silent fractions and text-order sorting are.
-- M3-16: Stays at three groups of ten; it must confirm or correct each of the eight weak-spot tags and V6's against the approved M2 rules, and check recursion depth against the interpreter's limit.
-- M3-18: The protocol carries the 30 outlines, their classes, the swap order of the reserve list, the tags and the error status number.
-- M2-14: Should know that tasks T3 and R2 depend on whether sorting takes a custom order and whether a priority queue is built in; either answer is fine, but the tags follow it.
+- M3-11: Four batches of five tasks; each task has exactly 2 visible and 8 hidden cases and follows the 'many exact rules' style, the input limits and the one error status 20.
+- M3-14: Two groups of ten; the list of expected Rust failure causes per task gives the author what to watch.
+- M3-15: Two groups of ten; with all stated values inside 2^53 - 1, wide integers are no longer its hardest part, silent fractions and text-order sorting are.
+- M3-16: Two groups of ten; it must confirm or correct the five counted tags and the two reserve tags (T3, V6) against the approved M2 rules, and check recursion depth against the interpreter's limit.
+- M3-18: The protocol carries the 20 outlines, their classes, the tags, the reserve order and status 20.
+- M3: The note on `repeat` tasks reads: with 20 experiment tasks this milestone has 6 more tasks than listed.
+- M2-01: Its line on the 22 counted tasks is replaced by this page.
+- M2-14: Should know that task T3 (first in the reserve) depends on whether sorting takes a custom order; either answer is fine, but the tag follows it.
 - M2-15: Should know the task list needs three things from headless apps: an exit status the program chooses (not 0, 1, 2 or 3), file names worked out at run time (F2), and a number of reads and writes known only at run time (F1, F2).
 - M2-06: Should know the tasks recurse up to about 200 deep; the interpreter's call-depth limit must sit well above that.
 
