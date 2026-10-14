@@ -207,8 +207,13 @@ impl fmt::Display for Diagnostic {
         if let Some((line, col)) = self.position {
             write!(f, ":{line}:{col}")?;
         }
-        // A hole is the one note (M2-06 section 1.5).
-        let level = if self.code == "hole" { "note" } else { "error" };
+        // The one note is a hole (M2-06 section 1.5), the one warning an unused name (M2-02
+        // section 5).
+        let level = match self.code {
+            "hole" => "note",
+            "unused-name" => "warning",
+            _ => "error",
+        };
         write!(f, ": {level}[{}]: {}", self.code, self.message)
     }
 }

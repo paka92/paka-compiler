@@ -67,7 +67,7 @@ fn read(file: &OsStr, path: &str) -> Result<Vec<u8>, Diagnostic> {
 
 /// The core form of a checked program that holds an app, and its holes.
 fn load(file: &OsStr, path: &str) -> Result<(Program, Vec<Hole>), Diagnostic> {
-    let (core, holes) = check(path, &read(file, path)?)?;
+    let (core, holes, _) = check(path, &read(file, path)?)?;
     match core.app {
         Some(_) => Ok((core, holes)),
         None => Err(Diagnostic::tool(path, "no-app", "the program has no app")),
@@ -78,7 +78,7 @@ fn load(file: &OsStr, path: &str) -> Result<(Program, Vec<Hole>), Diagnostic> {
 fn examples_file(file: &OsStr) -> ExitCode {
     let path = &file.to_string_lossy();
     match read(file, path).and_then(|source| check(path, &source)) {
-        Ok((core, _)) => {
+        Ok((core, ..)) => {
             let (mut out, mut err) = (io::stdout().lock(), io::stderr());
             ExitCode::from(interp::examples(&core, &mut out, &mut err))
         }
@@ -86,8 +86,9 @@ fn examples_file(file: &OsStr) -> ExitCode {
     }
 }
 
-/// `paka check`: the diagnostic `run` would print, or a note per hole, with their fields as extra
-/// lines or as JSON (M2-06 section 1.5).
+/// `paka check`: the diagnostic `run` would print, or a note per hole and a warning per unused
+/// name in position order, with their fields as extra lines or as JSON (M2-06 section 1.5, M2-02
+/// section 5).
 fn check_file(file: &OsStr, json: bool) -> ExitCode {
     let path = &file.to_string_lossy();
     let (found, source) = match read(file, path) {
@@ -95,7 +96,11 @@ fn check_file(file: &OsStr, json: bool) -> ExitCode {
         Ok(source) => (check(path, &source), source),
     };
     let (shown, status) = match found {
-        Ok((_, holes)) => (holes.into_iter().map(|h| h.note).collect(), 0),
+        Ok((_, holes, unused)) => {
+            let mut shown: Vec<_> = holes.into_iter().map(|h| h.note).chain(unused).collect();
+            shown.sort_by_key(|d| d.position);
+            (shown, 0)
+        }
         Err(d) => (vec![d], 1),
     };
     for d in &shown {
@@ -115,8 +120,9 @@ struct Hole {
     refusal: Option<Diagnostic>,
 }
 
-/// Parses and checks a program, then lowers it to the core form.
-fn check(path: &str, source: &[u8]) -> Result<(Program, Vec<Hole>), Diagnostic> {
+/// Parses and checks a program, then lowers it to the core form; with its holes and its
+/// `unused-name` warnings.
+fn check(path: &str, source: &[u8]) -> Result<(Program, Vec<Hole>, Vec<Diagnostic>), Diagnostic> {
     let program = parser::parse(path, source)?;
     let resolved = resolve::resolve(path, &program)?;
     let mut table = sig::Table::build(path, &program, &resolved);
@@ -129,7 +135,7 @@ fn check(path: &str, source: &[u8]) -> Result<(Program, Vec<Hole>), Diagnostic> 
     }
     let core = lower::lower(path, source, &program, &resolved, &table, &bodies);
     let holes = holes(path, &program, &table, &bodies, &core);
-    Ok((core, holes))
+    Ok((core, holes, resolved.unused))
 }
 
 /// The holes of a checked program, in position order.

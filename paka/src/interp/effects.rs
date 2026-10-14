@@ -153,11 +153,12 @@ impl<W: Write> World for Host<W> {
         if !meta.is_file() {
             return Err("not a file");
         }
+        // Opened before the size is looked at: no permission comes first (M2-15 section 1.7).
+        let file = File::open(path).map_err(|e| file_reason(&e))?;
         if meta.len() > CAP as u64 {
             return Err("failed");
         }
         let mut bytes = Vec::with_capacity(meta.len() as usize);
-        let file = File::open(path).map_err(|e| file_reason(&e))?;
         file.take(CAP as u64 + 1)
             .read_to_end(&mut bytes)
             .map_err(|e| file_reason(&e))?;

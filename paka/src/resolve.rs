@@ -1,7 +1,7 @@
 //! Name resolution (docs/decisions/M2-02.md section 1.3, M2-14.md section 1.2). Binds every use of
 //! a name to its definition and reports duplicate and unknown names, with the nearest known name as
 //! the fix. No types are looked at, so a field read `x.f` and the labels of calls and records are
-//! left to the checker.
+//! left to the checker. A local no use names is the `unused-name` warning (M2-02 section 5).
 
 use crate::ast::{
     Arm, ArmBody, Block, Def, Entry, Expr, ExprKind, Field, Name, Pat, PatKind, Pos, Program, Stmt,
@@ -9,7 +9,7 @@ use crate::ast::{
 };
 use crate::builtins::{self, Kind};
 use crate::diagnostic::Diagnostic;
-use std::collections::BTreeMap;
+use std::collections::{BTreeMap, BTreeSet};
 
 type Res<T = ()> = Result<T, Diagnostic>;
 
@@ -35,6 +35,8 @@ pub struct Resolved {
     /// `entry_error`, so its result is always `Ok`.
     pub defs: Vec<Res>,
     entries: BTreeMap<Pos, Diagnostic>,
+    /// An `unused-name` warning per local that no use names, in source order.
+    pub unused: Vec<Diagnostic>,
 }
 
 impl Resolved {
@@ -67,6 +69,7 @@ pub fn resolve<'a>(path: &'a str, program: &'a Program<'a>) -> Res<Resolved> {
         program,
         pool: builtins(),
         locals: Vec::new(),
+        bound: Vec::new(),
         uses: BTreeMap::new(),
         entries: BTreeMap::new(),
     };
@@ -75,15 +78,28 @@ pub fn resolve<'a>(path: &'a str, program: &'a Program<'a>) -> Res<Resolved> {
             .declare_def(i, def)
             .map_err(|d| d.in_definition(def.name().text))?;
     }
-    let defs = program.defs.iter().map(|def| {
-        let result = resolver.def(def);
-        result.map_err(|d| d.in_definition(def.name().text))
-    });
-    let defs = defs.collect();
+    let (mut defs, mut bound) = (Vec::new(), Vec::new());
+    for def in &program.defs {
+        let name = def.name().text;
+        defs.push(resolver.def(def).map_err(|d| d.in_definition(name)));
+        bound.extend(resolver.bound.drain(..).map(|local| (local, name)));
+    }
+    let used: BTreeSet<Pos> = (resolver.uses.values())
+        .filter_map(|b| match b {
+            Binding::Local(at) => Some(*at),
+            _ => None,
+        })
+        .collect();
+    let unused = bound.into_iter().filter(|((_, at), _)| !used.contains(at));
+    let warn = |((local, at), def): ((&str, Pos), &str)| {
+        let message = format!("{local} is never used");
+        Diagnostic::new(path, at, local.len(), "unused-name", message).in_definition(def)
+    };
     Ok(Resolved {
         uses: resolver.uses,
         defs,
         entries: resolver.entries,
+        unused: unused.map(warn).collect(),
     })
 }
 
@@ -170,6 +186,8 @@ struct Resolver<'a> {
     pool: BTreeMap<&'a str, (Kind, Binding)>,
     /// Every local visible at this point, outermost first, with the position of its name.
     locals: Vec<(&'a str, Pos)>,
+    /// Every local the definition being resolved has bound so far.
+    bound: Vec<(&'a str, Pos)>,
     uses: BTreeMap<Pos, Binding>,
     entries: BTreeMap<Pos, Diagnostic>,
 }
@@ -379,6 +397,7 @@ impl<'a> Resolver<'a> {
             return Err(self.fail(at, name.len(), "duplicate-local", message));
         }
         self.locals.push((name, at));
+        self.bound.push((name, at));
         Ok(())
     }
 
