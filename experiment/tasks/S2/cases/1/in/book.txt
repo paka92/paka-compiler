@@ -1,0 +1,9 @@
+open ann
+open bob
+deposit ann 100.00
+hold ann t1 30.50
+transfer ann bob 80.00
+capture t1 20.25
+transfer ann bob 60.00
+release t1
+deposit cat 1.00

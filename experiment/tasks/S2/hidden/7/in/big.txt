@@ -1,0 +1,8 @@
+open zed
+open amy
+open b
+open al
+deposit amy 999999999.99
+deposit amy 999999999.99
+transfer amy zed 0.99
+deposit al 0.10

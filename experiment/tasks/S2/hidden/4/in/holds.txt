@@ -1,0 +1,10 @@
+open fay
+deposit fay 10.00
+hold fay a 6.00
+hold fay a 1.00
+hold fay b 4.01
+hold fay b 4.00
+release a
+hold fay a 1.00
+hold gus a 99.00
+capture b 4.00
