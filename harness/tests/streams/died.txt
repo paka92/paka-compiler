@@ -1,0 +1,1 @@
+{"type":"system","subtype":"init","cwd":"/work","session_id":"s1","tools":[],"mcp_servers":[],"model":"claude-sonnet-5-5","permissionMode":"default","slash_commands":[],"apiKeySource":"none","output_style":"default"}
