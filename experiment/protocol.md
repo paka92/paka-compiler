@@ -123,6 +123,13 @@ counted tasks and all four reserves were replaced by the harder tasks above. The
 tasks' folders stay in `experiment/tasks/` and their calibration logs in
 `experiment/runs/calib-1/`; they are not part of the experiment.
 
+Owner ruling on the second calibration (`experiment/runs/calib-2/`): first try was Rust 29 of 42
+(69%) and TypeScript 33 of 42 (79%), inside the gate. T5, P4, S4, G3, R4, R5 and N4 passed first
+try in all 6 runs, 7 swaps due against 4 reserves. The owner keeps the list as it stands: the
+list-wide gate is met, and a task Rust always passes still shows any Paka shortfall in the
+first-try gap. F4's error line was clarified (every run printed the placeholder `OLD` itself)
+and F4 calibrated again in `experiment/runs/calib-3/`: 4 of 6 passed first try, so it stays.
+
 Practice (2), harness shake-down only, never in the verdict: X1 word counts (top N words, tie
 rules; text); X2 numbered join (two files joined with line numbers, missing file is an error; file
 tools).

@@ -104,7 +104,7 @@ status 20. The checks are made in this order and only the first that fails is re
    reported, with `N` its line number in decimal. On that line, the checks are made in this order:
    1. It is not blank and not an entry: `error: map line N: bad entry`
    2. Its `OLD` matches the `OLD` of an entry on an earlier line:
-      `error: map line N: duplicate OLD`, with `OLD` as written on this line.
+      `error: map line N: duplicate OLD`, with `OLD` replaced by this line's old name as written.
 3. The map has no entry: `error: empty map`
 4. The pages are read in list order; the first that cannot be read is reported:
    `error: cannot read NAME`, with the page name.
