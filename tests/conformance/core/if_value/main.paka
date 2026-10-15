@@ -1,0 +1,18 @@
+enum Msg { Start }
+
+fn update(msg: Msg) -> List<Effect<Msg>> {
+  let n = -4
+  let sign = if n < 0 { "minus" } else if n == 0 { "zero" } else { "plus" }
+  let abs_n = if n < 0 { -n } else { n }
+  let kind = if n % 2 == 0 { "even" } else { "odd" }
+  [
+    Print("{sign} {abs_n} {kind}"),
+    Exit
+  ]
+}
+
+app core {
+  start: Start
+  update: update
+  grants: [Console]
+}

@@ -1,0 +1,17 @@
+enum Msg { Start }
+
+fn n(x: Int) -> String { "{x}" }
+
+fn update(msg: Msg) -> List<Effect<Msg>> {
+  var counts: Map<String, Int> = [:]
+  for w in words("b a b c a b") { counts[w] = unwrap_or(get(counts, w), 0) + 1 }
+  var parts: List<String> = []
+  for k in keys(counts) { append(&parts, k + "=" + n(counts[k])) }
+  [Print(join(parts, " ")), Exit]
+}
+
+app builtins {
+  start: Start
+  update: update
+  grants: [Console]
+}

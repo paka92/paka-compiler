@@ -1,0 +1,3 @@
+main.paka:4:12: error[unexpected-token]: an arm that returns is a block: write `=> { return Err(...) }` over three lines
+  bytes: 73..78
+  text: "break"

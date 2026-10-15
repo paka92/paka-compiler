@@ -1,0 +1,22 @@
+enum Msg { Start }
+
+fn update(msg: Msg) -> List<Effect<Msg>> {
+  let a = 1.5
+  let b = 2.25
+  let c = 10.0
+  [
+    Print(fixed(a + b, digits: 2)),
+    Print(fixed(a - c, digits: 1)),
+    Print(fixed(a * 4.0, digits: 2)),
+    Print(fixed(c / 4.0, digits: 1)),
+    Print(fixed(1.50, digits: 1)),
+    Print(fixed(-a, digits: 1)),
+    Exit
+  ]
+}
+
+app core {
+  start: Start
+  update: update
+  grants: [Console]
+}

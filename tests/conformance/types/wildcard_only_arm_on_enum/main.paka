@@ -1,0 +1,19 @@
+enum Msg { Start }
+
+enum Shape { Dot, Circle(r: Float), Rect(w: Float, h: Float) }
+
+fn f(s: Shape) -> Float {
+  match s {
+    _ => 1.0
+  }
+}
+
+fn update(msg: Msg) -> List<Effect<Msg>> {
+  [Print("done"), Exit]
+}
+
+app types {
+  start: Start
+  update: update
+  grants: [Console]
+}

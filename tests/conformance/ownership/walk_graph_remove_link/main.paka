@@ -1,0 +1,20 @@
+enum Msg { Start }
+
+type Graph { adj: List<List<Int>> = [] }
+
+fn unlink(g: inout Graph, a: Int, b: Int) {
+  let i = 0
+  for v in g.adj[a] { _ = remove_at(&g.adj[a], i) }
+}
+
+fn update(msg: Msg) -> List<Effect<Msg>> {
+  var g = Graph { adj: [[1], [0]] }
+  unlink(&g, 0, 1)
+  [Print("done"), Exit]
+}
+
+app ownership {
+  start: Start
+  update: update
+  grants: [Console]
+}

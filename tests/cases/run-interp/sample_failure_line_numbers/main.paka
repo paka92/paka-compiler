@@ -1,0 +1,48 @@
+enum Msg { Start }
+
+fn score_of(fields: List<String>, line: Int) -> Result<Int, String> {
+  if len(fields) != 2 {
+    return Err("line {line}: expected name,score")
+  }
+  let text = fields[1]
+  ok_or(parse_int(text), "line {line}: bad score {text}")
+}
+
+fn total(records: List<List<String>>) -> Result<Int, String> {
+  var sum = 0
+  var line = 1
+  for fields in records {
+    sum += score_of(fields, line)?
+    line += 1
+  }
+  Ok(sum)
+}
+
+example total_rejects_bad_score {
+  total([["a", "3"], ["b", "x"]]) == Err("line 2: bad score x")
+}
+
+fn show(r: Result<Int, String>) -> String {
+  match r {
+    Ok(sum) => "{sum}"
+    Err(why) => why
+  }
+}
+
+fn update(m: Msg) -> List<Effect<Msg>> {
+  [
+    Print(show(total([["a", "3"], ["b", "x"]]))),
+    Print(show(total([["a", "3"], ["b", "4"]]))),
+    Print(show(total([["a", "-2"], ["b", "007"]]))),
+    Print(show(total([["a", "3"], ["b"]]))),
+    Print(show(total([["a", "3"], ["b", ""]]))),
+    Print(show(total([]))),
+    Exit
+  ]
+}
+
+app scores {
+  start: Start
+  update: update
+  grants: [Console]
+}

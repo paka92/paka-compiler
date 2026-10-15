@@ -1,0 +1,35 @@
+type Counter { count: Int = 0 }
+enum Msg { Inc, Dec }
+
+fn dec(n: Int) -> Int { if n > 0 { n - 1 } else { 0 } }
+
+fn update(s: inout Counter, m: Msg) -> List<Effect<Msg>> {
+  s.count = match m {
+    Inc => s.count + 1
+    Dec => dec(s.count)
+  }
+  []
+}
+
+example dec_stops_at_zero {
+  var s = Counter {}
+  _ = update(&s, Dec)
+  s.count == 0
+}
+
+example dec_from_two {
+  var s = Counter { count: 2 }
+  _ = update(&s, Dec)
+  s.count == 1
+}
+
+example inc_once {
+  var s = Counter {}
+  _ = update(&s, Inc)
+  s.count == 1
+}
+
+example first_of_none {
+  let xs: List<Int> = [0]
+  xs[0] == 0
+}

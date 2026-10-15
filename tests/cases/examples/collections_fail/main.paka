@@ -1,0 +1,5 @@
+example key_order { keys(["b": 1, "a": 2]) == ["b", "a"] }
+example int_key_order { values([2: "x", -1: "y"]) == ["x", "y"] }
+example list_order { [1, 2] == [2, 1] }
+example map_built_in_key_order { ["b": 1, "a": 2] == ["a": 1, "b": 2] }
+example equal_maps { ["b": 1, "a": 2] == ["a": 2, "b": 1] }

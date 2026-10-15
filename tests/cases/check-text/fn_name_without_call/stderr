@@ -1,0 +1,4 @@
+main.paka:6:16: error[wrong-argument-count]: compute takes 2 arguments (a, b), got 0; write compute(...)
+  definition: probe
+  bytes: 100..107
+  text: "compute"

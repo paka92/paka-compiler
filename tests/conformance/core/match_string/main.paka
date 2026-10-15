@@ -1,0 +1,28 @@
+enum Msg { Start }
+
+fn command(s: String) -> Int {
+  match s {
+    "go" => 1
+    "stop" | "halt" => 2
+    "" => 3
+    _ => 0
+  }
+}
+
+fn update(msg: Msg) -> List<Effect<Msg>> {
+  let r1 = command("go")
+  let r2 = command("halt")
+  let r3 = command("")
+  let r4 = command("Go")
+  let r5 = command("stop ")
+  [
+    Print("{r1} {r2} {r3} {r4} {r5}"),
+    Exit
+  ]
+}
+
+app core {
+  start: Start
+  update: update
+  grants: [Console]
+}

@@ -1,0 +1,25 @@
+enum Msg { Start }
+
+fn id(xs: List<Int>) -> List<Int> {
+  xs
+}
+
+fn first_row(g: List<List<Int>>) -> List<Int> {
+  g[0]
+}
+
+fn update(msg: Msg) -> List<Effect<Msg>> {
+  let a = [1, 2]
+  var b = id(a)
+  append(&b, 1)
+  let g = [[5], [6]]
+  var r = first_row(g)
+  r[0] = 0
+  [Print("{len(a)} {len(b)} {g[0][0]} {r[0]}"), Exit]
+}
+
+app ownership {
+  start: Start
+  update: update
+  grants: [Console]
+}

@@ -1,0 +1,10 @@
+fn pick(n: Int) -> String {
+  match n {
+    0 => "zero"
+    1 => "one"
+    _ => unreachable()
+  }
+}
+
+example one { pick(1) == "one" }
+example two { pick(2) == "two" }

@@ -1,0 +1,14 @@
+enum Msg { Start }
+
+fn br(s: String) -> String { "[" + s + "]" }
+
+fn update(msg: Msg) -> List<Effect<Msg>> {
+  let l1 = join([br(join([], ",")), br(join([""], ",")), br(join(["a", "b"], "")), br(join(["a"], ", ")), br(join(["a", "b", "c"], ", ")), br(join(["é", "日"], "·")), br(join(["", ""], ","))], " ")
+  [Print(l1), Exit]
+}
+
+app builtins {
+  start: Start
+  update: update
+  grants: [Console]
+}

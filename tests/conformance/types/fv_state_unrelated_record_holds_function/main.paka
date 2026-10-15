@@ -1,0 +1,20 @@
+enum Msg { Start }
+
+type Hook { run: fn(Int) -> Int }
+
+type Tally { n: Int = 0 }
+
+fn double(n: Int) -> Int { n * 2 }
+
+fn update(s: inout Tally, msg: Msg) -> List<Effect<Msg>> {
+  let h = Hook { run: double }
+  s.n = h.run(21)
+  [Print("{s.n}"), Exit]
+}
+
+app types {
+  state: Tally
+  start: Start
+  update: update
+  grants: [Console]
+}

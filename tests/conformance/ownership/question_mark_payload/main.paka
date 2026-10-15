@@ -1,0 +1,42 @@
+enum Msg { Start }
+
+fn show(xs: List<Int>) -> String {
+  var parts: List<String> = []
+  for x in xs { append(&parts, "{x}") }
+  "[" + join(parts, ", ") + "]"
+}
+
+fn swap_in(o: inout Option<String>, next: String) -> String {
+  let old = unwrap_or(o, "")
+  o = Some(next)
+  old
+}
+
+fn both(o: inout Option<String>) -> Option<String> {
+  Some(swap_in(&o, "b") + o?)
+}
+
+fn add_at_end(xs: inout List<Int>, x: Int) {
+  append(&xs, x)
+}
+
+fn fill(xs: inout List<Int>, o: Option<Int>) -> Option<Int> {
+  append(&xs, 1)
+  add_at_end(&xs, o?)
+  Some(len(xs))
+}
+
+fn update(msg: Msg) -> List<Effect<Msg>> {
+  var o: Option<String> = Some("a")
+  let r = unwrap_or(both(&o), "none")
+  var xs = [0]
+  let first = unwrap_or(fill(&xs, None), -1)
+  let second = unwrap_or(fill(&xs, Some(5)), -1)
+  [Print("{r} {first} {second} {show(xs)}"), Exit]
+}
+
+app ownership {
+  start: Start
+  update: update
+  grants: [Console]
+}

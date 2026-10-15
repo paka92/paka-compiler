@@ -1,0 +1,4 @@
+main.paka:2:16: error[cannot-infer]: cannot infer the type of x; write it: let x: Option<T> = ...
+  definition: f
+  bytes: 24..37
+  text: "unreachable()"

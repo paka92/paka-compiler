@@ -1,0 +1,19 @@
+enum Msg { Start }
+
+fn pick(n: Int) -> Int {
+  if n > 0 {
+    return 1
+  } else {
+    2
+  }
+}
+
+fn update(msg: Msg) -> List<Effect<Msg>> {
+  [Exit]
+}
+
+app core {
+  start: Start
+  update: update
+  grants: [Console]
+}

@@ -1,0 +1,20 @@
+enum Msg { Start }
+
+fn update(q: Msg) -> List<Effect<Msg>> {
+  var m = [4: "d", 2: "b"]
+  let before = has(m, 4)
+  remove(&m, 4)
+  remove(&m, 9)
+  remove(&m, 4)
+  let after = has(m, 4)
+  let kept = has(m, 2)
+  let found = unwrap_or(get(m, 2), "?")
+  let gone = unwrap_or(get(m, 4), "?")
+  [Print("{before} {after} {kept} {found} {gone} {len(m)}"), Exit]
+}
+
+app generics {
+  start: Start
+  update: update
+  grants: [Console]
+}

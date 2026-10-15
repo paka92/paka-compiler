@@ -1,0 +1,4 @@
+main.paka:3:3: error[not-a-function]: n is an Int, not a function
+  definition: call
+  bytes: 26..27
+  text: "n"

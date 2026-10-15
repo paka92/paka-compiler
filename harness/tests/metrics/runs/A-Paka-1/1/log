@@ -1,0 +1,2 @@
+{"event":"start","run":"A-Paka-1","model":"claude-sonnet-5-5","effort":"medium","system":"...","at":1000}
+{"event":"void","reason":"the reply is a refusal","fault":true,"at":2000}

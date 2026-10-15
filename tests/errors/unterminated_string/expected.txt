@@ -1,0 +1,3 @@
+main.paka:4:10: error[unterminated-string]: the string has no closing quote
+  bytes: 70..97
+  text: "\"let there be light), Exit]"

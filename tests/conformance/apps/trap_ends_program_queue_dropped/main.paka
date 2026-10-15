@@ -1,0 +1,22 @@
+enum Msg { Start, GotA(text: String), GotB(text: String) }
+
+fn update(m: Msg) -> List<Effect<Msg>> {
+  match m {
+    Start => [
+      Print("start"),
+      ReadFile("main.paka", then: GotA, or: GotA),
+      ReadFile("main.paka", then: GotB, or: GotB)
+    ]
+    GotA(text) => {
+      let z = len(text) - len(text)
+      [Print("{1 / z}")]
+    }
+    GotB(text) => [Print("second"), Exit]
+  }
+}
+
+app apps {
+  start: Start
+  update: update
+  grants: [Console, ReadFiles]
+}

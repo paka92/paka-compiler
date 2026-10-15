@@ -1,0 +1,19 @@
+enum Msg { Start }
+
+fn br(s: String) -> String { "[" + s + "]" }
+
+fn b(x: Bool) -> String { "{x}" }
+
+fn n(x: Int) -> String { "{x}" }
+
+fn update(msg: Msg) -> List<Effect<Msg>> {
+  let l1 = join([br(upper("élan")), br(upper("abcXYZ")), br(lower("ÀBC")), br(lower("HELLO World 1")), br(upper("")), br(upper("ñ")), br(lower("ΑΒΓ"))], " ")
+  let l2 = join([n(len(upper("ß"))), b(upper("ß") == "ß"), b(lower("İ") == "İ"), n(len(upper("héllo"))), n(len(lower("ÀBC")))], " ")
+  [Print(l1), Print(l2), Exit]
+}
+
+app builtins {
+  start: Start
+  update: update
+  grants: [Console]
+}

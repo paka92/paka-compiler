@@ -1,0 +1,4 @@
+main.paka:3:11: warning[unused-name]: m is never used
+  definition: update
+  bytes: 30..31
+  text: "m"

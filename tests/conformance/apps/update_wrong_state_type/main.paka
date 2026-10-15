@@ -1,0 +1,16 @@
+type Tally { n: Int = 0 }
+
+type Other { n: Int = 0 }
+
+enum Msg { Start }
+
+fn update(s: inout Other, m: Msg) -> List<Effect<Msg>> {
+  [Exit]
+}
+
+app apps {
+  state: Tally
+  start: Start
+  update: update
+  grants: [Console]
+}

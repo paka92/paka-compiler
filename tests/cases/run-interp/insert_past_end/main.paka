@@ -1,0 +1,14 @@
+enum Msg { Start }
+
+fn update(m: Msg) -> List<Effect<Msg>> {
+  var xs = [1, 2, 3]
+  insert(&xs, 9, at: 3)
+  insert(&xs, 0, at: 5)
+  [Print("{len(xs)}"), Exit]
+}
+
+app generics {
+  start: Start
+  update: update
+  grants: [Console]
+}

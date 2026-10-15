@@ -1,0 +1,23 @@
+enum Msg { Start }
+
+fn is_big(n: Int) -> Bool { n > 100 }
+
+fn greet(name: String) -> String { "hello, " + name }
+
+fn half(x: Float) -> Float { x / 2.0 }
+
+fn update(msg: Msg) -> List<Effect<Msg>> {
+  let g = greet("Ada")
+  [
+    Print("{is_big(500)} {is_big(5)}"),
+    Print(g),
+    Print(fixed(half(5.0), digits: 2)),
+    Exit
+  ]
+}
+
+app core {
+  start: Start
+  update: update
+  grants: [Console]
+}

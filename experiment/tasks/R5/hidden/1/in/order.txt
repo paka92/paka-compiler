@@ -1,0 +1,7 @@
+one s a 1
+one s b 1
+one a z 1
+one b c 1
+one z t 1
+one c t 1
+trip s t

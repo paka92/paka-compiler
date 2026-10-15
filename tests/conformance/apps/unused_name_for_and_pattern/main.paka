@@ -1,0 +1,30 @@
+enum Shape { Dot, Circle(r: Float) }
+
+enum Msg { Start }
+
+fn area(s: Shape) -> Float {
+  match s {
+    Dot => 0.0
+    Circle(r) => 1.0
+  }
+}
+
+fn count() -> Int {
+  var n = 0
+  for i in 0..<3 {
+    n += 1
+  }
+  n
+}
+
+fn update(msg: Msg) -> List<Effect<Msg>> {
+  match msg {
+    Start => [Print("{count()} {fixed(area(Dot), digits: 1)}"), Exit]
+  }
+}
+
+app apps {
+  start: Start
+  update: update
+  grants: [Console]
+}

@@ -1,0 +1,19 @@
+enum Msg { Start }
+
+fn take_s(s: inout String) -> String {
+  let out = s
+  s = ""
+  out
+}
+
+fn update(msg: Msg) -> List<Effect<Msg>> {
+  var s = "a"
+  let line = "{s} {take_s(&s)}"
+  [Print("done"), Exit]
+}
+
+app ownership {
+  start: Start
+  update: update
+  grants: [Console]
+}

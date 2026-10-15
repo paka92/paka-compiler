@@ -1,0 +1,125 @@
+enum Msg { Start(path: String), Loaded(text: String), Failed(why: String) }
+
+// A character of the joined text and where it stood in the file as read.
+type Char { c: String, line: Int, col: Int }
+
+fn joined(text: String) -> List<Char> {
+  let cs = chars(text)
+  var out: List<Char> = []
+  var line = 1
+  var col = 1
+  var i = 0
+  while i < len(cs) {
+    if cs[i] == "\\" && i + 1 < len(cs) && cs[i + 1] == "\n" {
+      i += 2
+      line += 1
+      col = 1
+      continue
+    }
+    append(&out, Char { c: cs[i], line: line, col: col })
+    if cs[i] == "\n" {
+      line += 1
+      col = 1
+    } else {
+      col += 1
+    }
+    i += 1
+  }
+  out
+}
+
+fn error(at: Char, message: String) -> String {
+  "error: line {at.line} col {at.col}: {message}"
+}
+
+// Whether the characters at i and i + 1 are `pair`.
+fn marker(cs: List<Char>, i: Int, pair: String) -> Bool {
+  i + 1 < len(cs) && cs[i].c + cs[i + 1].c == pair
+}
+
+// The joined text with its comments removed.
+fn strip(cs: List<Char>) -> Result<List<String>, String> {
+  var out: List<String> = []
+  var i = 0
+  while i < len(cs) {
+    let c = cs[i].c
+    if marker(cs, i, "//") {
+      while i < len(cs) && cs[i].c != "\n" { i += 1 }
+    } else if marker(cs, i, "/*") {
+      let start = cs[i]
+      var depth = 1
+      i += 2
+      while depth > 0 {
+        if i == len(cs) { return Err(error(start, "unterminated comment")) }
+        if marker(cs, i, "/*") {
+          depth += 1
+          i += 2
+        } else if marker(cs, i, "*/") {
+          depth -= 1
+          i += 2
+        } else {
+          if cs[i].c == "\n" { append(&out, "\n") }
+          i += 1
+        }
+      }
+    } else if c == "\"" || c == "'" {
+      let start = cs[i]
+      append(&out, c)
+      i += 1
+      while true {
+        if i == len(cs) || cs[i].c == "\n" { return Err(error(start, "unterminated string")) }
+        append(&out, cs[i].c)
+        i += 1
+        if cs[i - 1].c == c { break }
+        if cs[i - 1].c == "\\" && i < len(cs) && cs[i].c != "\n" {
+          append(&out, cs[i].c)
+          i += 1
+        }
+      }
+    } else {
+      append(&out, c)
+      i += 1
+    }
+  }
+  Ok(out)
+}
+
+fn stripped(text: String) -> Result<List<String>, String> {
+  let cs = joined(text)
+  var rows = split(join(strip(cs)?, ""), "\n")
+  // A joined text ending in a line feed has no line after it.
+  if is_empty(cs) || cs[len(cs) - 1].c == "\n" { _ = pop(&rows) }
+  var out: List<String> = []
+  for row in rows {
+    append(&out, trim_end(row))
+  }
+  Ok(out)
+}
+
+fn report(result: Result<List<String>, String>) -> List<Effect<Msg>> {
+  match result {
+    Ok(out) => {
+      var effects: List<Effect<Msg>> = []
+      for line in out {
+        append(&effects, Print(line))
+      }
+      append(&effects, Exit)
+      effects
+    }
+    Err(why) => [Print(why), ExitWith(20)]
+  }
+}
+
+fn update(m: Msg) -> List<Effect<Msg>> {
+  match m {
+    Start(path) => [ReadFile(path, then: Loaded, or: Failed)]
+    Loaded(text) => report(stripped(text))
+    Failed(why) => [Print("error: cannot read file: {why}"), ExitWith(20)]
+  }
+}
+
+app strip_comments {
+  start: Start
+  update: update
+  grants: [Console, ReadFiles]
+}

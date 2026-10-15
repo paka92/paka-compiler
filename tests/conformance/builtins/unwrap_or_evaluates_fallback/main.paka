@@ -1,0 +1,15 @@
+enum Msg { Start }
+
+fn n(x: Int) -> String { "{x}" }
+
+fn update(msg: Msg) -> List<Effect<Msg>> {
+  let z = 0
+  let v = unwrap_or(Some(1), 10 / z)
+  [Print(n(v)), Exit]
+}
+
+app builtins {
+  start: Start
+  update: update
+  grants: [Console]
+}

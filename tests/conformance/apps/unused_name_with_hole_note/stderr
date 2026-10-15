@@ -1,0 +1,12 @@
+main.paka:3:18: warning[unused-name]: b is never used
+  definition: first
+  bytes: 37..38
+  text: "b"
+main.paka:8:3: note[hole]: ??two takes Int
+  definition: second
+  bytes: 84..89
+  text: "??two"
+main.paka:12:7: warning[unused-name]: z is never used
+  definition: third
+  bytes: 119..120
+  text: "z"

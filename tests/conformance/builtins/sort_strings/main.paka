@@ -1,0 +1,19 @@
+enum Msg { Start }
+
+fn ss(xs: List<String>) -> String {
+  "{len(xs)}:[" + join(xs, "|") + "]"
+}
+
+fn update(msg: Msg) -> List<Effect<Msg>> {
+  var ws = ["b", "a", "B", "é", "", "ab", "z", "日", "😀", "A"]
+  sort(&ws)
+  var short = ["ab", "a", "abc", "b"]
+  sort(&short)
+  [Print(ss(ws)), Print(ss(short)), Exit]
+}
+
+app builtins {
+  start: Start
+  update: update
+  grants: [Console]
+}

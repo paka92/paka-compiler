@@ -1,0 +1,132 @@
+enum Msg { Start(path: String), Loaded(text: String), Failed(why: String) }
+
+// Every name, each with its dependencies as a set; names and sets in ASCII order.
+type Rules { deps: Map<String, Map<String, Bool>> = [:] }
+
+fn is_name(s: String) -> Bool {
+  if len(s) < 1 || len(s) > 20 { return false }
+  for c in chars(s) {
+    let ok = c >= "a" && c <= "z" || c >= "A" && c <= "Z" || c >= "0" && c <= "9"
+    if !ok && c != "_" && c != "-" { return false }
+  }
+  true
+}
+
+fn read_rules(text: String) -> Result<Rules, String> {
+  var rules = Rules {}
+  var targets: Map<String, Bool> = [:]
+  let rows = lines(text)
+  for i in 0..<len(rows) {
+    let n = i + 1
+    let ws = words(rows[i])
+    if is_empty(ws) { continue }
+    let head = ws[0]
+    let target = head[0..<len(head) - 1]
+    if !ends_with(head, ":") || !is_name(target) { return Err("error: line {n}: bad line") }
+    let needs = ws[1..<len(ws)]
+    for d in needs {
+      if !is_name(d) { return Err("error: line {n}: bad line") }
+    }
+    if has(targets, target) { return Err("error: line {n}: duplicate target {target}") }
+    targets[target] = true
+    if !has(rules.deps, target) { rules.deps[target] = [:] }
+    for d in needs {
+      rules.deps[target][d] = true
+      if !has(rules.deps, d) { rules.deps[d] = [:] }
+    }
+  }
+  Ok(rules)
+}
+
+fn is_ready(rules: Rules, done: Map<String, Bool>, name: String) -> Bool {
+  if has(done, name) { return false }
+  for d in keys(rules.deps[name]) {
+    if !has(done, d) { return false }
+  }
+  true
+}
+
+// The names in build order, or the cycle line when the order gets stuck.
+fn build_order(rules: Rules) -> Result<List<String>, String> {
+  let names = keys(rules.deps)
+  var order: List<String> = []
+  var done: Map<String, Bool> = [:]
+  while len(order) < len(names) {
+    var next: Option<String> = None
+    for name in names {
+      if is_ready(rules, done, name) {
+        next = Some(name)
+        break
+      }
+    }
+    match next {
+      Some(name) => {
+        append(&order, name)
+        done[name] = true
+      }
+      None => {
+        return Err(cycle(rules, done))
+      }
+    }
+  }
+  Ok(order)
+}
+
+fn first_left(names: List<String>, done: Map<String, Bool>) -> String {
+  for name in names {
+    if !has(done, name) { return name }
+  }
+  unreachable()
+}
+
+fn cycle(rules: Rules, done: Map<String, Bool>) -> String {
+  var path: List<String> = []
+  var seen_at: Map<String, Int> = [:]
+  var at = first_left(keys(rules.deps), done)
+  while !has(seen_at, at) {
+    seen_at[at] = len(path)
+    append(&path, at)
+    at = first_left(keys(rules.deps[at]), done)
+  }
+  let loop = path[seen_at[at]..<len(path)]
+  var low = 0
+  for i in 0..<len(loop) {
+    if loop[i] < loop[low] { low = i }
+  }
+  var names = loop[low..<len(loop)]
+  extend(&names, loop[0..<low])
+  append(&names, loop[low])
+  "cycle: " + join(names, " -> ")
+}
+
+fn report(result: Result<List<String>, String>) -> List<Effect<Msg>> {
+  match result {
+    Ok(order) => {
+      var effects: List<Effect<Msg>> = []
+      for name in order {
+        append(&effects, Print(name))
+      }
+      append(&effects, Exit)
+      effects
+    }
+    Err(why) => [Print(why), ExitWith(20)]
+  }
+}
+
+fn solve(text: String) -> Result<List<String>, String> {
+  build_order(read_rules(text)?)
+}
+
+fn update(m: Msg) -> List<Effect<Msg>> {
+  match m {
+    Start(path) => [ReadFile(path, then: Loaded, or: Failed)]
+    Loaded(text) => report(solve(text))
+    Failed(why) => [Print("error: cannot read file: {why}"), ExitWith(20)]
+  }
+}
+
+app build {
+  start: Start
+  update: update
+  grants: [Console, ReadFiles]
+}

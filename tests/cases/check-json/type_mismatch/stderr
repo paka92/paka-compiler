@@ -1,0 +1,1 @@
+{"kind":"type-mismatch","definition":"update","message":"expected `List<Effect<Msg>>`, found `String`","file":"main.paka","start":63,"end":83,"line":4,"column":3,"text":"\"let there be light\"","expected":"List<Effect<Msg>>","found":"String","fix":null}

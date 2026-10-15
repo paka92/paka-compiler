@@ -1,0 +1,16 @@
+enum Msg { Start }
+
+fn set_first(xs: List<Int>) {
+  xs[0] = 1
+}
+
+fn update(msg: Msg) -> List<Effect<Msg>> {
+  set_first([0])
+  [Print("done"), Exit]
+}
+
+app ownership {
+  start: Start
+  update: update
+  grants: [Console]
+}

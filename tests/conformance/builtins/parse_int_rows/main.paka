@@ -1,0 +1,26 @@
+enum Msg { Start }
+
+fn oi(o: Option<Int>) -> String {
+  match o {
+    Some(v) => "Some({v})"
+    None => "None"
+  }
+}
+
+fn n(x: Int) -> String { "{x}" }
+
+fn update(msg: Msg) -> List<Effect<Msg>> {
+  let good = ["0", "007", "-0", "-007", "123", "9223372036854775807", "-9223372036854775808"]
+  let bad = ["9223372036854775808", "-9223372036854775809", "99999999999999999999", "+7", " 7", "7 ", "7\n", "", "-", "--1", "1.0", "1e3", "0x10", "1_000", "abc", "٣", "１２"]
+  var ok: List<String> = []
+  for t in good { append(&ok, oi(parse_int(t))) }
+  var misses: List<String> = []
+  for t in bad { append(&misses, oi(parse_int(t))) }
+  [Print(join(ok, " ")), Print(join(misses, " ")), Print(n(len(misses))), Exit]
+}
+
+app builtins {
+  start: Start
+  update: update
+  grants: [Console]
+}

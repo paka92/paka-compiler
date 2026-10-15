@@ -1,0 +1,18 @@
+enum Msg { Start }
+
+fn update(msg: Msg) -> List<Effect<Msg>> {
+  let a = 3
+  let b = 5
+  let n = -1
+  [
+    Print("{a < b} {a <= a} {b > a} {a >= b} {a == a} {a != a}"),
+    Print("{n < 0} {n > a} {n == -1}"),
+    Exit
+  ]
+}
+
+app core {
+  start: Start
+  update: update
+  grants: [Console]
+}

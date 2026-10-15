@@ -1,0 +1,36 @@
+type Player { score: Int }
+
+fn first_int(xs: List<Int>) -> Int { xs[0] }
+
+fn longest(a: List<Int>, b: List<Int>) -> Int { max(len(a), len(b)) }
+
+fn count_of(xs: List<Int>) -> Int {
+  let count = len(xs)
+  count
+}
+
+fn fill(n: Int) {
+  var xs: List<Int> = []
+  append(&xs, 1)
+  var adj: List<List<Int>> = list_of([], count: n)
+  var seen = list_of(false, count: n)
+  let hit = contains([[1], [0]], [0])
+  let same = [] == xs
+  let m: Map<String, Int> = [:]
+  let k = "a"
+  let c = unwrap_or(get(m, k), 0)
+}
+
+fn ahead(a: Player, b: Player) -> Bool { a.score > b.score }
+
+enum Msg { Start }
+
+fn update(m: Msg) -> List<Effect<Msg>> {
+  [Exit]
+}
+
+app generics {
+  start: Start
+  update: update
+  grants: []
+}

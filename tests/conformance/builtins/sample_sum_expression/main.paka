@@ -1,0 +1,33 @@
+enum Msg { Start }
+
+fn eval(src: String) -> Result<Int, String> {
+  var total = 0
+  var sign = 1
+  for t in words(src) {
+    if t == "+" {
+      sign = 1
+    } else if t == "-" {
+      sign = -1
+    } else {
+      total += sign * ok_or(parse_int(t), "bad number {t}")?
+    }
+  }
+  Ok(total)
+}
+
+fn show(r: Result<Int, String>) -> String {
+  match r {
+    Ok(v) => "Ok({v})"
+    Err(e) => "Err(" + e + ")"
+  }
+}
+
+fn update(msg: Msg) -> List<Effect<Msg>> {
+  [Print(show(eval("12 + 3 - 4"))), Print(show(eval(""))), Print(show(eval("1 + x - 2"))), Print(show(eval("  7  "))), Exit]
+}
+
+app builtins {
+  start: Start
+  update: update
+  grants: [Console]
+}

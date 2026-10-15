@@ -1,0 +1,19 @@
+enum Msg { Start }
+
+type Graph { adj: List<List<Int>> = [] }
+
+fn copy_edges(g: inout Graph, u: Int, w: Int) {
+  for v in g.adj[u] { append(&g.adj[w], v) }
+}
+
+fn update(msg: Msg) -> List<Effect<Msg>> {
+  var g = Graph { adj: [[1], [0]] }
+  copy_edges(&g, 0, 1)
+  [Print("done"), Exit]
+}
+
+app ownership {
+  start: Start
+  update: update
+  grants: [Console]
+}

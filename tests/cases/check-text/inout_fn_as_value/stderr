@@ -1,0 +1,4 @@
+main.paka:8:14: error[not-a-value]: bump has an inout parameter and cannot be a value; give it a result instead of inout, or call it directly
+  definition: probe
+  bytes: 92..96
+  text: "bump"

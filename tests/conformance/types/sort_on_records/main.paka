@@ -1,0 +1,15 @@
+enum Msg { Start }
+
+type P { x: Int, y: Int }
+
+fn update(msg: Msg) -> List<Effect<Msg>> {
+  var players = [P { x: 1, y: 2 }, P { x: 2, y: 1 }]
+  sort(&players)
+  [Print("done"), Exit]
+}
+
+app types {
+  start: Start
+  update: update
+  grants: [Console]
+}

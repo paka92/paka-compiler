@@ -1,0 +1,17 @@
+type Player { score: Int }
+
+fn rank(players: List<Player>) {
+  sort(&players)
+}
+
+enum Msg { Start }
+
+fn update(m: Msg) -> List<Effect<Msg>> {
+  [Exit]
+}
+
+app generics {
+  start: Start
+  update: update
+  grants: []
+}

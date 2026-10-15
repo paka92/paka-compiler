@@ -1,0 +1,21 @@
+enum Msg { Start }
+
+fn update(msg: Msg) -> List<Effect<Msg>> {
+  var xs: List<Int> = []
+  let a = [] == xs
+  append(&xs, 1)
+  let b = [] == xs
+  let c = contains([[1], [0]], [0])
+  var adj: List<List<Int>> = list_of([], count: 3)
+  append(&adj[1], 5)
+  let d = unwrap_or(None, 7)
+  let m: Map<String, Int> = ["k": 4]
+  let e = unwrap_or(get(m, "k"), 0) + unwrap_or(get(m, "z"), 10)
+  [Print("{a} {b} {c} {len(adj)} {len(adj[1])} {d} {e}"), Exit]
+}
+
+app types {
+  start: Start
+  update: update
+  grants: [Console]
+}

@@ -1,0 +1,22 @@
+enum Msg { Start }
+
+type Account { balance: Int = 0 }
+
+fn transfer(from: inout Account, to: inout Account) {
+  from.balance -= 1
+  to.balance += 1
+}
+
+fn update(msg: Msg) -> List<Effect<Msg>> {
+  var m: Map<String, Account> = ["a": Account { balance: 5 }, "b": Account {}]
+  let a = "a"
+  let b = "b"
+  transfer(&m[a], &m[b])
+  [Print("done"), Exit]
+}
+
+app ownership {
+  start: Start
+  update: update
+  grants: [Console]
+}

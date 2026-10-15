@@ -1,0 +1,18 @@
+enum Msg { Start, Got(n: Int), Seen(n: Int) }
+
+fn double(n: Int) -> Int { n * 2 }
+fn twice(n: Int) -> Int { n * 2 }
+
+fn same(a: fn(Int) -> Int, b: fn(Int) -> Int) -> Bool { a == b }
+
+fn update(m: Msg) -> List<Effect<Msg>> {
+  let f = double
+  let g: fn(Int) -> Msg = Got
+  [Print("{f == double} {double == twice} {same(double, twice)} {same(f, double)} {g == Seen}"), Exit]
+}
+
+app callbacks {
+  start: Start
+  update: update
+  grants: [Console]
+}

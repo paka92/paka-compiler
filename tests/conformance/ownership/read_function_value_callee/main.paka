@@ -1,0 +1,24 @@
+enum Msg { Start }
+
+type Ops { f: fn(String) -> Int, name: String = "a" }
+
+fn size(s: String) -> Int {
+  len(s)
+}
+
+fn reset(o: inout Ops) -> fn(String) -> Int {
+  o.name = ""
+  o.f
+}
+
+fn update(msg: Msg) -> List<Effect<Msg>> {
+  var o = Ops { f: size }
+  let r = reset(&o)(o.name)
+  [Print("done"), Exit]
+}
+
+app ownership {
+  start: Start
+  update: update
+  grants: [Console]
+}

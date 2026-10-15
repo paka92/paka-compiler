@@ -1,0 +1,19 @@
+fn unwrap(n: Int) -> Int {
+  n
+}
+
+fn f(s: String) -> Int {
+  s.unwrap()
+}
+
+enum Msg { Start }
+
+fn update(m: Msg) -> List<Effect<Msg>> {
+  [Exit]
+}
+
+app tool {
+  start: Start
+  update: update
+  grants: []
+}

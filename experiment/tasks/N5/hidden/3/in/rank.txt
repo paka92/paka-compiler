@@ -1,0 +1,7 @@
+parts q:25 r:75
+adam 80 90
+ned 88 88
+Zoe 95 85
+lee x 88
+top 100 100
+kim 88 x

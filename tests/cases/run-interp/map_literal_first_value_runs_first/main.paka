@@ -1,0 +1,13 @@
+enum Msg { Start }
+
+fn update(q: Msg) -> List<Effect<Msg>> {
+  let zero = 0
+  let m = ["a": 1 / zero, "a": 2 / zero]
+  [Print("{len(m)}"), Exit]
+}
+
+app generics {
+  start: Start
+  update: update
+  grants: [Console]
+}

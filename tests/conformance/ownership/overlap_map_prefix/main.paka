@@ -1,0 +1,18 @@
+enum Msg { Start }
+
+fn absorb(m: inout Map<String, List<Int>>, more: List<Int>) {
+  m["new"] = more
+}
+
+fn update(msg: Msg) -> List<Effect<Msg>> {
+  var m: Map<String, List<Int>> = ["a": [1], "b": [2]]
+  let b = "b"
+  absorb(&m, m[b])
+  [Print("done"), Exit]
+}
+
+app ownership {
+  start: Start
+  update: update
+  grants: [Console]
+}

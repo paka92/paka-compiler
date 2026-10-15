@@ -1,0 +1,24 @@
+main.paka:15:7: warning[unused-name]: adj is never used
+  definition: fill
+  bytes: 280..283
+  text: "adj"
+main.paka:16:7: warning[unused-name]: seen is never used
+  definition: fill
+  bytes: 331..335
+  text: "seen"
+main.paka:17:7: warning[unused-name]: hit is never used
+  definition: fill
+  bytes: 369..372
+  text: "hit"
+main.paka:18:7: warning[unused-name]: same is never used
+  definition: fill
+  bytes: 407..411
+  text: "same"
+main.paka:21:7: warning[unused-name]: c is never used
+  definition: fill
+  bytes: 475..476
+  text: "c"
+main.paka:28:11: warning[unused-name]: m is never used
+  definition: update
+  bytes: 598..599
+  text: "m"

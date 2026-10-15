@@ -1,0 +1,4 @@
+main.paka:2:11: error[cannot-infer]: cannot infer the type of e; write it: let e: Result<T, String> = ...
+  definition: failed
+  bytes: 24..33
+  text: "Err(\"no\")"

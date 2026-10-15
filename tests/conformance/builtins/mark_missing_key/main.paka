@@ -1,0 +1,15 @@
+enum Msg { Start }
+
+fn bump(x: inout Int) { x += 1 }
+
+fn update(msg: Msg) -> List<Effect<Msg>> {
+  var m: Map<String, Int> = ["a": 1]
+  bump(&m["x"])
+  [Print("x"), Exit]
+}
+
+app builtins {
+  start: Start
+  update: update
+  grants: [Console]
+}

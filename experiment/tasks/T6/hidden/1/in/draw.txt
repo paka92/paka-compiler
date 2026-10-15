@@ -1,0 +1,6 @@
+8 3
+text 0 0 abcdef
+copy 0 0 6 1 1 0
+text -2 1 xyzw
+fill 0 2 8 1 .
+copy 5 0 4 2 -1 1

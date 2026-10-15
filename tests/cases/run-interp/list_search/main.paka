@@ -1,0 +1,18 @@
+enum Msg { Start }
+
+fn update(m: Msg) -> List<Effect<Msg>> {
+  let xs = [3, 1, 4, 1, 5]
+  let nested = [[1], [0]]
+  let e: List<Int> = []
+  let first = unwrap_or(find(xs, 1), -1)
+  let absent = unwrap_or(find(xs, 9), -1)
+  let words = ["a", "b"]
+  let at = unwrap_or(find(words, "b"), -1)
+  [Print("{contains(xs, 4)} {contains(xs, 2)} {contains(nested, [0])} {first} {absent} {at} {is_empty(e)} {is_empty(xs)} {len(e)}"), Exit]
+}
+
+app generics {
+  start: Start
+  update: update
+  grants: [Console]
+}

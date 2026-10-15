@@ -1,0 +1,21 @@
+enum Msg { Start }
+
+fn update(msg: Msg) -> List<Effect<Msg>> {
+  let a = [1]
+  let b = [2]
+  let flag = true
+  var c = if flag { a } else { b }
+  append(&c, 5)
+  var d = match flag {
+    true => b
+    _ => a
+  }
+  append(&d, 6)
+  [Print("{len(a)} {len(b)} {c[1]} {d[1]}"), Exit]
+}
+
+app ownership {
+  start: Start
+  update: update
+  grants: [Console]
+}

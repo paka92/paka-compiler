@@ -1,0 +1,6 @@
+main.paka:2:5: error[type-mismatch]: expected `Int`, found `Float`; write to_float(n)
+  definition: is_half
+  bytes: 33..35
+  text: "=="
+  expected: Int
+  found: Float

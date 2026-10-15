@@ -1,0 +1,16 @@
+fn id(n: Int) -> Result<Int, String> {
+  let m = n?
+  Ok(m)
+}
+
+enum Msg { Start }
+
+fn update(m: Msg) -> List<Effect<Msg>> {
+  [Exit]
+}
+
+app tool {
+  start: Start
+  update: update
+  grants: []
+}

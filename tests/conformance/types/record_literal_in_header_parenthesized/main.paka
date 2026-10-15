@@ -1,0 +1,22 @@
+enum Msg { Start }
+
+type Counter { count: Int = 0 }
+
+fn update(msg: Msg) -> List<Effect<Msg>> {
+  var seen: List<String> = []
+  if (Counter {}) == (Counter { count: 0 }) { append(&seen, "if") }
+  var i = 0
+  while (Counter { count: i }).count < 2 { i += 1 }
+  for c in [(Counter { count: 5 })] { append(&seen, "for {c.count}") }
+  match (Counter { count: 1 }).count {
+    1 => { append(&seen, "match") }
+    _ => {}
+  }
+  [Print(join(seen, ",") + " {i}"), Exit]
+}
+
+app types {
+  start: Start
+  update: update
+  grants: [Console]
+}

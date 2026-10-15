@@ -1,0 +1,4 @@
+main.paka:2:6: note[hole]: ??c takes Bool
+  definition: f
+  bytes: 21..24
+  text: "??c"

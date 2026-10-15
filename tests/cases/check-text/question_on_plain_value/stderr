@@ -1,0 +1,6 @@
+main.paka:2:12: error[type-mismatch]: ? needs an Option or Result; n is Int; drop the ?
+  definition: id
+  bytes: 50..51
+  text: "?"
+  expected: Option or Result
+  found: Int

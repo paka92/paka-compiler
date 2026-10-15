@@ -1,0 +1,13 @@
+enum Msg { Start }
+
+enum Mark { Cross, Some(n: Int) }
+
+fn update(msg: Msg) -> List<Effect<Msg>> {
+  [Print("done"), Exit]
+}
+
+app types {
+  start: Start
+  update: update
+  grants: [Console]
+}

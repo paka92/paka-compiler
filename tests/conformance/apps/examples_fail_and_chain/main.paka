@@ -1,0 +1,4 @@
+example c_last { 1 == 1 && 2 == 3 && 4 == 4 }
+example c_first { 1 == 2 && 3 == 3 && 4 == 4 }
+example c_plain { true && false }
+example c_middle { 1 == 1 && 5 < 2 && 7 > 0 }

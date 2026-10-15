@@ -1,0 +1,16 @@
+enum Msg { Start }
+
+fn add_one(xs: List<Int>) {
+  append(&xs, 1)
+}
+
+fn update(msg: Msg) -> List<Effect<Msg>> {
+  add_one([1])
+  [Print("done"), Exit]
+}
+
+app ownership {
+  start: Start
+  update: update
+  grants: [Console]
+}

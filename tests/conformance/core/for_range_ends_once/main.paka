@@ -1,0 +1,20 @@
+enum Msg { Start }
+
+fn update(msg: Msg) -> List<Effect<Msg>> {
+  var n = 3
+  var runs = 0
+  for i in 0..<n {
+    n += 1
+    runs += 1
+  }
+  [
+    Print("{runs} {n}"),
+    Exit
+  ]
+}
+
+app core {
+  start: Start
+  update: update
+  grants: [Console]
+}

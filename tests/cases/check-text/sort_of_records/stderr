@@ -1,0 +1,6 @@
+main.paka:4:8: error[type-mismatch]: Player has no order; write sort_by(&players, before) with fn before(a: Player, b: Player) -> Bool
+  definition: rank
+  bytes: 68..76
+  text: "&players"
+  expected: List<Int>, List<Float> or List<String>
+  found: List<Player>

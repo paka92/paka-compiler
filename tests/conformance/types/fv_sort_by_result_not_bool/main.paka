@@ -1,0 +1,15 @@
+enum Msg { Start }
+
+fn cmp(a: Int, b: Int) -> Int { a - b }
+
+fn update(msg: Msg) -> List<Effect<Msg>> {
+  var xs = [2, 1]
+  sort_by(&xs, cmp)
+  [Print("done"), Exit]
+}
+
+app types {
+  start: Start
+  update: update
+  grants: [Console]
+}

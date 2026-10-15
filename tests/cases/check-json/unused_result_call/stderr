@@ -1,0 +1,1 @@
+{"kind":"unused-result","definition":"twice","message":"the value of ratio is not used; it is Result<Int, String>: match it, pass it up with ratio(a, b)?, or write `_ = ratio(a, b)`","file":"main.paka","start":152,"end":163,"line":9,"column":3,"text":"ratio(a, b)","expected":null,"found":null,"fix":null}

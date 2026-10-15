@@ -1,0 +1,6 @@
+main.paka:6:18: error[type-mismatch]: ? passes Err(Int) up, but f returns Result<Int, String>; make it Result<T, Int> or match it
+  definition: f
+  bytes: 111..112
+  text: "?"
+  expected: Result<T, Int>
+  found: Result<Int, String>

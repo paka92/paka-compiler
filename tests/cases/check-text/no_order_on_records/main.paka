@@ -1,0 +1,17 @@
+type Player { score: Int }
+
+fn ahead(a: Player, b: Player) -> Bool {
+  a > b
+}
+
+enum Msg { Start }
+
+fn update(m: Msg) -> List<Effect<Msg>> {
+  [Exit]
+}
+
+app generics {
+  start: Start
+  update: update
+  grants: []
+}

@@ -1,0 +1,20 @@
+enum Msg { Start }
+
+fn inner(xs: List<Int>, i: Int) -> Int {
+  xs[i]
+}
+
+fn middle(xs: List<Int>) -> Int {
+  inner(xs, 3)
+}
+
+fn update(msg: Msg) -> List<Effect<Msg>> {
+  let n = middle([1])
+  [Print("{n}"), Exit]
+}
+
+app types {
+  start: Start
+  update: update
+  grants: [Console]
+}

@@ -1,0 +1,23 @@
+enum Msg { Start }
+
+type GNode { name: String = "", edges: List<Int> = [] }
+
+type G { nodes: List<GNode> = [] }
+
+fn tag(edges: inout List<Int>, name: String) {
+  append(&edges, len(name))
+}
+
+fn update(msg: Msg) -> List<Effect<Msg>> {
+  var g = G { nodes: [GNode { name: "a" }, GNode { name: "b" }] }
+  let a = 0
+  let b = 1
+  tag(&g.nodes[a].edges, g.nodes[b].name)
+  [Print("done"), Exit]
+}
+
+app ownership {
+  start: Start
+  update: update
+  grants: [Console]
+}

@@ -1,0 +1,20 @@
+enum Msg { Start }
+
+type Rules { rules: List<String> = [], count: Int = 0 }
+
+fn apply(s: inout Rules, rule: String) {
+  s.count += len(rule)
+}
+
+fn update(msg: Msg) -> List<Effect<Msg>> {
+  var s = Rules { rules: ["ab"] }
+  let i = 0
+  apply(&s, s.rules[i])
+  [Print("done"), Exit]
+}
+
+app ownership {
+  start: Start
+  update: update
+  grants: [Console]
+}

@@ -1,0 +1,17 @@
+enum Msg { Start }
+
+fn scale(n: Int; by: Int) -> Int { n * by }
+
+fn update(msg: Msg) -> List<Effect<Msg>> {
+  let h = scale
+  let k: fn(Int, Int) -> Int = scale
+  let a = h(3, 4)
+  let b = k(4, 5)
+  [Print("{a} {b}"), Exit]
+}
+
+app types {
+  start: Start
+  update: update
+  grants: [Console]
+}

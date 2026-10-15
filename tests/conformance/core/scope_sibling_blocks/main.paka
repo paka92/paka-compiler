@@ -1,0 +1,27 @@
+enum Msg { Start }
+
+fn update(msg: Msg) -> List<Effect<Msg>> {
+  var total = 0
+  for i in 0..<2 {
+    let x = i + 1
+    total += x
+  }
+  for i in 0..<3 {
+    let x = i * 10
+    total += x
+  }
+  if total > 0 {
+    let x = 100
+    total += x
+  }
+  [
+    Print("{total}"),
+    Exit
+  ]
+}
+
+app core {
+  start: Start
+  update: update
+  grants: [Console]
+}

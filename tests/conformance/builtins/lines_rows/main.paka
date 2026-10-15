@@ -1,0 +1,22 @@
+enum Msg { Start }
+
+fn ss(xs: List<String>) -> String {
+  "{len(xs)}:[" + join(xs, "|") + "]"
+}
+
+fn b(x: Bool) -> String { "{x}" }
+
+fn n(x: Int) -> String { "{x}" }
+
+fn update(msg: Msg) -> List<Effect<Msg>> {
+  let crlf = lines("a\r\nb")
+  let rows = [ss(lines("a\nb\n")), ss(lines("a")), ss(lines("")), ss(lines("\n")), ss(lines("a\n\n")), ss(lines("\n\n")), ss(lines("a\nb")), ss(lines("a\n\nb\n"))]
+  let cr = join([n(len(crlf)), n(len(crlf[0])), b(crlf[0] == "a\r"), b(trim_end(crlf[0]) == "a")], " ")
+  [Print(join(rows, "\n")), Print(cr), Exit]
+}
+
+app builtins {
+  start: Start
+  update: update
+  grants: [Console]
+}

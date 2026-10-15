@@ -1,0 +1,6 @@
+main.paka:2:10: error[type-mismatch]: no + between String and Int; write an interpolation: "{n}"
+  definition: label
+  bytes: 38..39
+  text: "+"
+  expected: String
+  found: Int

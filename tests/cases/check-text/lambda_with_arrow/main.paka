@@ -1,0 +1,16 @@
+enum Msg { Start }
+
+fn probe(xs: List<Int>) {
+  var ys = xs
+  sort_by(&ys, a -> a)
+}
+
+fn update(m: Msg) -> List<Effect<Msg>> {
+  [Exit]
+}
+
+app callbacks {
+  start: Start
+  update: update
+  grants: []
+}

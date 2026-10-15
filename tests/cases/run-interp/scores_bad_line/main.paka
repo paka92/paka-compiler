@@ -1,0 +1,44 @@
+enum Msg { Start(path: String), Loaded(text: String), Failed(why: String) }
+
+fn score_of(fields: List<String>, line: Int) -> Result<Int, String> {
+  if len(fields) != 2 {
+    return Err("line {line}: expected name,score")
+  }
+  let text = fields[1]
+  ok_or(parse_int(text), "line {line}: bad score {text}")
+}
+
+fn total(records: List<List<String>>) -> Result<Int, String> {
+  var sum = 0
+  var line = 1
+  for fields in records {
+    sum += score_of(fields, line)?
+    line += 1
+  }
+  Ok(sum)
+}
+
+fn records(text: String) -> List<List<String>> {
+  var out: List<List<String>> = []
+  for line in lines(text) {
+    append(&out, split(line, ","))
+  }
+  out
+}
+
+fn update(m: Msg) -> List<Effect<Msg>> {
+  match m {
+    Start(path) => [ReadFile(path, then: Loaded, or: Failed)]
+    Loaded(text) => match total(records(text)) {
+      Ok(sum) => [Print("{sum}"), Exit]
+      Err(why) => [Print(why), ExitWith(20)]
+    }
+    Failed(why) => [Print("cannot read: {why}"), ExitWith(20)]
+  }
+}
+
+app scores {
+  start: Start
+  update: update
+  grants: [Console, ReadFiles]
+}

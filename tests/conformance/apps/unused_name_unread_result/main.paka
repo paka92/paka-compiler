@@ -1,0 +1,21 @@
+enum Msg { Start }
+
+fn read(text: String) -> Int {
+  let n = parse_int(text)
+  0
+}
+
+fn update(msg: Msg) -> List<Effect<Msg>> {
+  match msg {
+    Start => {
+      let r = read("1")
+      [Print("{r}"), Exit]
+    }
+  }
+}
+
+app apps {
+  start: Start
+  update: update
+  grants: [Console]
+}

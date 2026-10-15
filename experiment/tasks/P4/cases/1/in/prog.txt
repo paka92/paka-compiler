@@ -1,0 +1,11 @@
+; factorial in a subroutine
+      set a 5
+      call fact
+      out b
+      halt
+fact: set b 1
+loop: jz a done
+      mul b a
+      sub a 1
+      jmp loop
+done: ret

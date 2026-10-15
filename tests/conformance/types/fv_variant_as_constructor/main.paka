@@ -1,0 +1,29 @@
+enum Msg { Start }
+
+enum Reply { Loaded(text: String), Failed(why: String), Idle }
+
+fn make(f: fn(String) -> Reply, s: String) -> Reply {
+  f(s)
+}
+
+fn show(r: Reply) -> String {
+  match r {
+    Loaded(t) => "loaded {t}"
+    Failed(w) => "failed {w}"
+    Idle => "idle"
+  }
+}
+
+fn update(msg: Msg) -> List<Effect<Msg>> {
+  let f = Loaded
+  let a = show(make(Loaded, "abc"))
+  let b = show(make(Failed, "x"))
+  let c = show(f("q"))
+  [Print("{a} {b} {c}"), Exit]
+}
+
+app types {
+  start: Start
+  update: update
+  grants: [Console]
+}

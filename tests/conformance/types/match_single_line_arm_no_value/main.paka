@@ -1,0 +1,21 @@
+enum Msg { Start }
+
+enum Mood { Calm, Busy }
+
+fn score(m: Mood) -> Int {
+  var n = 0
+  match m {
+    Calm => 1
+    Busy => n = 2
+  }
+}
+
+fn update(msg: Msg) -> List<Effect<Msg>> {
+  [Print("{score(Calm)}"), Exit]
+}
+
+app types {
+  start: Start
+  update: update
+  grants: [Console]
+}

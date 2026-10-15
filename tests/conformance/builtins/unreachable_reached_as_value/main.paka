@@ -1,0 +1,22 @@
+enum Msg { Start }
+
+fn pick(x: Int) -> Int {
+  if x > 0 {
+    x
+  } else {
+    unreachable()
+  }
+}
+
+fn n(x: Int) -> String { "{x}" }
+
+fn update(msg: Msg) -> List<Effect<Msg>> {
+  let v = pick(0)
+  [Print(n(v)), Exit]
+}
+
+app builtins {
+  start: Start
+  update: update
+  grants: [Console]
+}

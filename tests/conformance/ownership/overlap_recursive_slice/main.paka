@@ -1,0 +1,19 @@
+enum Msg { Start }
+
+fn fill(xs: inout List<Int>, ys: List<Int>) {
+  if len(xs) < 3 {
+    fill(&xs, xs[0..<1])
+  }
+}
+
+fn update(msg: Msg) -> List<Effect<Msg>> {
+  var xs = [1]
+  fill(&xs, [2])
+  [Print("done"), Exit]
+}
+
+app ownership {
+  start: Start
+  update: update
+  grants: [Console]
+}

@@ -1,0 +1,14 @@
+enum Msg { Start }
+
+fn letter(n: Int) -> String { from_code(n) }
+
+fn update(m: Msg) -> List<Effect<Msg>> {
+  let r = letter(1114112)
+  [Exit]
+}
+
+app apps {
+  start: Start
+  update: update
+  grants: [Console]
+}

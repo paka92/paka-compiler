@@ -1,0 +1,19 @@
+enum Msg { Start }
+
+fn swap_lists(a: inout List<Int>, b: inout List<Int>) {
+  let t = a
+  a = b
+  b = t
+}
+
+fn update(msg: Msg) -> List<Effect<Msg>> {
+  var xs = [1]
+  swap_lists(&xs, &xs)
+  [Print("done"), Exit]
+}
+
+app errors {
+  start: Start
+  update: update
+  grants: [Console]
+}

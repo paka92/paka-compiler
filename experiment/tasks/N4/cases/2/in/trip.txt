@@ -1,0 +1,4 @@
+members ann:2 ben:1
+
+cost fuel 60.00
+cost hotel 210.00 ann dave

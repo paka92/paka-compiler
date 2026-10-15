@@ -1,0 +1,6 @@
+example e_eq { 1 == 2 }
+example e_ne { 1 != 1 }
+example e_lt { 2 < 1 }
+example e_le { 2 <= 1 }
+example e_gt { 1 > 2 }
+example e_ge { 1 >= 2 }

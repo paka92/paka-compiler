@@ -1,0 +1,4 @@
+main.paka:2:3: error[missing-arm]: no arm for variant None; add None => ...
+  definition: digits
+  bytes: 32..37
+  text: "match"

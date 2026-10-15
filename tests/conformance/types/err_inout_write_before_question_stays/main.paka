@@ -1,0 +1,22 @@
+enum Msg { Start }
+
+fn tally(log: inout List<String>, a: String) -> Option<Int> {
+  append(&log, "seen")
+  let n = parse_int(a)?
+  append(&log, "parsed")
+  Some(n)
+}
+
+fn update(msg: Msg) -> List<Effect<Msg>> {
+  var log: List<String> = []
+  let a = tally(&log, "x")
+  let after_a = len(log)
+  let b = tally(&log, "5")
+  [Print("{unwrap_or(a, -1)} {unwrap_or(b, -1)} {after_a} {len(log)}"), Exit]
+}
+
+app types {
+  start: Start
+  update: update
+  grants: [Console]
+}

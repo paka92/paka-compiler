@@ -1,0 +1,6 @@
+main.paka:9:14: error[type-mismatch]: ? passes Err(String) up, but ratio_or_zero returns Int; make it Result<T, String> or match it
+  definition: ratio_or_zero
+  bytes: 171..172
+  text: "?"
+  expected: Result<T, String>
+  found: Int

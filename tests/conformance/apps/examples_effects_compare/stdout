@@ -1,0 +1,6 @@
+asks_for_file pass
+fail_effects fail at main.paka:21:27
+  left: [ExitWith(9)]
+  right: [ExitWith(8)]
+prints_and_exits pass
+state_counts pass

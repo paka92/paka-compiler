@@ -1,0 +1,16 @@
+enum Msg { Start }
+
+fn ping(n: Int) -> Int { pong(n + 1) + 1 }
+
+fn pong(n: Int) -> Int { ping(n + 1) + 1 }
+
+fn update(m: Msg) -> List<Effect<Msg>> {
+  let r = ping(0)
+  [Exit]
+}
+
+app apps {
+  start: Start
+  update: update
+  grants: [Console, ReadFiles]
+}

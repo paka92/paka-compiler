@@ -1,0 +1,6 @@
+main.paka:4:3: error[type-mismatch]: expected `List<Effect<Msg>>`, found `String`
+  definition: update
+  bytes: 63..83
+  text: "\"let there be light\""
+  expected: List<Effect<Msg>>
+  found: String

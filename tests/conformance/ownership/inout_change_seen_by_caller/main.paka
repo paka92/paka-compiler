@@ -1,0 +1,55 @@
+enum Msg { Start }
+
+type Stack { items: List<Int> = [] }
+
+type Graph { adj: List<List<Int>> = [] }
+
+fn show(xs: List<Int>) -> String {
+  var parts: List<String> = []
+  for x in xs { append(&parts, "{x}") }
+  "[" + join(parts, ", ") + "]"
+}
+
+fn push(s: inout Stack, x: Int) {
+  append(&s.items, x)
+}
+
+fn pass_on(xs: inout List<Int>, x: Int) {
+  append(&xs, x)
+}
+
+fn add_twice(xs: inout List<Int>, x: Int) {
+  append(&xs, x)
+  pass_on(&xs, x)
+}
+
+fn put(x: Int; into: inout List<Int>) {
+  append(&into, x)
+}
+
+fn bump(n: inout Int) {
+  n += 1
+}
+
+fn update(msg: Msg) -> List<Effect<Msg>> {
+  var st = Stack {}
+  push(&st, 4)
+  var xs = [1]
+  add_twice(&xs, 2)
+  put(3, into: &xs)
+  var g = Graph { adj: [[5], [6]] }
+  append(&g.adj[1], 7)
+  bump(&g.adj[1][0])
+  var m: Map<String, List<Int>> = ["a": [0], "b": [9]]
+  append(&m["a"], 8)
+  var count = 0
+  bump(&count)
+  let in_map = show(m["a"])
+  [Print("{show(st.items)} {show(xs)} {show(g.adj[1])} {in_map} {count}"), Exit]
+}
+
+app ownership {
+  start: Start
+  update: update
+  grants: [Console]
+}

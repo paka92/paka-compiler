@@ -1,0 +1,15 @@
+enum Msg { Start }
+
+fn first() -> Int { ??x }
+
+fn second() -> Int { ??x }
+
+fn update(m: Msg) -> List<Effect<Msg>> {
+  [Exit]
+}
+
+app apps {
+  start: Start
+  update: update
+  grants: [Console, ReadFiles]
+}

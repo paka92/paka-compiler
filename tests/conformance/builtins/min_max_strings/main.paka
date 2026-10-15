@@ -1,0 +1,15 @@
+enum Msg { Start }
+
+fn br(s: String) -> String { "[" + s + "]" }
+
+fn update(msg: Msg) -> List<Effect<Msg>> {
+  let l1 = join([min("a", "b"), max("a", "b"), min("é", "z"), max("é", "z"), min("ab", "abc"), max("ab", "abc")], " ")
+  let l2 = join([max("", "a"), min("B", "a"), br(min("", "a")), min("x", "x")], " ")
+  [Print(l1), Print(l2), Exit]
+}
+
+app builtins {
+  start: Start
+  update: update
+  grants: [Console]
+}

@@ -1,0 +1,4 @@
+main.paka:2:3: error[wrong-argument-count]: unreachable takes no arguments
+  definition: never
+  bytes: 22..33
+  text: "unreachable"

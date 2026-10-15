@@ -1,0 +1,16 @@
+enum Msg { Start }
+
+fn f(n: Int) -> Int {
+  let n = 2
+  n
+}
+
+fn update(msg: Msg) -> List<Effect<Msg>> {
+  [Exit]
+}
+
+app core {
+  start: Start
+  update: update
+  grants: [Console]
+}

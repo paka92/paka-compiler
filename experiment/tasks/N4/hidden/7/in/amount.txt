@@ -1,0 +1,3 @@
+members ann:10 bob:20
+cost ok 0.10 bob
+cost big 123456789.00 ghost

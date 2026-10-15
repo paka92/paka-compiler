@@ -1,0 +1,17 @@
+enum Msg { Start }
+
+fn update(msg: Msg) -> List<Effect<Msg>> {
+  let flag = true
+  let n = match flag {
+    true => 1
+    true => 2
+    false => 3
+  }
+  [Print("done"), Exit]
+}
+
+app errors {
+  start: Start
+  update: update
+  grants: [Console]
+}

@@ -1,0 +1,13 @@
+enum Msg { Start, Loaded(text: String), Pair(a: Int, b: Int) }
+
+type Later { after: fn(String) -> Msg = Pair }
+
+fn update(m: Msg) -> List<Effect<Msg>> {
+  [Exit]
+}
+
+app callbacks {
+  start: Start
+  update: update
+  grants: []
+}

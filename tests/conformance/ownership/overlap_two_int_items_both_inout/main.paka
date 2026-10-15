@@ -1,0 +1,21 @@
+enum Msg { Start }
+
+fn swap_items(a: inout Int, b: inout Int) {
+  let t = a
+  a = b
+  b = t
+}
+
+fn update(msg: Msg) -> List<Effect<Msg>> {
+  var xs = [1, 2]
+  let i = 0
+  let j = 1
+  swap_items(&xs[i], &xs[j])
+  [Print("done"), Exit]
+}
+
+app ownership {
+  start: Start
+  update: update
+  grants: [Console]
+}

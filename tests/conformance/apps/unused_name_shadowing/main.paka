@@ -1,0 +1,22 @@
+enum Msg { Start }
+
+fn width() -> Int {
+  3
+}
+
+fn area(side: Int) -> Int {
+  side * width()
+}
+
+fn update(msg: Msg) -> List<Effect<Msg>> {
+  let width = 5
+  match msg {
+    Start => [Print("{area(2)}"), Exit]
+  }
+}
+
+app apps {
+  start: Start
+  update: update
+  grants: [Console]
+}

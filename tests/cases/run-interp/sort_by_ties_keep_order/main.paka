@@ -1,0 +1,19 @@
+enum Msg { Start }
+
+type P { k: Int, id: Int }
+
+fn lower_key(a: P, b: P) -> Bool { a.k < b.k }
+
+fn update(q: Msg) -> List<Effect<Msg>> {
+  var ps = [P { k: 2, id: 1 }, P { k: 1, id: 2 }, P { k: 2, id: 3 }, P { k: 1, id: 4 }, P { k: 0, id: 5 }]
+  sort_by(&ps, lower_key)
+  var none: List<P> = []
+  sort_by(&none, lower_key)
+  [Print("{ps[0].id}{ps[1].id}{ps[2].id}{ps[3].id}{ps[4].id} {len(none)}"), Exit]
+}
+
+app generics {
+  start: Start
+  update: update
+  grants: [Console]
+}

@@ -1,0 +1,23 @@
+enum Msg { Start }
+
+fn update(msg: Msg) -> List<Effect<Msg>> {
+  var count = 0
+  var last = 0
+  for i in 9223372036854775805..<9223372036854775807 {
+    count += 1
+    last = i
+  }
+  var none = 0
+  for i in 9223372036854775807..<9223372036854775807 { none += 1 }
+  for i in 9223372036854775807..<-9223372036854775808 { none += 1 }
+  [
+    Print("{count} {last} {none}"),
+    Exit
+  ]
+}
+
+app core {
+  start: Start
+  update: update
+  grants: [Console]
+}

@@ -1,0 +1,15 @@
+enum Msg { Start }
+
+fn update(m: Msg) -> List<Effect<Msg>> {
+  [Print("ran"), Exit]
+}
+
+example wrong { 1 == 2 }
+
+example broken { 1 / 0 == 0 }
+
+app apps {
+  start: Start
+  update: update
+  grants: [Console]
+}

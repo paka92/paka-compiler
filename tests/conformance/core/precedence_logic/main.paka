@@ -1,0 +1,19 @@
+enum Msg { Start }
+
+fn update(msg: Msg) -> List<Effect<Msg>> {
+  let a = 2
+  let b = 3
+  let c = 4
+  [
+    Print("{a + 1 < b * 2} {1 + 2 == 3}"),
+    Print("{a < b && b < c} {a > b || b < c && a > c} {!(a > b) && c > a}"),
+    Print("{a == 2 && b == 3 || c == 0} {c == 0 || a == 2 && b == 0}"),
+    Exit
+  ]
+}
+
+app core {
+  start: Start
+  update: update
+  grants: [Console]
+}

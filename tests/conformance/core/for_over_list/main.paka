@@ -1,0 +1,29 @@
+enum Msg { Start }
+
+fn update(msg: Msg) -> List<Effect<Msg>> {
+  let xs = [3, 1, 4, 1, 5]
+  var sum = 0
+  var big = 0
+  for x in xs {
+    sum += x
+    if x > big { big = x }
+  }
+  let words = ["a", "bc", "def"]
+  var joined = ""
+  for w in words { joined += w + "-" }
+  let none: List<Int> = []
+  var count = 0
+  for x in none { count += 1 }
+  [
+    Print("{sum} {big}"),
+    Print(joined),
+    Print("{count}"),
+    Exit
+  ]
+}
+
+app core {
+  start: Start
+  update: update
+  grants: [Console]
+}

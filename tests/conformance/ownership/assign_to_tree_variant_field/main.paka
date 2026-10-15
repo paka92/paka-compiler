@@ -1,0 +1,16 @@
+enum Msg { Start }
+
+enum Expr { Num(value: Int), Add(left: Expr, right: Expr) }
+
+fn update(msg: Msg) -> List<Effect<Msg>> {
+  let t = Add(Num(1), Num(2))
+  var u = t
+  u.left = Num(0)
+  [Print("done"), Exit]
+}
+
+app ownership {
+  start: Start
+  update: update
+  grants: [Console]
+}

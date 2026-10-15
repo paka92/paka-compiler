@@ -2,7 +2,7 @@
 
 **A programming language for code written by AI agents.**
 
-Genesis paper · draft 0 · 13 October 2026 · Status: design only, no code yet
+Genesis paper · draft 1 · 15 October 2026 · Status: prototype built, first experiment run, rule says stop
 
 ---
 
@@ -21,9 +21,9 @@ Paka stands on six pillars:
 
 The first three are what Paka must deliver. The last three make them possible and safe to rely on.
 
-Nothing described here is built. Every number about Paka is a target or an estimate until it is measured. Figures cited from other work are the sources' own.
+Built so far: the language reference, a parser, a type checker and a slow interpreter, plus native builds for a small subset. Dev mode, the live GUI and release mode are not built. Every other number about Paka is a target or an estimate until it is measured. Figures cited from other work are the sources' own.
 
-**Next step.** Build a parser, a type checker and a slow interpreter. Then measure one model writing the same tasks in Paka, Rust and TypeScript. If Paka loses clearly, the project stops ([section 9](#9-the-first-experiment)).
+**First result.** One model wrote the same tasks in Paka, Rust and TypeScript. It wrote Paka almost as correctly as Rust but spent 2.3 times the output tokens, past the pre-set limit of 2.0, so the rule says stop ([section 9](#9-the-first-experiment)). The owner's decision is still open.
 
 ## 1. Why a new language
 
@@ -380,6 +380,18 @@ The largest risk is that agents write Paka worse than languages they already kno
 - On a language models have seen less of, the cost showed up in tokens, not correctness. Five recent models wrote OCaml about as accurately as Python, one small model excepted, but spent 1.28–1.69× the output tokens.
 - On a language models had never seen, correctness dropped too. Models fine-tuned on one learned its syntax quickly and still scored up to 19 percentage points below Python in the main setup, and more in others.
 - Easy tasks separate nothing. A benchmark built for another agent-targeted language averaged 96.7–99.7% across Vera, Python and TypeScript, and its author calls it saturated. The tasks here must be hard enough that the Rust and TypeScript runs fail some.
+
+**Result.** The rules were frozen in [`experiment/protocol.md`](experiment/protocol.md) before any counted run. One model (`claude-sonnet-5-5`, medium effort) solved 14 tasks in seven classes, 4 times per language, with up to 8 submissions each and build and test feedback after every one. Two task sets were calibrated on Rust and TypeScript first. The first was too easy, so 11 of its 14 tasks were replaced with harder ones before the counted runs.
+
+| | Paka | Rust | TypeScript |
+|---|---|---|---|
+| First try | 75.0% | 83.9% | 87.5% |
+| Mean edits | 0.34 | 0.20 | 0.21 |
+| Output tokens | 445,593 | 192,932 | 157,316 |
+
+Against Rust, the first-try gap of 8.9 points and the edits gap of 0.14 are within the margins. The token ratio of 2.31 is past the limit of 2.0, so the pre-set rule says **stop**. Every run in every language was solved. The pattern matches the OCaml result above, cost in tokens rather than correctness, but the cost is larger. Paka runs also send the whole language reference with every call, about 9,400 input tokens; input tokens are outside the rule.
+
+What this does not settle: one model, one effort setting, and a language no model has been trained on. Whether the token cost falls as models see Paka code is untested. Rulings on single runs and the go / no-go analysis are still open, and the decision is the owner's. Raw logs are in `experiment/runs/`.
 
 **Order of work if Paka passes:**
 

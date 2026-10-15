@@ -1,0 +1,13 @@
+enum Msg { Start }
+
+fn update(q: Msg) -> List<Effect<Msg>> {
+  var counts: Map<String, Int> = [:]
+  counts["a"] += 1
+  [Print("{len(counts)}"), Exit]
+}
+
+app generics {
+  start: Start
+  update: update
+  grants: [Console]
+}

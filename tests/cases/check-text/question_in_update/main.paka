@@ -1,0 +1,12 @@
+enum Msg { Start }
+
+fn update(m: Msg) -> List<Effect<Msg>> {
+  let n = parse_int("1")?
+  [Exit]
+}
+
+app tool {
+  start: Start
+  update: update
+  grants: []
+}

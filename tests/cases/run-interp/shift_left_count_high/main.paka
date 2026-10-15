@@ -1,0 +1,12 @@
+enum Msg { Start }
+
+fn update(m: Msg) -> List<Effect<Msg>> {
+  let x = shift_left(1, 64)
+  [Print("{x}"), Exit]
+}
+
+app rows {
+  start: Start
+  update: update
+  grants: [Console]
+}

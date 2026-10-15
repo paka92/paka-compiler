@@ -1,0 +1,3 @@
+example twice_doubles { twice(2) == 4 }
+
+example twice_as_index { [1][twice(1)] == 1 }

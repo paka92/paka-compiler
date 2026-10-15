@@ -1,0 +1,21 @@
+enum Msg { Start }
+
+type Graph { adj: List<List<Int>> = [] }
+
+fn add_all(xs: inout List<Int>, more: List<Int>) {
+  for x in more { append(&xs, x) }
+}
+
+fn update(msg: Msg) -> List<Effect<Msg>> {
+  var g = Graph { adj: [[1], [0]] }
+  let a = 0
+  let b = 1
+  add_all(&g.adj[a], g.adj[b])
+  [Print("done"), Exit]
+}
+
+app ownership {
+  start: Start
+  update: update
+  grants: [Console]
+}

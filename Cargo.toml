@@ -1,0 +1,9 @@
+[workspace]
+resolver = "3"
+members = ["paka", "paka-rt", "harness"]
+
+[profile.dev]
+overflow-checks = true
+
+[profile.release]
+overflow-checks = true

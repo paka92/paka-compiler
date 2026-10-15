@@ -1,0 +1,19 @@
+enum Msg { Start }
+
+fn take(xs: inout List<Int>) -> List<Int> {
+  let out = xs
+  xs = []
+  out
+}
+
+fn update(msg: Msg) -> List<Effect<Msg>> {
+  var xs = [1]
+  let same = xs == take(&xs)
+  [Print("done"), Exit]
+}
+
+app errors {
+  start: Start
+  update: update
+  grants: [Console]
+}

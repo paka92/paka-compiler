@@ -1,0 +1,7 @@
+loop: loop Zed / 1
+Zed:
+zed: loop
+alpha: zed Zed / 2
+stuck: stuck Zed
+down Zed
+down Zed

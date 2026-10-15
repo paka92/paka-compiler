@@ -1,0 +1,4 @@
+main.paka:1:27: note[hole]: ??delta takes Int
+  definition: f
+  bytes: 26..33
+  text: "??delta"

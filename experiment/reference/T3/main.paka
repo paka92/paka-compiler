@@ -1,0 +1,120 @@
+enum Msg { Start(path: String, order: String), Loaded(text: String), Failed(why: String) }
+
+type Sorting { down: Bool = false }
+
+// A number chunk has its value; a text chunk its text in lower case.
+enum Chunk { Number(value: Int), Text(text: String) }
+
+type Row { text: String, chunks: List<Chunk> }
+
+fn is_digit(c: String) -> Bool {
+  c >= "0" && c <= "9"
+}
+
+fn chunks(line: String, n: Int) -> Result<List<Chunk>, String> {
+  let cs = chars(line)
+  var out: List<Chunk> = []
+  var i = 0
+  while i < len(cs) {
+    let start = i
+    let digit = is_digit(cs[i])
+    while i < len(cs) && is_digit(cs[i]) == digit { i += 1 }
+    let part = line[start..<i]
+    if !digit {
+      append(&out, Text(lower(part)))
+    } else if len(part) > 15 {
+      return Err("error: line {n}: number too long")
+    } else {
+      append(&out, Number(unwrap_or(parse_int(part), 0)))
+    }
+  }
+  Ok(out)
+}
+
+// Below zero when a comes first, above zero when b comes first, zero when equal.
+fn compare_chunks(a: Chunk, b: Chunk) -> Int {
+  match a {
+    Number(x) => {
+      match b {
+        Number(y) => if x < y { -1 } else if x > y { 1 } else { 0 }
+        Text(_) => -1
+      }
+    }
+    Text(x) => {
+      match b {
+        Number(_) => 1
+        Text(y) => if x < y { -1 } else if x > y { 1 } else { 0 }
+      }
+    }
+  }
+}
+
+fn compare(a: Row, b: Row) -> Int {
+  let shared = min(len(a.chunks), len(b.chunks))
+  for i in 0..<shared {
+    let c = compare_chunks(a.chunks[i], b.chunks[i])
+    if c != 0 { return c }
+  }
+  len(a.chunks) - len(b.chunks)
+}
+
+fn rising(a: Row, b: Row) -> Bool {
+  compare(a, b) < 0
+}
+
+fn falling(a: Row, b: Row) -> Bool {
+  compare(a, b) > 0
+}
+
+fn sorted_lines(text: String, down: Bool) -> Result<List<String>, String> {
+  let rows = lines(text)
+  var items: List<Row> = []
+  for i in 0..<len(rows) {
+    append(&items, Row { text: rows[i], chunks: chunks(rows[i], i + 1)? })
+  }
+  if down {
+    sort_by(&items, falling)
+  } else {
+    sort_by(&items, rising)
+  }
+  var out: List<String> = []
+  for item in items {
+    append(&out, item.text)
+  }
+  Ok(out)
+}
+
+fn report(result: Result<List<String>, String>) -> List<Effect<Msg>> {
+  match result {
+    Ok(out) => {
+      var effects: List<Effect<Msg>> = []
+      for line in out {
+        append(&effects, Print(line))
+      }
+      append(&effects, Exit)
+      effects
+    }
+    Err(why) => [Print(why), ExitWith(20)]
+  }
+}
+
+fn update(s: inout Sorting, m: Msg) -> List<Effect<Msg>> {
+  match m {
+    Start(path, order) => {
+      if order != "up" && order != "down" {
+        return [Print("error: bad order"), ExitWith(20)]
+      }
+      s.down = order == "down"
+      [ReadFile(path, then: Loaded, or: Failed)]
+    }
+    Loaded(text) => report(sorted_lines(text, s.down))
+    Failed(why) => [Print("error: cannot read file: {why}"), ExitWith(20)]
+  }
+}
+
+app natural_sort {
+  state: Sorting
+  start: Start
+  update: update
+  grants: [Console, ReadFiles]
+}

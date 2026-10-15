@@ -1,0 +1,3 @@
+members alice:3 bob:2 carol:1
+cost rent 1000.00
+cost taxi -10.00 carol bob

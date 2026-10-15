@@ -1,0 +1,14 @@
+enum Msg { Start }
+
+fn compute(a: Int, b: Int) -> Int { a + b }
+
+fn update(msg: Msg) -> List<Effect<Msg>> {
+  let n: Int = compute
+  [Print("done"), Exit]
+}
+
+app types {
+  start: Start
+  update: update
+  grants: [Console]
+}

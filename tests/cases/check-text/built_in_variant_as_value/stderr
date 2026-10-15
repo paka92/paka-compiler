@@ -1,0 +1,4 @@
+main.paka:4:27: error[not-a-value]: Some is a built-in variant and cannot be a value; write fn some_of(value: String) -> Option<String> { Some(value) }
+  definition: probe
+  bytes: 95..99
+  text: "Some"

@@ -1,0 +1,16 @@
+type Counter { count: Int = 0 }
+
+enum Msg { Inc, Dec }
+
+fn update(s: inout Counter, m: Msg) {
+  match m {
+    Inc => s.count += 1
+    Dec => s.count = max(0, s.count - 1)
+  }
+}
+
+example dec_stops_at_zero {
+  var s = Counter {}
+  update(&s, Dec)
+  s.count == 0
+}

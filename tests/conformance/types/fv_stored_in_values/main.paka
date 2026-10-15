@@ -1,0 +1,31 @@
+enum Msg { Start }
+
+fn double(n: Int) -> Int { n * 2 }
+
+fn inc(n: Int) -> Int { n + 1 }
+
+enum Step { Do(act: fn(Int) -> Int), Skip }
+
+type Job { run: fn(Int) -> Int, name: String }
+
+fn update(msg: Msg) -> List<Effect<Msg>> {
+  let j = Job { run: double, name: "d" }
+  let fs = [inc, double]
+  let m: Map<String, fn(Int) -> Int> = ["d": double]
+  let st = Do(inc)
+  var d = 0
+  match st {
+    Do(act) => { d = act(1) }
+    Skip => {}
+  }
+  let a = j.run(3)
+  let b = fs[1](5)
+  let c = m["d"](6)
+  [Print("{a} {b} {c} {d}"), Exit]
+}
+
+app types {
+  start: Start
+  update: update
+  grants: [Console]
+}

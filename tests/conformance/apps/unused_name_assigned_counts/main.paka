@@ -1,0 +1,19 @@
+enum Msg { Start }
+
+fn bump() -> Int {
+  var n = 0
+  n = 1
+  7
+}
+
+fn update(msg: Msg) -> List<Effect<Msg>> {
+  match msg {
+    Start => [Print("{bump()}"), Exit]
+  }
+}
+
+app apps {
+  start: Start
+  update: update
+  grants: [Console]
+}

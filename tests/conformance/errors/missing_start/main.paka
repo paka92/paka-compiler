@@ -1,0 +1,10 @@
+app errors {
+  update: update
+  grants: [Console]
+}
+
+enum Msg { Start }
+
+fn update(msg: Msg) -> List<Effect<Msg>> {
+  [Print("done"), Exit]
+}

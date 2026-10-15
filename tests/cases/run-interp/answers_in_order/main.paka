@@ -1,0 +1,20 @@
+enum Msg { Start, Loaded(text: String), MissingA(why: String), MissingB(why: String) }
+
+fn update(m: Msg) -> List<Effect<Msg>> {
+  match m {
+    Start => [
+      ReadFile("a.txt", then: Loaded, or: MissingA),
+      ReadFile("b.txt", then: Loaded, or: MissingB),
+      Print("asked")
+    ]
+    Loaded(text) => [ExitWith(20)]
+    MissingA(why) => [Print("a: {why}")]
+    MissingB(why) => [Print("b: {why}"), Exit]
+  }
+}
+
+app reader {
+  start: Start
+  update: update
+  grants: [Console, ReadFiles]
+}

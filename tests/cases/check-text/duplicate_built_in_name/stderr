@@ -1,0 +1,4 @@
+main.paka:1:4: error[duplicate-name]: len is a built-in; rename it
+  definition: len
+  bytes: 3..6
+  text: "len"

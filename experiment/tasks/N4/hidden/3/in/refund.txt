@@ -1,0 +1,3 @@
+members big:7 mid:2 low:01
+cost refund -12345.67
+cost fee 1000.00 mid

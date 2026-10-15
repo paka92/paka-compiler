@@ -1,0 +1,21 @@
+enum Msg { Start }
+
+fn show(xs: List<Int>) -> String {
+  var parts: List<String> = []
+  for x in xs { append(&parts, "{x}") }
+  "[" + join(parts, ", ") + "]"
+}
+
+fn no(a: Int, b: Int) -> Bool { false }
+
+fn update(msg: Msg) -> List<Effect<Msg>> {
+  var xs = [3, 1, 2]
+  sort_by(&xs, no)
+  [Print(show(xs)), Exit]
+}
+
+app types {
+  start: Start
+  update: update
+  grants: [Console]
+}

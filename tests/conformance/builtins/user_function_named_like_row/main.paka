@@ -1,0 +1,13 @@
+enum Msg { Start }
+
+fn find(text: String) -> Int { 0 }
+
+fn update(msg: Msg) -> List<Effect<Msg>> {
+  [Print("x"), Exit]
+}
+
+app builtins {
+  start: Start
+  update: update
+  grants: [Console]
+}

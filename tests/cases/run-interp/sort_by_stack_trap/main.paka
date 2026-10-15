@@ -1,0 +1,19 @@
+enum Msg { Start }
+
+fn small(a: Int, b: Int) -> Bool { a < b }
+
+fn down(n: Int) -> Int {
+  var xs = [2, 1]
+  sort_by(&xs, small)
+  down(n + 1)
+}
+
+fn update(m: Msg) -> List<Effect<Msg>> {
+  [Print("{down(0)}"), Exit]
+}
+
+app callbacks {
+  start: Start
+  update: update
+  grants: [Console]
+}

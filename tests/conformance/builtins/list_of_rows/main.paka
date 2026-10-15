@@ -1,0 +1,29 @@
+enum Msg { Start }
+
+fn si(xs: List<Int>) -> String {
+  var parts: List<String> = []
+  for x in xs { append(&parts, "{x}") }
+  "[" + join(parts, ",") + "]"
+}
+
+fn ss(xs: List<String>) -> String {
+  "{len(xs)}:[" + join(xs, "|") + "]"
+}
+
+fn update(msg: Msg) -> List<Effect<Msg>> {
+  var rows: List<List<Int>> = list_of([], count: 3)
+  append(&rows[0], 1)
+  append(&rows[2], 2)
+  append(&rows[2], 3)
+  let seed = [1]
+  var g = list_of(seed, count: 2)
+  append(&g[0], 5)
+  let empty = list_of("a", count: 0)
+  [Print(si(rows[0]) + " " + si(rows[1]) + " " + si(rows[2])), Print(si(list_of(7, count: 3))), Print(si(g[0]) + " " + si(g[1]) + " " + si(seed)), Print(ss(empty)), Print(ss(list_of("é", count: 2))), Exit]
+}
+
+app builtins {
+  start: Start
+  update: update
+  grants: [Console]
+}

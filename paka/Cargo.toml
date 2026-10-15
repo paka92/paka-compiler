@@ -1,0 +1,10 @@
+[package]
+name = "paka"
+version = "0.0.0"
+edition = "2024"
+
+[lints.rust]
+unsafe_code = "forbid"
+
+[dependencies]
+paka-rt = { path = "../paka-rt" }

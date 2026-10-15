@@ -1,0 +1,17 @@
+set a -7
+set b a
+div b 2
+out b ; -3
+set b a
+mod b 2
+out b ; -1
+set c 7
+mod c -2
+out c ; 1
+div a -2
+out a ; 3
+set d 3000000
+mul d 3
+out d
+add d 1000000
+out d

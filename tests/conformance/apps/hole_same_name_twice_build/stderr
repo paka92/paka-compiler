@@ -1,0 +1,2 @@
+main.paka:3:21: error[hole-in-build]: a release build has no holes; finish ??x
+main.paka:5:22: error[hole-in-build]: a release build has no holes; finish ??x

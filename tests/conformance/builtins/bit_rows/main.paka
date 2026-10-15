@@ -1,0 +1,16 @@
+enum Msg { Start }
+
+fn n(x: Int) -> String { "{x}" }
+
+fn update(msg: Msg) -> List<Effect<Msg>> {
+  let l1 = join([n(bit_and(-1, 255)), n(bit_and(12, 10)), n(bit_and(-9223372036854775808, 9223372036854775807)), n(bit_or(12, 10)), n(bit_or(-9223372036854775808, 9223372036854775807))], " ")
+  let l2 = join([n(bit_xor(12, 10)), n(bit_xor(-1, -1)), n(bit_xor(-1, 0))], " ")
+  let l3 = join([n(bit_not(0)), n(bit_not(5)), n(bit_not(9223372036854775807)), n(bit_not(-9223372036854775808))], " ")
+  [Print(l1), Print(l2), Print(l3), Exit]
+}
+
+app builtins {
+  start: Start
+  update: update
+  grants: [Console]
+}

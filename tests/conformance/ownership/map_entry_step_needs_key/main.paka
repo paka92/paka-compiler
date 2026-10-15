@@ -1,0 +1,15 @@
+enum Msg { Start }
+
+type Cell { hits: Int = 0 }
+
+fn update(msg: Msg) -> List<Effect<Msg>> {
+  var m: Map<String, Cell> = ["a": Cell {}]
+  m["b"].hits = 1
+  [Print("not reached"), Exit]
+}
+
+app ownership {
+  start: Start
+  update: update
+  grants: [Console]
+}

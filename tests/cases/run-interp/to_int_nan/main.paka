@@ -1,0 +1,12 @@
+enum Msg { Start }
+
+fn update(m: Msg) -> List<Effect<Msg>> {
+  let x = to_int(sqrt(-1.0))
+  [Print("{x}"), Exit]
+}
+
+app rows {
+  start: Start
+  update: update
+  grants: [Console]
+}

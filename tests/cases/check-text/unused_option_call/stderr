@@ -1,0 +1,4 @@
+main.paka:2:3: error[unused-result]: the value of parse_int is not used; it is Option<Int>: match it, pass it up with parse_int(s)?, or write `_ = parse_int(s)`
+  definition: digits
+  bytes: 32..44
+  text: "parse_int(s)"

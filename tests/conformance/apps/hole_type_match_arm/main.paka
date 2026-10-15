@@ -1,0 +1,6 @@
+fn f(n: Int) -> String {
+  match n {
+    0 => ??zero
+    _ => "many"
+  }
+}

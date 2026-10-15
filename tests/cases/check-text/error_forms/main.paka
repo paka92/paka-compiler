@@ -1,0 +1,184 @@
+fn score_of(fields: List<String>, line: Int) -> Result<Int, String> {
+  if len(fields) != 2 {
+    return Err("line {line}: expected name,score")
+  }
+  let text = fields[1]
+  ok_or(parse_int(text), "line {line}: bad score {text}")
+}
+
+fn total(records: List<List<String>>) -> Result<Int, String> {
+  var sum = 0
+  var line = 1
+  for fields in records {
+    sum += score_of(fields, line)?
+    line += 1
+  }
+  Ok(sum)
+}
+
+example total_rejects_bad_score {
+  total([["a", "3"], ["b", "x"]]) == Err("line 2: bad score x")
+}
+
+fn rank(names: List<String>, who: String) -> String {
+  match find(names, who) {
+    Some(i) => {
+      let place = i + 1
+      "{who} is number {place}"
+    }
+    None => "{who} is not listed"
+  }
+}
+
+fn count_words(words: List<String>) -> Map<String, Int> {
+  var counts: Map<String, Int> = [:]
+  for w in words {
+    counts[w] = unwrap_or(get(counts, w), 0) + 1
+  }
+  counts
+}
+
+fn first_word(words: List<String>) -> Option<String> {
+  if is_empty(words) {
+    return None
+  }
+  Some(words[0])
+}
+
+fn first_two(words: List<String>) -> Option<String> {
+  let a = first_word(words)?
+  let b = first_word(words[1..<len(words)])?
+  Some("{a} {b}")
+}
+
+fn sign_name(n: Int) -> String {
+  assert(n >= -1 && n <= 1)
+  match n {
+    -1 => "minus"
+    0 => "zero"
+    1 => "plus"
+    _ => unreachable()
+  }
+}
+
+fn half_ratio(a: Int, b: Int) -> Result<Int, String> {
+  let r = ratio(a, b)?
+  Ok(r / 2)
+}
+
+fn ratio(a: Int, b: Int) -> Result<Int, String> {
+  if b == 0 {
+    return Err("divide by zero")
+  }
+  Ok(a / b)
+}
+
+fn total_fields(fields: List<String>) -> Result<Int, String> {
+  var sum = 0
+  for f in fields {
+    sum += ok_or(parse_int(f), "not a number: {f}")?
+  }
+  Ok(sum)
+}
+
+fn keep(s: String) -> Int {
+  _ = parse_int(s)
+  0
+}
+
+fn a_none() -> Option<Int> {
+  let a: Option<Int> = None
+  a
+}
+
+fn from_first(ok: Bool, n: Int) -> Option<Int> {
+  let b = if ok { Some(n) } else { None }
+  b
+}
+
+fn from_second(ok: Bool, n: Int) -> Option<Int> {
+  let c = if ok { None } else { Some(n) }
+  c
+}
+
+fn sign(n: Int) -> Result<Int, String> {
+  if n < 0 { Err("negative") } else { Ok(n) }
+}
+
+fn digits(s: String) -> Result<Int, String> {
+  let n = match parse_int(s) {
+    Some(n) => n
+    None => 0
+  }
+  Ok(n)
+}
+
+fn block_arm(s: String) -> Result<Int, String> {
+  let n = match parse_int(s) {
+    Some(n) => n
+    None => {
+      return Err("missing")
+    }
+  }
+  Ok(n)
+}
+
+fn one() -> Result<Int, String> {
+  let n = Ok(1)?
+  Ok(n)
+}
+
+type Pair { a: Int, b: Int }
+
+fn pair(y: Int) -> Result<Pair, String> {
+  Ok(Pair { a: y, b: y + 1 })
+}
+
+fn second(y: Int) -> Result<Int, String> {
+  Ok(pair(y)?.b)
+}
+
+fn at(xs: List<Option<Int>>, i: Int) -> Option<Int> {
+  let v = xs[i]?
+  Some(v + 1)
+}
+
+fn h(x: Int) -> Result<Int, String> {
+  Ok(x)
+}
+
+fn g(x: Int) -> Result<Int, String> {
+  Ok(x + 1)
+}
+
+fn both(x: Int) -> Result<Int, String> {
+  let v = g(h(x)?)?
+  Ok(v)
+}
+
+fn records(text: String) -> List<List<String>> {
+  var out: List<List<String>> = []
+  for line in lines(text) {
+    append(&out, split(line, ","))
+  }
+  out
+}
+
+enum Msg { Start, Loaded(text: String), Failed(why: String) }
+
+fn update(m: Msg) -> List<Effect<Msg>> {
+  match m {
+    Start => [ReadFile("scores.csv", then: Loaded, or: Failed)]
+    Loaded(text) => match total(records(text)) {
+      Ok(sum) => [Print("{sum}"), Exit]
+      Err(why) => [Print(why), ExitWith(20)]
+    }
+    Failed(why) => [Print("cannot read: {why}"), ExitWith(20)]
+  }
+}
+
+app scores {
+  start: Start
+  update: update
+  grants: [Console, ReadFiles]
+}

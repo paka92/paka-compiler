@@ -1,0 +1,61 @@
+type Point { x: Int, y: Int }
+type Wave { v: Float }
+type Tally { words: Int = 0 }
+enum Msg { Start(path: String), Loaded(text: String), Failed(why: String) }
+
+fn update(s: inout Tally, m: Msg) -> List<Effect<Msg>> {
+  match m {
+    Start(path) => [ReadFile(path, then: Loaded, or: Failed)]
+    Loaded(text) => [Print(text)]
+    Failed(why) => [ExitWith(5)]
+  }
+}
+
+fn good() -> Result<Int, String> { Ok(1) }
+
+example asks_for_the_file {
+  var s = Tally {}
+  update(&s, Start("a.txt")) == [ReadFile("a.txt", then: Loaded, or: Failed)]
+}
+
+example different_variants {
+  Loaded("a") != Failed("a") && Failed("a") == Failed("a")
+}
+
+example empty_meets_typed {
+  let xs: List<Int> = []
+  [] == xs && xs == []
+}
+
+example float_is_ieee {
+  let nan = 0.0 / 0.0
+  nan != nan && -0.0 == 0.0
+}
+
+example function_values_by_definition {
+  Loaded == Loaded && Loaded != Failed
+}
+
+example list_by_position {
+  [1, 2] == [1, 2] && [1, 2] != [2, 1] && [1] != [1, 1]
+}
+
+example map_order_is_free {
+  var g: Map<String, List<String>> = [:]
+  g["b"] = ["a"]
+  g["a"] = ["b"]
+  g == ["a": ["b"], "b": ["a"]]
+}
+
+example nan_inside_a_record {
+  let w = Wave { v: 0.0 / 0.0 }
+  w != w
+}
+
+example option_and_result {
+  Some(1) == Some(1) && Some(1) != None && good() == Ok(1) && good() != Err("no")
+}
+
+example record_by_fields {
+  Point { x: 1, y: 2 } == Point { x: 1, y: 2 } && Point { x: 1, y: 2 } != Point { x: 1, y: 3 }
+}

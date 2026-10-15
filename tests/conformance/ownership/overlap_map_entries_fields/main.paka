@@ -1,0 +1,21 @@
+enum Msg { Start }
+
+type Account { balance: Int = 0, name: String = "" }
+
+fn deposit(bal: inout Int, who: String) {
+  bal += len(who)
+}
+
+fn update(msg: Msg) -> List<Effect<Msg>> {
+  var m: Map<String, Account> = ["a": Account { name: "a" }, "b": Account { name: "b" }]
+  let a = "a"
+  let b = "b"
+  deposit(&m[a].balance, m[b].name)
+  [Print("done"), Exit]
+}
+
+app ownership {
+  start: Start
+  update: update
+  grants: [Console]
+}

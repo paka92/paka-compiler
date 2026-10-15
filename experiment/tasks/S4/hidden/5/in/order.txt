@@ -1,0 +1,12 @@
+box 1 1 1 1 1 1
+load C1 00.50 01
+load A2 0.15 2
+load B1 9.95 1
+select C1
+coin 50
+select C1
+coin 100
+select C1
+select Z9
+coin 100
+select A2

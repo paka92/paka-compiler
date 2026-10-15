@@ -1,0 +1,17 @@
+enum Msg { Start }
+
+fn never(a: Int, b: Int) -> Bool { unreachable() }
+
+fn update(msg: Msg) -> List<Effect<Msg>> {
+  var none: List<Int> = []
+  var one = [7]
+  sort_by(&none, never)
+  sort_by(&one, never)
+  [Print("{len(none)} {len(one)}"), Exit]
+}
+
+app types {
+  start: Start
+  update: update
+  grants: [Console]
+}

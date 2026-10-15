@@ -1,0 +1,3 @@
+apps: trap divide_by_zero at main.paka:3:36
+  7 / 0
+  in helper, called from boom

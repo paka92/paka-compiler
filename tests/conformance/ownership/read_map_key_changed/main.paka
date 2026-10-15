@@ -1,0 +1,23 @@
+enum Msg { Start }
+
+fn put_at(xs: inout List<Int>, n: Int) {
+  append(&xs, n)
+}
+
+fn rename(s: inout String) -> Int {
+  s = "b"
+  1
+}
+
+fn update(msg: Msg) -> List<Effect<Msg>> {
+  var m: Map<String, List<Int>> = ["a": [1], "b": [2]]
+  var k = "a"
+  put_at(&m[k], rename(&k))
+  [Print("done"), Exit]
+}
+
+app ownership {
+  start: Start
+  update: update
+  grants: [Console]
+}

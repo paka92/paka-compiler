@@ -1,0 +1,16 @@
+fn first_digit(s: String) -> Result<Int, String> {
+  let d = parse_int(s)?
+  Ok(d)
+}
+
+enum Msg { Start }
+
+fn update(m: Msg) -> List<Effect<Msg>> {
+  [Exit]
+}
+
+app tool {
+  start: Start
+  update: update
+  grants: []
+}

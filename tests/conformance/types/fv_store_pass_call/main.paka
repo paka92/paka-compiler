@@ -1,0 +1,27 @@
+enum Msg { Start }
+
+fn double(n: Int) -> Int { n * 2 }
+
+fn inc(n: Int) -> Int { n + 1 }
+
+fn apply(f: fn(Int) -> Int, n: Int) -> Int {
+  f(n)
+}
+
+fn update(msg: Msg) -> List<Effect<Msg>> {
+  let f = double
+  let g: fn(Int) -> Int = inc
+  var h = double
+  h = inc
+  let a = f(4)
+  let b = apply(g, 4)
+  let c = apply(double, apply(inc, 1))
+  let d = h(10)
+  [Print("{a} {b} {c} {d}"), Exit]
+}
+
+app types {
+  start: Start
+  update: update
+  grants: [Console]
+}

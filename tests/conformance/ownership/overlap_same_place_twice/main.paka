@@ -1,0 +1,21 @@
+enum Msg { Start }
+
+type Pair { left: List<Int> = [], right: List<Int> = [] }
+
+fn swap_lists(a: inout List<Int>, b: inout List<Int>) {
+  let t = a
+  a = b
+  b = t
+}
+
+fn update(msg: Msg) -> List<Effect<Msg>> {
+  var p = Pair { left: [1], right: [2] }
+  swap_lists(&p.left, &p.left)
+  [Print("done"), Exit]
+}
+
+app ownership {
+  start: Start
+  update: update
+  grants: [Console]
+}

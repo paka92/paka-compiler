@@ -1,0 +1,6 @@
+main.paka:2:7: error[type-mismatch]: len takes a String, List or Map
+  definition: size
+  bytes: 25..26
+  text: "5"
+  expected: String, List<T> or Map<K, V>
+  found: Int

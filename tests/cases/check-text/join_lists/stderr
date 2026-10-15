@@ -1,0 +1,6 @@
+main.paka:2:6: error[type-mismatch]: no + on List; write extend(&xs, ys)
+  definition: joined
+  bytes: 60..61
+  text: "+"
+  expected: Int, Float or String
+  found: List<Int>

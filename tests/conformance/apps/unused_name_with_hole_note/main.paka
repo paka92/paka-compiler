@@ -1,0 +1,26 @@
+enum Msg { Start }
+
+fn first(a: Int, b: Int) -> Int {
+  a
+}
+
+fn second() -> Int {
+  ??two
+}
+
+fn third() -> Int {
+  let z = 1
+  3
+}
+
+fn update(msg: Msg) -> List<Effect<Msg>> {
+  match msg {
+    Start => [Print("{first(1, 2) + second() + third()}"), Exit]
+  }
+}
+
+app apps {
+  start: Start
+  update: update
+  grants: [Console]
+}

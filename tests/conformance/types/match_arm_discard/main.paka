@@ -1,0 +1,42 @@
+enum Msg { Start }
+
+enum Part { Text(t: String), Gap }
+
+fn merge(target: inout String, t: String) -> Result<Int, String> {
+  if t == "" {
+    return Err("empty part")
+  }
+  target += t
+  Ok(len(t))
+}
+
+fn glue(parts: List<Part>) -> Result<String, String> {
+  var out = ""
+  var gaps = 0
+  for p in parts {
+    match p {
+      Text(t) => _ = merge(&out, t)?
+      Gap => gaps += 1
+    }
+  }
+  Ok("{out}/{gaps}")
+}
+
+fn show(r: Result<String, String>) -> String {
+  match r {
+    Ok(s) => s
+    Err(e) => "error: {e}"
+  }
+}
+
+fn update(msg: Msg) -> List<Effect<Msg>> {
+  let a = show(glue([Text("ab"), Gap, Text("c")]))
+  let b = show(glue([Text("ab"), Text(""), Gap]))
+  [Print("{a} {b}"), Exit]
+}
+
+app types {
+  start: Start
+  update: update
+  grants: [Console]
+}

@@ -1,0 +1,6 @@
+main.paka:7:7: error[type-mismatch]: expected fn(Int) -> Int, found fn(Int) -> Bool
+  definition: probe
+  bytes: 114..116
+  text: "=="
+  expected: fn(Int) -> Int
+  found: fn(Int) -> Bool

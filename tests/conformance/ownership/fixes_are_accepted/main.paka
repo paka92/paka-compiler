@@ -1,0 +1,70 @@
+enum Msg { Start }
+
+type Rules { rules: List<String> = [], count: Int = 0 }
+
+type Account { balance: Int = 0 }
+
+fn show(xs: List<Int>) -> String {
+  var parts: List<String> = []
+  for x in xs { append(&parts, "{x}") }
+  "[" + join(parts, ", ") + "]"
+}
+
+fn grow(xs: inout List<Int>, more: List<Int>) {
+  for x in more { append(&xs, x) }
+}
+
+fn take(xs: inout List<Int>) -> List<Int> {
+  let out = xs
+  xs = []
+  out
+}
+
+fn merge(a: List<Int>, b: List<Int>) -> List<Int> {
+  var out = a
+  for x in b { append(&out, x) }
+  out
+}
+
+fn apply(s: inout Rules, rule: String) {
+  s.count += len(rule)
+}
+
+fn transfer(m: inout Map<String, Account>, a: String, b: String) {
+  m[a].balance -= 1
+  m[b].balance += 1
+}
+
+fn update(msg: Msg) -> List<Effect<Msg>> {
+  var xs = [1, 2]
+  let old = xs
+  grow(&xs, old)
+  var names = ["a", "b"]
+  let first = names[0]
+  append(&names, first)
+  var rows = [[1], [2]]
+  let item = rows[1]
+  grow(&rows[0], item)
+  var s = Rules { rules: ["abc"] }
+  let rule = s.rules[0]
+  apply(&s, rule)
+  var m: Map<String, Account> = ["a": Account { balance: 5 }, "b": Account {}]
+  transfer(&m, "a", "b")
+  var ys = [3]
+  let before = ys
+  let both = merge(before, take(&ys))
+  var zs = [1, 2]
+  let items = zs
+  for z in items { append(&zs, z) }
+  for i in 0..<len(zs) { zs[i] += 1 }
+  let joined = join(names, ",")
+  let a_balance = m["a"].balance
+  let b_balance = m["b"].balance
+  [Print("{show(xs)} {joined} {show(rows[0])} {s.count} {a_balance} {b_balance} {show(both)} {len(ys)} {show(zs)}"), Exit]
+}
+
+app ownership {
+  start: Start
+  update: update
+  grants: [Console]
+}

@@ -1,0 +1,3 @@
+core: trap divide_by_zero at main.paka:3:29
+  7 / 0
+  in inner, called from middle, called from outer, called from update

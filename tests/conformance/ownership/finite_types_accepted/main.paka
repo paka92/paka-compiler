@@ -1,0 +1,50 @@
+enum Msg { Start }
+
+type ONode { next: Option<ONode> = None }
+
+type TNode { kids: List<TNode> = [] }
+
+enum Chain { End, Link(next: Chain) }
+
+enum Expr { Num(value: Int), Add(left: Expr, right: Expr) }
+
+fn chain_len(c: Chain) -> Int {
+  match c {
+    End => 0
+    Link(next) => 1 + chain_len(next)
+  }
+}
+
+fn onode_len(n: ONode) -> Int {
+  match n.next {
+    None => 1
+    Some(rest) => 1 + onode_len(rest)
+  }
+}
+
+fn tree_size(t: TNode) -> Int {
+  var n = 1
+  for k in t.kids { n += tree_size(k) }
+  n
+}
+
+fn value_of(e: Expr) -> Int {
+  match e {
+    Num(v) => v
+    Add(l, r) => value_of(l) + value_of(r)
+  }
+}
+
+fn update(msg: Msg) -> List<Effect<Msg>> {
+  let c = Link(Link(Link(End)))
+  let o = ONode { next: Some(ONode { next: Some(ONode {}) }) }
+  let t = TNode { kids: [TNode {}, TNode { kids: [TNode {}] }] }
+  let e = Add(Num(1), Add(Num(2), Num(3)))
+  [Print("{chain_len(c)} {onode_len(o)} {tree_size(t)} {value_of(e)}"), Exit]
+}
+
+app ownership {
+  start: Start
+  update: update
+  grants: [Console]
+}

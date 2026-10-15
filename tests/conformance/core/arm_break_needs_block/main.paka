@@ -1,0 +1,17 @@
+enum Msg { Start }
+
+fn update(msg: Msg) -> List<Effect<Msg>> {
+  for n in 0..<3 {
+    match n {
+      0 => break
+      _ => {}
+    }
+  }
+  [Exit]
+}
+
+app core {
+  start: Start
+  update: update
+  grants: [Console]
+}

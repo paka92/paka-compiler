@@ -1,0 +1,27 @@
+enum Msg { Start }
+
+type Graph { adj: List<List<Int>> = [] }
+
+fn add_node(g: inout Graph) -> Int {
+  append(&g.adj, [])
+  len(g.adj) - 1
+}
+
+fn link(g: inout Graph, a: Int, b: Int) {
+  append(&g.adj[a], b)
+}
+
+fn update(msg: Msg) -> List<Effect<Msg>> {
+  var g = Graph {}
+  let a = add_node(&g)
+  link(&g, a, 5)
+  let v = g.adj[a][0]
+  let far = len(g.adj[v])
+  [Print("{far}"), Exit]
+}
+
+app ownership {
+  start: Start
+  update: update
+  grants: [Console]
+}

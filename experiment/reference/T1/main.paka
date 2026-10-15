@@ -1,0 +1,124 @@
+enum Msg { Start(path: String, width: String), Loaded(text: String), Failed(why: String) }
+
+type Wrap { width: Int = 0 }
+
+// One or more digits and nothing else, with a value from 1 to 100.
+fn line_width(s: String) -> Option<Int> {
+  if is_empty(s) { return None }
+  var n = 0
+  for c in chars(s) {
+    if c < "0" || c > "9" { return None }
+    n = min(n * 10 + parse_int(c)?, 101)
+  }
+  if n < 1 || n > 100 { None } else { Some(n) }
+}
+
+// The words of each paragraph, in order.
+fn paragraphs(text: String) -> List<List<String>> {
+  var out: List<List<String>> = []
+  var current: List<String> = []
+  for row in lines(text) {
+    let ws = words(row)
+    if is_empty(ws) {
+      if !is_empty(current) { append(&out, current) }
+      current = []
+    } else {
+      extend(&current, ws)
+    }
+  }
+  if !is_empty(current) { append(&out, current) }
+  out
+}
+
+fn cut_long(ws: List<String>, width: Int) -> List<String> {
+  var out: List<String> = []
+  for w in ws {
+    var at = 0
+    while len(w) - at > width {
+      append(&out, w[at..<at + width])
+      at += width
+    }
+    append(&out, w[at..<len(w)])
+  }
+  out
+}
+
+fn fill(ws: List<String>, width: Int) -> List<List<String>> {
+  var rows: List<List<String>> = []
+  var row = [ws[0]]
+  var size = len(ws[0])
+  for w in ws[1..<len(ws)] {
+    if size + 1 + len(w) <= width {
+      append(&row, w)
+      size += 1 + len(w)
+    } else {
+      append(&rows, row)
+      row = [w]
+      size = len(w)
+    }
+  }
+  append(&rows, row)
+  rows
+}
+
+fn justify(row: List<String>, width: Int) -> String {
+  let gaps = len(row) - 1
+  if gaps == 0 { return row[0] }
+  var size = 0
+  for w in row {
+    size += len(w)
+  }
+  let spaces = width - size
+  var out = row[0]
+  for i in 1..<len(row) {
+    let extra = if i <= spaces % gaps { 1 } else { 0 }
+    out += repeat(" ", spaces / gaps + extra) + row[i]
+  }
+  out
+}
+
+fn wrap(text: String, width: Int) -> List<String> {
+  var out: List<String> = []
+  for para in paragraphs(text) {
+    if !is_empty(out) { append(&out, "") }
+    let rows = fill(cut_long(para, width), width)
+    let last = len(rows) - 1
+    for i in 0..<last {
+      append(&out, justify(rows[i], width))
+    }
+    append(&out, join(rows[last], " "))
+  }
+  out
+}
+
+fn printed(out: List<String>) -> List<Effect<Msg>> {
+  var effects: List<Effect<Msg>> = []
+  for line in out {
+    append(&effects, Print(line))
+  }
+  append(&effects, Exit)
+  effects
+}
+
+fn update(s: inout Wrap, m: Msg) -> List<Effect<Msg>> {
+  match m {
+    Start(path, width) => {
+      match line_width(width) {
+        Some(w) => {
+          s.width = w
+          [ReadFile(path, then: Loaded, or: Failed)]
+        }
+        None => [Print("error: bad width"), ExitWith(20)]
+      }
+    }
+    Loaded(text) => printed(wrap(text, s.width))
+    Failed(why) => [Print("error: cannot read file: {why}"), ExitWith(20)]
+  }
+}
+
+app justify_text {
+  state: Wrap
+  start: Start
+  update: update
+  grants: [Console, ReadFiles]
+}
