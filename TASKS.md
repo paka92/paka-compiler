@@ -851,11 +851,12 @@ or merged during review. Ids with a letter were added during review.
 
 ### M3-20 · L2 · Run the counted experiment and publish the raw logs
 
+- status: done
 - needs: M3-19b
 - flags: owner, model-calls
 - done when: One command confirms every counted task, language and repetition has a finished trial log from the `run` commit; raw logs are merged.
 - why this level: No design, but it spends the budget and must stop and report on any deviation, not improvise.
-- note: 168 runs (14 tasks x 3 languages x 4 repetitions), in batches of one task; 126 if the fallback in M3-02 applies. Stops at the token caps.
+- note: Run from the run tag (02f35f5): all 168 runs ended, no void attempt, every run solved within 8 submissions. Raw logs in experiment/runs/counted, token ledger in experiment/runs/counted-usage.json. `metrics experiment/runs/counted <rulings> 9400` with no rulings yet: first-try Paka 75.0%, Rust 83.9%, TypeScript 87.5%; edits 0.34, 0.20, 0.21; output tokens 445,593, 192,932, 157,316. Verdict before M3-21 rulings: first-try gap 8.93 held, edits gap 0.143 held, token ratio 2.310 lost, so stop. The metrics tool refuses the batch ledger usage.json inside a runs root, so the ledger is kept beside it. 168 runs (14 tasks x 3 languages x 4 repetitions), in batches of one task; 126 if the fallback in M3-02 applies. Stops at the token caps.
 
 ### M3-21 · L4 · Rule on reviewed runs under the pre-set defect rules
 
