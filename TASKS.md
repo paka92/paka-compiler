@@ -958,7 +958,7 @@ or merged during review. Ids with a letter were added during review.
 - needs: M4-48
 - flags: none
 - done when: Tests show ids unchanged by body edits, reordering and rebuilds from text, and one definition reparses without touching others.
-- why this level: Ids come from kind and qualified name; reparsing one definition reuses the existing parser.
+- why this level: Ids are bare names (M4-48); reparsing one definition reuses the existing parser.
 
 ### M4-09 · L3 · Check and lower one definition from its body and used signatures
 
@@ -980,7 +980,7 @@ or merged during review. Ids with a letter were added during review.
 - flags: none
 - done when: For a hand-written list of edit kinds, tests show exactly the expected hashes change, including transitive by-value layout and recursion.
 - why this level: Soundness of what each hash covers; one omitted input, such as a default value, silently keeps stale code.
-- note: The closure hash arrives with its first reader, M7-09.
+- note: The closure hash arrives with its first reader, M7-09. Hashes come from the parsed definition, never from file bytes (M4-47), so the task does not need the printer.
 
 ### M4-12 · L4 · Recheck after an edit with early cutoff and list what broke
 
@@ -1003,6 +1003,7 @@ or merged during review. Ids with a letter were added during review.
 - flags: open-ended
 - done when: 10,000 seeded edit sequences end with ids, index, hashes and check results identical to a rebuild from text; a planted bug is caught. A coverage report shows every edit kind produced (body, signature, type layout, add, delete, rename), and one planted staleness bug per kind is caught.
 - why this level: It must find stale results; a weak edit generator passes silently, and M4-43 leans on it.
+- note: A rename is generated as an add followed by a delete (M4-48).
 
 ### M4-15 · L3 · Print any definition in the one canonical layout, keeping comments
 
@@ -1010,6 +1011,7 @@ or merged during review. Ids with a letter were added during review.
 - flags: none
 - done when: Hand-written golden files pass, and on all conformance sources printing is idempotent and reparses to the same tree. `paka check` treats non-canonical text as M4-47 rules, with a hand-written case for each outcome; stored sources are handled as M4-47 rules.
 - why this level: Comments must survive and printing must be stable: print, parse, print again gives the same text.
+- note: A plain tree walk with no width fitting; parentheses are kept as written (M4-47). It attaches comments in the parser where the printer puts them, and tests that the M4-47 samples print unchanged.
 
 ### M4-16 · L2 · Serve the tool interface: transport, JSON reading and writing, request dispatch
 
@@ -1025,6 +1027,7 @@ or merged during review. Ids with a letter were added during review.
 - flags: none
 - done when: Transcript tests: a stale base is refused; an accepted edit returns canonical text, typed errors and the exact broken list; files match. Two edits to different definitions from one base both land; two edits to the same definition, or adding the same name twice, refuse the second.
 - why this level: Source files, database and version check must change together or not at all, even when the edit breaks users.
+- note: Edit accepts any layout that parses and stores canonical text for the edited definition only (M4-47). In a directory program an add writes a new file named after the definition, a delete removes an emptied file, and text whose name differs from the call's name is refused (M4-48).
 
 ### M4-18 · L2 · Implement find by name or user, and view within a token budget
 
@@ -1263,17 +1266,21 @@ or merged during review. Ids with a letter were added during review.
 
 ### M4-47 · L4 · Decide the canonical layout and how tools treat other layouts
 
+- status: done
 - needs: nothing
 - flags: decision, owner
 - done when: Owner approves the layout rules with one sample per construct, and whether check rejects or rewrites other text. It also rules what happens to sources stored before the layout existed.
 - why this level: One layout is a promise of the paper; every tool and every stored file follows it.
+- note: Done: approved by the owner on 2026-10-15; see docs/decisions/M4-47.md.
 
 ### M4-48 · L4 · Decide a definition's full name and the file tools store it in
 
+- status: done
 - needs: nothing
 - flags: decision, owner
 - done when: Owner approves the full-name form, the file a new definition lands in, and that packages stay undecided through M7.
 - why this level: Stable ids and every tool call are built on the name; changing it later invalidates stored versions.
+- note: Done: approved by the owner on 2026-10-15; see docs/decisions/M4-48.md.
 
 ## M5 — Live GUI on Linux
 
@@ -1364,6 +1371,7 @@ or merged during review. Ids with a letter were added during review.
 - flags: none
 - done when: Tests with hand-written trees pass; printing then parsing the samples changes nothing; errors quote the offending text.
 - why this level: Parser and canonical printer must agree on nested child blocks, keys and holes, with precise errors.
+- note: Views follow the M4-47 block and flat-list rules; only the trailing-block sample is new.
 
 ### M5-12 · L2 · Add the element table as built-in signatures
 
