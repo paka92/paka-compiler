@@ -946,10 +946,12 @@ or merged during review. Ids with a letter were added during review.
 
 ### M4-07 · L2 · Add a hand-written SHA-256 for content hashes
 
+- status: done
 - needs: nothing
 - flags: none
 - done when: The published SHA-256 test vectors, typed in by hand, pass under cargo test.
 - why this level: Well-known algorithm with published test vectors, in one module.
+- note: Done: paka/src/sha256.rs, one function over a byte slice; the FIPS 180-4 and NIST vectors and the padding edges pass.
 
 ### M4-08 · L2 · Give every definition a stable id and parse definitions singly
 

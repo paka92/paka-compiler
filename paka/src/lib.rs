@@ -13,6 +13,7 @@ mod lexer;
 mod lower;
 pub mod parser;
 mod resolve;
+pub mod sha256;
 mod sig;
 pub mod source;
 
