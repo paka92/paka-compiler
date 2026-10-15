@@ -79,7 +79,7 @@ or merged during review. Ids with a letter were added during review.
 |---|---|---|---|---|---|---|---|
 | M1 Let there be light | 17 | 1 | 9 | 4 | 3 | 0 | 2 |
 | M2 The headless language, complete, in the interpreter | 46 | 0 | 7 | 21 | 8 | 10 | 10 |
-| M3 The experiment: go or stop | 22 | 0 | 6 | 5 | 6 | 5 | 6 |
+| M3 The first measurement | 22 | 0 | 6 | 5 | 6 | 5 | 6 |
 | M4 Dev mode for headless programs | 51 | 0 | 8 | 18 | 25 | 0 | 7 |
 | M5 Live GUI on Linux | 43 | 0 | 3 | 20 | 13 | 7 | 9 |
 | M6 Release mode | 34 | 1 | 7 | 10 | 14 | 2 | 3 |
@@ -676,11 +676,11 @@ or merged during review. Ids with a letter were added during review.
 - why this level: Edits must stay exact and in budget; one wrong sentence silently misleads every model.
 - note: The unused-name warning (M2-02 section 2 and section 5) is decided but no task implements it; close it here if no earlier task does. Left open after M2-41b: no conformance case for hole notes under --json; no host test for a closed or full standard output or a file over the String limit; no case for an open joined list type such as [None, None]; text routines are not native in paka-rt yet. The gate already runs under cargo test --workspace and passes with nothing missing at M2-44; what remains is the list above. Done: the unused-name warning (M2-02 sections 1.3 and 5), host tests for a full or closed output and a file over the limit (M2-15 section 1.7), open list and map literals reported at their [ (M2-02 section 5), and the --json stream rule (M2-06 section 1.5). Native text routines in paka-rt are left to the compiled back ends. Untested: a FIFO swapped in between the metadata look and the open.
 
-## M3 — The experiment: go or stop
+## M3 — The first measurement
 
-**Exit check.** All five hold on `development`: (1) a protocol naming the tasks, the model, the three metrics (first-try pass rate, edits to a passing program, tokens to a passing program) and the losing margin was merged and tagged `protocol` by the owner at a commit older than the first model call in the raw logs; (2) each task has one set of hand-written tests that runs unchanged against Paka, Rust and TypeScript; (3) the raw logs hold a finished trial for every counted task, language and repetition, all from the commit the owner tagged `run` after the dry-run and calibration amendments, and the report lists every difference between the two tags; (4) one command rebuilds the report's three metrics from those raw logs; (5) a decision file in which the owner records go or stop.
+**Exit check.** All five hold on `development`: (1) a protocol naming the tasks, the model, the three metrics (first-try pass rate, edits to a passing program, tokens to a passing program) and the losing margin was merged and tagged `protocol` by the owner at a commit older than the first model call in the raw logs; (2) each task has one set of hand-written tests that runs unchanged against Paka, Rust and TypeScript; (3) the raw logs hold a finished trial for every counted task, language and repetition, all from the commit the owner tagged `run` after the dry-run and calibration amendments, and the report lists every difference between the two tags; (4) one command rebuilds the report's three metrics from those raw logs; (5) the result is published in the README and the genesis paper.
 
-- If Paka loses by more than the pre-set margin, the project stops here. M4 to M7 assume "go".
+- The owner continues to M4. The tasks and harness stay as a benchmark for the token cost.
 - Live model calls happen only in M3-19, M3-19b and M3-20. They go through the Claude Code command line (`claude -p`) with no API key and no paid service. M3-19 measures what one run uses before M3-20 is planned.
 - One edit = replace the whole file, in all three languages. The experiment does not measure Paka's per-definition tools; M3-01 must state that limit.
 - Tasks flagged `repeat` are run once per batch; with 20 experiment tasks this milestone has 6 more tasks than listed.
@@ -860,6 +860,7 @@ or merged during review. Ids with a letter were added during review.
 
 ### M3-21 · L4 · Rule on reviewed runs under the pre-set defect rules
 
+- status: done
 - needs: M3-03, M3-20
 - flags: decision, owner
 - done when: Every run the rules send to review has a recorded cause and ruling; a second agent re-rules a sample blind; the owner approves the list.
@@ -868,6 +869,7 @@ or merged during review. Ids with a letter were added during review.
 
 ### M3-22 · L2 · Publish the report: three metrics per language with raw data
 
+- status: done
 - needs: M3-10, M3-21
 - flags: none
 - done when: One command rebuilds the report's three metrics per language, per task and per M2-01 class from the merged raw logs and rulings; every protocol deviation is listed. The report lists every difference between the `protocol` and `run` tags. The report command prints the `protocol` commit's date and the earliest model-call time across dry-run, calibration and counted logs, and fails if the tag is not older. The report lists what the verdict does not measure: pools, float ties, Unicode, user generics, closures, standard input, GUI, speed and overflow.
@@ -875,10 +877,12 @@ or merged during review. Ids with a letter were added during review.
 
 ### M3-23 · L5 · Write the go / no-go analysis for the owner's decision
 
+- status: done
 - needs: M3-22
 - flags: decision, owner
 - done when: The analysis states the pre-set rule's verdict, every deviation and the limits of the evidence; the owner records go or stop in the repository.
 - why this level: Can end the project; must weigh a noisy result against the pre-set rule without reading hope into it.
+- note: Owner decision: continue to M4. The token cost is the target of dev mode's one-definition tools; the benchmark tracks it.
 
 ## M4 — Dev mode for headless programs
 

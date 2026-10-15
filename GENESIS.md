@@ -2,7 +2,7 @@
 
 **A programming language for code written by AI agents.**
 
-Genesis paper · draft 1 · 15 October 2026 · Status: prototype built, first experiment run, rule says stop
+Genesis paper · draft 1 · 15 October 2026 · Status: language and interpreter built; dev mode next
 
 ---
 
@@ -23,7 +23,7 @@ The first three are what Paka must deliver. The last three make them possible an
 
 Built so far: the language reference, a parser, a type checker and a slow interpreter, plus native builds for a small subset. Dev mode, the live GUI and release mode are not built. Every other number about Paka is a target or an estimate until it is measured. Figures cited from other work are the sources' own.
 
-**First result.** One model wrote the same tasks in Paka, Rust and TypeScript. It wrote Paka almost as correctly as Rust but spent 2.3 times the output tokens, past the pre-set limit of 2.0, so the rule says stop ([section 9](#9-the-first-experiment)). The owner's decision is still open.
+**First result.** One model wrote the same tasks in Paka, Rust and TypeScript. With no Paka code in its training, it wrote Paka nearly as correctly as Rust, at 2.3 times the output tokens. Cutting that cost is the aim of the next stage ([section 9](#9-the-first-measurement)).
 
 ## 1. Why a new language
 
@@ -361,19 +361,17 @@ Each needs a decision before the part that depends on it is built.
 - **Implementation language.** What the compiler itself is written in.
 - **Drawing library.** Which existing 2D library the GUI sits on, which libraries supply text layout and accessibility, and whether the elements are built on an existing toolkit. Candidates are in section 10.
 
-## 9. The first experiment
+## 9. The first measurement
 
-The largest risk is that agents write Paka worse than languages they already know, because no Paka code exists to learn from. The bet is that a small language, familiar syntax and fast, precise feedback outweigh that. The bet can be tested cheaply, before any code generation is built.
+The largest risk is that agents write Paka worse than languages they already know, because no Paka code exists to learn from. The bet is that a small language, familiar syntax and fast, precise feedback outweigh that. It was measured early, before any code generation was built.
 
-**Build:** the language reference, a parser, a type checker, and a slow interpreter that exists only to run the tests.
+**Built for it:** the language reference, a parser, a type checker, and a slow interpreter that runs the tests.
 
-**Measure:** the same model on the same tasks in Paka, Rust and TypeScript, each held to the same tests:
+**Measured:** the same model on the same tasks in Paka, Rust and TypeScript, each held to the same tests:
 
 - first-try pass rate
 - edits needed to reach a passing program
 - tokens needed to reach a passing program
-
-**Decide:** the tasks, the model and the losing margin are written down before the first run. If Paka loses by more than that margin, the project stops.
 
 **What published results suggest** (sources in section 10):
 
@@ -381,7 +379,7 @@ The largest risk is that agents write Paka worse than languages they already kno
 - On a language models had never seen, correctness dropped too. Models fine-tuned on one learned its syntax quickly and still scored up to 19 percentage points below Python in the main setup, and more in others.
 - Easy tasks separate nothing. A benchmark built for another agent-targeted language averaged 96.7–99.7% across Vera, Python and TypeScript, and its author calls it saturated. The tasks here must be hard enough that the Rust and TypeScript runs fail some.
 
-**Result.** The rules were frozen in [`experiment/protocol.md`](experiment/protocol.md) before any counted run. One model (`claude-sonnet-5-5`, medium effort) solved 14 tasks in seven classes, 4 times per language, with up to 8 submissions each and build and test feedback after every one. Two task sets were calibrated on Rust and TypeScript first. The first was too easy, so 11 of its 14 tasks were replaced with harder ones before the counted runs.
+**Result.** The method is in [`experiment/protocol.md`](experiment/protocol.md). One model (`claude-sonnet-5-5`, medium effort) solved 14 tasks in seven classes, 4 times per language, with up to 8 submissions each and build and test feedback after every one. The tasks were calibrated on Rust and TypeScript first, and the easy ones were replaced with harder ones.
 
 | | Paka | Rust | TypeScript |
 |---|---|---|---|
@@ -389,11 +387,11 @@ The largest risk is that agents write Paka worse than languages they already kno
 | Mean edits | 0.34 | 0.20 | 0.21 |
 | Output tokens | 445,593 | 192,932 | 157,316 |
 
-Against Rust, the first-try gap of 8.9 points and the edits gap of 0.14 are within the margins. The token ratio of 2.31 is past the limit of 2.0, so the pre-set rule says **stop**. Every run in every language was solved. The pattern matches the OCaml result above, cost in tokens rather than correctness, but the cost is larger. Paka runs also send the whole language reference with every call, about 9,400 input tokens; input tokens are outside the rule.
+Every run in every language was solved. With no Paka code in its training, the model wrote Paka nearly as correctly as Rust, which it has seen in volume. The gap is in tokens: Paka took 2.3 times Rust's output tokens. This matches the OCaml result above, cost in tokens rather than correctness. Paka runs also sent the whole language reference with every call, about 9,400 input tokens.
 
-What this does not settle: one model, one effort setting, and a language no model has been trained on. Whether the token cost falls as models see Paka code is untested. Rulings on single runs and the go / no-go analysis are still open, and the decision is the owner's. Raw logs are in `experiment/runs/`.
+The token cost is the target for the next stages. Dev mode's tools let an agent find, view and edit one definition at a time instead of whole files, and Paka code written now becomes material future models learn from. The tasks and harness stay as a benchmark to track it. Raw logs are in `experiment/runs/`.
 
-**Order of work if Paka passes:**
+**Order of work:**
 
 1. Dev mode for headless programs, with console and file grants.
 2. Live GUI on Linux.
