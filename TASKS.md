@@ -915,11 +915,12 @@ or merged during review. Ids with a letter were added during review.
 
 ### M4-03 · L4 · Propose the agent tool interface: transport, message shapes, versions, find queries
 
+- status: done
 - needs: M4-48
 - flags: decision, owner
 - done when: Owner approves a written interface with a schema for find, view, edit and run, and hand-written example exchanges for each. The base version of an edit is per definition.
 - why this level: A compatibility promise to every agent; type-shape queries, token budgets and base versions have no settled meaning yet.
-- note: Token budgets use M2-18's counting rule.
+- note: Token budgets use M2-18's counting rule. Done: approved by the owner on 2026-10-15; see docs/decisions/M4-03.md.
 
 ### M4-04 · L4 · Propose where dev-mode code runs and how a run is stopped
 
@@ -1021,7 +1022,7 @@ or merged during review. Ids with a letter were added during review.
 - flags: none
 - done when: Hand-written request and reply transcripts pass, including malformed input and an unknown interface version.
 - why this level: A request loop and a small JSON reader in std; shapes come from the approved interface.
-- note: Reuses one shared standard-library-only JSON module; M2-04's writer and M3-08's reader move into it.
+- note: Reuses one shared standard-library-only JSON module; M2-04's writer and M3-08's reader move into it. Per M4-03: JSON lines on standard input and output, a `v` check on every request and no handshake; unknown fields are refused; one server per program is kept by a standard-library file lock.
 
 ### M4-17 · L3 · Implement edit: replace, add or delete one definition against a base version
 
@@ -1029,15 +1030,15 @@ or merged during review. Ids with a letter were added during review.
 - flags: none
 - done when: Transcript tests: a stale base is refused; an accepted edit returns canonical text, typed errors and the exact broken list; files match. Two edits to different definitions from one base both land; two edits to the same definition, or adding the same name twice, refuse the second.
 - why this level: Source files, database and version check must change together or not at all, even when the edit breaks users.
-- note: Edit accepts any layout that parses and stores canonical text for the edited definition only (M4-47). In a directory program an add writes a new file named after the definition, a delete removes an emptied file, and text whose name differs from the call's name is refused (M4-48).
+- note: Edit accepts any layout that parses and stores canonical text for the edited definition only (M4-47). In a directory program an add writes a new file named after the definition, a delete removes an emptied file, and text whose name differs from the call's name is refused (M4-48). Per M4-03: the base version is the 12-digit hash of canonical text; null `base` adds, null `text` deletes; a stale base returns the current version and text; text that does not parse is refused with kind `parse`.
 
 ### M4-18 · L2 · Implement find by name or user, and view within a token budget
 
-- needs: M4-10, M4-16
+- needs: M4-10, M4-16, M4-15
 - flags: none
 - done when: Transcript tests return hand-written results; a view holds one body plus used signatures and never exceeds its budget.
 - why this level: Index lookups plus trimming output to a budget; the rules come from the approved interface.
-- note: Token budget uses M2-18's counting rule.
+- note: Token budget uses M2-18's counting rule. Per M4-03: name patterns with `*`, the `users_of`, `kind` and `failing` fields, paging with `after`, the `more` count and current errors in a view. View and find print canonical text and take the version from it.
 
 ### M4-19 · L3 · Implement find by type shape
 
@@ -1045,6 +1046,7 @@ or merged during review. Ids with a letter were added during review.
 - flags: none
 - done when: Transcript tests over a fixture program return exactly the hand-written matches for each query form in the interface.
 - why this level: Matching a query against signatures with generics and argument order needs a small, exact matching rule.
+- note: Per M4-03: an exact takes-and-gives match over the program's own fn and view definitions, with no wildcards or ranking; may be re-graded to level 2.
 
 ### M4-21 · L4 · Generate random well-typed terminating Paka programs from a seed
 
@@ -1199,7 +1201,7 @@ or merged during review. Ids with a letter were added during review.
 - flags: unsafe
 - done when: Transcript tests: each accepted edit yields the new run's output; a looping program is stopped; a broken edit leaves the old result. The interface's run call passes M4-03's hand-written exchanges (output, exit status, trap report).
 - why this level: Races between a running program, a swap and the next edit; a stuck run must stop without harming the server.
-- note: Unsafe only if M4-04 picks forked runs; with separate processes through std::process there is none. Any unsafe lives in the installer crate.
+- note: Unsafe only if M4-04 picks forked runs; with separate processes through std::process there is none. Any unsafe lives in the installer crate. Per M4-03: a run happens only when an edit carries a `run` field or a run call is made; the server keeps no run settings; time and output limits come from the request. An edit that is not installed returns `run` null, and a run call runs the last fully checked version or answers `not_runnable`.
 
 ### M4-40 · L3 · Add dev mode to the differential harness and run all conformance tests
 
@@ -1243,6 +1245,7 @@ or merged during review. Ids with a letter were added during review.
 - flags: none
 - done when: One command prints median and 95th-percentile times for the six M4-01 edit classes (three gated) on a program whose size is an argument, 5,000 by default, written by its own fixed-shape generator as one file per definition; timing runs from request written to reply read.
 - why this level: Honest timing from request to first handler of the new run, on a generated program of stated size.
+- note: Per M4-03: one timed sample is one edit request with a `run` field.
 
 ### M4-44b · L4 · Profile edit-to-running time and list fixes with expected gains
 
@@ -1359,6 +1362,7 @@ or merged during review. Ids with a letter were added during review.
 - flags: decision, owner
 - done when: Owner approves one route and the four Look calls: tree, screenshot, click, keystroke, with their inputs and outputs.
 - why this level: Wayland allows no embedding, screen grab or injected input; the route must work without them.
+- note: Per M4-03: the Look calls are added to its envelope and error shape as new `call` values, with no new version.
 
 ### M5-10 · L2 · Vendor the approved GUI crates, pinned and built offline
 
@@ -1395,6 +1399,7 @@ or merged during review. Ids with a letter were added during review.
 - flags: none
 - done when: Tests: a view body edit rechecks only that view; a Msg edit, an edit to a view it calls, to the state type and to the app's view field each give exactly the hand-written rechecked and broken sets; M4-14's incremental-equals-rebuild test runs with views in its edit generator and passes.
 - why this level: Touches ids, use index, hashes and Find, View, Edit; a missed dependency edge silently skips a recheck.
+- note: Per M4-03: views travel through find, view and edit with kind `view` and no new fields.
 
 ### M5-15 · L2 · Define the runtime element tree and print it as text
 
@@ -1933,6 +1938,7 @@ or merged during review. Ids with a letter were added during review.
 - flags: none
 - done when: Edit results and gate output list each item awaiting approval in the agreed shape; expected outputs are written by hand.
 - why this level: Formats known data into a given shape.
+- note: Per M4-03: items awaiting approval ride in edit replies as a new optional field; they are not errors, and M7-01 fixes their shape.
 
 ### M7-09 · L4 · Cache example results by closure hash, mode and compiler version
 
