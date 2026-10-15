@@ -924,10 +924,12 @@ or merged during review. Ids with a letter were added during review.
 
 ### M4-04 · L4 · Propose where dev-mode code runs and how a run is stopped
 
+- status: done
 - needs: M4-01b
 - flags: decision, owner
 - done when: Owner approves a written choice among in-process, forked and separate-process runs, covering stuck handlers, memory reclaim and the 100 ms budget. It also covers how a visual app keeps its state in the same process while code is swapped (M5 needs it); stopping a run uses no signal handler for traps.
 - why this level: Trades isolation against swap speed; a stuck or trapped run must never take the tool server down.
+- note: Done: approved by the owner on 2026-10-15; see docs/decisions/M4-04.md. One runner process per server, started through std::process.
 
 ### M4-05 · L4 · Specify the dev-mode calling convention, trap returns and value layouts
 
@@ -935,7 +937,7 @@ or merged during review. Ids with a letter were added during review.
 - flags: decision, owner, native-only
 - done when: Owner approves a specification covering context pointer, status returns, stack-limit check, slot calls, every type's layout and who frees each value. It names the code generator and the crate that turns generated code into runnable machine code, and says which runtime code the interpreter shares (recommended: the effect performer only). It names each M1-14 rule as kept or changed, says whether the dev runtime extends paka-rt (M1-16, M1-17) or replaces it, and names the crate that holds the unsafe runtime code; the M1 cases still pass on both back ends.
 - why this level: Separately compiled definitions must agree exactly; a mismatch in layout, ownership or status handling is silent.
-- note: Start fields, state and ExitWith reach the native back end here; tests/cases/parse/variant_payload then leaves the UNSUPPORTED list of paka/tests/native.rs.
+- note: Start fields, state and ExitWith reach the native back end here; tests/cases/parse/variant_payload then leaves the UNSUPPORTED list of paka/tests/native.rs. Per M4-04: an interrupt poll at every loop head and function entry, explicit checks for every trap, calls through a slot table, and a per-run memory cap checked by the allocator.
 
 ### M4-06 · L2 · Vendor the chosen generator's crates and enforce locked offline builds
 
@@ -1201,7 +1203,7 @@ or merged during review. Ids with a letter were added during review.
 - flags: unsafe
 - done when: Transcript tests: each accepted edit yields the new run's output; a looping program is stopped; a broken edit leaves the old result. The interface's run call passes M4-03's hand-written exchanges (output, exit status, trap report).
 - why this level: Races between a running program, a swap and the next edit; a stuck run must stop without harming the server.
-- note: Unsafe only if M4-04 picks forked runs; with separate processes through std::process there is none. Any unsafe lives in the installer crate. Per M4-03: a run happens only when an edit carries a `run` field or a run call is made; the server keeps no run settings; time and output limits come from the request. An edit that is not installed returns `run` null, and a run call runs the last fully checked version or answers `not_runnable`.
+- note: Runs happen in the runner process (M4-04); the server has no unsafe. Calling compiled code and the slot table are the unsafe, in the installer crate. Per M4-03: a run happens only when an edit carries a `run` field or a run call is made; the server keeps no run settings; time and output limits come from the request. An edit that is not installed returns `run` null, and a run call runs the last fully checked version or answers `not_runnable`. A stuck run ends at the interrupt poll; a runner that does not answer 100 ms after the deadline is killed and restarted, and a crash reports `stopped` "crash" (M4-04).
 
 ### M4-40 · L3 · Add dev mode to the differential harness and run all conformance tests
 
