@@ -941,11 +941,12 @@ or merged during review. Ids with a letter were added during review.
 
 ### M4-06 · L2 · Vendor the chosen generator's crates and enforce locked offline builds
 
+- status: done
 - needs: M4-01b
 - flags: owner, download, native-only, conditional
 - done when: With the network off, cargo build --locked --offline passes from a clean clone, and an unlisted crate fails the check.
 - why this level: Standard cargo vendoring; the only care is an approved-crates list that the build checks.
-- note: Dropped if the generator chosen in M4-01b needs no outside crate. Runs if M4-01b records Cranelift; dropped if it records LLVM. M4-01b recorded Cranelift, so this task runs.
+- note: Dropped if the generator chosen in M4-01b needs no outside crate. Runs if M4-01b records Cranelift; dropped if it records LLVM. M4-01b recorded Cranelift, so this task runs. Done: 38 crates in vendor/, read through .cargo/config.toml with the network off; .cargo/approved-crates.txt lists them and paka/tests/vendored.rs fails on any locked or vendored crate not listed. A clean clone with an empty cargo home builds bench/generators.
 
 ### M4-07 · L2 · Add a hand-written SHA-256 for content hashes
 
