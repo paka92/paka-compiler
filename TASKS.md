@@ -906,11 +906,12 @@ or merged during review. Ids with a letter were added during review.
 
 ### M4-01b · L4 · Measure Cranelift and LLVM's JIT by the fixed method and record the choice
 
+- status: done
 - needs: M4-01
 - flags: decision, owner, download, unsafe, native-only
 - done when: One command reprints the timings of each generator measured, by the M4-01 method; Cranelift is built and timed first, and the LLVM side only if Cranelift fails the gate; its unsafe sits in one crate the owner allowed; the record is the M4-01 rule applied to the numbers.
 - why this level: Hand-declared unsafe bindings to LLVM's C library, with no Miri to catch a wrong signature.
-- note: The benchmark crate stays outside the workspace with its own lock file, so the --locked --offline build stays green; M4-06 brings the chosen crates in vendored. The owner allowed the Cranelift crates on 2026-10-13; the task names each crate, version and size before it fetches. LLVM 21's shared library is already on the build machine (`/usr/lib/llvm-21/lib/libLLVM-21.so`); nothing is installed.
+- note: The benchmark crate stays outside the workspace with its own lock file, so the --locked --offline build stays green; M4-06 brings the chosen crates in vendored. The owner allowed the Cranelift crates on 2026-10-13; the task names each crate, version and size before it fetches. LLVM 21's shared library is already on the build machine (`/usr/lib/llvm-21/lib/libLLVM-21.so`); nothing is installed. Cranelift 0.136.3 passed the rule (warm p95 of the large definition 2.1 ms, cold 3.6 ms); LLVM was not built. Result in docs/decisions/M4-01.md section 7.
 
 ### M4-03 · L4 · Propose the agent tool interface: transport, message shapes, versions, find queries
 
@@ -941,7 +942,7 @@ or merged during review. Ids with a letter were added during review.
 - flags: owner, download, native-only, conditional
 - done when: With the network off, cargo build --locked --offline passes from a clean clone, and an unlisted crate fails the check.
 - why this level: Standard cargo vendoring; the only care is an approved-crates list that the build checks.
-- note: Dropped if the generator chosen in M4-01b needs no outside crate. Runs if M4-01b records Cranelift; dropped if it records LLVM.
+- note: Dropped if the generator chosen in M4-01b needs no outside crate. Runs if M4-01b records Cranelift; dropped if it records LLVM. M4-01b recorded Cranelift, so this task runs.
 
 ### M4-07 · L2 · Add a hand-written SHA-256 for content hashes
 
