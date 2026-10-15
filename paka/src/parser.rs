@@ -66,6 +66,34 @@ pub fn parse_files<'a>(
     Ok(program)
 }
 
+/// The one definition `src` holds, with positions counted from its start. Its id is its bare name
+/// (docs/decisions/M4-48.md).
+pub fn parse_def<'a>(path: &'a str, src: &'a [u8]) -> Parse<Def<'a>> {
+    let mut parser = Parser::new(path, src, Lexer::new(path, src), 0);
+    let Some(def) = parser.next_def()? else {
+        return Err(parser.unexpected("a definition"));
+    };
+    parser.skip_newlines()?;
+    match parser.cur.kind {
+        Kind::End => Ok(def),
+        _ => Err(parser.error(
+            "unexpected-token",
+            "expected one definition, found a second",
+        )),
+    }
+}
+
+/// Each definition of `src` as its id and its text, from its first token to its last; or the first
+/// error.
+pub fn split<'a>(path: &'a str, src: &'a [u8]) -> Parse<Vec<(&'a str, &'a [u8])>> {
+    let mut parser = Parser::new(path, src, Lexer::new(path, src), 0);
+    let mut defs = vec![];
+    while let Some(def) = parser.next_def()? {
+        defs.push((def.name().text, &src[parser.def_start..parser.prev_end]));
+    }
+    Ok(defs)
+}
+
 /// The definitions from byte `start`, on `line`, that parsed and, when `recover`, one error per
 /// definition that did not; otherwise it stops at the first error.
 fn parse_all<'a>(
@@ -3190,5 +3218,82 @@ example total_rejects_bad_score {
         let src = "enum A {\nfn f() {}\nenum {}\n";
         let error = parse("main.paka", src.as_bytes()).unwrap_err();
         assert_eq!(error.position, Some((2, 1)));
+    }
+
+    // Single definitions
+
+    const DEFS: &str = "enum Mode { Up, Down }
+
+fn step(x: Int, m: Mode) -> Int {
+  match m {
+    Up => x + 1
+    Down => x - 1
+  }
+}
+
+example steps_up {
+  step(1, Up) == 2
+}
+";
+
+    fn parts(src: &str) -> Vec<(&str, &str)> {
+        let defs = split("main.paka", src.as_bytes()).unwrap();
+        let text = |t| std::str::from_utf8(t).unwrap();
+        defs.into_iter().map(|(id, t)| (id, text(t))).collect()
+    }
+
+    fn join(parts: &[(&str, &str)]) -> String {
+        let texts: Vec<_> = parts.iter().map(|p| p.1).collect();
+        texts.join("\n\n") + "\n"
+    }
+
+    fn ids<'a>(parts: &[(&'a str, &str)]) -> Vec<&'a str> {
+        parts.iter().map(|p| p.0).collect()
+    }
+
+    #[test]
+    fn ids_survive_body_edits_and_reordering() {
+        let edited = DEFS.replace("x + 1", "x + 2");
+        assert_eq!(ids(&parts(&edited)), ["Mode", "step", "steps_up"]);
+        let mut reversed = parts(DEFS);
+        reversed.reverse();
+        assert_eq!(ids(&parts(&join(&reversed))), ["steps_up", "step", "Mode"]);
+    }
+
+    #[test]
+    fn a_program_rebuilt_from_its_definitions_is_the_same() {
+        let parts = parts(DEFS);
+        assert_eq!(join(&parts), DEFS);
+        for (id, text) in parts {
+            let def = parse_def("main.paka", text.as_bytes()).unwrap();
+            assert_eq!(def.name().text, id);
+        }
+    }
+
+    #[test]
+    fn one_definition_reparses_alone() {
+        let before = parts(DEFS);
+        let step = before[1].1.replace("x - 1", "x - 2");
+        let alone = parse_def("main.paka", step.as_bytes()).unwrap();
+        let edited = DEFS.replace("x - 1", "x - 2");
+        let after = parts(&edited);
+        assert_eq!(after[1].1, step);
+        assert_eq!(
+            parse_def("main.paka", after[1].1.as_bytes()).unwrap(),
+            alone
+        );
+        assert_eq!((after[0], after[2]), (before[0], before[2]));
+    }
+
+    #[test]
+    fn a_single_definition_is_exactly_one() {
+        let error = |src: &str| parse_def("main.paka", src.as_bytes()).unwrap_err();
+        assert_eq!(error("\n").position, Some((2, 1)));
+        let second = error("enum A { X }\n\nenum B { Y }\n");
+        assert_eq!(
+            (second.code, second.position),
+            ("unexpected-token", Some((3, 1)))
+        );
+        assert_eq!(error("enum A { X } x").position, Some((1, 14)));
     }
 }

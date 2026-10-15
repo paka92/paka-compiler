@@ -955,10 +955,12 @@ or merged during review. Ids with a letter were added during review.
 
 ### M4-08 · L2 · Give every definition a stable id and parse definitions singly
 
+- status: done
 - needs: M4-48
 - flags: none
 - done when: Tests show ids unchanged by body edits, reordering and rebuilds from text, and one definition reparses without touching others.
 - why this level: Ids are bare names (M4-48); reparsing one definition reuses the existing parser.
+- note: Done: parser::parse_def parses exactly one definition with positions from its own start, and parser::split gives each definition of a text as its id and its text. Comments are not carried yet (M4-15).
 
 ### M4-09 · L3 · Check and lower one definition from its body and used signatures
 
