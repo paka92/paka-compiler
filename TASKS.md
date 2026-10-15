@@ -886,7 +886,7 @@ or merged during review. Ids with a letter were added during review.
 
 ## M4 — Dev mode for headless programs
 
-**Exit check.** One command on the build machine (built in M4-46) reports pass for every item: (1) on a generated headless program of the size fixed in M4-01 (proposed: 5,000 definitions), the 95th-percentile time from a body-edit request to the first handler of the rerun is under 100 ms for small, medium and large definitions; (2) a signature edit rechecks exactly the direct users of the changed interface, shown by a recheck counter against hand-written sets, and the edit reply lists exactly the definitions that broke; (3) after a breaking edit a run still executes the last version in which every definition checked, and fixing the users installs all changes together; (4) find, view, edit with a base version, and run pass hand-written transcripts over the versioned interface, each edit returning canonical text, typed errors and the broken list; (5) the wc sample runs under Console and ReadFiles grants and an ungranted effect is refused exactly as in the interpreter; (6) every M2 conformance test gives the same output, exit status and trap in dev mode as in the interpreter, with none unsupported, and the seeded generated-program and edit-sequence runs agree.
+**Exit check.** One command on the build machine (built in M4-46) reports pass for every item: (1) on a generated headless program of the size fixed in M4-01 (5,000 definitions, worst of three runs), the 95th-percentile time from a body-edit request to the first handler of the rerun is under 100 ms for small, medium and large definitions; (2) a signature edit rechecks exactly the direct users of the changed interface, shown by a recheck counter against hand-written sets, and the edit reply lists exactly the definitions that broke; (3) after a breaking edit a run still executes the last version in which every definition checked, and fixing the users installs all changes together; (4) find, view, edit with a base version, and run pass hand-written transcripts over the versioned interface, each edit returning canonical text, typed errors and the broken list; (5) the wc sample runs under Console and ReadFiles grants and an ungranted effect is refused exactly as in the interpreter; (6) every M2 conformance test gives the same output, exit status and trap in dev mode as in the interpreter, with none unsupported, and the seeded generated-program and edit-sequence runs agree.
 
 - M4-01b needs a download (Cranelift) and the owner's approval of every crate it brings.
 - The database and tool tasks (M4-07 to M4-19) need no native code and are tested on the interpreter.
@@ -897,16 +897,18 @@ or merged during review. Ids with a letter were added during review.
 
 ### M4-01 · L4 · Fix the generator benchmark method, test definitions, program size and winning margin
 
+- status: done
 - needs: nothing
 - flags: decision, owner, native-only
 - done when: Before any measurement the owner approves a document fixing three Paka definitions (small, medium, large), timing start and end points, both generators' settings, the winning margin, and the benchmark program size and edit classes M4-44 will use.
 - why this level: A method chosen after seeing numbers biases a choice that commits the dev-mode architecture.
+- note: Done: approved by the owner on 2026-10-15; see docs/decisions/M4-01.md and bench/generators/defs.paka.
 
 ### M4-01b · L4 · Measure Cranelift and LLVM's JIT by the fixed method and record the choice
 
 - needs: M4-01
 - flags: decision, owner, download, unsafe, native-only
-- done when: One command reprints both generators' timings for the three definitions; its unsafe sits in one crate the owner allowed; the owner records the choice.
+- done when: One command reprints the timings of each generator measured, by the M4-01 method; Cranelift is built and timed first, and the LLVM side only if Cranelift fails the gate; its unsafe sits in one crate the owner allowed; the record is the M4-01 rule applied to the numbers.
 - why this level: Hand-declared unsafe bindings to LLVM's C library, with no Miri to catch a wrong signature.
 - note: The benchmark crate stays outside the workspace with its own lock file, so the --locked --offline build stays green; M4-06 brings the chosen crates in vendored. The owner allowed the Cranelift crates on 2026-10-13; the task names each crate, version and size before it fetches. LLVM 21's shared library is already on the build machine (`/usr/lib/llvm-21/lib/libLLVM-21.so`); nothing is installed.
 
@@ -939,7 +941,7 @@ or merged during review. Ids with a letter were added during review.
 - flags: owner, download, native-only, conditional
 - done when: With the network off, cargo build --locked --offline passes from a clean clone, and an unlisted crate fails the check.
 - why this level: Standard cargo vendoring; the only care is an approved-crates list that the build checks.
-- note: Dropped if the generator chosen in M4-01b needs no outside crate.
+- note: Dropped if the generator chosen in M4-01b needs no outside crate. Runs if M4-01b records Cranelift; dropped if it records LLVM.
 
 ### M4-07 · L2 · Add a hand-written SHA-256 for content hashes
 
@@ -1231,7 +1233,7 @@ or merged during review. Ids with a letter were added during review.
 
 - needs: M4-39, M4-01
 - flags: none
-- done when: One command prints median and 95th-percentile times for small, medium and large body edits on the program size fixed in M4-01.
+- done when: One command prints median and 95th-percentile times for the six M4-01 edit classes (three gated) on a program whose size is an argument, 5,000 by default, written by its own fixed-shape generator as one file per definition; timing runs from request written to reply read.
 - why this level: Honest timing from request to first handler of the new run, on a generated program of stated size.
 
 ### M4-44b · L4 · Profile edit-to-running time and list fixes with expected gains
