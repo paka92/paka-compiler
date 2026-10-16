@@ -148,7 +148,7 @@ impl<'a> Cx<'_, 'a> {
         if first && result && last.is_some_and(|p| !p.inout && !p.labelled) {
             return Ok(message);
         }
-        let name = message.map_or("Msg", |i| self.program.defs[i].name().text);
+        let name = message.map_or("Msg", |i| self.defs.name(i));
         let head = state.map_or(String::new(), |s| {
             format!("s: inout {}, ", self.types.show(s))
         });
@@ -159,7 +159,7 @@ impl<'a> Cx<'_, 'a> {
     fn start(&self, e: &Expr, message: Option<usize>) -> Res {
         self.named(e.at)?;
         let Some(en) = message else { return Ok(()) };
-        let name = self.program.defs[en].name().text;
+        let name = self.defs.name(en);
         let variant = match self.resolved.get(e.at) {
             Some(Binding::Variant(of, v)) if of == en && matches!(e.kind, ExprKind::Name(_)) => v,
             _ => {

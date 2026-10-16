@@ -41,6 +41,7 @@ fn lowered(lines: &[&str]) -> Program {
         &table,
         &bodies,
     )
+    .0
 }
 
 /// A program of the function `f` and the definitions after it.

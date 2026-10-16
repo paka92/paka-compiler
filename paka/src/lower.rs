@@ -9,7 +9,7 @@ use crate::core_form::{
 };
 use crate::resolve::{Binding, Resolved};
 use crate::sig::{self, Item, Node, Table};
-use std::collections::BTreeMap;
+use std::collections::{BTreeMap, BTreeSet};
 
 mod arms;
 mod expr;
@@ -36,7 +36,8 @@ struct Cx<'t, 'a> {
     result: Option<Ty>,
 }
 
-/// Runs on a program that `body::check` accepted: every lookup succeeds.
+/// Runs on a program that `body::check` accepted: every lookup succeeds. Gives the signatures
+/// each definition read, by name, with the core form (M4-09).
 pub fn lower<'a>(
     files: Vec<(String, usize)>,
     source: &[u8],
@@ -44,7 +45,7 @@ pub fn lower<'a>(
     resolved: &Resolved,
     table: &Table<'a>,
     bodies: &Bodies,
-) -> Program {
+) -> (Program, Vec<BTreeSet<String>>) {
     let newlines = source.iter().enumerate().filter(|&(_, &b)| b == b'\n');
     let mut cx = Cx {
         core: Program {
@@ -71,11 +72,14 @@ pub fn lower<'a>(
         slots: BTreeMap::new(),
         result: None,
     };
+    let mut reads = vec![];
     for (i, def) in program.defs.iter().enumerate() {
         cx.def = i;
+        table.defs.take_reads();
         cx.definition(def);
+        reads.push(table.defs.take_reads());
     }
-    cx.core
+    (cx.core, reads)
 }
 
 fn ids(program: &ast::Program) -> Vec<usize> {

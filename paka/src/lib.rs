@@ -21,6 +21,7 @@ use ast::Def;
 use core_form::Program;
 use diagnostic::Diagnostic;
 use source::Source;
+use std::collections::BTreeSet;
 
 /// A hole in a checked program: `paka check` notes it, `paka build` refuses it unless an example
 /// holds it (M2-06 section 1.5).
@@ -30,11 +31,36 @@ pub struct Hole {
 }
 
 /// A checked program's core form, its holes and its `unused-name` warnings; or its first error.
-pub type Checked = Result<(Program, Vec<Hole>, Vec<Diagnostic>), Diagnostic>;
+pub type Checked = Result<Lowered, Diagnostic>;
+pub type Lowered = (Program, Vec<Hole>, Vec<Diagnostic>);
+
+/// One definition checked from its body and the signatures it uses (M4-09).
+pub struct DefCheck {
+    pub name: String,
+    pub error: Option<Diagnostic>,
+    /// The other definitions it read, by name, and the names it looked up that name nothing.
+    pub reads: BTreeSet<String>,
+}
 
 /// Parses and checks a program, then lowers it to the core form. Positions count lines across
 /// the files until `Source::locate` places them.
 pub fn check(path: &str, source: &Source) -> Checked {
+    let (defs, lowered) = check_all(path, source)?;
+    match defs.into_iter().find_map(|d| d.error) {
+        Some(d) => Err(d),
+        None => Ok(lowered.expect("a program without errors is lowered")),
+    }
+}
+
+/// Checks each definition alone. The error is one no definition owns: a parse error, a
+/// declaration error or a second app.
+pub fn check_each(path: &str, source: &Source) -> Result<Vec<DefCheck>, Diagnostic> {
+    Ok(check_all(path, source)?.0)
+}
+
+/// Each definition's check, and the lowered program when none has an error; lowering adds its
+/// reads to each definition's.
+fn check_all(path: &str, source: &Source) -> Result<(Vec<DefCheck>, Option<Lowered>), Diagnostic> {
     let files = source.files.iter().map(|f| (f.bytes.clone(), f.line));
     let program = parser::parse_files(path, &source.text, files)?;
     let resolved = resolve::resolve(path, &program)?;
@@ -42,18 +68,28 @@ pub fn check(path: &str, source: &Source) -> Checked {
     if let Some(d) = second_app(path, &program) {
         return Err(d);
     }
-    let bodies = body::check(path, &program, &resolved, &mut table);
-    if let Some(d) = bodies.defs.iter().flatten().next() {
-        return Err(d.clone());
+    let mut bodies = body::check(path, &program, &resolved, &mut table);
+    let mut lowered = None;
+    let mut reads = std::mem::take(&mut bodies.reads);
+    if bodies.defs.iter().all(Option::is_none) {
+        let files = (source.files.iter())
+            .map(|f| (f.name.clone(), f.line))
+            .collect();
+        let (core, more) = lower::lower(files, &source.text, &program, &resolved, &table, &bodies);
+        reads.iter_mut().zip(more).for_each(|(r, m)| r.extend(m));
+        let holes = holes(path, &program, &table, &bodies, &core);
+        lowered = Some((core, holes, resolved.unused));
     }
-    let files = source
-        .files
-        .iter()
-        .map(|f| (f.name.clone(), f.line))
+    let defs = (program.defs.iter().zip(bodies.defs).zip(reads))
+        .zip(resolved.reads)
+        .map(|(((def, error), mut reads), more)| {
+            reads.extend(more);
+            reads.remove(def.name().text);
+            let name = def.name().text.into();
+            DefCheck { name, error, reads }
+        })
         .collect();
-    let core = lower::lower(files, &source.text, &program, &resolved, &table, &bodies);
-    let holes = holes(path, &program, &table, &bodies, &core);
-    Ok((core, holes, resolved.unused))
+    Ok((defs, lowered))
 }
 
 /// The holes of a checked program, in position order.

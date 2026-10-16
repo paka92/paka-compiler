@@ -968,10 +968,12 @@ or merged during review. Ids with a letter were added during review.
 
 ### M4-09 · L3 · Check and lower one definition from its body and used signatures
 
+- status: done
 - needs: M4-08
 - flags: none
 - done when: Per-definition results equal the whole-program checker on all conformance programs, and the read log lists exactly the hand-written expected names.
 - why this level: Untangling whole-program passes so one definition reads only signatures, while logging every name it looked up.
+- note: Done: paka::check_each gives each definition's first error and its reads: the definitions whose signatures it read (a variant's enum for a variant) and, as written, the names it looked up that name nothing. The resolver logs its lookups; the signature table logs every definition read through it, in checking and lowering. A test checks every definition of every conformance program in a copy where all it did not read, transitively, is blanked, and gets the same error and reads. Built-ins and locals are not logged. Two reads stay whole-program: the no-finite-value check follows held types transitively (M4-11's interface hash covers it), and core-form ids are positions in the program (M4-24's slots replace them).
 
 ### M4-10 · L3 · Build the exact who-uses-what index, including names that resolve to nothing
 
@@ -979,6 +981,7 @@ or merged during review. Ids with a letter were added during review.
 - flags: none
 - done when: Fixture programs give the hand-written user lists, and adding a missing definition marks exactly its waiting users for recheck.
 - why this level: Exactness under adds, deletes and renames; a missed dangling reference leaves a broken user unreported.
+- note: The index is built from M4-09's reads. A name that names nothing is logged as written, so adding a variant must also wake the users waiting on the variant's name, not only on its enum's.
 
 ### M4-11 · L4 · Compute the body and interface hash of every definition
 
