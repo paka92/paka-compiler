@@ -933,11 +933,13 @@ or merged during review. Ids with a letter were added during review.
 
 ### M4-05 · L4 · Specify the dev-mode calling convention, trap returns and value layouts
 
+- status: done
 - needs: M4-01b, M4-04
 - flags: decision, owner, native-only
 - done when: Owner approves a specification covering context pointer, status returns, stack-limit check, slot calls, every type's layout and who frees each value. It names the code generator and the crate that turns generated code into runnable machine code, and says which runtime code the interpreter shares (recommended: the effect performer only). It names each M1-14 rule as kept or changed, says whether the dev runtime extends paka-rt (M1-16, M1-17) or replaces it, and names the crate that holds the unsafe runtime code; the M1 cases still pass on both back ends.
 - why this level: Separately compiled definitions must agree exactly; a mismatch in layout, ownership or status handling is silent.
 - note: Start fields, state and ExitWith reach the native back end here; tests/cases/parse/variant_payload then leaves the UNSUPPORTED list of paka/tests/native.rs. Per M4-04: an interrupt poll at every loop head and function entry, explicit checks for every trap, calls through a slot table, and a per-run memory cap checked by the allocator.
+- note: Done: docs/decisions/M4-05.md. Every function is `(ctx, args..., out) -> status` (0 finished, 1 trapped, 2 stopped); trap kinds are numbered in the trap record (M2-06). The dev runtime extends paka-rt, whose `abi` modules keep the runtime's unsafe code; the new `paka-installer` crate holds the rest (a change to M4-04's one-crate wording).
 
 ### M4-06 · L2 · Vendor the chosen generator's crates and enforce locked offline builds
 
