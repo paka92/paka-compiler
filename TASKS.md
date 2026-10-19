@@ -1133,10 +1133,12 @@ or merged during review. Ids with a letter were added during review.
 
 ### M4-27 · L3 · Emit calls through slots with status returns and a stack-limit check
 
+- status: done
 - needs: M4-26
 - flags: native-only
 - done when: Tests: every trap kind the M4-26 subset can raise (overflow, division, shift, failed conversion) surfaces through nested calls with its kind and source position; unbounded recursion ends in a stack trap, not a crash.
 - why this level: Every call site must test the status; deep recursion must trap cleanly instead of overflowing the real stack.
+- note: Done: a call loads its slot and checks the status; a trap pushes the call site through `rt.push_frame`, which keeps eight frames and an overflow flag. Each function checks the stack pointer against `ctx.stack_limit` after the interrupt poll; `paka_rt::abi::dev::on_runner` runs code on a 64 MiB thread with the limit 1 MiB above its bottom. `installer/tests/calls.rs` covers all four trap kinds through nested calls and recursion.
 - note: Follows docs/decisions/M2-06.md for traps, holes and examples.
 
 ### M4-28 · L3 · Canonicalise NaN in compiled floating-point code

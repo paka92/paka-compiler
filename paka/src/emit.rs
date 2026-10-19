@@ -11,8 +11,8 @@ use cranelift_codegen::control::ControlPlane;
 use cranelift_codegen::ir::condcodes::{FloatCC, IntCC};
 use cranelift_codegen::ir::immediates::Ieee64;
 use cranelift_codegen::ir::{
-    AbiParam, Block as Label, BlockArg, Function, InstBuilder, MemFlagsData, SigRef, Signature,
-    Type as IrType, UserFuncName, Value, types,
+    AbiParam, Block as Label, BlockArg, Function, InstBuilder, MemFlagsData, Signature, StackSlot,
+    StackSlotData, StackSlotKind, Type as IrType, UserFuncName, Value, types,
 };
 use cranelift_codegen::isa::{self, CallConv, OwnedTargetIsa, TargetIsa};
 use cranelift_codegen::settings::{self, Configurable};
@@ -132,9 +132,10 @@ struct Gen<'a> {
     vars: Vec<Variable>,
     /// Each enclosing loop's (continue, break) targets.
     loops: Vec<(Label, Label)>,
-    trap_sig: Option<SigRef>,
     /// Returns status 2; filled at the end.
     stop: Option<Label>,
+    /// Where a callee writes its result.
+    result_slot: Option<StackSlot>,
 }
 
 impl<'a> Gen<'a> {
@@ -174,13 +175,15 @@ impl<'a> Gen<'a> {
             out: f.result.map(|_| params[params.len() - 1]),
             vars,
             loops: vec![],
-            trap_sig: None,
             stop: None,
+            result_slot: None,
         };
         g.poll();
+        g.stack_check();
         let v = g.block(&f.body)?;
         g.ret_value(v);
-        if let Some(stop) = g.stop {
+        if g.stop.is_some() {
+            let stop = g.stop();
             g.b.switch_to_block(stop);
             g.ret(2);
         }
@@ -197,13 +200,18 @@ impl<'a> Gen<'a> {
     /// Writes the result, if any, and returns status 0.
     fn ret_value(&mut self, v: Option<Value>) {
         if let (Some(out), Some(v)) = (self.out, v) {
-            let v = match self.b.func.dfg.value_type(v) {
-                types::I8 => self.b.ins().uextend(types::I64, v),
-                _ => v,
-            };
+            let v = self.widen(v);
             self.b.ins().store(MemFlagsData::trusted(), v, out, 0);
         }
         self.ret(0);
+    }
+
+    /// A Bool as the whole word it is across a call.
+    fn widen(&mut self, v: Value) -> Value {
+        match self.b.func.dfg.value_type(v) {
+            types::I8 => self.b.ins().uextend(types::I64, v),
+            _ => v,
+        }
     }
 
     /// Continues in a new block that nothing reaches, after a jump or a return.
@@ -216,42 +224,132 @@ impl<'a> Gen<'a> {
     fn poll(&mut self) {
         let at = (self.b.ins()).iadd_imm_s(self.ctx, offset_of!(Context, interrupt) as i64);
         let flag = (self.b.ins()).atomic_load(types::I64, MemFlagsData::trusted(), at);
-        let stop = *self.stop.get_or_insert_with(|| self.b.create_block());
-        self.b.set_cold_block(stop);
+        let stop = self.stop();
         let go = self.b.create_block();
         self.b.ins().brif(flag, stop, &[], go, &[]);
         self.b.switch_to_block(go);
     }
 
+    fn stop(&mut self) -> Label {
+        let stop = *self.stop.get_or_insert_with(|| self.b.create_block());
+        self.b.set_cold_block(stop);
+        stop
+    }
+
+    /// Traps with `stack` when the stack pointer is below `ctx.stack_limit` (M4-05 section 6).
+    fn stack_check(&mut self) {
+        let flags = MemFlagsData::trusted();
+        let at = offset_of!(Context, stack_limit) as i32;
+        let limit = self.b.ins().load(types::I64, flags, self.ctx, at);
+        let sp = self.b.ins().get_stack_pointer(types::I64);
+        let low = self.b.ins().icmp(IntCC::UnsignedLessThan, sp, limit);
+        self.branch_to_trap(low, rt::STACK, 0, &[]);
+    }
+
     /// Traps with `kind` when `bad` is set.
     fn check(&mut self, bad: Value, kind: u64, site: Site, operands: &[Value]) {
+        let at = self.site(site);
+        self.branch_to_trap(bad, kind, at, operands);
+    }
+
+    fn branch_to_trap(&mut self, bad: Value, kind: u64, at: u64, operands: &[Value]) {
         let [fail, ok] = [(); 2].map(|()| self.b.create_block());
         self.b.set_cold_block(fail);
         self.b.ins().brif(bad, fail, &[], ok, &[]);
         self.b.switch_to_block(fail);
-        self.trap(kind, site, operands);
+        self.trap(kind, at, operands);
         self.b.switch_to_block(ok);
     }
 
-    /// Calls `rt.trap(ctx, kind, site, a, b, c)` and returns status 1.
-    fn trap(&mut self, kind: u64, site: Site, operands: &[Value]) {
-        let sig = *self.trap_sig.get_or_insert_with(|| {
-            let mut sig = Signature::new(CallConv::SystemV);
-            sig.params = vec![AbiParam::new(types::I64); 6];
-            self.b.import_signature(sig)
-        });
-        let flags = MemFlagsData::trusted();
-        let table =
-            (self.b.ins()).load(types::I64, flags, self.ctx, offset_of!(Context, rt) as i32);
-        let f = (self.b.ins()).load(types::I64, flags, table, offset_of!(Rt, trap) as i32);
-        let mut given = vec![self.ctx, self.int_const(kind as i64)];
-        given.push(self.int_const((self.def << 32 | site) as i64));
+    /// `definition << 32 | site`, as the trap record and frames hold it.
+    fn site(&self, site: Site) -> u64 {
+        (self.def << 32 | site) as u64
+    }
+
+    /// Calls `rt.trap(ctx, kind, at, a, b, c)` and returns status 1.
+    fn trap(&mut self, kind: u64, at: u64, operands: &[Value]) {
+        let mut given = vec![
+            self.ctx,
+            self.int_const(kind as i64),
+            self.int_const(at as i64),
+        ];
         given.extend(operands);
         while given.len() < 6 {
             given.push(self.int_const(0));
         }
-        self.b.ins().call_indirect(sig, f, &given);
+        self.rt_call(offset_of!(Rt, trap), &given);
         self.ret(1);
+    }
+
+    /// Calls the runtime routine at `offset` in `ctx.rt`; every one takes words and returns none.
+    fn rt_call(&mut self, offset: usize, given: &[Value]) {
+        let mut sig = Signature::new(CallConv::SystemV);
+        sig.params = vec![AbiParam::new(types::I64); given.len()];
+        let sig = self.b.import_signature(sig);
+        let flags = MemFlagsData::trusted();
+        let table =
+            (self.b.ins()).load(types::I64, flags, self.ctx, offset_of!(Context, rt) as i32);
+        let f = self.b.ins().load(types::I64, flags, table, offset as i32);
+        self.b.ins().call_indirect(sig, f, given);
+    }
+
+    /// Calls definition `id` through its slot (M4-05 section 7); a nonzero status returns at
+    /// once, a trap after pushing `site` as a frame.
+    fn call(&mut self, id: usize, given: &[Arg], site: Site) -> Emitted {
+        let f = &self.p.fns[id];
+        let mut values = vec![self.ctx];
+        for a in given {
+            let Arg::Value(e) = a else {
+                return Err("an inout argument is not compiled yet".into());
+            };
+            let v = self.value(e)?;
+            values.push(self.widen(v));
+        }
+        let result = f.result.map(|t| ir_type(self.p, t)).transpose()?;
+        let slot = result.map(|_| self.result_slot());
+        if let Some(slot) = slot {
+            values.push(self.b.ins().stack_addr(types::I64, slot, 0));
+        }
+        let sig = self.b.import_signature(signature(self.p, f)?);
+        let flags = MemFlagsData::trusted();
+        let at = offset_of!(Context, slots) as i32;
+        let slots = self.b.ins().load(types::I64, flags, self.ctx, at);
+        let code = self.b.ins().load(types::I64, flags, slots, (id * 8) as i32);
+        let call = self.b.ins().call_indirect(sig, code, &values);
+        let status = self.b.inst_results(call)[0];
+        self.pass_on(status, site);
+        let (Some(t), Some(slot)) = (result, slot) else {
+            return Ok(None);
+        };
+        let v = self.b.ins().stack_load(types::I64, word(t), slot, 0);
+        Ok(Some(match t {
+            types::I8 => self.b.ins().ireduce(t, v),
+            _ => v,
+        }))
+    }
+
+    /// Returns a callee's nonzero status: 2 as it is, 1 after pushing the call site.
+    fn pass_on(&mut self, status: Value, site: Site) {
+        let [fail, push, ok] = [(); 3].map(|()| self.b.create_block());
+        self.b.set_cold_block(fail);
+        self.b.set_cold_block(push);
+        self.b.ins().brif(status, fail, &[], ok, &[]);
+        self.b.switch_to_block(fail);
+        let stopped = self.b.ins().icmp_imm_s(IntCC::Equal, status, 2);
+        let stop = self.stop();
+        self.b.ins().brif(stopped, stop, &[], push, &[]);
+        self.b.switch_to_block(push);
+        let at = self.int_const(self.site(site) as i64);
+        self.rt_call(offset_of!(Rt, push_frame), &[self.ctx, at]);
+        self.ret(1);
+        self.b.switch_to_block(ok);
+    }
+
+    fn result_slot(&mut self) -> StackSlot {
+        *self.result_slot.get_or_insert_with(|| {
+            let data = StackSlotData::new(StackSlotKind::ExplicitSlot, 8, 3);
+            self.b.create_sized_stack_slot(data)
+        })
     }
 
     fn int_const(&mut self, n: i64) -> Value {
@@ -374,7 +472,7 @@ impl<'a> Gen<'a> {
             ExprKind::Bool(v) => self.b.ins().iconst(types::I8, i64::from(*v)),
             ExprKind::Place(place) => self.b.use_var(self.vars[local(place)?]),
             ExprKind::Hole(site) => {
-                self.trap(rt::HOLE, *site, &[]);
+                self.trap(rt::HOLE, self.site(*site), &[]);
                 return self.unreached(e);
             }
             ExprKind::Unary(op, x) => {
@@ -413,6 +511,7 @@ impl<'a> Gen<'a> {
                 }
                 return self.builtin(ROWS[*row].1, &x, *site, e);
             }
+            ExprKind::Call(Callee::Fn(id), given, site) => return self.call(*id, given, *site),
             ExprKind::If(c, then, otherwise) => {
                 let c = self.value(c)?;
                 let [yes, no] = [(); 2].map(|()| self.b.create_block());
@@ -579,7 +678,7 @@ impl<'a> Gen<'a> {
                 return Ok(None);
             }
             "unreachable() -> T" => {
-                self.trap(rt::ASSERT, site, &[]);
+                self.trap(rt::ASSERT, self.site(site), &[]);
                 return self.unreached(e);
             }
             _ => return Err(format!("`{row}` is not compiled yet")),

@@ -146,11 +146,18 @@ impl Context {
 #[derive(Debug, Default, PartialEq)]
 pub struct Trap {
     pub kind: u64,
-    /// `definition << 32 | site`.
+    /// `definition << 32 | site`; 0 for `stack`, whose position is its first frame.
     pub site: u64,
     /// The detail's operands; Float operands as their bits.
     pub operands: [u64; 3],
+    /// The call sites the trap passed through, innermost first: the first eight.
+    pub frames: Vec<u64>,
+    /// More than eight frames were pushed.
+    pub more: bool,
 }
+
+/// The frames a trap keeps (M2-06 section 3).
+const FRAMES: usize = 8;
 
 /// The runtime routines generated code calls, at fixed offsets.
 #[repr(C)]
@@ -158,12 +165,14 @@ pub struct Rt {
     pub alloc: extern "sysv64" fn(&mut Context, u64, &mut *mut u8) -> i32,
     pub release: extern "sysv64" fn(&mut Context, *mut u8, u64),
     pub trap: extern "sysv64" fn(&mut Context, u64, u64, u64, u64, u64),
+    pub push_frame: extern "sysv64" fn(&mut Context, u64),
 }
 
 pub static RT: Rt = Rt {
     alloc: rt_alloc,
     release: rt_release,
     trap: rt_trap,
+    push_frame: rt_push_frame,
 };
 
 /// `rt.alloc`: a block of `bytes` into `out` and status 0, or a `memory` trap and status 1.
@@ -191,5 +200,34 @@ pub extern "sysv64" fn rt_trap(ctx: &mut Context, kind: u64, site: u64, a: u64, 
         kind,
         site,
         operands: [a, b, c],
+        ..Trap::default()
     };
+}
+
+/// `rt.push_frame`: records the call site a trap passed through.
+pub extern "sysv64" fn rt_push_frame(ctx: &mut Context, site: u64) {
+    match ctx.trap.frames.len() < FRAMES {
+        true => ctx.trap.frames.push(site),
+        false => ctx.trap.more = true,
+    }
+}
+
+/// A runner thread's stack, and the room kept below `stack_limit` (M4-05 section 6).
+pub const RUNNER_STACK: usize = 64 << 20;
+const MARGIN: usize = 1 << 20;
+
+/// Runs `f` on a new thread with a `RUNNER_STACK` stack and a fresh context of heap cap `cap`, its
+/// `stack_limit` about `MARGIN` above the bottom. The context sits near the stack's top, so its
+/// own address stands for the top; what lies above it only shrinks the margin a little.
+pub fn on_runner<R: Send>(cap: u64, f: impl FnOnce(&mut Context) -> R + Send) -> R {
+    std::thread::scope(|s| {
+        let runner = std::thread::Builder::new().stack_size(RUNNER_STACK);
+        let run = runner.spawn_scoped(s, || {
+            let mut ctx = Context::new(cap);
+            ctx.stack_limit = (&raw const ctx).addr() - (RUNNER_STACK - MARGIN);
+            f(&mut ctx)
+        });
+        let run = run.expect("a runner thread");
+        run.join().unwrap_or_else(|e| std::panic::resume_unwind(e))
+    })
 }

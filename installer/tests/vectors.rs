@@ -1,13 +1,11 @@
 //! The shared vectors (tests/vectors/ops.vec) run as dev machine code: each vector becomes a
 //! definition, compiled by `paka::emit`, installed and run (M4-26).
 
-use paka::emit::Emitter;
-use paka::source::Source;
-use paka_installer::{Slots, install};
+mod common;
+
 use paka_rt::abi::dev::Context;
 use paka_rt::ops::Trap;
 use paka_rt::ops::vectors::{self, Outcome, Value, Vector};
-use std::ffi::c_void;
 
 const VECTORS: &str = include_str!("../../tests/vectors/ops.vec");
 
@@ -121,30 +119,12 @@ const TRAPS: [&str; 4] = [
 fn the_vectors_pass_as_machine_code() {
     let all = vectors::parse(VECTORS).unwrap();
     let chosen: Vec<&Vector> = all.iter().filter(|v| compiled(&v.op)).collect();
-    let source = program(&chosen);
-    let (p, ..) = paka::check("main.paka", &Source::file("main.paka", source.into_bytes()))
-        .unwrap_or_else(|d| panic!("{d}"));
-    let mut emitter = Emitter::new().unwrap();
-    let code: Vec<Vec<u8>> = (0..chosen.len())
-        .map(|d| emitter.code(&p, d).unwrap())
-        .collect();
-    let installed = install(&code.iter().map(Vec::as_slice).collect::<Vec<_>>()).unwrap();
-    let slots = Slots::new(chosen.len());
-    let group: Vec<_> = installed
-        .iter()
-        .enumerate()
-        .map(|(id, c)| (id, c.address))
-        .collect();
-    slots.swap(&group).unwrap();
+    let (_, slots) = common::load(&program(&chosen));
 
     let mut wrong = vec![];
     for (id, v) in chosen.iter().enumerate() {
         let mut ctx = Context::new(0);
-        let mut out = 0u64;
-        let ctx_ptr = (&raw mut ctx).cast::<c_void>();
-        // SAFETY: slot `id` holds `fn v{id}`, compiled as `fn(ctx, out) -> i32`, and `ctx` and
-        // `out` live through the run.
-        let status = unsafe { slots.run(id, ctx_ptr, (&raw mut out).cast()) }.unwrap();
+        let (status, out) = common::run(&slots, id, &mut ctx);
         let got = outcome(&v.op, status, &ctx, out);
         if !vectors::same(&got, &v.want) {
             let want = &v.want;
