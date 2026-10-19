@@ -7,9 +7,9 @@ use crate::builtins;
 use std::collections::BTreeSet;
 
 /// Gives each node enum a `kind()` that names its variant as `Enum::Variant`, and lists them all
-/// in `NODE_KINDS`. The match has no wildcard: a variant missing here does not compile.
+/// in `$all`. The match has no wildcard: a variant missing here does not compile.
 macro_rules! node_kinds {
-    ($($ty:ident $(<$lt:lifetime>)?: $($variant:ident)+;)+) => {
+    ($all:ident; $($ty:ident $(<$lt:lifetime>)?: $($variant:ident)+;)+) => {
         $(impl $ty $(<$lt>)? {
             fn kind(&self) -> &'static str {
                 match self {
@@ -18,12 +18,13 @@ macro_rules! node_kinds {
             }
         })+
 
-        pub const NODE_KINDS: &[&str] =
+        pub const $all: &[&str] =
             &[$($(concat!(stringify!($ty), "::", stringify!($variant)),)+)+];
     };
 }
 
 node_kinds! {
+    NODE_KINDS;
     Def<'_>: Type Enum Fn Example App;
     Entry<'_>: State Start Update Grants;
     Type<'_>: Name Fn;
@@ -228,6 +229,178 @@ impl Uses {
         if let PatKind::Variant(name, subs) = &pat.kind {
             self.name(name);
             subs.iter().for_each(|p| self.pat(p));
+        }
+    }
+}
+
+/// The node kinds of a core-form program (M4-21), effects and grants aside.
+pub mod core {
+    use crate::core_form::*;
+    use std::collections::BTreeSet;
+
+    node_kinds! {
+        CORE_KINDS;
+        Type: Int Float Bool String List Map Option Result Effect Fn Record Enum;
+        Stmt: Let Assign Return Break Continue For While Expr;
+        Walk: List Range;
+        ExprKind: Int Float Bool Str Interp Hole Place Record List Map Variant FnValue Unary Binary
+            Call If Match;
+        Root: Local Value;
+        Step: Field Item Key Slice;
+        Tag: User Some None Ok Err Effect;
+        FnRef: Fn Variant;
+        Callee: Fn Builtin Value;
+        Arg: Value Inout;
+        Un: Neg NegFloat Not;
+        Bin: Int Float Join Eq Ne Order And Or;
+        Arith: Add Sub Mul Div Rem;
+        FloatArith: Add Sub Mul Div;
+        Compound: Int Float Join;
+        Cmp: Lt Le Gt Ge;
+    }
+
+    #[derive(Default)]
+    pub struct Kinds(pub BTreeSet<&'static str>);
+
+    pub fn kinds(program: &Program) -> Kinds {
+        let mut k = Kinds::default();
+        program.types.iter().for_each(|t| k.add(t.kind()));
+        let bodies = program.fns.iter().chain(&program.examples);
+        bodies.for_each(|f| k.block(&f.body));
+        if let Some(state) = program.app.as_ref().and_then(|a| a.state.as_ref()) {
+            k.expr(state);
+        }
+        k
+    }
+
+    impl Kinds {
+        fn add(&mut self, kind: &'static str) {
+            self.0.insert(kind);
+        }
+
+        fn block(&mut self, block: &Block) {
+            block.stmts.iter().for_each(|s| self.stmt(s));
+            block.value.iter().for_each(|e| self.expr(e));
+        }
+
+        fn stmt(&mut self, stmt: &Stmt) {
+            self.add(stmt.kind());
+            match stmt {
+                Stmt::Let(_, e) | Stmt::Expr(e) => self.expr(e),
+                Stmt::Assign(place, op, e) => {
+                    self.place(place);
+                    op.iter().for_each(|op| self.compound(op));
+                    self.expr(e);
+                }
+                Stmt::Return(e) => e.iter().for_each(|e| self.expr(e)),
+                Stmt::Break | Stmt::Continue => {}
+                Stmt::For(_, walk, body) => {
+                    self.add(walk.kind());
+                    match walk {
+                        Walk::List(e) => self.expr(e),
+                        Walk::Range(a, b) => {
+                            self.expr(a);
+                            self.expr(b);
+                        }
+                    }
+                    self.block(body);
+                }
+                Stmt::While(cond, body) => {
+                    self.expr(cond);
+                    self.block(body);
+                }
+            }
+        }
+
+        fn compound(&mut self, op: &Compound) {
+            self.add(op.kind());
+            match op {
+                Compound::Int(a, _) => self.add(a.kind()),
+                Compound::Float(a) => self.add(a.kind()),
+                Compound::Join(_) => {}
+            }
+        }
+
+        fn place(&mut self, place: &Place) {
+            self.add(place.root.kind());
+            if let Root::Value(e) = &place.root {
+                self.expr(e);
+            }
+            for step in &place.steps {
+                self.add(step.kind());
+                match step {
+                    Step::Field(_) => {}
+                    Step::Item(e, _) | Step::Key(e, _) => self.expr(e),
+                    Step::Slice(a, b, _) => {
+                        self.expr(a);
+                        self.expr(b);
+                    }
+                }
+            }
+        }
+
+        fn expr(&mut self, expr: &Expr) {
+            self.add(expr.kind.kind());
+            match &expr.kind {
+                ExprKind::Int(_)
+                | ExprKind::Float(_)
+                | ExprKind::Bool(_)
+                | ExprKind::Str(_)
+                | ExprKind::Hole(_) => {}
+                ExprKind::Interp(parts, _) | ExprKind::List(parts) | ExprKind::Record(_, parts) => {
+                    parts.iter().for_each(|e| self.expr(e))
+                }
+                ExprKind::Place(place) => self.place(place),
+                ExprKind::Map(pairs) => pairs.iter().for_each(|(k, v)| {
+                    self.expr(k);
+                    self.expr(v);
+                }),
+                ExprKind::Variant(tag, args) => {
+                    self.add(tag.kind());
+                    args.iter().for_each(|e| self.expr(e));
+                }
+                ExprKind::FnValue(f) => self.add(f.kind()),
+                ExprKind::Unary(op, e) => {
+                    self.add(op.kind());
+                    self.expr(e);
+                }
+                ExprKind::Binary(op, a, b) => {
+                    self.add(op.kind());
+                    match op {
+                        Bin::Int(a, _) => self.add(a.kind()),
+                        Bin::Float(a) => self.add(a.kind()),
+                        Bin::Order(c) => self.add(c.kind()),
+                        _ => {}
+                    }
+                    self.expr(a);
+                    self.expr(b);
+                }
+                ExprKind::Call(callee, args, _) => {
+                    self.add(callee.kind());
+                    if let Callee::Value(e) = callee {
+                        self.expr(e);
+                    }
+                    for arg in args {
+                        self.add(arg.kind());
+                        match arg {
+                            Arg::Value(e) => self.expr(e),
+                            Arg::Inout(p) => self.place(p),
+                        }
+                    }
+                }
+                ExprKind::If(cond, then, otherwise) => {
+                    self.expr(cond);
+                    self.block(then);
+                    otherwise.iter().for_each(|b| self.block(b));
+                }
+                ExprKind::Match(subject, arms) => {
+                    self.expr(subject);
+                    for arm in arms {
+                        arm.tags.iter().for_each(|t| self.add(t.kind()));
+                        self.block(&arm.body);
+                    }
+                }
+            }
         }
     }
 }

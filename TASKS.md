@@ -1058,10 +1058,12 @@ or merged during review. Ids with a letter were added during review.
 
 ### M4-21 · L4 · Generate random well-typed terminating Paka programs from a seed
 
+- status: done
 - needs: nothing
 - flags: native-only
 - done when: 10,000 seeds give programs that all check and finish in the interpreter; a coverage report shows every core-form node kind produced.
 - why this level: Programs must pass the checker, terminate, and still reach overflow, bounds, NaN and ownership corner cases.
+- note: Done: paka-gen writes one program per seed (`paka-gen SEED` prints it); `paka/tests/generated.rs` checks and runs 10,000 seeds (`PAKA_GEN_SEEDS` sets the count): all check and finish (exit 0: 6214, trap 3: 3119, chosen exit codes: 667) and every core-form node kind appears.
 
 ### M4-22 · L3 · Compute the native layout of every type
 

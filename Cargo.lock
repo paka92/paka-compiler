@@ -10,8 +10,13 @@ version = "0.0.0"
 name = "paka"
 version = "0.0.0"
 dependencies = [
+ "paka-gen",
  "paka-rt",
 ]
+
+[[package]]
+name = "paka-gen"
+version = "0.0.0"
 
 [[package]]
 name = "paka-rt"

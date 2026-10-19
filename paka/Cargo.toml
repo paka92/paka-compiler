@@ -8,3 +8,6 @@ unsafe_code = "forbid"
 
 [dependencies]
 paka-rt = { path = "../paka-rt" }
+
+[dev-dependencies]
+paka-gen = { path = "../paka-gen" }

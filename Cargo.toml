@@ -1,6 +1,6 @@
 [workspace]
 resolver = "3"
-members = ["paka", "paka-rt", "harness"]
+members = ["paka", "paka-rt", "paka-gen", "harness"]
 
 [profile.dev]
 overflow-checks = true
