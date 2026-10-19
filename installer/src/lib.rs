@@ -9,6 +9,9 @@ compile_error!("the installer runs on Linux x86-64 only");
 use std::ffi::{c_int, c_long, c_void};
 use std::io;
 
+mod slots;
+pub use slots::{Refused, Slots};
+
 const PROT_READ: c_int = 1;
 const PROT_WRITE: c_int = 2;
 const PROT_EXEC: c_int = 4;

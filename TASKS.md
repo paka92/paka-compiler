@@ -1105,10 +1105,12 @@ or merged during review. Ids with a letter were added during review.
 
 ### M4-24 · L4 · Add call slots, grouped slot swaps and safe entry into installed code
 
+- status: done
 - needs: M4-23
 - flags: unsafe, native-only
 - done when: Tests: a swapped slot changes the callee; a group swaps together; a swap attempted during a run is refused.
 - why this level: Swaps must be impossible while code runs; a wrong function type at the entry point is undefined behaviour.
+- note: Done: `Slots` in `installer/src/slots.rs`. A swap writes a whole group or, when an id has no slot, nothing. Swaps and runs exclude each other through one state word, so a swap during a run, or a run during a swap, is refused with `Busy`. `run` points the context's first word at the table, then calls the slot as `fn(ctx, out) -> i32`; it stays `unsafe` because only the caller knows the slot holds code of that type. The table has a fixed length; growing it for new definitions waits for M4-37.
 
 ### M4-25 · L4 · Add runtime allocation with a ledger that reports leaks and bad frees
 
