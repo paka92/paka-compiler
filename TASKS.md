@@ -1028,11 +1028,13 @@ or merged during review. Ids with a letter were added during review.
 
 ### M4-15 · L3 · Print any definition in the one canonical layout, keeping comments
 
+- status: done
 - needs: M4-47
 - flags: none
 - done when: Hand-written golden files pass, and on all conformance sources printing is idempotent and reparses to the same tree. `paka check` treats non-canonical text as M4-47 rules, with a hand-written case for each outcome; stored sources are handled as M4-47 rules.
 - why this level: Comments must survive and printing must be stable: print, parse, print again gives the same text.
 - note: A plain tree walk with no width fitting; parentheses are kept as written (M4-47). It attaches comments in the parser where the printer puts them, and tests that the M4-47 samples print unchanged.
+- note: Done: paka/src/print.rs. The parser tree stays without comments: the printer lexes the source once more and places each comment by lines, above the definition, statement, match arm or app key it sits on or before, or as a block's last line; comments after the last definition go above it. Golden files are in tests/print, with samples.paka holding the M4-47 samples. Over every source under tests and examples that parses, printing keeps the hashes and the comment count, and printing again changes nothing. `paka check` already accepted other layouts and refused `return` on the last line and a semicolon with their fixes; tests/check.rs now holds a case for each. Storing canonical text belongs to M4-17. Known limit: doubled parentheses such as `((x))` print once, `(x)`.
 
 ### M4-16 · L2 · Serve the tool interface: transport, JSON reading and writing, request dispatch
 

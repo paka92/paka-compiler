@@ -14,6 +14,7 @@ mod json;
 mod lexer;
 mod lower;
 pub mod parser;
+pub mod print;
 mod resolve;
 pub mod sha256;
 mod sig;
