@@ -1153,11 +1153,13 @@ or merged during review. Ids with a letter were added during review.
 
 ### M4-29 · L2 · Call maths functions through private runtime names from compiled code
 
+- status: done
 - needs: M4-26, M2-08b
 - flags: unsafe, native-only, conditional
 - done when: Maths vectors match the interpreter bit for bit; a test fails if emitted code names a libm function or maths intrinsic.
 - why this level: Thin exported wrappers and one emitter rule, plus a check that no known maths name is emitted.
 - note: Only if M2-03 approves maths functions. Its unsafe is export attributes on scalar functions only.
+- note: Closed without work: M2-03 approves no maths functions beyond the table rows, which M4-26 compiles inline (M2-08b).
 
 ### M4-30 · L2 · Compile holes and examples; an example reaching a hole reports unfinished
 
