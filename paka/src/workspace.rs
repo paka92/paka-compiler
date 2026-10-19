@@ -73,6 +73,10 @@ impl Workspace {
         self.released.as_deref()
     }
 
+    pub fn index(&self) -> &Index {
+        &self.index
+    }
+
     /// Each definition's result, an error placed where the definition now stands.
     pub fn checks(&self) -> Vec<DefCheck> {
         let lines = first_lines(&self.defs.iter().map(|d| &d.text).collect::<Vec<_>>());

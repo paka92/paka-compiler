@@ -1018,11 +1018,13 @@ or merged during review. Ids with a letter were added during review.
 
 ### M4-14 · L4 · Test that incremental state equals a clean rebuild after random edits
 
+- status: done
 - needs: M4-13
 - flags: open-ended
 - done when: 10,000 seeded edit sequences end with ids, index, hashes and check results identical to a rebuild from text; a planted bug is caught. A coverage report shows every edit kind produced (body, signature, type layout, add, delete, rename), and one planted staleness bug per kind is caught.
 - why this level: It must find stale results; a weak edit generator passes silently, and M4-43 leans on it.
 - note: A rename is generated as an add followed by a delete (M4-48).
+- note: Done: `tests/edits.rs` runs eight seeded edits on each of 10,000 generated programs (`PAKA_EDIT_SEEDS`) and after every step compares the workspace with one built from its text: index, names, errors, reads and both hashes. Edits: a body gains a `let` reading a name, sometimes misspelled; a function gains a parameter; a record gains a field, with or without a default, or an enum a variant; an add restores a deleted definition or adds a new function; a delete; a rename. The report counts each kind made and applied (an edit with a program-wide error, such as an enum renamed beside itself, is refused). Planted bugs, at 2,000 sequences: index not updated for a changed definition (caught by body edits and others), function interface hash without parameters (signature), record or enum layout left out of the type hash (layout), appeared names not waking their users (add), gone names not waking theirs (delete and rename), the near rule dropped (add), the relowered refresh dropped (all). Not caught, by design: dropping the body-hash rule, since a definition whose text changed always takes fresh results; that rule only decides what an edit reports, which `tests/workspace.rs` checks.
 
 ### M4-15 · L3 · Print any definition in the one canonical layout, keeping comments
 
