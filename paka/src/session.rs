@@ -1,8 +1,8 @@
 //! The program a server holds (M4-17): its definitions in a workspace and its files on disk, kept
 //! equal after each edit (docs/decisions/M4-03.md section 3.3, M4-48).
 //!
-//! A definition's version is the first 12 hex digits of the SHA-256 of its canonical text. An edit
-//! stores the canonical text of the one definition it changes and leaves the rest as written.
+//! The workspace holds each definition in canonical text, and its version is the first 12 hex
+//! digits of the SHA-256 of that text. The files keep their layout except where an edit writes.
 
 use crate::diagnostic::Diagnostic;
 use crate::parser::split;
@@ -19,7 +19,15 @@ use std::io::{self, Write};
 use std::ops::Range;
 use std::path::{Path, PathBuf};
 
+mod find;
+
 const PATH: &str = "main.paka";
+
+/// The definitions of the program `text` in canonical text; or its first error, placed in `text`.
+pub fn workspace(text: &[u8]) -> Result<Workspace, Diagnostic> {
+    let printed = print::program(PATH, text)?;
+    Workspace::new(printed.as_bytes()).or_else(|_| Workspace::new(text))
+}
 
 pub struct Session {
     /// The program's directory; `None` for a single file.
@@ -56,6 +64,8 @@ impl Session {
     pub fn handle(&mut self, call: &Call) -> Reply {
         match call.name {
             "edit" => self.edit(call),
+            "find" => self.find(call),
+            "view" => self.view(call),
             name => Err(Failure::new(
                 "unknown_call",
                 format!("{name} is not served yet"),
@@ -87,8 +97,7 @@ impl Session {
 
     /// Refuses a `base` that is not the current version of `name`, or null when `name` exists.
     fn base_fits(&self, name: &str, base: Option<&str>, adds: bool) -> Result<(), Failure> {
-        let current = self.workspace.def(name).map(|(t, _)| canonical(t));
-        match (base, current) {
+        match (base, self.workspace.def(name).map(|(t, _)| t)) {
             (None, None) if adds => Ok(()),
             (_, None) => Err(Failure::new("not_found", format!("no definition `{name}`"))),
             (None, Some(_)) => {
@@ -96,10 +105,10 @@ impl Session {
                     format!("{name} already exists; send its version as base to replace it");
                 Err(Failure::new("name_taken", message))
             }
-            (Some(base), Some(current)) if base != version(&current) => {
+            (Some(base), Some(current)) if base != version(current) => {
                 let mut stale = Failure::new("stale_base", format!("{name} has moved"));
                 stale.extra = vec![
-                    ("version", version(&current).into()),
+                    ("version", version(current).into()),
                     ("text", current.into()),
                 ];
                 Err(stale)
@@ -146,7 +155,7 @@ impl Session {
         name: &str,
         printed: Option<&str>,
     ) -> Result<(PathBuf, Option<String>), Failure> {
-        if let Some((file, range)) = self.find(name) {
+        if let Some((file, range)) = self.located(name) {
             let text = &file.text;
             let new = match printed {
                 Some(printed) => [&text[..range.start], printed, &text[range.end..]].concat(),
@@ -176,7 +185,7 @@ impl Session {
     }
 
     /// The file that holds the definition `name`, and its bytes there.
-    fn find(&self, name: &str) -> Option<(&File, Range<usize>)> {
+    fn located(&self, name: &str) -> Option<(&File, Range<usize>)> {
         self.files.iter().find_map(|f| {
             let defs = split(PATH, f.text.as_bytes()).ok()?;
             let (_, def) = defs.into_iter().find(|(id, _)| *id == name)?;
@@ -255,11 +264,6 @@ fn one_definition(name: &str, text: &str) -> Result<String, Failure> {
 fn definition(printed: &str) -> &str {
     let defs = split(PATH, printed.as_bytes()).expect("canonical text parses");
     std::str::from_utf8(defs[0].1).expect("a slice of a str")
-}
-
-fn canonical(text: &str) -> String {
-    let printed = print::program(PATH, text.as_bytes()).expect("a stored definition prints");
-    definition(&printed).into()
 }
 
 fn version(text: &str) -> String {

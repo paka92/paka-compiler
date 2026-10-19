@@ -1058,11 +1058,13 @@ or merged during review. Ids with a letter were added during review.
 
 ### M4-18 · L2 · Implement find by name or user, and view within a token budget
 
+- status: done
 - needs: M4-10, M4-16, M4-15
 - flags: none
 - done when: Transcript tests return hand-written results; a view holds one body plus used signatures and never exceeds its budget.
 - why this level: Index lookups plus trimming output to a budget; the rules come from the approved interface.
 - note: Token budget uses M2-18's counting rule. Per M4-03: name patterns with `*`, the `users_of`, `kind` and `failing` fields, paging with `after`, the `more` count and current errors in a view. View and find print canonical text and take the version from it.
+- note: Done: the server loads the program in canonical text, so view text, versions and error positions agree; files keep their layout. A budget keeps the longest prefix of entries that fits; a view whose body with no uses is over it fails with `budget`. An exact name finds built-ins and a variant's enum; `users_of` a variant or built-in lists the definitions that name it. `takes` and `gives` answer unknown_call until M4-19. The transcript `tests/serve/find.txt` matches M4-03 section 4.
 
 ### M4-19 · L3 · Implement find by type shape
 

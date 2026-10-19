@@ -10,6 +10,7 @@ pub const VERSION: usize = 1;
 /// A call that passed the envelope and field checks.
 pub struct Call {
     pub name: &'static str,
+    id: Value,
     fields: Value,
 }
 
@@ -36,6 +37,13 @@ impl Call {
             _ => None,
         }
     }
+}
+
+/// The bytes of the reply line that answers `call` with `fields`, without its line feed.
+pub fn line_len(call: &Call, fields: &[(&'static str, Value)]) -> usize {
+    reply_line(call.id.clone(), Ok(fields.to_vec()))
+        .to_string()
+        .len()
 }
 
 /// A refused call: its kind, message and the extra fields its kind lists.
@@ -65,7 +73,7 @@ pub fn serve(
 ) -> io::Result<()> {
     for line in input.split(b'\n') {
         let (id, reply) = match request(&line?) {
-            Ok((id, call)) => (id, handle(&call)),
+            Ok(call) => (call.id.clone(), handle(&call)),
             Err((id, failure)) => (id, Err(failure)),
         };
         writeln!(output, "{}", reply_line(id, reply))?;
@@ -143,8 +151,8 @@ const RUN: Fields = &[
 
 const ENVELOPE: [&str; 3] = ["v", "id", "call"];
 
-/// The request on one line, or the refusal and the id to echo with it.
-fn request(line: &[u8]) -> Result<(Value, Call), (Value, Failure)> {
+/// The call on one line, or the refusal and the id to echo with it.
+fn request(line: &[u8]) -> Result<Call, (Value, Failure)> {
     let bad = |message: String| Failure::new("bad_request", message);
     let object = std::str::from_utf8(line).ok().and_then(|l| parse(l).ok());
     let Some(Value::Object(fields)) = object else {
@@ -173,13 +181,11 @@ fn request(line: &[u8]) -> Result<(Value, Call), (Value, Failure)> {
         return refuse(Failure::new("unknown_call", message));
     };
     match fields_fit(name, spec, &object, &ENVELOPE) {
-        Ok(()) => Ok((
+        Ok(()) => Ok(Call {
+            name,
             id,
-            Call {
-                name,
-                fields: object,
-            },
-        )),
+            fields: object,
+        }),
         Err(message) => refuse(bad(message)),
     }
 }

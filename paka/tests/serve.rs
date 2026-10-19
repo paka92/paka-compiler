@@ -1,4 +1,4 @@
-//! `paka serve` (M4-16, M4-17): the hand-written transcripts in `tests/serve`, the lock that keeps
+//! `paka serve` (M4-16 to M4-18): the hand-written transcripts in `tests/serve`, the lock that keeps
 //! one server per program, and a program that does not parse.
 //!
 //! A transcript `x.txt` is served on a copy of `x/before`, or of the wc sample without it: on its

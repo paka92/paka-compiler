@@ -77,6 +77,11 @@ impl Workspace {
         &self.index
     }
 
+    /// Each definition's names, its own first, and its text.
+    pub fn defs(&self) -> impl Iterator<Item = (&[String], &str)> {
+        (self.defs.iter()).map(|d| (d.names.as_slice(), d.text.as_str()))
+    }
+
     /// The definition named `name`: its text, and its result with an error placed from the text's
     /// first line.
     pub fn def(&self, name: &str) -> Option<(&str, DefCheck)> {

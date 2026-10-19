@@ -9,8 +9,7 @@ mod vectors;
 use core_form::Program;
 use paka::diagnostic::Diagnostic;
 use paka::serve::serve;
-use paka::session::Session;
-use paka::workspace::Workspace;
+use paka::session::{self, Session};
 use paka::{Checked, Hole, builtins, check, core_form, diagnostic, source};
 use paka_rt::{Fd1, abi};
 use source::{Source, read};
@@ -92,7 +91,7 @@ fn examples_file(file: &OsStr) -> ExitCode {
 /// program that does not parse is not served, and neither is one another server holds.
 fn serve_program(file: &OsStr) -> ExitCode {
     let (source, read) = read(file);
-    let workspace = read.and_then(|()| Workspace::new(&source.text));
+    let workspace = read.and_then(|()| session::workspace(&source.text));
     let workspace = match workspace {
         Ok(workspace) => workspace,
         Err(d) => return reject(&source, d),
