@@ -10,6 +10,7 @@ pub mod coverage;
 pub mod diagnostic;
 pub mod hash;
 pub mod index;
+pub mod layout;
 mod lexer;
 mod lower;
 pub mod parser;

@@ -1087,10 +1087,12 @@ or merged during review. Ids with a letter were added during review.
 
 ### M4-22 · L3 · Compute the native layout of every type
 
+- status: done
 - needs: M4-05
 - flags: native-only
 - done when: Sizes, alignments and field offsets equal hand-written expectations for fixture types covering every type form in the reference. The layout table is back-end neutral: release mode (M6) reads the same table.
 - why this level: Enums with payloads, nesting and generics; offsets must match the specification exactly.
+- note: Done: `paka/src/layout.rs` lays out every type the checked signatures meet: size, tag, each alternative's field offsets and boxed fields, and the owned-field lists that copy and release walk. Beside M4-05 section 10's String, List, Map and box entries, a tagged value held inline (an enum, `Option`, `Result`) is a `Value` entry walked through its own record; a nested record is flattened into its holder's list. `WriteFile`'s `then` is a box of the message or `u64::MAX`. The record's equality and order words name definitions, so the emitter fills them (M4-31).
 
 ### M4-23 · L4 · Create the installer crate: load code into memory that is never freed
 
