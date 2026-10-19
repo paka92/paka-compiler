@@ -1,4 +1,7 @@
-//! A strict JSON reader and string quoter. Numbers stay as text, so no float is ever made.
+//! A strict JSON reader and a compact writer, shared by the compiler and the harness. Numbers stay
+//! as text, so no float is ever made; objects keep their keys in the order given.
+
+use std::fmt::{self, Display, Write};
 
 /// Levels of nesting allowed; deeper is an error, not a stack overflow.
 const MAX_DEPTH: usize = 64;
@@ -16,6 +19,11 @@ pub enum Value {
 }
 
 impl Value {
+    /// An object from keys and values in that order.
+    pub fn object<'k>(fields: impl IntoIterator<Item = (&'k str, Value)>) -> Value {
+        Value::Object(fields.into_iter().map(|(k, v)| (k.into(), v)).collect())
+    }
+
     pub fn get(&self, key: &str) -> Option<&Value> {
         match self {
             Value::Object(fields) => fields.iter().find(|(k, _)| k == key).map(|(_, v)| v),
@@ -56,22 +64,96 @@ pub fn parse(text: &str) -> Result<Value, String> {
     }
 }
 
+impl From<usize> for Value {
+    fn from(n: usize) -> Value {
+        Value::Num(n.to_string())
+    }
+}
+
+impl From<bool> for Value {
+    fn from(b: bool) -> Value {
+        Value::Bool(b)
+    }
+}
+
+impl From<&str> for Value {
+    fn from(s: &str) -> Value {
+        Value::Str(s.into())
+    }
+}
+
+impl From<String> for Value {
+    fn from(s: String) -> Value {
+        Value::Str(s)
+    }
+}
+
+impl<T: Into<Value>> From<Option<T>> for Value {
+    fn from(v: Option<T>) -> Value {
+        v.map_or(Value::Null, Into::into)
+    }
+}
+
+impl<T: Into<Value>> From<Vec<T>> for Value {
+    fn from(items: Vec<T>) -> Value {
+        Value::Array(items.into_iter().map(Into::into).collect())
+    }
+}
+
+/// Compact: no space anywhere.
+impl Display for Value {
+    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
+        match self {
+            Value::Null => f.write_str("null"),
+            Value::Bool(b) => write!(f, "{b}"),
+            Value::Num(n) => f.write_str(n),
+            Value::Str(s) => write_quoted(f, s),
+            Value::Array(items) => {
+                f.write_char('[')?;
+                for (i, item) in items.iter().enumerate() {
+                    if i > 0 {
+                        f.write_char(',')?;
+                    }
+                    write!(f, "{item}")?;
+                }
+                f.write_char(']')
+            }
+            Value::Object(fields) => {
+                f.write_char('{')?;
+                for (i, (key, value)) in fields.iter().enumerate() {
+                    if i > 0 {
+                        f.write_char(',')?;
+                    }
+                    write_quoted(f, key)?;
+                    write!(f, ":{value}")?;
+                }
+                f.write_char('}')
+            }
+        }
+    }
+}
+
+/// A quoted string; control characters are escaped, everything else is written as is.
+fn write_quoted(out: &mut impl Write, text: &str) -> fmt::Result {
+    out.write_char('"')?;
+    for c in text.chars() {
+        match c {
+            '"' => out.write_str("\\\"")?,
+            '\\' => out.write_str("\\\\")?,
+            '\n' => out.write_str("\\n")?,
+            '\r' => out.write_str("\\r")?,
+            '\t' => out.write_str("\\t")?,
+            c if c < ' ' => write!(out, "\\u{:04x}", u32::from(c))?,
+            c => out.write_char(c)?,
+        }
+    }
+    out.write_char('"')
+}
+
 /// The text as a JSON string literal.
 pub fn quote(text: &str) -> String {
     let mut out = String::with_capacity(text.len() + 2);
-    out.push('"');
-    for c in text.chars() {
-        match c {
-            '"' => out.push_str("\\\""),
-            '\\' => out.push_str("\\\\"),
-            '\n' => out.push_str("\\n"),
-            '\r' => out.push_str("\\r"),
-            '\t' => out.push_str("\\t"),
-            c if c < ' ' => out.push_str(&format!("\\u{:04x}", u32::from(c))),
-            c => out.push(c),
-        }
-    }
-    out.push('"');
+    write_quoted(&mut out, text).expect("writing to a String");
     out
 }
 

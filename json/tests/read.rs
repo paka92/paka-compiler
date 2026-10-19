@@ -1,6 +1,6 @@
 //! The JSON reader: strict, so an unexpected shape is an error and never a default.
 
-use harness::json::{Value, parse, quote};
+use paka_json::{Value, parse, quote};
 
 fn num(text: &str) -> Value {
     Value::Num(text.into())

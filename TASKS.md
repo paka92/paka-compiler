@@ -1038,11 +1038,13 @@ or merged during review. Ids with a letter were added during review.
 
 ### M4-16 · L2 · Serve the tool interface: transport, JSON reading and writing, request dispatch
 
+- status: done
 - needs: M4-03
 - flags: none
 - done when: Hand-written request and reply transcripts pass, including malformed input and an unknown interface version.
 - why this level: A request loop and a small JSON reader in std; shapes come from the approved interface.
 - note: Reuses one shared standard-library-only JSON module; M2-04's writer and M3-08's reader move into it. Per M4-03: JSON lines on standard input and output, a `v` check on every request and no handshake; unknown fields are refused; one server per program is kept by a standard-library file lock.
+- note: Done: `paka serve <path>` and paka/src/serve.rs. The JSON reader and writer now live in the `paka-json` crate (json/), used by the command and the harness. Each request is checked in this order: one JSON object, `id`, `v` (another version is `bad_version` before any field is judged, since a version may change the fields), `call`, then the call's fields by name, type and need, as M4-03 section 3 lists them; a repeated key is not one JSON object. The program is locked with `File::try_lock` for the server's life; a second server and a program that does not parse exit 1 before serving. Hand-written transcripts are in tests/serve. Until M4-17, M4-18, M4-19 and M4-39 land, a well-formed call is answered `unknown_call` with "... is not served yet".
 
 ### M4-17 · L3 · Implement edit: replace, add or delete one definition against a base version
 

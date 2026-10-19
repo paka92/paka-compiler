@@ -1,4 +1,4 @@
-use crate::json::Json;
+use paka_json::Value;
 use std::fmt;
 
 /// Per error kind: its code, whether it carries expected and found types, whether it carries a fix.
@@ -177,13 +177,13 @@ impl Diagnostic {
         let fix = (self.more.fix.as_ref())
             .zip(span)
             .map(|(replacement, (start, end))| {
-                Json::Object(vec![
+                Value::object([
                     ("start", start.into()),
                     ("end", end.into()),
                     ("replacement", replacement.as_str().into()),
                 ])
             });
-        let fields = vec![
+        let fields = [
             ("kind", self.code.into()),
             ("definition", self.more.definition.clone().into()),
             ("message", self.message.as_str().into()),
@@ -197,7 +197,7 @@ impl Diagnostic {
             ("found", found.into()),
             ("fix", fix.into()),
         ];
-        format!("{}\n", Json::Object(fields))
+        format!("{}\n", Value::object(fields))
     }
 }
 

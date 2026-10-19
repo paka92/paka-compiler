@@ -15,6 +15,8 @@ GUI and release mode are being built, in that order.
 - `paka run`: runs headless programs in an interpreter.
 - `paka build`: compiles the milestone 1 subset to a native binary through LLVM IR and `clang`.
 - `paka examples`: runs a program's in-file examples.
+- `paka serve`: the agent tool interface, JSON lines on standard input and output; requests are
+  checked and dispatched, and the calls themselves are being built (M4-17 onward).
 
 ```paka
 enum Msg { Start }
@@ -47,6 +49,7 @@ usage: paka run <path> [argument...]
        paka build <path> -o <output>
        paka check <path> [--json]
        paka examples <path>
+       paka serve <path>
 ```
 
 ## Benchmark
@@ -76,6 +79,7 @@ cargo run --release -p harness --bin metrics -- experiment/runs/counted <rulings
 ```
 paka/          the command: lexer, parser, checker, interpreter, IR emitter
 paka-rt/       runtime for built programs
+json/          the JSON reader and writer the command and the harness share
 harness/       experiment harness: sandboxed runner, trial loop, batch and metrics commands
 spec/          language reference and the milestone 1 subset
 docs/          core library, ABI and decision records

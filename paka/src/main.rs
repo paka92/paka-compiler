@@ -8,16 +8,19 @@ mod vectors;
 
 use core_form::Program;
 use paka::diagnostic::Diagnostic;
+use paka::serve::{Call, Failure, serve};
+use paka::workspace::Workspace;
 use paka::{Checked, Hole, builtins, check, core_form, diagnostic, source};
 use paka_rt::{Fd1, abi};
 use source::{Source, read};
 use std::ffi::OsStr;
+use std::fs::{self, TryLockError};
 use std::io::Write;
 use std::os::unix::ffi::OsStrExt;
 use std::process::ExitCode;
 use std::{env, io};
 
-const USAGE: &str = "usage: paka run <path> [argument...]\n       paka build <path> -o <output>\n       paka check <path> [--json]\n       paka examples <path>\n";
+const USAGE: &str = "usage: paka run <path> [argument...]\n       paka build <path> -o <output>\n       paka check <path> [--json]\n       paka examples <path>\n       paka serve <path>\n";
 
 fn main() -> ExitCode {
     let args: Vec<_> = env::args_os().skip(1).collect();
@@ -28,6 +31,7 @@ fn main() -> ExitCode {
         [Some("check"), _] => return check_file(&args[1], false),
         [Some("check"), _, Some("--json")] => return check_file(&args[1], true),
         [Some("examples"), _] => return examples_file(&args[1]),
+        [Some("serve"), _] => return serve_program(&args[1]),
         _ => return report(USAGE.as_bytes(), 2),
     };
     let path = &file.to_string_lossy();
@@ -80,6 +84,38 @@ fn examples_file(file: &OsStr) -> ExitCode {
             ExitCode::from(interp::examples(&core, &mut out, &mut err))
         }
         (source, Err(d)) => reject(&source, d),
+    }
+}
+
+/// `paka serve`: the tool interface on standard input and output (docs/decisions/M4-03.md). A
+/// program that does not parse is not served, and neither is one another server holds.
+fn serve_program(file: &OsStr) -> ExitCode {
+    let (source, read) = read(file);
+    let workspace = read.and_then(|()| Workspace::new(&source.text));
+    let _workspace = match workspace {
+        Ok(workspace) => workspace,
+        Err(d) => return reject(&source, d),
+    };
+    let path = file.to_string_lossy();
+    let lock = fs::File::open(file).map_err(TryLockError::Error);
+    // Held until the server ends.
+    let _lock = match lock.and_then(|f| f.try_lock().map(|()| f)) {
+        Ok(lock) => lock,
+        Err(e) => {
+            let why = match e {
+                TryLockError::WouldBlock => "another server holds this program".into(),
+                TryLockError::Error(e) => e.to_string(),
+            };
+            return reject(&source, Diagnostic::tool(&path, "not-served", why));
+        }
+    };
+    let not_yet = |call: &Call| {
+        let message = format!("{} is not served yet", call.name);
+        Err(Failure::new("unknown_call", message))
+    };
+    match serve(io::stdin().lock(), io::stdout().lock(), not_yet) {
+        Ok(()) => ExitCode::SUCCESS,
+        Err(e) => report(format!("paka serve: {e}\n").as_bytes(), 1),
     }
 }
 
