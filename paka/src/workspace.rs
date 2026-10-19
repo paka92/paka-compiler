@@ -5,6 +5,9 @@
 //! changed. The checker still runs over the whole program; only the rechecked definitions take
 //! its results. One exception: lowering runs only on a program without errors and adds reads,
 //! so when the program turns clean or broken every definition takes its fresh reads.
+//!
+//! The last version that checked clean stays released, to run, until a newer one checks clean;
+//! the edits between are released together (M4-13).
 
 use crate::diagnostic::Diagnostic;
 use crate::index::Index;
@@ -18,6 +21,7 @@ const PATH: &str = "main.paka";
 pub struct Workspace {
     defs: Vec<Stored>,
     index: Index,
+    released: Option<String>,
 }
 
 struct Stored {
@@ -43,6 +47,7 @@ impl Workspace {
             .collect();
         let checks = check(&texts)?;
         let index = Index::build(&checks);
+        let released = clean(&checks).then(|| program(texts.iter().map(String::as_str)));
         let lines = first_lines(&texts);
         let defs = (texts.into_iter().zip(checks).zip(lines))
             .map(|((text, check), line)| Stored {
@@ -52,11 +57,20 @@ impl Workspace {
                 line,
             })
             .collect();
-        Ok(Workspace { defs, index })
+        Ok(Workspace {
+            defs,
+            index,
+            released,
+        })
     }
 
     pub fn text(&self) -> String {
         program(self.defs.iter().map(|d| d.text.as_str()))
+    }
+
+    /// The text of the last version without errors.
+    pub fn released(&self) -> Option<&str> {
+        self.released.as_deref()
     }
 
     /// Each definition's result, an error placed where the definition now stands.
@@ -91,8 +105,11 @@ impl Workspace {
         let rechecked = self.rechecked(&fresh, &old_names, &new_names, edited);
         let texts: Vec<String> = texts.into_iter().map(String::from).collect();
         let was_clean = self.defs.iter().all(|d| d.check.error.is_none());
-        let relowered = was_clean != fresh.iter().all(|d| d.error.is_none());
-        self.update(texts, fresh, &rechecked, relowered);
+        let is_clean = clean(&fresh);
+        self.update(texts, fresh, &rechecked, was_clean != is_clean);
+        if is_clean {
+            self.released = Some(self.text());
+        }
         let broken = (self.checks().into_iter())
             .filter(|c| rechecked.contains(&c.name))
             .filter_map(|c| c.error)
@@ -190,6 +207,10 @@ impl Workspace {
 fn check(texts: &[impl AsRef<str>]) -> Result<Vec<DefCheck>, Diagnostic> {
     let text = program(texts.iter().map(AsRef::as_ref));
     check_each(PATH, &Source::file(PATH, text.into_bytes()))
+}
+
+fn clean(checks: &[DefCheck]) -> bool {
+    checks.iter().all(|c| c.error.is_none())
 }
 
 fn program<'t>(texts: impl Iterator<Item = &'t str>) -> String {

@@ -1009,10 +1009,12 @@ or merged during review. Ids with a letter were added during review.
 
 ### M4-13 · L3 · Keep the last fully checked version runnable while newer edits are stored
 
+- status: done
 - needs: M4-12
 - flags: none
 - done when: Test: after a breaking signature edit the interpreter still runs the old version; fixing the users releases all changes together.
 - why this level: Two versions of the program side by side, and an all-or-nothing change set once the newer one checks.
+- note: Done: `Workspace::released` is the text of the last version without errors; it moves only when a newer version checks clean, so the edits between are released together. `tests/release.rs` breaks `count`'s signature, runs the released text with `paka run` (the old status 7), fixes the caller and runs the new one (status 9).
 
 ### M4-14 · L4 · Test that incremental state equals a clean rebuild after random edits
 
