@@ -18,6 +18,7 @@ mod resolve;
 pub mod sha256;
 mod sig;
 pub mod source;
+pub mod workspace;
 
 use ast::Def;
 use core_form::Program;
@@ -37,6 +38,7 @@ pub type Checked = Result<Lowered, Diagnostic>;
 pub type Lowered = (Program, Vec<Hole>, Vec<Diagnostic>);
 
 /// One definition checked from its body and the signatures it uses (M4-09).
+#[derive(Clone)]
 pub struct DefCheck {
     pub name: String,
     pub error: Option<Diagnostic>,

@@ -2,7 +2,6 @@
 //! including names that name nothing yet.
 
 use crate::DefCheck;
-use crate::ast::Def;
 use crate::resolve::near;
 use std::collections::{BTreeMap, BTreeSet};
 
@@ -49,15 +48,9 @@ impl Index {
         }
     }
 
-    /// The users to recheck when `def` is added, changed or deleted: those of its names (an
-    /// enum's include its variants), and those of a name that names nothing and could now be
-    /// suggested one of them.
-    pub fn waiting(&self, def: &Def) -> BTreeSet<String> {
-        let variants = match def {
-            Def::Enum { variants, .. } => variants.iter().map(|v| v.name.text).collect(),
-            _ => vec![],
-        };
-        let names: Vec<_> = [def.name().text].into_iter().chain(variants).collect();
+    /// The users to recheck when `names` start to name something: those that read one, and
+    /// those of a name that names nothing and could now be suggested one of them.
+    pub fn waiting(&self, names: &[&str]) -> BTreeSet<String> {
         let dangling = (self.users.keys()).filter(|r| !self.reads.contains_key(*r));
         let near = dangling.filter(|r| names.iter().any(|n| near(r, n).is_some()));
         let read = names.iter().copied().chain(near.map(String::as_str));

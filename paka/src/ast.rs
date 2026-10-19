@@ -69,6 +69,15 @@ impl<'a> Def<'a> {
             | Def::App { name, .. } => name,
         }
     }
+
+    /// The names it defines: its own and, for an enum, its variants'.
+    pub fn names(&self) -> Vec<&'a str> {
+        let variants = match self {
+            Def::Enum { variants, .. } => variants.iter().map(|v| v.name.text).collect(),
+            _ => vec![],
+        };
+        [self.name().text].into_iter().chain(variants).collect()
+    }
 }
 
 /// A record field (with an optional default) or a variant field (never a default).

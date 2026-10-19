@@ -999,11 +999,13 @@ or merged during review. Ids with a letter were added during review.
 
 ### M4-12 · L4 · Recheck after an edit with early cutoff and list what broke
 
+- status: done
 - needs: M4-11
 - flags: none
 - done when: Scripted edits recheck exactly the hand-written sets: a body edit one definition, a signature edit its direct users; broken definitions are listed. A type-layout edit rechecks the direct users of every definition whose interface hash changed, against a hand-written set that reaches past the edited type's own users.
 - why this level: Invalidation must be exact: too little leaves stale results silently, too much breaks the direct-users promise.
 - note: Direct users means the direct users of every definition whose interface hash changed (paper section 5).
+- note: Done: `paka::workspace::Workspace` keeps a program as definitions. An edit rechecks the edited definition when its body hash changed, the users of names that appeared or went, and the direct users of every definition whose interface hash changed; only those take fresh results, and `Recheck.broken` lists their errors. A kept error moves with its definition. The checker still runs over the whole program (cost is M4-45). Lowering adds reads only on a clean program, so when the program turns clean or broken every definition takes its fresh reads. `tests/workspace.rs` scripts eight edits with hand-written sets; adding a field to Point rechecks Line, Path, first, span and total, past Point's own users. After each edit the results equal a fresh check of the same text.
 
 ### M4-13 · L3 · Keep the last fully checked version runnable while newer edits are stored
 

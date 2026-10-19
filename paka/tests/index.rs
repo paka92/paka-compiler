@@ -58,12 +58,12 @@ fn edit(defs: &mut Vec<String>, name: &str, new: Option<&str>, woken: &[&str]) {
     let at = defs.iter().position(|d| first_name(d) == name);
     let mut waiting = BTreeSet::new();
     if let Some(i) = at {
-        waiting.extend(index.waiting(&parse_def("main.paka", defs[i].as_bytes()).unwrap()));
+        waiting.extend(index.waiting(&parse_def("main.paka", defs[i].as_bytes()).unwrap().names()));
         index.remove(name);
         defs.remove(i);
     }
     if let Some(new) = new {
-        waiting.extend(index.waiting(&parse_def("main.paka", new.as_bytes()).unwrap()));
+        waiting.extend(index.waiting(&parse_def("main.paka", new.as_bytes()).unwrap().names()));
         defs.push(new.into());
     }
     waiting.remove(name);
