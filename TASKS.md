@@ -1114,10 +1114,12 @@ or merged during review. Ids with a letter were added during review.
 
 ### M4-25 · L4 · Add runtime allocation with a ledger that reports leaks and bad frees
 
+- status: done
 - needs: M4-05
 - flags: unsafe, native-only
 - done when: Tests: a planted leak, double free and wrong-size free are each reported; allocation failure returns a trap status, not an abort.
 - why this level: Unsafe allocator whose ledger stands in for Miri; a wrong ledger hides every later memory bug.
+- note: Done: `paka_rt::abi::dev`. `Heap` records every block by address and size; a free of an address not live (double or stray) or with another size is recorded as a `Fault` and never touches memory the ledger does not hold; a wrong-size free releases the block with its own size. `leaks()` lists live blocks for M4-40, and dropping the heap frees them. `rt_alloc` checks the run's cap before asking the host; a refusal either way sets the context's trap to `memory` (8) and returns status 1. `Context` holds §4's four words, then the trap kind and the heap; M4-27 extends its trap record.
 
 ### M4-26 · L3 · Emit code for integers, floats, booleans, locals and control flow
 

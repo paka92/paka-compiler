@@ -1,5 +1,6 @@
 //! The ABI of `docs/abi/m1.md`: its three shapes and their decoding, the exported entry and the
-//! SIGPIPE call. This is the crate's only unsafe code.
+//! SIGPIPE call; and, in `dev`, the dev runtime's allocator. This tree is the crate's only unsafe
+//! code.
 //!
 //! One invariant carries the safe decoders: a `Str`, `Effect` or `List` holds either a value its
 //! decoder refuses or a pointer to memory that is readable for the stated size, never written
@@ -9,6 +10,8 @@
 
 use crate::{Decoded, Refused, run};
 use std::{ptr, slice};
+
+pub mod dev;
 
 /// The longest string: 2^63 - 1 bytes.
 const MAX_BYTES: u64 = i64::MAX.unsigned_abs();
