@@ -119,6 +119,12 @@ const TRAPS: [&str; 4] = [
 fn the_vectors_pass_as_machine_code() {
     let all = vectors::parse(VECTORS).unwrap();
     let chosen: Vec<&Vector> = all.iter().filter(|v| compiled(&v.op)).collect();
+    // M4-28: compiled code emits nothing for NaN (M2-03 section 1.4), and these vectors show it.
+    let nan = |v: &Value| matches!(v, Value::Float(b) if b & !(1 << 63) > 0x7FF0_0000_0000_0000);
+    let nans = chosen
+        .iter()
+        .filter(|v| v.inputs.iter().any(nan) || v.want.as_ref().is_ok_and(nan));
+    assert!(nans.count() > 40, "the NaN vectors run too");
     let (_, slots) = common::load(&program(&chosen));
 
     let mut wrong = vec![];

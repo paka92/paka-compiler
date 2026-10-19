@@ -1143,10 +1143,12 @@ or merged during review. Ids with a letter were added during review.
 
 ### M4-28 · L3 · Canonicalise NaN in compiled floating-point code
 
+- status: done
 - needs: M4-26
 - flags: native-only
 - done when: All NaN vectors from M2-08 pass bit for bit in dev mode and the interpreter.
 - why this level: Hardware and constant folding give different NaN bits; every producing operation must be covered without missing one.
+- note: Done: no built-in row exposes Float bits (`fixed` prints `NaN` whatever the sign), so the emitter adds nothing. Every NaN vector passes as machine code and in the interpreter; `installer/tests/vectors.rs` fails if they stop being run.
 - note: M2-03 made NaN bits unobservable: compiled arithmetic emits nothing, so this task shrinks to confirming that no operation exposes Float bits.
 
 ### M4-29 · L2 · Call maths functions through private runtime names from compiled code
