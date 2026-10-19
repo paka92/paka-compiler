@@ -8,6 +8,7 @@ pub mod builtins;
 pub mod core_form;
 pub mod coverage;
 pub mod diagnostic;
+pub mod index;
 mod json;
 mod lexer;
 mod lower;

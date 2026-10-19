@@ -979,11 +979,13 @@ or merged during review. Ids with a letter were added during review.
 
 ### M4-10 · L3 · Build the exact who-uses-what index, including names that resolve to nothing
 
+- status: done
 - needs: M4-09
 - flags: none
 - done when: Fixture programs give the hand-written user lists, and adding a missing definition marks exactly its waiting users for recheck.
 - why this level: Exactness under adds, deletes and renames; a missed dangling reference leaves a broken user unreported.
 - note: The index is built from M4-09's reads. A name that names nothing is logged as written, so adding a variant must also wake the users waiting on the variant's name, not only on its enum's.
+- note: Done: paka::index::Index maps each name read to the definitions that read it, kept up to date by `set` and `remove` as definitions are rechecked. `waiting` gives the users to recheck when a definition is added, changed or deleted: those of its name and its variants' names, and, because a suggestion is a read, those of a name that names nothing and that the new name could be suggested for. A test applies adds, a variant add, a delete and a rename, rechecks only what was woken, and gets the index of a clean rebuild.
 
 ### M4-11 · L4 · Compute the body and interface hash of every definition
 

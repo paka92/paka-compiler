@@ -123,10 +123,15 @@ fn builtins<'a>() -> BTreeMap<&'a str, (Kind, Binding)> {
 /// the first in byte order; only names of the same letter case count (case carries meaning,
 /// M2-02.3).
 fn nearest<'n>(name: &str, candidates: impl Iterator<Item = &'n str>) -> Option<&'n str> {
+    let near = candidates.filter_map(|c| near(name, c).map(|d| (d, c)));
+    near.min().map(|(_, best)| best)
+}
+
+/// The distance from `name` to `candidate` when it is near enough to be suggested.
+pub(crate) fn near(name: &str, candidate: &str) -> Option<usize> {
     let upper = |s: &str| s.starts_with(char::is_uppercase);
-    let near = candidates.filter(|c| upper(c) == upper(name));
-    let (d, best) = near.map(|c| (distance(name, c), c)).min()?;
-    (d <= name.len() / 3).then_some(best)
+    let d = (upper(name) == upper(candidate)).then(|| distance(name, candidate))?;
+    (d <= name.len() / 3).then_some(d)
 }
 
 /// An error at `name` with the message `head`; when a candidate is near, the message ends with
