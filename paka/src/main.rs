@@ -8,7 +8,8 @@ mod vectors;
 
 use core_form::Program;
 use paka::diagnostic::Diagnostic;
-use paka::serve::{Call, Failure, serve};
+use paka::serve::serve;
+use paka::session::Session;
 use paka::workspace::Workspace;
 use paka::{Checked, Hole, builtins, check, core_form, diagnostic, source};
 use paka_rt::{Fd1, abi};
@@ -92,14 +93,13 @@ fn examples_file(file: &OsStr) -> ExitCode {
 fn serve_program(file: &OsStr) -> ExitCode {
     let (source, read) = read(file);
     let workspace = read.and_then(|()| Workspace::new(&source.text));
-    let _workspace = match workspace {
+    let workspace = match workspace {
         Ok(workspace) => workspace,
         Err(d) => return reject(&source, d),
     };
     let path = file.to_string_lossy();
     let lock = fs::File::open(file).map_err(TryLockError::Error);
-    // Held until the server ends.
-    let _lock = match lock.and_then(|f| f.try_lock().map(|()| f)) {
+    let lock = match lock.and_then(|f| f.try_lock().map(|()| f)) {
         Ok(lock) => lock,
         Err(e) => {
             let why = match e {
@@ -109,11 +109,10 @@ fn serve_program(file: &OsStr) -> ExitCode {
             return reject(&source, Diagnostic::tool(&path, "not-served", why));
         }
     };
-    let not_yet = |call: &Call| {
-        let message = format!("{} is not served yet", call.name);
-        Err(Failure::new("unknown_call", message))
-    };
-    match serve(io::stdin().lock(), io::stdout().lock(), not_yet) {
+    let mut session = Session::new(file, &source, workspace, lock);
+    match serve(io::stdin().lock(), io::stdout().lock(), |call| {
+        session.handle(call)
+    }) {
         Ok(()) => ExitCode::SUCCESS,
         Err(e) => report(format!("paka serve: {e}\n").as_bytes(), 1),
     }

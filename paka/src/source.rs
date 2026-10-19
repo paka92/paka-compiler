@@ -21,7 +21,7 @@ pub struct Source {
 
 /// One file: its path as given, its own name, and its bytes and first line in the program's text.
 pub struct File {
-    path: OsString,
+    pub path: OsString,
     pub name: String,
     pub bytes: Range<usize>,
     pub line: usize,

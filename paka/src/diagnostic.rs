@@ -171,6 +171,11 @@ impl Diagnostic {
 
     /// One JSON object and a line feed; every key is always present.
     pub fn json(&self, source: &[u8]) -> String {
+        format!("{}\n", self.value(source, Some(&self.path)))
+    }
+
+    /// The JSON object, naming `file`.
+    pub fn value(&self, source: &[u8], file: Option<&str>) -> Value {
         let span = self.span(source);
         let (line, column) = self.position.unzip();
         let (expected, found) = self.more.types.clone().unzip();
@@ -187,7 +192,7 @@ impl Diagnostic {
             ("kind", self.code.into()),
             ("definition", self.more.definition.clone().into()),
             ("message", self.message.as_str().into()),
-            ("file", self.path.as_str().into()),
+            ("file", file.into()),
             ("start", span.map(|s| s.0).into()),
             ("end", span.map(|s| s.1).into()),
             ("line", line.into()),
@@ -197,7 +202,7 @@ impl Diagnostic {
             ("found", found.into()),
             ("fix", fix.into()),
         ];
-        format!("{}\n", Value::object(fields))
+        Value::object(fields)
     }
 }
 

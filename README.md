@@ -16,7 +16,8 @@ GUI and release mode are being built, in that order.
 - `paka build`: compiles the milestone 1 subset to a native binary through LLVM IR and `clang`.
 - `paka examples`: runs a program's in-file examples.
 - `paka serve`: the agent tool interface, JSON lines on standard input and output; requests are
-  checked and dispatched, and the calls themselves are being built (M4-17 onward).
+  checked and dispatched. `edit` replaces, adds or deletes one definition against its version and
+  writes the files; find, view and run are being built (M4-18 onward).
 
 ```paka
 enum Msg { Start }

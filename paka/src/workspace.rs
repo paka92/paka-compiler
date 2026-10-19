@@ -77,6 +77,13 @@ impl Workspace {
         &self.index
     }
 
+    /// The definition named `name`: its text, and its result with an error placed from the text's
+    /// first line.
+    pub fn def(&self, name: &str) -> Option<(&str, DefCheck)> {
+        let d = self.defs.iter().find(|d| d.names[0] == name)?;
+        Some((&d.text, moved(&d.check, d.line, 1)))
+    }
+
     /// Each definition's result, an error placed where the definition now stands.
     pub fn checks(&self) -> Vec<DefCheck> {
         let lines = first_lines(&self.defs.iter().map(|d| &d.text).collect::<Vec<_>>());

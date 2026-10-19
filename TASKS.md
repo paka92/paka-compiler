@@ -1048,11 +1048,13 @@ or merged during review. Ids with a letter were added during review.
 
 ### M4-17 · L3 · Implement edit: replace, add or delete one definition against a base version
 
+- status: done
 - needs: M4-13, M4-15, M4-16, M4-48
 - flags: none
 - done when: Transcript tests: a stale base is refused; an accepted edit returns canonical text, typed errors and the exact broken list; files match. Two edits to different definitions from one base both land; two edits to the same definition, or adding the same name twice, refuse the second.
 - why this level: Source files, database and version check must change together or not at all, even when the edit breaks users.
 - note: Edit accepts any layout that parses and stores canonical text for the edited definition only (M4-47). In a directory program an add writes a new file named after the definition, a delete removes an emptied file, and text whose name differs from the call's name is refused (M4-48). Per M4-03: the base version is the 12-digit hash of canonical text; null `base` adds, null `text` deletes; a stale base returns the current version and text; text that does not parse is refused with kind `parse`.
+- note: Done: paka/src/session.rs holds the served program: its workspace and its files. Refusals come in this order: `not_found`, `name_taken`, `stale_base`, then `parse`, `not_one_definition` and `name_mismatch` on the text. Two refusals M4-03 does not list: `conflict` when the edit leaves the program unable to check at all (a built-in's name, a variant named like a type, a second app), and `io` when the file cannot be written; both store nothing. An add whose file name passes 255 bytes is a `bad_request`. Files are replaced through a copy renamed over them; a single-file program's lock moves to each new copy. A delete takes the comment lines right above the definition and the rest of its last line; comments in sent text outside the definition are written to the file but are not part of its text or version. `broke` lists the definitions that checked before the edit and do not after. The `run` field of an edit waits for M4-39. Transcripts tests/serve/edit.txt and dir.txt check replies and the files after.
 
 ### M4-18 · L2 · Implement find by name or user, and view within a token budget
 

@@ -16,6 +16,7 @@ pub mod parser;
 pub mod print;
 mod resolve;
 pub mod serve;
+pub mod session;
 pub mod sha256;
 mod sig;
 pub mod source;
