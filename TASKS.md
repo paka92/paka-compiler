@@ -1096,10 +1096,12 @@ or merged during review. Ids with a letter were added during review.
 
 ### M4-23 · L4 · Create the installer crate: load code into memory that is never freed
 
+- status: done
 - needs: M4-05
 - flags: unsafe, native-only
 - done when: Tests install and call functions; memory is never writable and executable together; addresses never repeat; each unsafe block states its invariant.
 - why this level: Unsafe executable memory with no Miri available; a wrong permission or length corrupts the process silently.
+- note: Done: `installer/` (`paka-installer`) copies each batch of functions into one fresh anonymous mapping, each function 16-byte aligned, then turns the mapping from read-write to read-execute; it is never unmapped, so addresses never repeat. Linux x86-64 only. Every `unsafe` block carries a `SAFETY:` comment, enforced by the `undocumented_unsafe_blocks` lint. M4-04 frees replaced code; this follows the task title instead and keeps it, which is not a problem for a dev session's size.
 
 ### M4-24 · L4 · Add call slots, grouped slot swaps and safe entry into installed code
 

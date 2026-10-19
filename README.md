@@ -81,6 +81,7 @@ cargo run --release -p harness --bin metrics -- experiment/runs/counted <rulings
 ```
 paka/          the command: lexer, parser, checker, interpreter, IR emitter
 paka-rt/       runtime for built programs
+installer/     loads compiled dev-mode code into executable memory
 json/          the JSON reader and writer the command and the harness share
 harness/       experiment harness: sandboxed runner, trial loop, batch and metrics commands
 spec/          language reference and the milestone 1 subset
