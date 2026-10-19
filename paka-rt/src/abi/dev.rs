@@ -6,7 +6,14 @@ use std::alloc::{self, Layout};
 use std::collections::BTreeMap;
 use std::sync::atomic::AtomicU64;
 
-/// The `memory` trap kind (M4-05 section 6).
+/// Trap kinds (M4-05 section 6).
+pub const OVERFLOW: u64 = 1;
+pub const DIVIDE_BY_ZERO: u64 = 2;
+pub const OUT_OF_BOUNDS: u64 = 3;
+pub const BAD_CONVERSION: u64 = 4;
+pub const ASSERT: u64 = 5;
+pub const HOLE: u64 = 6;
+pub const STACK: u64 = 7;
 pub const MEMORY: u64 = 8;
 
 /// A free the ledger refused; the memory stays as it was.
@@ -114,13 +121,50 @@ unsafe fn free(address: usize, bytes: u64) {
 #[repr(C)]
 pub struct Context {
     pub slots: *const usize,
-    pub rt: *const usize,
+    pub rt: &'static Rt,
     pub stack_limit: usize,
     pub interrupt: AtomicU64,
-    /// The trap kind; 0 when none.
-    pub trap: u64,
+    pub trap: Trap,
     pub heap: Heap,
 }
+
+impl Context {
+    /// A context whose heap holds at most `cap` bytes; the slot table is set when a run starts.
+    pub fn new(cap: u64) -> Context {
+        Context {
+            slots: std::ptr::null(),
+            rt: &RT,
+            stack_limit: 0,
+            interrupt: AtomicU64::new(0),
+            trap: Trap::default(),
+            heap: Heap::new(cap),
+        }
+    }
+}
+
+/// The trap record (M4-05 section 6); kind 0 when nothing trapped.
+#[derive(Debug, Default, PartialEq)]
+pub struct Trap {
+    pub kind: u64,
+    /// `definition << 32 | site`.
+    pub site: u64,
+    /// The detail's operands; Float operands as their bits.
+    pub operands: [u64; 3],
+}
+
+/// The runtime routines generated code calls, at fixed offsets.
+#[repr(C)]
+pub struct Rt {
+    pub alloc: extern "sysv64" fn(&mut Context, u64, &mut *mut u8) -> i32,
+    pub release: extern "sysv64" fn(&mut Context, *mut u8, u64),
+    pub trap: extern "sysv64" fn(&mut Context, u64, u64, u64, u64, u64),
+}
+
+pub static RT: Rt = Rt {
+    alloc: rt_alloc,
+    release: rt_release,
+    trap: rt_trap,
+};
 
 /// `rt.alloc`: a block of `bytes` into `out` and status 0, or a `memory` trap and status 1.
 pub extern "sysv64" fn rt_alloc(ctx: &mut Context, bytes: u64, out: &mut *mut u8) -> i32 {
@@ -130,7 +174,7 @@ pub extern "sysv64" fn rt_alloc(ctx: &mut Context, bytes: u64, out: &mut *mut u8
             0
         }
         None => {
-            ctx.trap = MEMORY;
+            ctx.trap.kind = MEMORY;
             1
         }
     }
@@ -139,4 +183,13 @@ pub extern "sysv64" fn rt_alloc(ctx: &mut Context, bytes: u64, out: &mut *mut u8
 /// `rt.release`: frees a block; never traps.
 pub extern "sysv64" fn rt_release(ctx: &mut Context, ptr: *mut u8, bytes: u64) {
     ctx.heap.release(ptr, bytes);
+}
+
+/// `rt.trap`: records a failed check; the caller returns status 1.
+pub extern "sysv64" fn rt_trap(ctx: &mut Context, kind: u64, site: u64, a: u64, b: u64, c: u64) {
+    ctx.trap = Trap {
+        kind,
+        site,
+        operands: [a, b, c],
+    };
 }

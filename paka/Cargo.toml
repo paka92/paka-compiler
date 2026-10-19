@@ -9,6 +9,8 @@ unsafe_code = "forbid"
 [dependencies]
 paka-json = { path = "../json" }
 paka-rt = { path = "../paka-rt" }
+cranelift-codegen = { version = "=0.136.3", default-features = false, features = ["std", "x86"] }
+cranelift-frontend = { version = "=0.136.3", default-features = false, features = ["std"] }
 
 [dev-dependencies]
 paka-gen = { path = "../paka-gen" }

@@ -2,7 +2,8 @@
 
 Rules that hold from the first commit:
 
-- Standard library only. No third-party crates.
+- Standard library only. No third-party crates, except the code generator (Cranelift) that `paka`
+  uses for dev mode, vendored under `vendor/` at a pinned version (docs/decisions/M4-05.md).
 - No `HashMap` or `HashSet`: their iteration order is random. Use `BTreeMap` and `BTreeSet`.
 - No `f32` or `f64` method whose precision is not deterministic (`sin`, `powf`, `exp`, `ln` and the
   rest of the list in `clippy.toml`). Clippy rejects them.

@@ -1123,10 +1123,12 @@ or merged during review. Ids with a letter were added during review.
 
 ### M4-26 · L3 · Emit code for integers, floats, booleans, locals and control flow
 
+- status: done
 - needs: M4-06, M4-24, M2-08
 - flags: native-only
 - done when: M2-08's integer and non-NaN float vectors pass in dev mode; division and shifts are guarded explicitly; a test scans emitted dev code for a banned-operation list (self-trapping divide, trapping float-to-int, trap instructions) and fails on any hit.
 - why this level: Every checked operation needs an explicit compare and branch; no instruction may fault by itself.
+- note: Done: `paka/src/emit.rs` compiles scalar locals, control flow, operators and scalar built-ins; every check branches to `rt.trap`, and a select makes each divisor safe. All 427 Int, Float and Bool vectors pass as machine code, NaN ones included (`installer/tests/vectors.rs`); `emit/tests.rs` scans the IR for banned operations.
 - note: Targets the code generator and the machine-code crate named in M4-05's approved specification; do not choose another. Follows docs/decisions/M2-06.md for traps, holes and examples.
 
 ### M4-27 · L3 · Emit calls through slots with status returns and a stack-limit check

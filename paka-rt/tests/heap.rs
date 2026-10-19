@@ -3,17 +3,6 @@
 use paka_rt::abi::dev::{Context, Fault, Heap, MEMORY, rt_alloc, rt_release};
 use std::ptr;
 
-fn context(cap: u64) -> Context {
-    Context {
-        slots: ptr::null(),
-        rt: ptr::null(),
-        stack_limit: 0,
-        interrupt: Default::default(),
-        trap: 0,
-        heap: Heap::new(cap),
-    }
-}
-
 #[test]
 fn a_planted_leak_is_reported() {
     let mut heap = Heap::new(1 << 20);
@@ -63,23 +52,23 @@ fn a_wrong_size_free_is_reported_and_the_block_freed() {
 
 #[test]
 fn passing_the_cap_is_a_memory_trap() {
-    let mut ctx = context(32);
+    let mut ctx = Context::new(32);
     let mut out = ptr::null_mut();
     assert_eq!(rt_alloc(&mut ctx, 24, &mut out), 0);
     let first = out;
     assert_eq!(rt_alloc(&mut ctx, 16, &mut out), 1);
-    assert_eq!((ctx.trap, out), (MEMORY, first), "out is unwritten");
+    assert_eq!((ctx.trap.kind, out), (MEMORY, first), "out is unwritten");
     rt_release(&mut ctx, first, 24);
     assert_eq!(rt_alloc(&mut ctx, 16, &mut out), 0);
 }
 
 #[test]
 fn a_host_refusal_is_a_memory_trap() {
-    let mut ctx = context(u64::MAX);
+    let mut ctx = Context::new(u64::MAX);
     let mut out = ptr::null_mut();
     assert_eq!(rt_alloc(&mut ctx, u64::MAX, &mut out), 1);
     assert_eq!(rt_alloc(&mut ctx, 1 << 50, &mut out), 1);
-    assert_eq!(ctx.trap, MEMORY);
+    assert_eq!(ctx.trap.kind, MEMORY);
     assert_eq!(ctx.heap.leaks(), []);
 }
 
