@@ -989,11 +989,13 @@ or merged during review. Ids with a letter were added during review.
 
 ### M4-11 · L4 · Compute the body and interface hash of every definition
 
+- status: done
 - needs: M4-07, M4-10, M2-09
 - flags: none
 - done when: For a hand-written list of edit kinds, tests show exactly the expected hashes change, including transitive by-value layout and recursion.
 - why this level: Soundness of what each hash covers; one omitted input, such as a default value, silently keeps stale code.
 - note: The closure hash arrives with its first reader, M7-09. Hashes come from the parsed definition, never from file bytes (M4-47), so the task does not need the printer.
+- note: Done: paka/src/hash.rs; every DefCheck carries its body and interface hash. Both hash a position-free, length-prefixed text of the parsed definition. The body hash covers the whole definition and, for each name it read, the kind of definition that name names, or none. The interface hash follows docs/decisions/M2-09.md section 3: a user type inside a signature is written as its hash, and types that reach each other are hashed as one group. A test lists ten edit kinds with the hashes each must change (layout and comments none, a default value reaching through List, a recursive group, a label, a positional name, a variant, a missing name defined), and checks that order changes no hash.
 
 ### M4-12 · L4 · Recheck after an edit with early cutoff and list what broke
 

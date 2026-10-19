@@ -8,6 +8,7 @@ pub mod builtins;
 pub mod core_form;
 pub mod coverage;
 pub mod diagnostic;
+pub mod hash;
 pub mod index;
 mod json;
 mod lexer;
@@ -41,6 +42,10 @@ pub struct DefCheck {
     pub error: Option<Diagnostic>,
     /// The other definitions it read, by name, and the names it looked up that name nothing.
     pub reads: BTreeSet<String>,
+    /// Decides whether it is rechecked.
+    pub body: hash::Hash,
+    /// Decides whether its users are rechecked.
+    pub interface: hash::Hash,
 }
 
 /// Parses and checks a program, then lowers it to the core form. Positions count lines across
@@ -81,13 +86,24 @@ fn check_all(path: &str, source: &Source) -> Result<(Vec<DefCheck>, Option<Lower
         let holes = holes(path, &program, &table, &bodies, &core);
         lowered = Some((core, holes, resolved.unused));
     }
-    let defs = (program.defs.iter().zip(bodies.defs).zip(reads))
-        .zip(resolved.reads)
-        .map(|(((def, error), mut reads), more)| {
+    let reads: Vec<_> = (program.defs.iter().zip(reads).zip(resolved.reads))
+        .map(|((def, mut reads), more)| {
             reads.extend(more);
             reads.remove(def.name().text);
+            reads
+        })
+        .collect();
+    let hashes = hash::hashes(&program, &reads);
+    let defs = (program.defs.iter().zip(bodies.defs).zip(reads).zip(hashes))
+        .map(|(((def, error), reads), (body, interface))| {
             let name = def.name().text.into();
-            DefCheck { name, error, reads }
+            DefCheck {
+                name,
+                error,
+                reads,
+                body,
+                interface,
+            }
         })
         .collect();
     Ok((defs, lowered))
