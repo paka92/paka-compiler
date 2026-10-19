@@ -11,7 +11,7 @@ entry and refused views. Exchange 28 comes before the program breaks, as there.
 > {"v":1,"id":3,"call":"edit","name":"count_words","base":"8f37a8d7c74b","text":"fn count_words(text: String) -> Int {\n  len(split(text, \" \"))\n}"}
 < {"v":1,"id":3,"ok":true,"name":"count_words","version":"6c4c8968c9e4","text":"fn count_words(text: String) -> Int {\n  len(split(text, \" \"))\n}","errors":[],"broke":[],"installed":true}
 > {"v":1,"id":4,"call":"find","takes":["String"],"gives":"Int"}
-< {"v":1,"id":4,"ok":false,"error":{"kind":"unknown_call","message":"find by takes and gives is not served yet"}}
+< {"v":1,"id":4,"ok":true,"found":[{"name":"count_words","kind":"fn","sig":"fn count_words(text: String) -> Int","version":"6c4c8968c9e4"}],"more":0}
 > {"v":1,"id":5,"call":"edit","name":"counts_two","base":null,"text":"example counts_two {\n  count_words(\"a b\") == 2\n}"}
 < {"v":1,"id":5,"ok":true,"name":"counts_two","version":"ed43af615b75","text":"example counts_two {\n  count_words(\"a b\") == 2\n}","errors":[],"broke":[],"installed":true}
 > {"v":1,"id":8,"call":"find","users_of":"count_words"}

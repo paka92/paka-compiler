@@ -1,9 +1,12 @@
-//! find and view (M4-18, docs/decisions/M4-03.md sections 3.1 and 3.2): lookups by name, user,
-//! kind and state, each reply cut to a token budget of its whole line, bytes divided by 3.
+//! find and view (M4-18, M4-19, docs/decisions/M4-03.md sections 3.1 and 3.2): lookups by name,
+//! user, kind, state and shape, each reply cut to a token budget of its whole line, bytes divided
+//! by 3.
 
 use super::{Session, version};
+use crate::ast::Def;
 use crate::builtins::{self, ROWS};
 use crate::lexer::{Kind, Lexer};
+use crate::parser::parse_def;
 use crate::serve::{Call, Failure, Reply, line_len};
 use paka_json::Value;
 
@@ -28,10 +31,14 @@ impl Entry<'_> {
 
 impl Session {
     pub(super) fn find(&self, call: &Call) -> Reply {
-        if call.get("takes").is_some() || call.get("gives").is_some() {
-            let message = "find by takes and gives is not served yet";
-            return Err(Failure::new("unknown_call", message));
-        }
+        let takes = (call.strs("takes").unwrap_or_default().into_iter())
+            .map(|t| type_text("takes", t))
+            .collect::<Result<Vec<_>, _>>()?;
+        let gives = call
+            .str("gives")
+            .map(|t| type_text("gives", t))
+            .transpose()?;
+        let shaped = call.get("takes").is_some() || gives.is_some();
         let failing = self.failing();
         let name = call.str("name");
         let mut found: Vec<Entry> = (self.workspace.defs())
@@ -43,10 +50,11 @@ impl Session {
                     .is_none_or(|f| f == failing.contains(&names[0]))
             })
             .filter(|(names, _)| call.str("users_of").is_none_or(|u| self.uses(names, u)))
+            .filter(|(_, text)| !shaped || shape_fits(text, &takes, gives.as_deref()))
             .map(|(names, text)| entry(&names[0], text))
             .collect();
         let exact = name.filter(|n| !n.contains('*'));
-        if call.get("users_of").is_none() && call.bool("failing") != Some(true) {
+        if !shaped && call.get("users_of").is_none() && call.bool("failing") != Some(true) {
             let builtin = |row: &&'static str| {
                 exact.map_or(call.str("kind") == Some("builtin"), |n| {
                     builtins::name(row) == n
@@ -168,6 +176,39 @@ fn fitted(
     }
     let more = entries.len() - taken;
     Some(reply(entries.into_iter().take(taken).collect(), more))
+}
+
+/// The canonical text of the type `text` sent in `field`.
+fn type_text(field: &str, text: &str) -> Result<String, Failure> {
+    let src = format!("fn f(x: {text}) {{}}");
+    match parse_def("", src.as_bytes()) {
+        Ok(Def::Fn { params, .. }) if params.len() == 1 && !params[0].inout => {
+            Ok(params[0].ty.to_string())
+        }
+        _ => {
+            let message = format!("`{field}` holds `{text}`, which is not a type");
+            Err(Failure::new("bad_request", message))
+        }
+    }
+}
+
+/// Whether `text` is a fn whose parameters include the types `takes`, one each, and whose result
+/// is `gives`.
+fn shape_fits(text: &str, takes: &[String], gives: Option<&str>) -> bool {
+    let Ok(Def::Fn { params, result, .. }) = parse_def("", text.as_bytes()) else {
+        return false;
+    };
+    let mut left: Vec<String> = params.iter().map(|p| p.ty.to_string()).collect();
+    let took = takes
+        .iter()
+        .all(|t| match left.iter().position(|p| p == t) {
+            Some(i) => {
+                left.swap_remove(i);
+                true
+            }
+            None => false,
+        });
+    took && gives.is_none_or(|g| result.is_some_and(|r| r.to_string() == g))
 }
 
 fn tokens(bytes: usize) -> usize {

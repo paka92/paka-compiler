@@ -1068,11 +1068,13 @@ or merged during review. Ids with a letter were added during review.
 
 ### M4-19 · L3 · Implement find by type shape
 
+- status: done
 - needs: M4-18
 - flags: none
 - done when: Transcript tests over a fixture program return exactly the hand-written matches for each query form in the interface.
 - why this level: Matching a query against signatures with generics and argument order needs a small, exact matching rule.
 - note: Per M4-03: an exact takes-and-gives match over the program's own fn and view definitions, with no wildcards or ranking; may be re-graded to level 2.
+- note: Done: each query type is parsed as a parameter type and printed canonically, so spacing does not matter; `inout` or text that is not one type is a bad_request. Each type in `takes` claims one parameter, `gives` must equal the result, and a fn without a result never matches `gives`. Own definitions take no type parameters, so the match is on canonical text; no view definitions exist yet. Transcript `tests/serve/shape.txt`.
 
 ### M4-21 · L4 · Generate random well-typed terminating Paka programs from a seed
 
