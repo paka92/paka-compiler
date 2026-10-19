@@ -14,7 +14,9 @@ use crate::ast::{self, Def, Entry, Pos, Program, Type};
 use crate::builtins::{self, Kind};
 use crate::diagnostic::Diagnostic;
 use crate::resolve::{Binding, Resolved};
-use std::collections::BTreeMap;
+use std::cell::RefCell;
+use std::collections::{BTreeMap, BTreeSet};
+use std::ops::Index;
 
 mod check;
 mod default;
@@ -232,10 +234,54 @@ pub struct Checked<'a> {
     pub error: Option<Diagnostic>,
 }
 
+/// Each definition's `Checked`, in program order. Every one read through `Index` is logged by
+/// name, so a definition's check knows the signatures it read (M4-09).
+pub struct Defs<'a> {
+    all: Vec<Checked<'a>>,
+    names: Vec<&'a str>,
+    reads: RefCell<BTreeSet<String>>,
+}
+
+impl<'a> Defs<'a> {
+    /// Logs a name read without reading a definition: one that may name nothing.
+    pub fn note(&self, name: &str) {
+        let mut reads = self.reads.borrow_mut();
+        if !reads.contains(name) {
+            reads.insert(name.into());
+        }
+    }
+
+    /// The name of definition `i`, read.
+    pub fn name(&self, i: usize) -> &'a str {
+        self.note(self.names[i]);
+        self.names[i]
+    }
+
+    /// The first definition `keep` picks, read; the others are not.
+    pub fn find(&self, keep: impl Fn(&Checked) -> bool) -> Option<&Checked<'a>> {
+        let i = self.all.iter().position(keep)?;
+        Some(&self[i])
+    }
+
+    /// The names read since the last call.
+    pub fn take_reads(&self) -> BTreeSet<String> {
+        self.reads.take()
+    }
+}
+
+impl<'a> Index<usize> for Defs<'a> {
+    type Output = Checked<'a>;
+
+    fn index(&self, i: usize) -> &Checked<'a> {
+        self.note(self.names[i]);
+        &self.all[i]
+    }
+}
+
 /// One entry per definition of the program, in order, and the built-in rows.
 pub struct Table<'a> {
     pub types: Types<'a>,
-    pub defs: Vec<Checked<'a>>,
+    pub defs: Defs<'a>,
     pub fns: BTreeMap<&'static str, Vec<Sig<'static>>>,
     pub variants: BTreeMap<&'static str, Sig<'static>>,
 }
@@ -289,6 +335,11 @@ impl<'a> Table<'a> {
         for (i, d) in check::finite_values(path, program, &types, &defs) {
             earliest(&mut defs[i].error, d);
         }
+        let defs = Defs {
+            all: defs,
+            names: program.defs.iter().map(|d| d.name().text).collect(),
+            reads: RefCell::default(),
+        };
         Table {
             types,
             defs,

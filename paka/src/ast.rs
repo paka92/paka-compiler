@@ -59,8 +59,8 @@ pub enum Def<'a> {
     },
 }
 
-impl Def<'_> {
-    pub fn name(&self) -> &Name<'_> {
+impl<'a> Def<'a> {
+    pub fn name(&self) -> &Name<'a> {
         match self {
             Def::Type { name, .. }
             | Def::Enum { name, .. }

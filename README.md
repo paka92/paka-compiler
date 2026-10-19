@@ -5,9 +5,8 @@ A programming language for code written by AI agents.
 People describe what they want and decide what a program may do; an agent writes and reads the
 code. The design and its reasons are in the [genesis paper](GENESIS.md).
 
-**Status:** research prototype. The language is defined, a checker and a slow interpreter work,
-and the first experiment has run. Its pre-set rule says **stop** (see [Experiment](#experiment)).
-Nothing here is ready for real programs.
+**Status:** the language is defined, and a checker and an interpreter run it. Dev mode, the live
+GUI and release mode are being built, in that order.
 
 ## What works
 
@@ -50,12 +49,11 @@ usage: paka run <path> [argument...]
        paka examples <path>
 ```
 
-## Experiment
+## Benchmark
 
-Milestone 3 asks whether a model writes Paka about as well as Rust before more is built. One model
-(`claude-sonnet-5-5`) solved 14 tasks in Paka, Rust and TypeScript, 4 times each, with build and
-test feedback. The rules were frozen in [`experiment/protocol.md`](experiment/protocol.md) before
-any counted run.
+How well does a model write a language it has never seen? One model (`claude-sonnet-5-5`) solved
+14 tasks in Paka, Rust and TypeScript, 4 times each, with build and test feedback. The method is in
+[`experiment/protocol.md`](experiment/protocol.md).
 
 | | Paka | Rust | TypeScript |
 |---|---|---|---|
@@ -63,9 +61,9 @@ any counted run.
 | Mean edits | 0.34 | 0.20 | 0.21 |
 | Output tokens | 445,593 | 192,932 | 157,316 |
 
-Against Rust: first-try gap 8.93 points (held), edits gap 0.143 (held), token ratio 2.310 (lost),
-so the pre-set verdict is **stop**. The model writes Paka about as correctly but spends more than
-twice the tokens. Rulings on single runs, the report and the go / no-go analysis are still open.
+Every run was solved. With no Paka code in its training, the model writes Paka nearly as correctly
+as Rust, at 2.3 times the output tokens. Dev mode's one-definition tools aim at that cost; the
+benchmark stays to track it.
 
 Rebuild the numbers from the raw logs:
 

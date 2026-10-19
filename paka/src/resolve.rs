@@ -10,6 +10,7 @@ use crate::ast::{
 use crate::builtins::{self, Kind};
 use crate::diagnostic::Diagnostic;
 use crate::source::in_file;
+use std::cell::RefCell;
 use std::collections::{BTreeMap, BTreeSet};
 
 type Res<T = ()> = Result<T, Diagnostic>;
@@ -38,6 +39,9 @@ pub struct Resolved {
     entries: BTreeMap<Pos, Diagnostic>,
     /// An `unused-name` warning per local that no use names, in source order.
     pub unused: Vec<Diagnostic>,
+    /// The names each definition looked up: the definitions they name, as for a variant its
+    /// enum, and as written those that name nothing (M4-09). Built-ins and locals are left out.
+    pub reads: Vec<BTreeSet<String>>,
 }
 
 impl Resolved {
@@ -73,16 +77,18 @@ pub fn resolve<'a>(path: &'a str, program: &'a Program<'a>) -> Res<Resolved> {
         bound: Vec::new(),
         uses: BTreeMap::new(),
         entries: BTreeMap::new(),
+        reads: RefCell::default(),
     };
     for (i, def) in program.defs.iter().enumerate() {
         resolver
             .declare_def(i, def)
             .map_err(|d| d.in_definition(def.name().text))?;
     }
-    let (mut defs, mut bound) = (Vec::new(), Vec::new());
+    let (mut defs, mut bound, mut reads) = (Vec::new(), Vec::new(), Vec::new());
     for def in &program.defs {
         let name = def.name().text;
         defs.push(resolver.def(def).map_err(|d| d.in_definition(name)));
+        reads.push(resolver.reads.take());
         bound.extend(resolver.bound.drain(..).map(|local| (local, name)));
     }
     let used: BTreeSet<Pos> = (resolver.uses.values())
@@ -101,6 +107,7 @@ pub fn resolve<'a>(path: &'a str, program: &'a Program<'a>) -> Res<Resolved> {
         defs,
         entries: resolver.entries,
         unused: unused.map(warn).collect(),
+        reads,
     })
 }
 
@@ -191,6 +198,7 @@ struct Resolver<'a> {
     bound: Vec<(&'a str, Pos)>,
     uses: BTreeMap<Pos, Binding>,
     entries: BTreeMap<Pos, Diagnostic>,
+    reads: RefCell<BTreeSet<String>>,
 }
 
 impl<'a> Resolver<'a> {
@@ -207,11 +215,27 @@ impl<'a> Resolver<'a> {
         candidates: impl Iterator<Item = &'n str>,
     ) -> Diagnostic {
         let head = format!("{name} is {what}");
-        suggestion(self.path, code, (at, name), &head, candidates)
+        let near = nearest(name, candidates);
+        if let Some(near) = near.filter(|n| self.pool.contains_key(n)) {
+            self.pool_get(near, |_, _| true);
+        }
+        suggestion(self.path, code, (at, name), &head, near.into_iter())
     }
 
+    /// Logs the lookup in `reads`: the definition found, or `name` when nothing is.
     fn pool_get(&self, name: &str, keep: impl Fn(Kind, Binding) -> bool) -> Option<Binding> {
-        let &(kind, binding) = self.pool.get(name)?;
+        let found = self.pool.get(name);
+        let read = match found {
+            Some((_, Binding::Def(i) | Binding::Variant(i, _))) => {
+                Some(self.program.defs[*i].name().text)
+            }
+            Some(_) => None,
+            None => Some(name),
+        };
+        if let Some(read) = read.filter(|r| !self.reads.borrow().contains(*r)) {
+            self.reads.borrow_mut().insert(read.into());
+        }
+        let &(kind, binding) = found?;
         keep(kind, binding).then_some(binding)
     }
 

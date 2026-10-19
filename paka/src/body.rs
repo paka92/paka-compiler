@@ -9,7 +9,7 @@
 use crate::ast::{self, Block, Def, Expr, ExprKind as K, Pos, Program};
 use crate::diagnostic::Diagnostic;
 use crate::resolve::Resolved;
-use crate::sig::{Checked, Item, Node, Sig, Table, Ty, Types};
+use crate::sig::{Defs, Item, Node, Sig, Table, Ty, Types};
 use std::collections::{BTreeMap, BTreeSet};
 use text::{float_fix, named, render};
 
@@ -37,6 +37,8 @@ pub struct Bodies {
     /// The row picked for each call of a built-in that has several, by (position, length in
     /// bytes) of the name: the row's place among the rows of that name.
     pub rows: Vec<BTreeMap<(Pos, usize), usize>>,
+    /// The signatures each definition read, by name (M4-09).
+    pub reads: Vec<BTreeSet<String>>,
 }
 
 type Res<T = ()> = Result<T, Diagnostic>;
@@ -96,7 +98,7 @@ struct Cx<'t, 'a> {
     program: &'a Program<'a>,
     resolved: &'t Resolved,
     types: &'t mut Types<'a>,
-    defs: &'t [Checked<'a>],
+    defs: &'t Defs<'a>,
     fns: &'t BTreeMap<&'static str, Vec<Sig<'static>>>,
     variants: &'t BTreeMap<&'static str, Sig<'static>>,
     /// The definition being checked, its result and the `return`s that end it.
@@ -148,9 +150,12 @@ pub fn check<'a>(
         defs: Vec::new(),
         types: Vec::new(),
         rows: Vec::new(),
+        reads: Vec::new(),
     };
     for (i, def) in program.defs.iter().enumerate() {
+        cx.defs.take_reads();
         bodies.defs.push(cx.definition(i, def));
+        bodies.reads.push(cx.defs.take_reads());
         bodies.types.push(std::mem::take(&mut cx.info));
         bodies.rows.push(std::mem::take(&mut cx.picks));
     }

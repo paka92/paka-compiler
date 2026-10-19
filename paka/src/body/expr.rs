@@ -523,6 +523,7 @@ impl Cx<'_, '_> {
 
     /// Whether the program or the built-ins define `name`.
     fn defined(&self, name: &str) -> bool {
+        self.defs.note(name);
         (self.program.defs.iter()).any(|d| d.name().text == name)
             || self.fns.contains_key(name)
             || self.variants.contains_key(name)
@@ -532,7 +533,7 @@ impl Cx<'_, '_> {
     fn is_update(&self) -> bool {
         let update =
             |d: &Checked| matches!(d.item, Item::App { update: Some(u), .. } if u == self.def);
-        self.defs.iter().any(update)
+        self.defs.find(update).is_some()
     }
 
     /// The operand of `?` takes the function's error type where its own is open: `Ok(1)?` in a

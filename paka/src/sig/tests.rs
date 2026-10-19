@@ -23,7 +23,7 @@ fn with<T>(src: &str, f: impl FnOnce(&Program, &Table) -> T) -> T {
     let program = parse("main.paka", src.as_bytes()).unwrap();
     let resolved = resolve("main.paka", &program).unwrap();
     let table = Table::build("main.paka", &program, &resolved);
-    assert_eq!(table.defs.len(), program.defs.len());
+    assert_eq!(table.defs.all.len(), program.defs.len());
     f(&program, &table)
 }
 
@@ -101,7 +101,7 @@ fn lines_of(src: &str, errors: bool) -> Vec<String> {
                 }
             }
         };
-        program.defs.iter().zip(&t.defs).map(line).collect()
+        program.defs.iter().zip(&t.defs.all).map(line).collect()
     })
 }
 
@@ -671,7 +671,11 @@ fn an_app_records_a_state_that_holds_a_function_type_without_judging_it() {
 fn an_app_records_a_state_that_is_not_a_record_without_judging_it() {
     let src = app(&["type Tally {}"], &["  state: Msg"]);
     assert_eq!(app_line(&src), "app wc { state: Msg, update: update }");
-    assert!(with(&src, |_, t| t.defs.iter().all(|c| c.error.is_none())));
+    assert!(with(&src, |_, t| t
+        .defs
+        .all
+        .iter()
+        .all(|c| c.error.is_none())));
 }
 
 #[test]
@@ -688,7 +692,7 @@ fn an_unknown_state_name_is_left_to_the_resolvers_entry_error() {
     let program = parse("main.paka", src.as_bytes()).unwrap();
     let resolved = resolve("main.paka", &program).unwrap();
     let table = Table::build("main.paka", &program, &resolved);
-    let last = table.defs.last().unwrap();
+    let last = table.defs.all.last().unwrap();
     assert!(last.error.is_none());
     assert!(matches!(last.item, Item::App { state: None, .. }));
     let named = at(&src, 7, "state: ^Nope");
@@ -745,7 +749,7 @@ fn a_definition_with_an_error_keeps_every_well_formed_part() {
 fn a_definition_without_an_error_has_none() {
     let src = program(&["type A { n: Int = 0 }", "fn f(a: A) -> A { a }"]);
     with(&src, |_, t| {
-        assert!(t.defs.iter().all(|c| c.error.is_none()))
+        assert!(t.defs.all.iter().all(|c| c.error.is_none()))
     });
 }
 
@@ -794,7 +798,7 @@ fn chain(n: usize, back: bool) -> String {
 #[test]
 fn a_very_long_chain_of_types_is_walked_by_loops() {
     with(&chain(20_000, false), |_, t| {
-        assert!(t.defs.iter().all(|c| c.error.is_none()));
+        assert!(t.defs.all.iter().all(|c| c.error.is_none()));
     });
 }
 
@@ -806,14 +810,14 @@ fn a_very_long_cycle_of_types_is_walked_by_loops() {
         src += &format!("type T{i} {{ next: Option<T{}> }}\n", (i + 1) % n);
     }
     with(&src, |_, t| {
-        assert!(t.defs.iter().all(|c| c.error.is_none()));
+        assert!(t.defs.all.iter().all(|c| c.error.is_none()));
     });
     let mut bad = String::new();
     for i in 0..n {
         bad += &format!("type T{i} {{ next: T{} }}\n", (i + 1) % n);
     }
     with(&bad, |_, t| {
-        assert!(t.defs.iter().all(|c| c.error.is_some()))
+        assert!(t.defs.all.iter().all(|c| c.error.is_some()))
     });
 }
 
@@ -821,7 +825,7 @@ fn a_very_long_cycle_of_types_is_walked_by_loops() {
 fn a_long_chain_that_leads_back_through_a_list_is_grounded_in_linear_time() {
     let start = std::time::Instant::now();
     with(&chain(20_000, true), |_, t| {
-        assert!(t.defs.iter().all(|c| c.error.is_none()));
+        assert!(t.defs.all.iter().all(|c| c.error.is_none()));
     });
     assert!(start.elapsed().as_secs() < 5, "{:?}", start.elapsed());
 }

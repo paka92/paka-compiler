@@ -104,7 +104,7 @@ impl<'a> Cx<'_, 'a> {
             return Ok(Some(Key::Variant(j)));
         }
         let owner = match binding {
-            Binding::Variant(d, _) => self.program.defs[d].name().text,
+            Binding::Variant(d, _) => self.defs.name(d),
             Binding::Builtin(b) if self.variants.contains_key(b) => {
                 match self.variants[b].result.map(|t| self.types.node(t)) {
                     Some(Node::Name(n, _)) => n,

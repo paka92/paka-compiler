@@ -1,7 +1,7 @@
 //! A program's text: one file, or every regular `.paka` file directly in a directory (M2-02
 //! section 1.3).
 
-use paka::diagnostic::Diagnostic;
+use crate::diagnostic::Diagnostic;
 use std::ffi::{OsStr, OsString};
 use std::ops::Range;
 use std::os::unix::ffi::{OsStrExt, OsStringExt};
@@ -35,7 +35,6 @@ pub fn in_file<T>(files: &[T], first: impl Fn(&T) -> usize, line: usize) -> (&T,
 }
 
 impl Source {
-    #[cfg(test)]
     pub fn file(path: &str, text: Vec<u8>) -> Source {
         let mut source = Source::default();
         source.add(path.into(), text);

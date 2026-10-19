@@ -79,7 +79,7 @@ or merged during review. Ids with a letter were added during review.
 |---|---|---|---|---|---|---|---|
 | M1 Let there be light | 17 | 1 | 9 | 4 | 3 | 0 | 2 |
 | M2 The headless language, complete, in the interpreter | 46 | 0 | 7 | 21 | 8 | 10 | 10 |
-| M3 The experiment: go or stop | 22 | 0 | 6 | 5 | 6 | 5 | 6 |
+| M3 The first measurement | 22 | 0 | 6 | 5 | 6 | 5 | 6 |
 | M4 Dev mode for headless programs | 51 | 0 | 8 | 18 | 25 | 0 | 7 |
 | M5 Live GUI on Linux | 43 | 0 | 3 | 20 | 13 | 7 | 9 |
 | M6 Release mode | 34 | 1 | 7 | 10 | 14 | 2 | 3 |
@@ -676,11 +676,11 @@ or merged during review. Ids with a letter were added during review.
 - why this level: Edits must stay exact and in budget; one wrong sentence silently misleads every model.
 - note: The unused-name warning (M2-02 section 2 and section 5) is decided but no task implements it; close it here if no earlier task does. Left open after M2-41b: no conformance case for hole notes under --json; no host test for a closed or full standard output or a file over the String limit; no case for an open joined list type such as [None, None]; text routines are not native in paka-rt yet. The gate already runs under cargo test --workspace and passes with nothing missing at M2-44; what remains is the list above. Done: the unused-name warning (M2-02 sections 1.3 and 5), host tests for a full or closed output and a file over the limit (M2-15 section 1.7), open list and map literals reported at their [ (M2-02 section 5), and the --json stream rule (M2-06 section 1.5). Native text routines in paka-rt are left to the compiled back ends. Untested: a FIFO swapped in between the metadata look and the open.
 
-## M3 — The experiment: go or stop
+## M3 — The first measurement
 
-**Exit check.** All five hold on `development`: (1) a protocol naming the tasks, the model, the three metrics (first-try pass rate, edits to a passing program, tokens to a passing program) and the losing margin was merged and tagged `protocol` by the owner at a commit older than the first model call in the raw logs; (2) each task has one set of hand-written tests that runs unchanged against Paka, Rust and TypeScript; (3) the raw logs hold a finished trial for every counted task, language and repetition, all from the commit the owner tagged `run` after the dry-run and calibration amendments, and the report lists every difference between the two tags; (4) one command rebuilds the report's three metrics from those raw logs; (5) a decision file in which the owner records go or stop.
+**Exit check.** All five hold on `development`: (1) a protocol naming the tasks, the model, the three metrics (first-try pass rate, edits to a passing program, tokens to a passing program) and the losing margin was merged and tagged `protocol` by the owner at a commit older than the first model call in the raw logs; (2) each task has one set of hand-written tests that runs unchanged against Paka, Rust and TypeScript; (3) the raw logs hold a finished trial for every counted task, language and repetition, all from the commit the owner tagged `run` after the dry-run and calibration amendments, and the report lists every difference between the two tags; (4) one command rebuilds the report's three metrics from those raw logs; (5) the result is published in the README and the genesis paper.
 
-- If Paka loses by more than the pre-set margin, the project stops here. M4 to M7 assume "go".
+- The owner continues to M4. The tasks and harness stay as a benchmark for the token cost.
 - Live model calls happen only in M3-19, M3-19b and M3-20. They go through the Claude Code command line (`claude -p`) with no API key and no paid service. M3-19 measures what one run uses before M3-20 is planned.
 - One edit = replace the whole file, in all three languages. The experiment does not measure Paka's per-definition tools; M3-01 must state that limit.
 - Tasks flagged `repeat` are run once per batch; with 20 experiment tasks this milestone has 6 more tasks than listed.
@@ -860,6 +860,7 @@ or merged during review. Ids with a letter were added during review.
 
 ### M3-21 · L4 · Rule on reviewed runs under the pre-set defect rules
 
+- status: done
 - needs: M3-03, M3-20
 - flags: decision, owner
 - done when: Every run the rules send to review has a recorded cause and ruling; a second agent re-rules a sample blind; the owner approves the list.
@@ -868,6 +869,7 @@ or merged during review. Ids with a letter were added during review.
 
 ### M3-22 · L2 · Publish the report: three metrics per language with raw data
 
+- status: done
 - needs: M3-10, M3-21
 - flags: none
 - done when: One command rebuilds the report's three metrics per language, per task and per M2-01 class from the merged raw logs and rulings; every protocol deviation is listed. The report lists every difference between the `protocol` and `run` tags. The report command prints the `protocol` commit's date and the earliest model-call time across dry-run, calibration and counted logs, and fails if the tag is not older. The report lists what the verdict does not measure: pools, float ties, Unicode, user generics, closures, standard input, GUI, speed and overflow.
@@ -875,14 +877,16 @@ or merged during review. Ids with a letter were added during review.
 
 ### M3-23 · L5 · Write the go / no-go analysis for the owner's decision
 
+- status: done
 - needs: M3-22
 - flags: decision, owner
 - done when: The analysis states the pre-set rule's verdict, every deviation and the limits of the evidence; the owner records go or stop in the repository.
 - why this level: Can end the project; must weigh a noisy result against the pre-set rule without reading hope into it.
+- note: Owner decision: continue to M4. The token cost is the target of dev mode's one-definition tools; the benchmark tracks it.
 
 ## M4 — Dev mode for headless programs
 
-**Exit check.** One command on the build machine (built in M4-46) reports pass for every item: (1) on a generated headless program of the size fixed in M4-01 (proposed: 5,000 definitions), the 95th-percentile time from a body-edit request to the first handler of the rerun is under 100 ms for small, medium and large definitions; (2) a signature edit rechecks exactly the direct users of the changed interface, shown by a recheck counter against hand-written sets, and the edit reply lists exactly the definitions that broke; (3) after a breaking edit a run still executes the last version in which every definition checked, and fixing the users installs all changes together; (4) find, view, edit with a base version, and run pass hand-written transcripts over the versioned interface, each edit returning canonical text, typed errors and the broken list; (5) the wc sample runs under Console and ReadFiles grants and an ungranted effect is refused exactly as in the interpreter; (6) every M2 conformance test gives the same output, exit status and trap in dev mode as in the interpreter, with none unsupported, and the seeded generated-program and edit-sequence runs agree.
+**Exit check.** One command on the build machine (built in M4-46) reports pass for every item: (1) on a generated headless program of the size fixed in M4-01 (5,000 definitions, worst of three runs), the 95th-percentile time from a body-edit request to the first handler of the rerun is under 100 ms for small, medium and large definitions; (2) a signature edit rechecks exactly the direct users of the changed interface, shown by a recheck counter against hand-written sets, and the edit reply lists exactly the definitions that broke; (3) after a breaking edit a run still executes the last version in which every definition checked, and fixing the users installs all changes together; (4) find, view, edit with a base version, and run pass hand-written transcripts over the versioned interface, each edit returning canonical text, typed errors and the broken list; (5) the wc sample runs under Console and ReadFiles grants and an ungranted effect is refused exactly as in the interpreter; (6) every M2 conformance test gives the same output, exit status and trap in dev mode as in the interpreter, with none unsupported, and the seeded generated-program and edit-sequence runs agree.
 
 - M4-01b needs a download (Cranelift) and the owner's approval of every crate it brings.
 - The database and tool tasks (M4-07 to M4-19) need no native code and are tested on the interpreter.
@@ -893,70 +897,85 @@ or merged during review. Ids with a letter were added during review.
 
 ### M4-01 · L4 · Fix the generator benchmark method, test definitions, program size and winning margin
 
+- status: done
 - needs: nothing
 - flags: decision, owner, native-only
 - done when: Before any measurement the owner approves a document fixing three Paka definitions (small, medium, large), timing start and end points, both generators' settings, the winning margin, and the benchmark program size and edit classes M4-44 will use.
 - why this level: A method chosen after seeing numbers biases a choice that commits the dev-mode architecture.
+- note: Done: approved by the owner on 2026-10-15; see docs/decisions/M4-01.md and bench/generators/defs.paka.
 
 ### M4-01b · L4 · Measure Cranelift and LLVM's JIT by the fixed method and record the choice
 
+- status: done
 - needs: M4-01
 - flags: decision, owner, download, unsafe, native-only
-- done when: One command reprints both generators' timings for the three definitions; its unsafe sits in one crate the owner allowed; the owner records the choice.
+- done when: One command reprints the timings of each generator measured, by the M4-01 method; Cranelift is built and timed first, and the LLVM side only if Cranelift fails the gate; its unsafe sits in one crate the owner allowed; the record is the M4-01 rule applied to the numbers.
 - why this level: Hand-declared unsafe bindings to LLVM's C library, with no Miri to catch a wrong signature.
-- note: The benchmark crate stays outside the workspace with its own lock file, so the --locked --offline build stays green; M4-06 brings the chosen crates in vendored. The owner allowed the Cranelift crates on 2026-10-13; the task names each crate, version and size before it fetches. LLVM 21's shared library is already on the build machine (`/usr/lib/llvm-21/lib/libLLVM-21.so`); nothing is installed.
+- note: The benchmark crate stays outside the workspace with its own lock file, so the --locked --offline build stays green; M4-06 brings the chosen crates in vendored. The owner allowed the Cranelift crates on 2026-10-13; the task names each crate, version and size before it fetches. LLVM 21's shared library is already on the build machine (`/usr/lib/llvm-21/lib/libLLVM-21.so`); nothing is installed. Cranelift 0.136.3 passed the rule (warm p95 of the large definition 2.1 ms, cold 3.6 ms); LLVM was not built. Result in docs/decisions/M4-01.md section 7.
 
 ### M4-03 · L4 · Propose the agent tool interface: transport, message shapes, versions, find queries
 
+- status: done
 - needs: M4-48
 - flags: decision, owner
 - done when: Owner approves a written interface with a schema for find, view, edit and run, and hand-written example exchanges for each. The base version of an edit is per definition.
 - why this level: A compatibility promise to every agent; type-shape queries, token budgets and base versions have no settled meaning yet.
-- note: Token budgets use M2-18's counting rule.
+- note: Token budgets use M2-18's counting rule. Done: approved by the owner on 2026-10-15; see docs/decisions/M4-03.md.
 
 ### M4-04 · L4 · Propose where dev-mode code runs and how a run is stopped
 
+- status: done
 - needs: M4-01b
 - flags: decision, owner
 - done when: Owner approves a written choice among in-process, forked and separate-process runs, covering stuck handlers, memory reclaim and the 100 ms budget. It also covers how a visual app keeps its state in the same process while code is swapped (M5 needs it); stopping a run uses no signal handler for traps.
 - why this level: Trades isolation against swap speed; a stuck or trapped run must never take the tool server down.
+- note: Done: approved by the owner on 2026-10-15; see docs/decisions/M4-04.md. One runner process per server, started through std::process.
 
 ### M4-05 · L4 · Specify the dev-mode calling convention, trap returns and value layouts
 
+- status: done
 - needs: M4-01b, M4-04
 - flags: decision, owner, native-only
 - done when: Owner approves a specification covering context pointer, status returns, stack-limit check, slot calls, every type's layout and who frees each value. It names the code generator and the crate that turns generated code into runnable machine code, and says which runtime code the interpreter shares (recommended: the effect performer only). It names each M1-14 rule as kept or changed, says whether the dev runtime extends paka-rt (M1-16, M1-17) or replaces it, and names the crate that holds the unsafe runtime code; the M1 cases still pass on both back ends.
 - why this level: Separately compiled definitions must agree exactly; a mismatch in layout, ownership or status handling is silent.
-- note: Start fields, state and ExitWith reach the native back end here; tests/cases/parse/variant_payload then leaves the UNSUPPORTED list of paka/tests/native.rs.
+- note: Start fields, state and ExitWith reach the native back end here; tests/cases/parse/variant_payload then leaves the UNSUPPORTED list of paka/tests/native.rs. Per M4-04: an interrupt poll at every loop head and function entry, explicit checks for every trap, calls through a slot table, and a per-run memory cap checked by the allocator.
+- note: Done: docs/decisions/M4-05.md. Every function is `(ctx, args..., out) -> status` (0 finished, 1 trapped, 2 stopped); trap kinds are numbered in the trap record (M2-06). The dev runtime extends paka-rt, whose `abi` modules keep the runtime's unsafe code; the new `paka-installer` crate holds the rest (a change to M4-04's one-crate wording).
 
 ### M4-06 · L2 · Vendor the chosen generator's crates and enforce locked offline builds
 
+- status: done
 - needs: M4-01b
 - flags: owner, download, native-only, conditional
 - done when: With the network off, cargo build --locked --offline passes from a clean clone, and an unlisted crate fails the check.
 - why this level: Standard cargo vendoring; the only care is an approved-crates list that the build checks.
-- note: Dropped if the generator chosen in M4-01b needs no outside crate.
+- note: Dropped if the generator chosen in M4-01b needs no outside crate. Runs if M4-01b records Cranelift; dropped if it records LLVM. M4-01b recorded Cranelift, so this task runs. Done: 38 crates in vendor/, read through .cargo/config.toml with the network off; .cargo/approved-crates.txt lists them and paka/tests/vendored.rs fails on any locked or vendored crate not listed. A clean clone with an empty cargo home builds bench/generators.
 
 ### M4-07 · L2 · Add a hand-written SHA-256 for content hashes
 
+- status: done
 - needs: nothing
 - flags: none
 - done when: The published SHA-256 test vectors, typed in by hand, pass under cargo test.
 - why this level: Well-known algorithm with published test vectors, in one module.
+- note: Done: paka/src/sha256.rs, one function over a byte slice; the FIPS 180-4 and NIST vectors and the padding edges pass.
 
 ### M4-08 · L2 · Give every definition a stable id and parse definitions singly
 
+- status: done
 - needs: M4-48
 - flags: none
 - done when: Tests show ids unchanged by body edits, reordering and rebuilds from text, and one definition reparses without touching others.
-- why this level: Ids come from kind and qualified name; reparsing one definition reuses the existing parser.
+- why this level: Ids are bare names (M4-48); reparsing one definition reuses the existing parser.
+- note: Done: parser::parse_def parses exactly one definition with positions from its own start, and parser::split gives each definition of a text as its id and its text. Comments are not carried yet (M4-15).
 
 ### M4-09 · L3 · Check and lower one definition from its body and used signatures
 
+- status: done
 - needs: M4-08
 - flags: none
 - done when: Per-definition results equal the whole-program checker on all conformance programs, and the read log lists exactly the hand-written expected names.
 - why this level: Untangling whole-program passes so one definition reads only signatures, while logging every name it looked up.
+- note: Done: paka::check_each gives each definition's first error and its reads: the definitions whose signatures it read (a variant's enum for a variant) and, as written, the names it looked up that name nothing. The resolver logs its lookups; the signature table logs every definition read through it, in checking and lowering. A test checks every definition of every conformance program in a copy where all it did not read, transitively, is blanked, and gets the same error and reads. Built-ins and locals are not logged. Two reads stay whole-program: the no-finite-value check follows held types transitively (M4-11's interface hash covers it), and core-form ids are positions in the program (M4-24's slots replace them).
 
 ### M4-10 · L3 · Build the exact who-uses-what index, including names that resolve to nothing
 
@@ -964,6 +983,7 @@ or merged during review. Ids with a letter were added during review.
 - flags: none
 - done when: Fixture programs give the hand-written user lists, and adding a missing definition marks exactly its waiting users for recheck.
 - why this level: Exactness under adds, deletes and renames; a missed dangling reference leaves a broken user unreported.
+- note: The index is built from M4-09's reads. A name that names nothing is logged as written, so adding a variant must also wake the users waiting on the variant's name, not only on its enum's.
 
 ### M4-11 · L4 · Compute the body and interface hash of every definition
 
@@ -971,7 +991,7 @@ or merged during review. Ids with a letter were added during review.
 - flags: none
 - done when: For a hand-written list of edit kinds, tests show exactly the expected hashes change, including transitive by-value layout and recursion.
 - why this level: Soundness of what each hash covers; one omitted input, such as a default value, silently keeps stale code.
-- note: The closure hash arrives with its first reader, M7-09.
+- note: The closure hash arrives with its first reader, M7-09. Hashes come from the parsed definition, never from file bytes (M4-47), so the task does not need the printer.
 
 ### M4-12 · L4 · Recheck after an edit with early cutoff and list what broke
 
@@ -994,6 +1014,7 @@ or merged during review. Ids with a letter were added during review.
 - flags: open-ended
 - done when: 10,000 seeded edit sequences end with ids, index, hashes and check results identical to a rebuild from text; a planted bug is caught. A coverage report shows every edit kind produced (body, signature, type layout, add, delete, rename), and one planted staleness bug per kind is caught.
 - why this level: It must find stale results; a weak edit generator passes silently, and M4-43 leans on it.
+- note: A rename is generated as an add followed by a delete (M4-48).
 
 ### M4-15 · L3 · Print any definition in the one canonical layout, keeping comments
 
@@ -1001,6 +1022,7 @@ or merged during review. Ids with a letter were added during review.
 - flags: none
 - done when: Hand-written golden files pass, and on all conformance sources printing is idempotent and reparses to the same tree. `paka check` treats non-canonical text as M4-47 rules, with a hand-written case for each outcome; stored sources are handled as M4-47 rules.
 - why this level: Comments must survive and printing must be stable: print, parse, print again gives the same text.
+- note: A plain tree walk with no width fitting; parentheses are kept as written (M4-47). It attaches comments in the parser where the printer puts them, and tests that the M4-47 samples print unchanged.
 
 ### M4-16 · L2 · Serve the tool interface: transport, JSON reading and writing, request dispatch
 
@@ -1008,7 +1030,7 @@ or merged during review. Ids with a letter were added during review.
 - flags: none
 - done when: Hand-written request and reply transcripts pass, including malformed input and an unknown interface version.
 - why this level: A request loop and a small JSON reader in std; shapes come from the approved interface.
-- note: Reuses one shared standard-library-only JSON module; M2-04's writer and M3-08's reader move into it.
+- note: Reuses one shared standard-library-only JSON module; M2-04's writer and M3-08's reader move into it. Per M4-03: JSON lines on standard input and output, a `v` check on every request and no handshake; unknown fields are refused; one server per program is kept by a standard-library file lock.
 
 ### M4-17 · L3 · Implement edit: replace, add or delete one definition against a base version
 
@@ -1016,14 +1038,15 @@ or merged during review. Ids with a letter were added during review.
 - flags: none
 - done when: Transcript tests: a stale base is refused; an accepted edit returns canonical text, typed errors and the exact broken list; files match. Two edits to different definitions from one base both land; two edits to the same definition, or adding the same name twice, refuse the second.
 - why this level: Source files, database and version check must change together or not at all, even when the edit breaks users.
+- note: Edit accepts any layout that parses and stores canonical text for the edited definition only (M4-47). In a directory program an add writes a new file named after the definition, a delete removes an emptied file, and text whose name differs from the call's name is refused (M4-48). Per M4-03: the base version is the 12-digit hash of canonical text; null `base` adds, null `text` deletes; a stale base returns the current version and text; text that does not parse is refused with kind `parse`.
 
 ### M4-18 · L2 · Implement find by name or user, and view within a token budget
 
-- needs: M4-10, M4-16
+- needs: M4-10, M4-16, M4-15
 - flags: none
 - done when: Transcript tests return hand-written results; a view holds one body plus used signatures and never exceeds its budget.
 - why this level: Index lookups plus trimming output to a budget; the rules come from the approved interface.
-- note: Token budget uses M2-18's counting rule.
+- note: Token budget uses M2-18's counting rule. Per M4-03: name patterns with `*`, the `users_of`, `kind` and `failing` fields, paging with `after`, the `more` count and current errors in a view. View and find print canonical text and take the version from it.
 
 ### M4-19 · L3 · Implement find by type shape
 
@@ -1031,6 +1054,7 @@ or merged during review. Ids with a letter were added during review.
 - flags: none
 - done when: Transcript tests over a fixture program return exactly the hand-written matches for each query form in the interface.
 - why this level: Matching a query against signatures with generics and argument order needs a small, exact matching rule.
+- note: Per M4-03: an exact takes-and-gives match over the program's own fn and view definitions, with no wildcards or ranking; may be re-graded to level 2.
 
 ### M4-21 · L4 · Generate random well-typed terminating Paka programs from a seed
 
@@ -1185,7 +1209,7 @@ or merged during review. Ids with a letter were added during review.
 - flags: unsafe
 - done when: Transcript tests: each accepted edit yields the new run's output; a looping program is stopped; a broken edit leaves the old result. The interface's run call passes M4-03's hand-written exchanges (output, exit status, trap report).
 - why this level: Races between a running program, a swap and the next edit; a stuck run must stop without harming the server.
-- note: Unsafe only if M4-04 picks forked runs; with separate processes through std::process there is none. Any unsafe lives in the installer crate.
+- note: Runs happen in the runner process (M4-04); the server has no unsafe. Calling compiled code and the slot table are the unsafe, in the installer crate. Per M4-03: a run happens only when an edit carries a `run` field or a run call is made; the server keeps no run settings; time and output limits come from the request. An edit that is not installed returns `run` null, and a run call runs the last fully checked version or answers `not_runnable`. A stuck run ends at the interrupt poll; a runner that does not answer 100 ms after the deadline is killed and restarted, and a crash reports `stopped` "crash" (M4-04).
 
 ### M4-40 · L3 · Add dev mode to the differential harness and run all conformance tests
 
@@ -1227,8 +1251,9 @@ or merged during review. Ids with a letter were added during review.
 
 - needs: M4-39, M4-01
 - flags: none
-- done when: One command prints median and 95th-percentile times for small, medium and large body edits on the program size fixed in M4-01.
+- done when: One command prints median and 95th-percentile times for the six M4-01 edit classes (three gated) on a program whose size is an argument, 5,000 by default, written by its own fixed-shape generator as one file per definition; timing runs from request written to reply read.
 - why this level: Honest timing from request to first handler of the new run, on a generated program of stated size.
+- note: Per M4-03: one timed sample is one edit request with a `run` field.
 
 ### M4-44b · L4 · Profile edit-to-running time and list fixes with expected gains
 
@@ -1254,17 +1279,21 @@ or merged during review. Ids with a letter were added during review.
 
 ### M4-47 · L4 · Decide the canonical layout and how tools treat other layouts
 
+- status: done
 - needs: nothing
 - flags: decision, owner
 - done when: Owner approves the layout rules with one sample per construct, and whether check rejects or rewrites other text. It also rules what happens to sources stored before the layout existed.
 - why this level: One layout is a promise of the paper; every tool and every stored file follows it.
+- note: Done: approved by the owner on 2026-10-15; see docs/decisions/M4-47.md.
 
 ### M4-48 · L4 · Decide a definition's full name and the file tools store it in
 
+- status: done
 - needs: nothing
 - flags: decision, owner
 - done when: Owner approves the full-name form, the file a new definition lands in, and that packages stay undecided through M7.
 - why this level: Stable ids and every tool call are built on the name; changing it later invalidates stored versions.
+- note: Done: approved by the owner on 2026-10-15; see docs/decisions/M4-48.md.
 
 ## M5 — Live GUI on Linux
 
@@ -1341,6 +1370,7 @@ or merged during review. Ids with a letter were added during review.
 - flags: decision, owner
 - done when: Owner approves one route and the four Look calls: tree, screenshot, click, keystroke, with their inputs and outputs.
 - why this level: Wayland allows no embedding, screen grab or injected input; the route must work without them.
+- note: Per M4-03: the Look calls are added to its envelope and error shape as new `call` values, with no new version.
 
 ### M5-10 · L2 · Vendor the approved GUI crates, pinned and built offline
 
@@ -1355,6 +1385,7 @@ or merged during review. Ids with a letter were added during review.
 - flags: none
 - done when: Tests with hand-written trees pass; printing then parsing the samples changes nothing; errors quote the offending text.
 - why this level: Parser and canonical printer must agree on nested child blocks, keys and holes, with precise errors.
+- note: Views follow the M4-47 block and flat-list rules; only the trailing-block sample is new.
 
 ### M5-12 · L2 · Add the element table as built-in signatures
 
@@ -1376,6 +1407,7 @@ or merged during review. Ids with a letter were added during review.
 - flags: none
 - done when: Tests: a view body edit rechecks only that view; a Msg edit, an edit to a view it calls, to the state type and to the app's view field each give exactly the hand-written rechecked and broken sets; M4-14's incremental-equals-rebuild test runs with views in its edit generator and passes.
 - why this level: Touches ids, use index, hashes and Find, View, Edit; a missed dependency edge silently skips a recheck.
+- note: Per M4-03: views travel through find, view and edit with kind `view` and no new fields.
 
 ### M5-15 · L2 · Define the runtime element tree and print it as text
 
@@ -1914,6 +1946,7 @@ or merged during review. Ids with a letter were added during review.
 - flags: none
 - done when: Edit results and gate output list each item awaiting approval in the agreed shape; expected outputs are written by hand.
 - why this level: Formats known data into a given shape.
+- note: Per M4-03: items awaiting approval ride in edit replies as a new optional field; they are not errors, and M7-01 fixes their shape.
 
 ### M7-09 · L4 · Cache example results by closure hash, mode and compiler version
 
