@@ -325,6 +325,20 @@ fn every_built_in_name_is_taken() {
 }
 
 #[test]
+fn ui_names_are_taken_from_headless_programs() {
+    let elements = builtins::ELEMENTS.iter().map(|e| e.name);
+    for name in elements.chain(builtins::UI.iter().copied()) {
+        let template = if name.starts_with(char::is_uppercase) {
+            "enum Msg { @ }"
+        } else {
+            "fn @() {}"
+        };
+        let d = rejection(&program(&[&template.replace('@', name)]));
+        assert_eq!(d.message, format!("{name} is a built-in; rename it"));
+    }
+}
+
+#[test]
 fn a_local_may_not_reuse_a_visible_name() {
     let cases: [(&[&str], usize, &str); 5] = [
         (&["  let total = 1"], 3, "let ^total"),

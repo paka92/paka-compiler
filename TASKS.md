@@ -1530,6 +1530,8 @@ or merged during review. Ids with a letter were added during review.
 - note: Per M5-04: five elements (Text, Button, Input, Row, Col); per argument a type and a default or none; per element the child-block, needs-key, takes-focus and width-class marks.
 - note: Per M5-05: the table carries each element's width class.
 - note: Per M5-06: `Ui` and the six `ui_` names enter the built-in names table for every program.
+- status: done
+- note: Done: `ELEMENTS` in `paka/src/builtins.rs` holds the five elements with each argument's type and default and the child-block, needs-key, takes-focus and width marks; `key:` is not listed per element, since every element takes it last and `needs_key` marks where it must be written. A test prints the table and compares it with the approved one. The element names, `Ui` and the six `ui_` names are taken from every program; the resolver finds none of them by name until M5-13. Renamed for this: `Row` in `tests/cases/check-text/sort_by_result_not_bool` (to `Rec`), `tests/conformance/ownership/change_in_place` and the T3 and T5 references (to `Line`); the variant `Text` in `tests/conformance/types/match_arm_discard`, `field_read_on_variant` and the T3, T4, P3 and F1 references (to `Plain`).
 
 ### M5-13 · L3 · Resolve and type-check views, holes, required keys and app wiring
 

@@ -112,11 +112,14 @@ pub fn resolve<'a>(path: &'a str, program: &'a Program<'a>) -> Res<Resolved> {
 }
 
 fn builtins<'a>() -> BTreeMap<&'a str, (Kind, Binding)> {
-    let rows = builtins::ROWS.iter().map(|&(kind, row)| {
-        let name = builtins::name(row);
-        (name, (kind, Binding::Builtin(name)))
-    });
-    rows.collect()
+    let rows = builtins::ROWS
+        .iter()
+        .map(|&(kind, row)| (kind, builtins::name(row)));
+    let elements = builtins::ELEMENTS.iter().map(|e| (Kind::Other, e.name));
+    let ui = builtins::UI.iter().map(|&name| (Kind::Other, name));
+    let all = rows.chain(elements).chain(ui);
+    all.map(|(kind, name)| (name, (kind, Binding::Builtin(name))))
+        .collect()
 }
 
 /// The candidate closest to `name` by edit distance, if within a third of its length. Ties go to
