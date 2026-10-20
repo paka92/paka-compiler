@@ -6,7 +6,7 @@
 //! `Option` or `Result`, is a box. Every field on such a cycle reaches its own type, so each cycle
 //! holds a box and every size is finite.
 
-use crate::sig::{Item, Node, Ty, Types};
+use crate::core_form::{Program, Ty, Type};
 use std::collections::{BTreeMap, BTreeSet};
 
 /// How a value of one type lies in memory.
@@ -50,61 +50,80 @@ pub enum Owned {
     Value(Ty),
 }
 
-/// The layout of every type a program's checked signatures meet, but those with a type variable.
+/// The layout of every type of a program.
+#[derive(Debug, PartialEq)]
 pub struct Layouts {
     layouts: BTreeMap<Ty, Layout>,
-    /// For each program type, its boxed fields: (alternative, field) positions.
-    boxed: BTreeMap<usize, BTreeSet<(usize, usize)>>,
+    /// For each record or enum type, its boxed fields: (alternative, field) positions.
+    boxed: BTreeMap<Ty, BTreeSet<(usize, usize)>>,
 }
 
 impl Layouts {
-    /// `items` are the program's definitions, in order.
-    pub fn new(types: &mut Types, items: &[&Item]) -> Layouts {
-        let boxed = (items.iter().enumerate())
-            .map(|(i, item)| (i, boxed_fields(types, items, i, item)))
+    /// Lays out every type of `p`, adding each record and enum type and the types `Effect`
+    /// payloads name.
+    pub fn new(p: &mut Program) -> Layouts {
+        for i in 0..p.records.len() {
+            p.ty(Type::Record(i));
+        }
+        for i in 0..p.enums.len() {
+            p.ty(Type::Enum(i));
+        }
+        let effects: Vec<Ty> = (p.types.iter())
+            .filter_map(|t| match t {
+                Type::Effect(m) => Some(*m),
+                _ => None,
+            })
+            .collect();
+        for m in effects {
+            let string = p.ty(Type::String);
+            p.ty(Type::Int);
+            p.ty(Type::Fn(vec![string], Some(m)));
+        }
+        let p = &*p;
+        let boxed = (0..p.types.len())
+            .map(|ty| (ty, boxed_fields(p, ty)))
             .collect();
         let mut layouts = Layouts {
             layouts: BTreeMap::new(),
             boxed,
         };
-        for ty in types.all() {
-            layouts.lay(types, items, ty);
+        for ty in 0..p.types.len() {
+            layouts.lay(p, ty);
         }
         layouts
     }
 
-    pub fn get(&self, ty: Ty) -> Option<&Layout> {
-        self.layouts.get(&ty)
+    pub fn get(&self, ty: Ty) -> &Layout {
+        &self.layouts[&ty]
     }
 
     /// Lays out `ty` and what it holds by value; its size in words.
-    fn lay(&mut self, types: &mut Types, items: &[&Item], ty: Ty) -> Option<usize> {
+    fn lay(&mut self, p: &Program, ty: Ty) -> usize {
         if let Some(l) = self.layouts.get(&ty) {
-            return Some(l.size / 8);
+            return l.size / 8;
         }
         let leaf = |words, owned: Vec<Entry>| (false, words, vec![], vec![owned]);
         let at0 = |kind| vec![Entry { offset: 0, kind }];
-        let (tagged, words, alternatives, owned) = match types.node(ty).clone() {
-            Node::Var(_) => return None,
-            Node::Fn(..) | Node::Name("Int" | "Float" | "Bool", _) => leaf(1, vec![]),
-            Node::Name("String", _) => leaf(4, at0(Owned::String)),
-            Node::Name("List", args) => leaf(3, at0(Owned::List(args[0]))),
-            Node::Name("Map", args) => leaf(1, at0(Owned::Map(args[0], args[1]))),
-            node => {
-                let (tagged, alts) = alternatives(types, items, &node);
+        let (tagged, words, alternatives, owned) = match p.types[ty] {
+            Type::Int | Type::Float | Type::Bool | Type::Fn(..) => leaf(1, vec![]),
+            Type::String => leaf(4, at0(Owned::String)),
+            Type::List(item) => leaf(3, at0(Owned::List(item))),
+            Type::Map(k, v) => leaf(1, at0(Owned::Map(k, v))),
+            _ => {
+                let (tagged, alts) = alternatives(p, ty);
                 let start = if tagged { 8 } else { 0 };
                 let mut places = vec![];
                 for (a, fields) in alts.iter().enumerate() {
                     let mut offset = start;
                     let mut alt = vec![];
-                    for (f, &(ty, boxed)) in fields.iter().enumerate() {
-                        let boxed = boxed || self.is_boxed(&node, a, f);
-                        alt.push(Place { offset, ty, boxed });
-                        offset += if boxed {
-                            8
-                        } else {
-                            self.lay(types, items, ty)? * 8
-                        };
+                    for (f, &(field, boxed)) in fields.iter().enumerate() {
+                        let boxed = boxed || self.boxed[&ty].contains(&(a, f));
+                        alt.push(Place {
+                            offset,
+                            ty: field,
+                            boxed,
+                        });
+                        offset += if boxed { 8 } else { self.lay(p, field) * 8 };
                     }
                     places.push(alt);
                 }
@@ -121,12 +140,7 @@ impl Layouts {
             owned,
         };
         self.layouts.insert(ty, layout);
-        Some(words)
-    }
-
-    fn is_boxed(&self, node: &Node, alternative: usize, field: usize) -> bool {
-        let Node::User(i) = node else { return false };
-        self.boxed[i].contains(&(alternative, field))
+        words
     }
 
     /// The bytes `place` takes; its type is laid out.
@@ -175,25 +189,25 @@ impl Layouts {
 /// A tagged or untagged list of alternatives, each a list of (type, always boxed) fields.
 type Alternatives = (bool, Vec<Vec<(Ty, bool)>>);
 
-fn alternatives(types: &mut Types, items: &[&Item], node: &Node) -> Alternatives {
-    let plain = |tys: &[Ty]| tys.iter().map(|&t| (t, false)).collect();
-    match node {
-        Node::User(i) => match items[*i] {
-            Item::Record(fields) => (false, vec![fields.iter().map(|f| (f.ty, false)).collect()]),
-            Item::Enum(variants) => {
-                let fields =
-                    |v: &crate::sig::Variant| v.fields.iter().map(|f| (f.ty, false)).collect();
-                (true, variants.iter().map(fields).collect())
-            }
-            _ => unreachable!("a type definition"),
-        },
-        Node::Name("Option", args) => (true, vec![plain(args), vec![]]),
-        Node::Name("Result", args) => (true, vec![plain(&args[..1]), plain(&args[1..])]),
-        Node::Name("Effect", args) => {
-            let msg = args[0];
-            let string = types.named("String", &[]);
-            let int = types.named("Int", &[]);
-            let answer = types.intern(Node::Fn([string].into(), Some(msg)));
+fn alternatives(p: &Program, ty: Ty) -> Alternatives {
+    let fields = |fs: &[crate::core_form::Field]| fs.iter().map(|f| (f.ty, false)).collect();
+    match p.types[ty] {
+        Type::Record(i) => (false, vec![fields(&p.records[i].fields)]),
+        Type::Enum(i) => (
+            true,
+            p.enums[i]
+                .variants
+                .iter()
+                .map(|v| fields(&v.fields))
+                .collect(),
+        ),
+        Type::Option(t) => (true, vec![vec![(t, false)], vec![]]),
+        Type::Result(t, e) => (true, vec![vec![(t, false)], vec![(e, false)]]),
+        Type::Effect(msg) => {
+            let find = |t: Type| p.types.iter().position(|known| *known == t).unwrap();
+            let string = find(Type::String);
+            let int = find(Type::Int);
+            let answer = find(Type::Fn(vec![string], Some(msg)));
             let s = (string, false);
             let f = (answer, false);
             (
@@ -207,23 +221,19 @@ fn alternatives(types: &mut Types, items: &[&Item], node: &Node) -> Alternatives
                 ],
             )
         }
-        node => unreachable!("no alternatives in {node:?}"),
+        ref t => unreachable!("no alternatives in {t:?}"),
     }
 }
 
-/// The fields of program type `i` whose types reach it by value.
-fn boxed_fields(types: &Types, items: &[&Item], i: usize, item: &Item) -> BTreeSet<(usize, usize)> {
-    let alts: Vec<Vec<Ty>> = match item {
-        Item::Record(fields) => vec![fields.iter().map(|f| f.ty).collect()],
-        Item::Enum(variants) => (variants.iter())
-            .map(|v| v.fields.iter().map(|f| f.ty).collect())
-            .collect(),
-        _ => return BTreeSet::new(),
-    };
+/// The fields of record or enum type `ty` whose types reach it by value.
+fn boxed_fields(p: &Program, ty: Ty) -> BTreeSet<(usize, usize)> {
+    if !matches!(p.types[ty], Type::Record(_) | Type::Enum(_)) {
+        return BTreeSet::new();
+    }
     let mut boxed = BTreeSet::new();
-    for (a, fields) in alts.iter().enumerate() {
-        for (f, &ty) in fields.iter().enumerate() {
-            if reaches(types, items, ty, i, &mut BTreeSet::new()) {
+    for (a, fields) in alternatives(p, ty).1.iter().enumerate() {
+        for (f, &(field, _)) in fields.iter().enumerate() {
+            if reaches(p, field, ty, &mut BTreeSet::new()) {
                 boxed.insert((a, f));
             }
         }
@@ -231,18 +241,18 @@ fn boxed_fields(types: &Types, items: &[&Item], i: usize, item: &Item) -> BTreeS
     boxed
 }
 
-/// Whether a value of `ty` holds program type `target` by value.
-fn reaches(types: &Types, items: &[&Item], ty: Ty, target: usize, seen: &mut BTreeSet<Ty>) -> bool {
+/// Whether a value of `ty` holds type `target` by value.
+fn reaches(p: &Program, ty: Ty, target: Ty, seen: &mut BTreeSet<Ty>) -> bool {
+    if ty == target {
+        return true;
+    }
     if !seen.insert(ty) {
         return false;
     }
-    match types.node(ty) {
-        Node::User(i) if *i == target => true,
-        Node::User(i) => {
-            (items[*i].each_field()).any(|f| reaches(types, items, f.ty, target, seen))
-        }
-        Node::Name("Option" | "Result", args) => {
-            (args.iter()).any(|&a| reaches(types, items, a, target, seen))
+    match p.types[ty] {
+        Type::Record(_) | Type::Enum(_) | Type::Option(_) | Type::Result(..) => {
+            let (_, alts) = alternatives(p, ty);
+            (alts.iter().flatten()).any(|&(t, _)| reaches(p, t, target, seen))
         }
         _ => false,
     }

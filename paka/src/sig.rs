@@ -89,11 +89,6 @@ impl<'a> Types<'a> {
         self.intern(Node::Name(name, args.into()))
     }
 
-    /// The types met so far, in the order they were.
-    pub fn all(&self) -> impl Iterator<Item = Ty> + use<> {
-        (0..self.nodes.len() as u32).map(Ty)
-    }
-
     pub fn node(&self, ty: Ty) -> &Node {
         &self.nodes[ty.0 as usize]
     }

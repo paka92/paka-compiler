@@ -1176,6 +1176,8 @@ or merged during review. Ids with a letter were added during review.
 - flags: native-only
 - done when: Hand-written fixture programs covering records, defaults, enums with payloads and nested match return the hand-written expected values when called through M4-24's entry, in dev mode and in the interpreter.
 - why this level: Payload layouts and match lowering across nested patterns; default field values must follow the reference.
+- status: done
+- note: Done: a record, enum, `Option` or `Result` whose layout owns nothing is held in memory and passed as its address; a local gets its own stack slot, a temporary a new one, and a result is written whole through `out`. A record or variant stores each field as it is evaluated, and `match` dispatches on the tag word, copying bound fields into their locals. The layout table now reads the core form, so both back ends share it. The fixture is the conformance program `examples_records`: its examples compare the values, and `installer/tests/examples.rs` requires it to compile with the interpreter's statuses. Types that own a String, List, Map or box, equality on records and variants, and Effect wait on M4-32 and M4-33.
 
 ### M4-31b · L3 · Emit the error-handling forms
 

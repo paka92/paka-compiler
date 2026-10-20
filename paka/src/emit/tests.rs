@@ -1,4 +1,6 @@
 use super::Emitter;
+use crate::core_form::Program;
+use crate::layout::Layouts;
 use crate::source::Source;
 use cranelift_codegen::ir::{Function, InstructionData, Opcode, ValueDef};
 
@@ -31,9 +33,16 @@ example arithmetic {
 }
 ";
 
+fn program() -> (Program, Layouts) {
+    let (mut p, ..) =
+        crate::check("main.paka", &Source::file("main.paka", PROGRAM.into())).unwrap();
+    let l = Layouts::new(&mut p);
+    (p, l)
+}
+
 fn ir(def: usize) -> Function {
-    let (p, ..) = crate::check("main.paka", &Source::file("main.paka", PROGRAM.into())).unwrap();
-    Emitter::new().unwrap().ir(&p, def).unwrap()
+    let (p, l) = program();
+    Emitter::new().unwrap().ir(&p, &l, def).unwrap()
 }
 
 /// The instructions that may fault or end the process, and divides not guarded by a select.
@@ -90,9 +99,9 @@ fn the_scan_finds_an_unguarded_divide() {
 
 #[test]
 fn every_definition_compiles_to_code() {
-    let (p, ..) = crate::check("main.paka", &Source::file("main.paka", PROGRAM.into())).unwrap();
+    let (p, l) = program();
     let mut emitter = Emitter::new().unwrap();
     for def in 0..4 {
-        assert!(!emitter.code(&p, def).unwrap().is_empty());
+        assert!(!emitter.code(&p, &l, def).unwrap().is_empty());
     }
 }

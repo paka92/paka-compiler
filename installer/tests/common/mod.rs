@@ -2,6 +2,7 @@
 
 use paka::core_form::Program;
 use paka::emit::Emitter;
+use paka::layout::Layouts;
 use paka::source::Source;
 use paka_installer::{Slots, install};
 use paka_rt::abi::dev::Context;
@@ -16,10 +17,11 @@ pub fn load(source: &str) -> (Program, Slots) {
 /// As `load`; the error is the program's first diagnostic or the emitter's first refusal.
 pub fn try_load(source: &str) -> Result<(Program, Slots), String> {
     let source = Source::file("main.paka", source.as_bytes().to_vec());
-    let (p, ..) = paka::check("main.paka", &source).map_err(|d| d.to_string())?;
+    let (mut p, ..) = paka::check("main.paka", &source).map_err(|d| d.to_string())?;
+    let layouts = Layouts::new(&mut p);
     let mut emitter = Emitter::new()?;
     let defs = p.fns.len() + p.examples.len();
-    let code = (0..defs).map(|d| emitter.code(&p, d));
+    let code = (0..defs).map(|d| emitter.code(&p, &layouts, d));
     let code = code.collect::<Result<Vec<_>, _>>()?;
     let installed = install(&code.iter().map(Vec::as_slice).collect::<Vec<_>>()).unwrap();
     let slots = Slots::new(defs);

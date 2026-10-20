@@ -92,8 +92,10 @@ fn example_statuses_equal_the_interpreters() {
         compiled.push(name);
     }
     println!("compiled: {compiled:?}\nrefused:\n{}", refused.join("\n"));
-    // One program for each status besides pass; the rest wait on the later emitter tasks.
+    // One program for each status besides pass, and one of records and enums (M4-31); the rest
+    // wait on the later emitter tasks.
     let each = [
+        "examples_records",
         "examples_fail_comparisons",
         "examples_unfinished",
         "examples_assert_is_trapped",

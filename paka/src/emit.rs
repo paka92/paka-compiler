@@ -4,9 +4,10 @@
 
 use crate::builtins::ROWS;
 use crate::core_form::{
-    Arg, Arith, Bin, Block, Callee, Cmp, Compound, Expr, ExprKind, FloatArith, Fn, Place, Program,
-    Root, Site, Stmt, Ty, Type, Un, Walk,
+    Arg, Arith, Bin, Block, Callee, Cmp, Compound, Expr, ExprKind, FloatArith, Fn, Program, Site,
+    Stmt, Ty, Type, Un, Walk,
 };
+use crate::layout::Layouts;
 use cranelift_codegen::control::ControlPlane;
 use cranelift_codegen::ir::condcodes::{FloatCC, IntCC};
 use cranelift_codegen::ir::immediates::Ieee64;
@@ -56,8 +57,8 @@ impl Emitter {
     }
 
     /// Machine code for definition `def`: a function, or example `def - fns.len()`.
-    pub fn code(&mut self, p: &Program, def: usize) -> Result<Vec<u8>, Refusal> {
-        self.context.func = self.ir(p, def)?;
+    pub fn code(&mut self, p: &Program, l: &Layouts, def: usize) -> Result<Vec<u8>, Refusal> {
+        self.context.func = self.ir(p, l, def)?;
         let code = match self
             .context
             .compile(&*self.isa, &mut ControlPlane::default())
@@ -71,14 +72,14 @@ impl Emitter {
     }
 
     /// The Cranelift IR of definition `def`.
-    pub(crate) fn ir(&mut self, p: &Program, def: usize) -> Result<Function, Refusal> {
+    pub(crate) fn ir(&mut self, p: &Program, l: &Layouts, def: usize) -> Result<Function, Refusal> {
         let f = p
             .fns
             .get(def)
             .unwrap_or_else(|| &p.examples[def - p.fns.len()]);
         let name = UserFuncName::user(0, def as u32);
-        let mut func = Function::with_name_signature(name, signature(p, f)?);
-        let built = Gen::build(&*self.isa, &mut func, &mut self.builder, p, def, f);
+        let mut func = Function::with_name_signature(name, signature(p, l, f)?);
+        let built = Gen::build(&*self.isa, &mut func, &mut self.builder, (p, l), def, f);
         if built.is_err() {
             // A refusal leaves the builder's context half used.
             self.builder = FunctionBuilderContext::new();
@@ -102,11 +103,11 @@ fn has_sse41() -> bool {
 }
 
 /// `fn(ctx, args..., out) -> status` (M4-05 section 5); `out` only when there is a result.
-fn signature(p: &Program, f: &Fn) -> Result<Signature, Refusal> {
+fn signature(p: &Program, l: &Layouts, f: &Fn) -> Result<Signature, Refusal> {
     let mut sig = Signature::new(CallConv::SystemV);
     sig.params.push(AbiParam::new(types::I64));
     for q in &f.params {
-        sig.params.push(AbiParam::new(word(ir_type(p, q.ty)?)));
+        sig.params.push(AbiParam::new(word(ir_type(p, l, q.ty)?)));
     }
     if f.result.is_some() {
         sig.params.push(AbiParam::new(types::I64));
@@ -120,11 +121,17 @@ fn word(t: IrType) -> IrType {
     if t == types::I8 { types::I64 } else { t }
 }
 
-fn ir_type(p: &Program, t: Ty) -> Result<IrType, Refusal> {
+/// A value held in memory is the I64 address of its words (`values`).
+fn ir_type(p: &Program, l: &Layouts, t: Ty) -> Result<IrType, Refusal> {
     match p.types[t] {
         Type::Int => Ok(types::I64),
         Type::Float => Ok(types::F64),
         Type::Bool => Ok(types::I8),
+        Type::Record(_) | Type::Enum(_) | Type::Option(_) | Type::Result(..)
+            if l.get(t).owned.iter().all(Vec::is_empty) =>
+        {
+            Ok(types::I64)
+        }
         ref other => Err(format!("a value of type {other:?} is not compiled yet")),
     }
 }
@@ -138,6 +145,9 @@ type Emitted = Result<Option<Value>, Refusal>;
 struct Gen<'a> {
     b: FunctionBuilder<'a>,
     p: &'a Program,
+    l: &'a Layouts,
+    /// The type of each local.
+    locals: &'a [Ty],
     def: usize,
     ctx: Value,
     out: Option<Value>,
@@ -158,9 +168,9 @@ impl<'a> Gen<'a> {
         isa: &dyn TargetIsa,
         func: &'a mut Function,
         cx: &'a mut FunctionBuilderContext,
-        p: &'a Program,
+        (p, l): (&'a Program, &'a Layouts),
         def: usize,
-        f: &Fn,
+        f: &'a Fn,
     ) -> Result<(), Refusal> {
         let mut b = FunctionBuilder::new(func, cx);
         let entry = b.create_block();
@@ -168,10 +178,13 @@ impl<'a> Gen<'a> {
         b.switch_to_block(entry);
         let params = b.block_params(entry).to_vec();
         let mut vars = vec![];
-        for (i, &t) in f.locals.iter().enumerate() {
-            let t = ir_type(p, t)?;
+        for (i, &ty) in f.locals.iter().enumerate() {
+            let t = ir_type(p, l, ty)?;
             let var = b.declare_var(t);
-            if i < f.params.len() {
+            if i >= f.params.len() && values::held(&p.types[ty]) {
+                let at = values::slot(&mut b, l.get(ty).size);
+                b.def_var(var, at);
+            } else if i < f.params.len() {
                 let v = params[i + 1];
                 let v = if t == types::I8 {
                     b.ins().ireduce(t, v)
@@ -187,6 +200,8 @@ impl<'a> Gen<'a> {
         let mut g = Gen {
             b,
             p,
+            l,
+            locals: &f.locals,
             def,
             ctx: params[0],
             out: f.result.map(|_| params[params.len() - 1]),
@@ -200,7 +215,7 @@ impl<'a> Gen<'a> {
         g.poll();
         g.stack_check();
         let v = g.block(&f.body)?;
-        g.ret_value(v);
+        g.ret_value(v, f.result);
         g.b.switch_to_block(stop);
         g.ret(2);
         g.b.seal_all_blocks();
@@ -214,10 +229,9 @@ impl<'a> Gen<'a> {
     }
 
     /// Writes the result, if any, and returns status 0.
-    fn ret_value(&mut self, v: Option<Value>) {
-        if let (Some(out), Some(v)) = (self.out, v) {
-            let v = self.widen(v);
-            self.b.ins().store(MemFlagsData::trusted(), v, out, 0);
+    fn ret_value(&mut self, v: Option<Value>, ty: Option<Ty>) {
+        if let (Some(out), Some(v), Some(ty)) = (self.out, v, ty) {
+            self.put(ty, out, 0, v);
         }
         self.ret(0);
     }
@@ -316,15 +330,20 @@ impl<'a> Gen<'a> {
             let v = self.value(e)?;
             values.push(self.widen(v));
         }
-        let result = f.result.map(|t| ir_type(self.p, t)).transpose()?;
-        let slot = result.map(|_| self.result_slot());
-        if let Some(slot) = slot {
-            values.push(self.b.ins().stack_addr(types::I64, slot, 0));
-        }
+        let result = f.result.map(|t| ir_type(self.p, self.l, t)).transpose()?;
+        let held = f.result.filter(|&t| values::held(&self.p.types[t]));
+        let slot = match held {
+            Some(t) => Some(values::slot(&mut self.b, self.l.get(t).size)),
+            None => result.map(|_| {
+                let slot = self.result_slot();
+                self.b.ins().stack_addr(types::I64, slot, 0)
+            }),
+        };
+        values.extend(slot);
         let sig = match self.def_sigs.get(&id) {
             Some(&sig) => sig,
             None => {
-                let sig = self.b.import_signature(signature(self.p, f)?);
+                let sig = self.b.import_signature(signature(self.p, self.l, f)?);
                 self.def_sigs.insert(id, sig);
                 sig
             }
@@ -336,14 +355,10 @@ impl<'a> Gen<'a> {
         let call = self.b.ins().call_indirect(sig, code, &values);
         let status = self.b.inst_results(call)[0];
         self.pass_on(status, site);
-        let (Some(t), Some(slot)) = (result, slot) else {
-            return Ok(None);
-        };
-        let v = self.b.ins().stack_load(types::I64, word(t), slot, 0);
-        Ok(Some(match t {
-            types::I8 => self.b.ins().ireduce(t, v),
-            _ => v,
-        }))
+        Ok(match (f.result, slot) {
+            (Some(t), Some(at)) => Some(self.get(t, at, 0)),
+            _ => None,
+        })
     }
 
     /// Returns a callee's nonzero status: 2 as it is, 1 after pushing the call site.
@@ -398,24 +413,12 @@ impl<'a> Gen<'a> {
         match s {
             Stmt::Let(l, e) => {
                 let v = self.value(e)?;
-                self.b.def_var(self.vars[*l], v);
+                self.bind(*l, v);
             }
-            Stmt::Assign(place, op, e) => {
-                let var = self.vars[local(place)?];
-                let mut v = self.value(e)?;
-                if let Some(op) = op {
-                    let old = self.b.use_var(var);
-                    v = match op {
-                        Compound::Int(a, site) => self.int(a, *site, old, v),
-                        Compound::Float(a) => self.float(a, old, v),
-                        Compound::Join(_) => return Err("text is not compiled yet".into()),
-                    };
-                }
-                self.b.def_var(var, v);
-            }
+            Stmt::Assign(place, op, e) => self.assign(place, op.as_ref(), e)?,
             Stmt::Return(e) => {
                 let v = e.as_ref().map(|e| self.value(e)).transpose()?;
-                self.ret_value(v);
+                self.ret_value(v, e.as_ref().and_then(|e| e.ty));
                 self.dead();
             }
             Stmt::Break | Stmt::Continue => {
@@ -467,6 +470,14 @@ impl<'a> Gen<'a> {
         Ok(())
     }
 
+    fn compound(&mut self, op: &Compound, old: Value, v: Value) -> Result<Value, Refusal> {
+        Ok(match op {
+            Compound::Int(a, site) => self.int(a, *site, old, v),
+            Compound::Float(a) => self.float(a, old, v),
+            Compound::Join(_) => return Err("text is not compiled yet".into()),
+        })
+    }
+
     fn body(&mut self, next: Label, exit: Label, body: &Block) -> Result<(), Refusal> {
         self.loops.push((next, exit));
         self.block(body)?;
@@ -487,7 +498,12 @@ impl<'a> Gen<'a> {
             ExprKind::Int(n) => self.int_const(raw(*n)),
             ExprKind::Float(x) => self.float_const(x.bits()),
             ExprKind::Bool(v) => self.b.ins().iconst(types::I8, i64::from(*v)),
-            ExprKind::Place(place) => self.b.use_var(self.vars[local(place)?]),
+            ExprKind::Place(place) => self.read(place)?,
+            ExprKind::Record(_, fields) => return self.construct(ty(e), 0, fields),
+            ExprKind::Variant(tag, fields) => {
+                return self.construct(ty(e), values::alternative(tag)?, fields);
+            }
+            ExprKind::Match(subject, arms) => return self.matched(e, subject, arms),
             ExprKind::Hole(site) => {
                 self.trap(rt::HOLE, self.site(*site), &[]);
                 return self.unreached(e);
@@ -509,6 +525,9 @@ impl<'a> Gen<'a> {
                 self.short(matches!(op, Bin::And), x, y)?
             }
             ExprKind::Binary(op, x, y) => {
+                if x.ty.is_some_and(|t| values::held(&self.p.types[t])) {
+                    return Err("comparing records or variants is not compiled yet".into());
+                }
                 let float = self.is_float(x);
                 let (x, y) = (self.value(x)?, self.value(y)?);
                 match op {
@@ -543,7 +562,7 @@ impl<'a> Gen<'a> {
     /// After a trap: dead code, and a stand-in value of the node's type.
     fn unreached(&mut self, e: &Expr) -> Emitted {
         self.dead();
-        let t = e.ty.map(|t| ir_type(self.p, t)).transpose()?;
+        let t = e.ty.map(|t| ir_type(self.p, self.l, t)).transpose()?;
         Ok(t.map(|t| self.zero(t)))
     }
 
@@ -553,7 +572,7 @@ impl<'a> Gen<'a> {
         e: &Expr,
         branches: impl IntoIterator<Item = (Label, Option<&'b Block>)>,
     ) -> Emitted {
-        let t = e.ty.map(|t| ir_type(self.p, t)).transpose()?;
+        let t = e.ty.map(|t| ir_type(self.p, self.l, t)).transpose()?;
         let merge = self.b.create_block();
         for (label, body) in branches {
             self.b.switch_to_block(label);
@@ -751,29 +770,21 @@ fn raw(n: Int) -> i64 {
     n.get()
 }
 
-fn local(place: &Place) -> Result<usize, Refusal> {
-    match place {
-        Place {
-            root: Root::Local(l),
-            steps,
-        } if steps.is_empty() => Ok(*l),
-        _ => Err("a place with steps is not compiled yet".into()),
-    }
+fn ty(e: &Expr) -> Ty {
+    e.ty.expect("the node has a type")
 }
 
 fn what(kind: &ExprKind) -> &'static str {
     match kind {
         ExprKind::Str(_) | ExprKind::Interp(..) => "text",
-        ExprKind::Record(..) => "a record",
         ExprKind::List(_) => "a List",
         ExprKind::Map(_) => "a Map",
-        ExprKind::Variant(..) => "a variant",
         ExprKind::FnValue(_) => "a function value",
         ExprKind::Call(..) => "a call",
-        ExprKind::Match(..) => "match",
         _ => "this expression",
     }
 }
 
 #[cfg(test)]
 mod tests;
+mod values;

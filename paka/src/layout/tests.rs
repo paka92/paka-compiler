@@ -2,9 +2,7 @@
 //! docs/decisions/M4-05.md section 8.
 
 use super::*;
-use crate::parser::parse;
-use crate::resolve::resolve;
-use crate::sig::Table;
+use crate::source::Source;
 
 const FIXTURE: &str = "\
 type Empty {}
@@ -23,50 +21,62 @@ fn effects(e: List<Effect<Msg>>) {}
 
 /// Each type spelled in `want`, laid out and shown.
 fn shown(want: &[(&str, &str)]) {
-    let program = parse("main.paka", FIXTURE.as_bytes()).unwrap();
-    let resolved = resolve("main.paka", &program).unwrap();
-    let mut table = Table::build("main.paka", &program, &resolved);
-    let items: Vec<&Item> = (0..program.defs.len())
-        .map(|i| &table.defs[i].item)
-        .collect();
-    let layouts = Layouts::new(&mut table.types, &items);
-    let types = &table.types;
-    let by_name: BTreeMap<String, Ty> = types.all().map(|t| (types.show(t), t)).collect();
-    for (name, want) in want {
-        let layout = layouts.get(by_name[*name]).unwrap();
-        assert_eq!(show(types, layout), *want, "{name}");
+    let source = Source::file("main.paka", FIXTURE.into());
+    let (mut p, ..) = crate::check("main.paka", &source).unwrap();
+    let layouts = Layouts::new(&mut p);
+    let by_name: BTreeMap<String, Ty> = (0..p.types.len()).map(|t| (name(&p, t), t)).collect();
+    for (spelled, want) in want {
+        let layout = layouts.get(by_name[*spelled]);
+        assert_eq!(show(&p, layout), *want, "{spelled}");
+    }
+}
+
+/// The spelling of a type: `fn(A, B) -> R`, `Map<K, V>`.
+fn name(p: &Program, ty: Ty) -> String {
+    let list = |tys: &[Ty]| {
+        tys.iter()
+            .map(|&t| name(p, t))
+            .collect::<Vec<_>>()
+            .join(", ")
+    };
+    match &p.types[ty] {
+        Type::Int => "Int".into(),
+        Type::Float => "Float".into(),
+        Type::Bool => "Bool".into(),
+        Type::String => "String".into(),
+        Type::List(t) => format!("List<{}>", list(&[*t])),
+        Type::Map(k, v) => format!("Map<{}>", list(&[*k, *v])),
+        Type::Option(t) => format!("Option<{}>", list(&[*t])),
+        Type::Result(t, e) => format!("Result<{}>", list(&[*t, *e])),
+        Type::Effect(m) => format!("Effect<{}>", list(&[*m])),
+        Type::Fn(params, None) => format!("fn({})", list(params)),
+        Type::Fn(params, Some(r)) => format!("fn({}) -> {}", list(params), name(p, *r)),
+        Type::Record(i) => p.records[*i].name.clone(),
+        Type::Enum(i) => p.enums[*i].name.clone(),
     }
 }
 
 /// `size [tag] [field@offset ...] ... owns [entry@offset ...] ...`, a boxed field marked `^`.
-fn show(types: &Types, l: &Layout) -> String {
+fn show(p: &Program, l: &Layout) -> String {
     let list = |items: Vec<String>| format!("[{}]", items.join(" "));
-    let place = |p: &Place| {
-        format!(
-            "{}{}@{}",
-            if p.boxed { "^" } else { "" },
-            types.show(p.ty),
-            p.offset
-        )
+    let place = |at: &Place| {
+        let mark = if at.boxed { "^" } else { "" };
+        format!("{mark}{}@{}", name(p, at.ty), at.offset)
     };
     let entry = |e: &Entry| {
         let kind = match e.kind {
             Owned::String => "String".into(),
-            Owned::List(t) => format!("List({})", types.show(t)),
-            Owned::Map(k, v) => format!("Map({}, {})", types.show(k), types.show(v)),
-            Owned::Box(t) => format!("Box({})", types.show(t)),
-            Owned::Value(t) => format!("Value({})", types.show(t)),
+            Owned::List(t) => format!("List({})", name(p, t)),
+            Owned::Map(k, v) => format!("Map({}, {})", name(p, k), name(p, v)),
+            Owned::Box(t) => format!("Box({})", name(p, t)),
+            Owned::Value(t) => format!("Value({})", name(p, t)),
         };
         format!("{kind}@{}", e.offset)
     };
-    let alts: Vec<_> = l
-        .alternatives
-        .iter()
+    let alts: Vec<_> = (l.alternatives.iter())
         .map(|a| list(a.iter().map(place).collect()))
         .collect();
-    let owned: Vec<_> = l
-        .owned
-        .iter()
+    let owned: Vec<_> = (l.owned.iter())
         .map(|o| list(o.iter().map(entry).collect()))
         .collect();
     let tag = if l.tagged { "tag " } else { "" };
