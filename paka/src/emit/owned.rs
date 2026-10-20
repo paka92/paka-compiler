@@ -25,10 +25,18 @@ impl Gen<'_> {
 
     /// `v` for a new owner: a temporary moves, anything else is copied.
     pub(super) fn owned(&mut self, t: Ty, v: Value) -> Value {
-        if !self.l.owns(t) || self.owners.disown(v) {
-            return v;
+        match self.l.owns(t) {
+            true if self.owners.disown(v) => v,
+            true => self.copy_of(t, v, 0),
+            // Its words may lie in a value about to be dropped.
+            false if self.held(t) => {
+                let size = self.size(t);
+                let to = slot(&mut self.b, size);
+                self.put(t, to, 0, v);
+                to
+            }
+            false => v,
         }
-        self.copy_of(t, v, 0)
     }
 
     /// A copy of `v` of type `t` in a new slot, owning new blocks; a `memory` trap at `site`.

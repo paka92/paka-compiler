@@ -68,7 +68,11 @@ impl Gen<'_> {
     fn item(&mut self, at: Value, item: Ty, i: Value, site: Site) -> Value {
         let flags = MemFlagsData::trusted();
         let len = self.b.ins().load(types::I64, flags, at, LEN);
-        let outside = (self.b.ins()).icmp(IntCC::UnsignedGreaterThanOrEqual, i, len);
+        let past = [
+            IntCC::UnsignedGreaterThanOrEqual,
+            IntCC::UnsignedGreaterThan,
+        ];
+        let outside = (self.b.ins()).icmp(past[usize::from(self.plant == 4)], i, len);
         self.check(outside, rt::OUT_OF_BOUNDS, site, &[i, len]);
         let size = self.size(item);
         let ptr = self.b.ins().load(types::I64, flags, at, PTR);

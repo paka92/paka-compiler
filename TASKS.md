@@ -1283,10 +1283,12 @@ or merged during review. Ids with a letter were added during review.
 
 ### M4-41 · L3 · Build the fuzz loop: two back ends, compare, shrink, keep failures
 
+- status: done
 - needs: M4-21, M4-40
 - flags: native-only
 - done when: Each of five planted code-generator faults is found from a seed and shrunk to under 30 lines.
 - why this level: A reducer that keeps the divergence and stays well-typed while shrinking.
+- note: Done: `paka-diff --fuzz FIRST COUNT KEEP` judges each seed's program on both back ends and shrinks each that differs, by lines, blocks, braces and list items, while it still checks and differs the same way; `PAKA_PLANT=1..5` plants a fault in the dev back end (`>` as `>=`, no subtraction overflow check, a range loop past its end, an unsigned bounds check, `%` as `/`), and `installer/tests/diff.rs` finds each from seeds 224, 59, 60, 181 and 119 and shrinks it to 17 to 22 lines. A program the interpreter runs past the limit is unsupported, and a dev run over four times the interpreter's time counts as hung. Seeds 0 to 399 give 69 agree, 0 differ, 331 unsupported: most generated programs use String functions dev mode lacks (M4-42). The loop found one real miscompile, an item of a list read after the list was dropped, fixed with the case `ownership/item_outlives_its_list`. Dependencies build at opt-level 2 in dev builds, so each dev run compiles about five times faster.
 
 ### M4-41b · L4 · Run 100,000 generated programs and fix every divergence
 

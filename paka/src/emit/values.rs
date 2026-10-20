@@ -38,7 +38,7 @@ pub(super) fn slot(b: &mut FunctionBuilder, bytes: usize) -> Value {
 }
 
 impl Gen<'_> {
-    fn held(&self, t: Ty) -> bool {
+    pub(super) fn held(&self, t: Ty) -> bool {
         held(&self.p.types[t])
     }
 

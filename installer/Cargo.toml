@@ -8,5 +8,6 @@ undocumented_unsafe_blocks = "deny"
 
 [dependencies]
 paka = { path = "../paka" }
+paka-gen = { path = "../paka-gen" }
 paka-json = { path = "../json" }
 paka-rt = { path = "../paka-rt" }

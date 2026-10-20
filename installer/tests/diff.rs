@@ -99,3 +99,36 @@ fn every_run_case_is_listed_once() {
     assert!(total.contains(" 0 differ,"), "{text}");
     assert_eq!(out.status.code(), Some(0));
 }
+
+/// Each planted fault of the dev back end, with a seed whose program it changes.
+const PLANTED: [(u8, u64); 5] = [(1, 224), (2, 59), (3, 60), (4, 181), (5, 119)];
+
+#[test]
+fn the_fuzz_loop_finds_and_shrinks_each_planted_fault() {
+    let keep = std::env::temp_dir().join(format!("paka-fuzz-{}", std::process::id()));
+    std::thread::scope(|s| {
+        for (plant, seed) in PLANTED {
+            let keep = keep.join(plant.to_string());
+            s.spawn(move || {
+                let fuzz = |plant: u8| {
+                    let out = Command::new(env!("CARGO_BIN_EXE_paka-diff"))
+                        .args(["--fuzz", &seed.to_string(), "1"])
+                        .arg(&keep)
+                        .env("PAKA_PLANT", plant.to_string())
+                        .output()
+                        .unwrap();
+                    String::from_utf8(out.stdout).unwrap()
+                };
+                assert!(fuzz(0).starts_with(&format!("agree seed {seed};")));
+                let found = fuzz(plant);
+                assert!(
+                    found.starts_with(&format!("differ seed {seed}:")),
+                    "{found}"
+                );
+                let kept = std::fs::read_to_string(keep.join(format!("{seed}.paka"))).unwrap();
+                assert!(kept.lines().count() < 30, "plant {plant}:\n{kept}");
+            });
+        }
+    });
+    let _ = std::fs::remove_dir_all(&keep);
+}

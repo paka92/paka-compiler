@@ -19,7 +19,7 @@ use std::thread;
 use std::time::Duration;
 
 pub struct Dev {
-    emitter: Emitter,
+    pub emitter: Emitter,
     pub cache: Cache,
     pub loader: Loader<Hash>,
     pub slots: Slots,

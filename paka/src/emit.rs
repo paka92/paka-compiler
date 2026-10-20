@@ -37,6 +37,8 @@ pub struct Emitter {
     isa: OwnedTargetIsa,
     builder: FunctionBuilderContext,
     context: cranelift_codegen::Context,
+    /// A planted fault, 1 to 5, for the fuzz loop's self-test (M4-41); 0 in real use.
+    pub plant: u8,
 }
 
 impl Emitter {
@@ -55,6 +57,7 @@ impl Emitter {
             isa: target.finish(flags).map_err(|e| e.to_string())?,
             builder: FunctionBuilderContext::new(),
             context: cranelift_codegen::Context::new(),
+            plant: 0,
         })
     }
 
@@ -94,7 +97,8 @@ impl Emitter {
         };
         let name = UserFuncName::user(0, def as u32);
         let mut func = Function::with_name_signature(name, signature(p, l, f)?);
-        let built = Gen::build(&*self.isa, &mut func, &mut self.builder, (p, l), def, f);
+        let cx = &mut self.builder;
+        let built = Gen::build(&*self.isa, &mut func, cx, (p, l), (def, f), self.plant);
         if built.is_err() {
             // A refusal leaves the builder's context half used.
             self.builder = FunctionBuilderContext::new();
@@ -283,6 +287,7 @@ struct Gen<'a> {
     rt_sigs: BTreeMap<(usize, bool), SigRef>,
     sigs: BTreeMap<(Vec<Param>, Option<Ty>), SigRef>,
     owners: Owners<Value>,
+    plant: u8,
 }
 
 impl<'a> Gen<'a> {
@@ -291,8 +296,8 @@ impl<'a> Gen<'a> {
         func: &'a mut Function,
         cx: &'a mut FunctionBuilderContext,
         (p, l): (&'a Program, &'a Layouts),
-        def: usize,
-        f: &'a Fn,
+        (def, f): (usize, &'a Fn),
+        plant: u8,
     ) -> Result<(), Refusal> {
         let mut b = FunctionBuilder::new(func, cx);
         let entry = b.create_block();
@@ -339,6 +344,7 @@ impl<'a> Gen<'a> {
             rt_sigs: BTreeMap::new(),
             sigs: BTreeMap::new(),
             owners: Owners::default(),
+            plant,
         };
         g.poll();
         g.stack_check();
@@ -628,7 +634,11 @@ impl<'a> Gen<'a> {
                 self.b.switch_to_block(head);
                 self.poll();
                 let at = self.b.use_var(i);
-                let more = self.b.ins().icmp(IntCC::SignedLessThan, at, to);
+                let less = [IntCC::SignedLessThan, IntCC::SignedLessThanOrEqual];
+                let more = self
+                    .b
+                    .ins()
+                    .icmp(less[usize::from(self.plant == 3)], at, to);
                 self.b.ins().brif(more, inner, &[], exit, &[]);
                 self.b.switch_to_block(inner);
                 self.b.def_var(self.vars[*l], at);
@@ -860,6 +870,9 @@ impl<'a> Gen<'a> {
             Bin::Ne(_) => (IntCC::NotEqual, FloatCC::NotEqual),
             Bin::Order(Cmp::Lt) => (IntCC::SignedLessThan, FloatCC::LessThan),
             Bin::Order(Cmp::Le) => (IntCC::SignedLessThanOrEqual, FloatCC::LessThanOrEqual),
+            Bin::Order(Cmp::Gt) if self.plant == 1 => {
+                (IntCC::SignedGreaterThanOrEqual, FloatCC::GreaterThan)
+            }
             Bin::Order(Cmp::Gt) => (IntCC::SignedGreaterThan, FloatCC::GreaterThan),
             Bin::Order(Cmp::Ge) => (IntCC::SignedGreaterThanOrEqual, FloatCC::GreaterThanOrEqual),
             _ => unreachable!("an arithmetic operator is handled before"),
@@ -875,9 +888,14 @@ impl<'a> Gen<'a> {
             Arith::Add => self.b.ins().sadd_overflow(x, y),
             Arith::Sub => self.b.ins().ssub_overflow(x, y),
             Arith::Mul => self.b.ins().smul_overflow(x, y),
-            Arith::Div | Arith::Rem => return self.divide(matches!(a, Arith::Div), site, x, y),
+            Arith::Div | Arith::Rem => {
+                let div = matches!(a, Arith::Div) || self.plant == 5;
+                return self.divide(div, site, x, y);
+            }
         };
-        self.check(overflow, rt::OVERFLOW, site, &[x, y]);
+        if !(self.plant == 2 && matches!(a, Arith::Sub)) {
+            self.check(overflow, rt::OVERFLOW, site, &[x, y]);
+        }
         v
     }
 
