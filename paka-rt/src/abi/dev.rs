@@ -7,6 +7,7 @@ pub mod items;
 pub mod map;
 pub mod records;
 pub mod view;
+pub mod windowless;
 pub mod words;
 
 use std::alloc::{self, Layout};

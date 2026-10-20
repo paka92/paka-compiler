@@ -1,12 +1,14 @@
 //! The run loop of a compiled headless app (M4-36, docs/decisions/M4-05.md section 11). The
 //! handler and the answer functions are called through `call`; each effect is decoded from its
-//! words and handed to the performer the interpreter shares, `crate::effects`.
+//! words and handed to the performer the interpreter shares, `crate::effects`. A visual app's
+//! loop (`super::windowless`) handles its messages here too.
 
 use super::records::{rt_copy, rt_drop};
 use super::words::{TextWords, as_str, new_text};
 use super::{Context, MEMORY, Trap};
 use crate::effects::{self, Effect, End, Grant, Next, World};
 use crate::ops::Int;
+use crate::route::Event;
 use std::collections::{BTreeSet, VecDeque};
 use std::ptr;
 
@@ -25,12 +27,14 @@ pub struct App<'a> {
     pub update: usize,
     /// The slot id of the definition that builds the state, the state's record and size.
     pub state: Option<(usize, u64, u64)>,
-    /// The start variant's tag.
-    pub start: u64,
+    /// The start variant's tag, if the app has one.
+    pub start: Option<u64>,
     /// The message's record and size.
     pub message: (u64, u64),
-    /// The record of `List[Effect[Msg]]`.
-    pub effects: u64,
+    /// The record of `List[Effect[Msg]]`, if the handler returns one.
+    pub effects: Option<u64>,
+    /// The view's slot id, if the app is visual.
+    pub view: Option<usize>,
 }
 
 /// Why a run stopped before its end: a trap, recorded in the context, or the interrupt.
@@ -41,11 +45,12 @@ pub enum Stopped {
 }
 
 /// A value's words; the blocks it owns are in the run's heap.
-type Words = Vec<u64>;
+pub(super) type Words = Vec<u64>;
 
-enum Queued {
+pub(super) enum Queued {
     Message(Words),
     Answer(u64, String),
+    Event(Event),
 }
 
 /// Runs the app from its start message, whose fields are `start`, until an effect ends it or the
@@ -57,15 +62,9 @@ pub fn serve(
     call: &mut Call,
     world: &mut impl World,
 ) -> Result<End, Stopped> {
-    let mut state = match app.state {
-        Some((def, _, size)) => {
-            let mut state = words(size);
-            status(call(ctx, def, &[addr(&mut state)]))?;
-            state
-        }
-        None => vec![],
-    };
-    let mut queue = VecDeque::from([Queued::Message(start_message(ctx, app, start)?)]);
+    let mut state = state(ctx, app, call)?;
+    let tag = app.start.expect("a headless app has a start");
+    let mut queue = VecDeque::from([Queued::Message(start_message(ctx, app, tag, start)?)]);
     let end = loop {
         let Some(next) = queue.pop_front() else {
             break (3, format!("{}: ended without Exit\n", app.name));
@@ -73,37 +72,76 @@ pub fn serve(
         let mut message = match next {
             Queued::Message(m) => m,
             Queued::Answer(f, text) => answer(ctx, app, call, f, &text)?,
+            Queued::Event(_) => unreachable!("a headless app has no events"),
         };
-        let mut list = [0u64; 3];
-        let mut args = vec![];
-        if app.state.is_some() {
-            args.push(addr(&mut state));
-        }
-        args.extend([addr(&mut message), addr(&mut list)]);
-        let ran = call(ctx, app.update, &args);
+        let at = addr(&mut message);
+        let ended = handle(ctx, app, call, world, &mut state, at, &mut queue);
         release(ctx, app.message.0, &mut message);
-        status(ran)?;
-        let ended = perform(ctx, app, list, world, &mut queue);
-        release(ctx, app.effects, &mut list);
         if let Some(end) = ended? {
             break end;
         }
     };
+    close(ctx, app, &mut state, queue);
+    Ok(end)
+}
+
+/// Frees the state and the messages still queued.
+pub(super) fn close(ctx: &mut Context, app: &App, state: &mut Words, queue: VecDeque<Queued>) {
     for queued in queue {
         if let Queued::Message(mut m) = queued {
             release(ctx, app.message.0, &mut m);
         }
     }
     if let Some((_, record, _)) = app.state {
-        release(ctx, record, &mut state);
+        release(ctx, record, state);
     }
-    Ok(end)
 }
 
-/// The start variant, its fields Strings holding `start`.
-fn start_message(ctx: &mut Context, app: &App, start: &[String]) -> Result<Words, Stopped> {
+/// Runs the handler on the message at `message`, which it borrows, then performs its effects in
+/// order, queueing the answers; the end they bring, if any.
+pub(super) fn handle(
+    ctx: &mut Context,
+    app: &App,
+    call: &mut Call,
+    world: &mut impl World,
+    state: &mut Words,
+    message: u64,
+    queue: &mut VecDeque<Queued>,
+) -> Result<Option<End>, Stopped> {
+    let mut list = [0u64; 3];
+    let mut args = vec![];
+    if app.state.is_some() {
+        args.push(addr(state));
+    }
+    args.push(message);
+    if app.effects.is_some() {
+        args.push(addr(&mut list));
+    }
+    status(call(ctx, app.update, &args))?;
+    let ended = perform(ctx, app, list, world, queue);
+    release(ctx, app.effects.unwrap_or(0), &mut list);
+    ended
+}
+
+/// The state its definition builds, or no words when the app has none.
+pub(super) fn state(ctx: &mut Context, app: &App, call: &mut Call) -> Result<Words, Stopped> {
+    let Some((def, _, size)) = app.state else {
+        return Ok(vec![]);
+    };
+    let mut state = words(size);
+    status(call(ctx, def, &[addr(&mut state)]))?;
+    Ok(state)
+}
+
+/// The start variant `tag`, its fields Strings holding `start`.
+pub(super) fn start_message(
+    ctx: &mut Context,
+    app: &App,
+    tag: u64,
+    start: &[String],
+) -> Result<Words, Stopped> {
     let mut message = words(app.message.1);
-    message[0] = app.start;
+    message[0] = tag;
     for (i, field) in start.iter().enumerate() {
         let t = text(ctx, field)?;
         message[1 + 4 * i..5 + 4 * i].copy_from_slice(&[
@@ -117,7 +155,7 @@ fn start_message(ctx: &mut Context, app: &App, start: &[String]) -> Result<Words
 }
 
 /// The message answer function `f` makes of `text`.
-fn answer(
+pub(super) fn answer(
     ctx: &mut Context,
     app: &App,
     call: &mut Call,
@@ -206,7 +244,7 @@ fn text(ctx: &mut Context, s: &str) -> Result<TextWords, Stopped> {
 }
 
 /// Frees what the value in `words` owns, by its type's record.
-fn release(ctx: &mut Context, record: u64, words: &mut [u64]) {
+pub(super) fn release(ctx: &mut Context, record: u64, words: &mut [u64]) {
     if record != 0 {
         // SAFETY: the caller vouches the record is the value's type's, and no one uses it after.
         unsafe { rt_drop(ctx, record, addr(words)) };
@@ -218,7 +256,7 @@ fn words(bytes: u64) -> Words {
     vec![0; (bytes as usize).div_ceil(8).max(1)]
 }
 
-fn addr(words: &mut [u64]) -> u64 {
+pub(super) fn addr(words: &mut [u64]) -> u64 {
     words.as_mut_ptr().expose_provenance() as u64
 }
 

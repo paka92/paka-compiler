@@ -12,8 +12,10 @@ use paka::source::{Source, in_file};
 use paka_rt::abi::dev::app::{App, Stopped, serve};
 use paka_rt::abi::dev::records::Records;
 use paka_rt::abi::dev::view::{self, Drawing};
+use paka_rt::abi::dev::windowless::{Code, Windowless};
 use paka_rt::abi::dev::{Context, HOLE, Trap, on_runner};
 use paka_rt::effects::{End, World};
+use paka_rt::route::Event;
 use std::ffi::OsString;
 use std::ptr;
 use std::sync::atomic::{AtomicU64, Ordering};
@@ -57,6 +59,16 @@ impl Default for Dev {
 pub struct Ran {
     pub end: Result<End, Stopped>,
     pub trap: Trap,
+    pub ledger: (usize, usize),
+}
+
+/// A visual app's run with no window: the last tree's text, the reports of traps that left it
+/// running, its end if it ended (a handler's trap as status 3), and the ledger's leaks and faults
+/// once all is freed.
+pub struct Played {
+    pub tree: String,
+    pub traps: Vec<String>,
+    pub end: Option<Result<End, Stopped>>,
     pub ledger: (usize, usize),
 }
 
@@ -152,8 +164,8 @@ impl Dev {
         Some(())
     }
 
-    /// Runs the app with `args` in `world` on a heap of `cap` bytes; past `limit` the interrupt
-    /// stops it.
+    /// Runs the headless app with `args` in `world` on a heap of `cap` bytes; past `limit` the
+    /// interrupt stops it.
     pub fn run(
         &self,
         args: &[OsString],
@@ -161,34 +173,8 @@ impl Dev {
         cap: u64,
         limit: Duration,
     ) -> Ran {
-        let p = &self.program;
-        let a = p.app.as_ref().expect("an app");
-        let update = &p.fns[a.update];
-        let (msg, effects) = (update.params.last().unwrap().ty, update.result.unwrap());
-        let Type::Enum(e) = p.types[msg] else {
-            unreachable!("the message is a user enum");
-        };
-        let start = a
-            .start
-            .expect("a headless app: the visual loop is still to come");
-        let fields = &p.enums[e].variants[start].fields;
-        let names: Vec<_> = fields.iter().map(|f| f.name.as_str()).collect();
-        let typed = |t: usize| (self.records[t], self.layouts.get(t).size as u64);
-        let state = paka::emit::state_slot(p).map(|def| {
-            let (record, size) = typed(update.params[0].ty);
-            (def, record, size)
-        });
-        let app = App {
-            name: &a.name,
-            grants: &a.grants,
-            update: a.update,
-            state,
-            start: start as u64,
-            message: typed(msg),
-            effects: self.records[effects],
-        };
-        let start = match paka_rt::effects::arguments(&a.name, &names, args) {
-            Ok(start) => start,
+        let (app, start) = match self.app(args) {
+            Ok(started) => started,
             Err(end) => {
                 let (trap, ledger) = (Trap::default(), (0, 0));
                 return Ran {
@@ -215,6 +201,96 @@ impl Dev {
         })
     }
 
+    /// Runs the visual app with `args` and no window in `world` on a heap of `cap` bytes, as
+    /// `paka::interp::Windowless` does, and sends it `events`; past `limit` the interrupt stops
+    /// it.
+    pub fn play(
+        &self,
+        args: &[OsString],
+        world: &mut (impl World + Send),
+        cap: u64,
+        limit: Duration,
+        events: Vec<Event>,
+    ) -> Played {
+        let (app, start) = match self.app(args) {
+            Ok(started) => started,
+            Err(end) => {
+                return Played {
+                    tree: Drawing::default().root.to_string(),
+                    traps: vec![],
+                    end: Some(Ok(end)),
+                    ledger: (0, 0),
+                };
+            }
+        };
+        let (p, l) = (&self.program, &self.layouts);
+        on_runner(cap, |ctx| {
+            let (tree, traps, end) = until(ctx, limit, |ctx| {
+                // SAFETY: `ctx` is a context that lives through the session.
+                let session = unsafe { self.slots.session((&raw mut *ctx).cast()) }.unwrap();
+                let mut call = |ctx: &mut Context, id: usize, args: &[u64]| {
+                    // SAFETY: `edit` installed every definition as M4-05 section 5 compiles it,
+                    // and the loop passes each the argument words its signature takes.
+                    unsafe { session.call(id, (&raw mut *ctx).cast(), args) }.unwrap()
+                };
+                let mut show = |t: u64, at: u64| show(p, l, t as usize, at, &read);
+                let at = |trap: &Trap| self.at(trap);
+                let code = Code {
+                    call: &mut call,
+                    show: &mut show,
+                    at: &at,
+                };
+                let mut ui = Windowless::start(ctx, code, &app, &start, world);
+                ui.send(events);
+                let tree = ui.drawing.root.to_string();
+                let traps = ui.traps.iter().map(|t| self.report(t)).collect();
+                (tree, traps, ui.end.take())
+            });
+            let end = end.map(|end| match end {
+                Err(Stopped::Trap) => Ok((3, self.report(&ctx.trap))),
+                end => end,
+            });
+            let ledger = (ctx.heap.leaks().len(), ctx.heap.faults().len());
+            Played {
+                tree,
+                traps,
+                end,
+                ledger,
+            }
+        })
+    }
+
+    /// What the run loops need of the installed app, and its start message's fields from
+    /// `args`, or the usage line.
+    fn app(&self, args: &[OsString]) -> Result<(App<'_>, Vec<String>), End> {
+        let p = &self.program;
+        let a = p.app.as_ref().expect("an app");
+        let update = &p.fns[a.update];
+        let msg = update.params.last().unwrap().ty;
+        let Type::Enum(e) = p.types[msg] else {
+            unreachable!("the message is a user enum");
+        };
+        let fields = a.start.map_or(&[][..], |v| &p.enums[e].variants[v].fields);
+        let names: Vec<_> = fields.iter().map(|f| f.name.as_str()).collect();
+        let typed = |t: usize| (self.records[t], self.layouts.get(t).size as u64);
+        let state = paka::emit::state_slot(p).map(|def| {
+            let (record, size) = typed(update.params[0].ty);
+            (def, record, size)
+        });
+        let app = App {
+            name: &a.name,
+            grants: &a.grants,
+            update: a.update,
+            state,
+            start: a.start.map(|v| v as u64),
+            message: typed(msg),
+            effects: update.result.map(|t| self.records[t]),
+            view: a.view,
+        };
+        let start = paka_rt::effects::arguments(&a.name, &names, args)?;
+        Ok((app, start))
+    }
+
     /// Draws view `id` from its argument words on `ctx` (M5-24); release the drawing on the same
     /// context.
     pub fn draw(&self, ctx: &mut Context, id: FnId, args: &[u64]) -> Result<Drawing, Stopped> {
@@ -224,11 +300,6 @@ impl Dev {
             // SAFETY: `edit` installed every definition as M4-05 section 5 compiles it, and
             // `view::draw` passes the view the argument words its signature takes.
             unsafe { session.call(id, (&raw mut *ctx).cast(), args) }.unwrap()
-        };
-        let read = |at: u64, to: &mut [u8]| {
-            let from = ptr::with_exposed_provenance::<u8>(at as usize);
-            // SAFETY: `show` reads only the words and blocks of a message the drawing holds.
-            unsafe { ptr::copy_nonoverlapping(from, to.as_mut_ptr(), to.len()) };
         };
         let (p, l) = (&self.program, &self.layouts);
         let mut show = |t: u64, at: u64| show(p, l, t as usize, at, &read);
@@ -240,19 +311,36 @@ impl Dev {
     pub fn report(&self, trap: &Trap) -> String {
         let p = &self.program;
         let app = &p.app.as_ref().expect("an app").name;
-        let kind = KINDS[trap.kind as usize - 1];
-        let site = match trap.site {
-            0 => trap.frames.first().copied().unwrap_or(0),
-            site => site,
-        };
-        let (_, at) = p.place(site);
-        let ((file, _), line) = in_file(&p.files, |f| f.1, at.line);
-        let mut report = format!("{app}: trap {kind} at {file}:{line}:{}\n", at.col);
-        if let (HOLE, Some(name)) = (trap.kind, &at.hole) {
+        let mut report = format!("{app}: {}\n", self.at(trap));
+        if let (HOLE, Some(name)) = (trap.kind, &p.place(site(trap)).1.hole) {
             report += &format!("  ??{name}\n");
         }
         report
     }
+
+    /// `trap KIND at FILE:LINE:COL`, as an error node shows a first view's trap.
+    fn at(&self, trap: &Trap) -> String {
+        let p = &self.program;
+        let kind = KINDS[trap.kind as usize - 1];
+        let (_, at) = p.place(site(trap));
+        let ((file, _), line) = in_file(&p.files, |f| f.1, at.line);
+        format!("trap {kind} at {file}:{line}:{}", at.col)
+    }
+}
+
+/// Where `trap` happened: its site, or for a `stack` trap its first frame.
+fn site(trap: &Trap) -> u64 {
+    match trap.site {
+        0 => trap.frames.first().copied().unwrap_or(0),
+        site => site,
+    }
+}
+
+/// Fills `to` from address `at`, for `show`.
+fn read(at: u64, to: &mut [u8]) {
+    let from = ptr::with_exposed_provenance::<u8>(at as usize);
+    // SAFETY: `show` reads only the words and blocks of a message a drawing holds.
+    unsafe { ptr::copy_nonoverlapping(from, to.as_mut_ptr(), to.len()) };
 }
 
 fn files(source: &Source) -> Vec<(OsString, Vec<u8>)> {

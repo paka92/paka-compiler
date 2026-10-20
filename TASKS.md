@@ -1675,6 +1675,8 @@ or merged during review. Ids with a letter were added during review.
 - flags: native-only
 - done when: The windowless counter test from M5-20 passes unchanged with dev-mode code in place of the interpreter.
 - why this level: Plugs call slots into the windowless loop; message values must stay valid between view and update.
+- status: done
+- note: Done: `paka_rt::abi::dev::windowless::Windowless` runs a compiled visual app with no window in the order and with the outcomes of `interp::Windowless`: state from its definition, the start message (a trap there rebuilds the defaults), the first tree (one error node if it traps), then one queue of clicks, keys and effect results, each handled to the end. The loop is mirrored, not shared: the two differ in values, ownership and trap reports. Handlers and effects go through the headless loop's own steps in `app.rs`. A click's message is borrowed from the drawing it lies in, which is released only after the next tree is drawn; an Input's `on_change` is its constructor's slot id, called on the new text as an effect answer is. `Dev::play` runs a script of events and gives the tree text, trap reports and end. Tests: installer/tests/windowless.rs plays each script of the interpreter's windowless tests (the counter and a form with an Input) on both back ends, compares tree text, trap first lines and end, and checks the heap has no leaks or faults.
 
 ### M5-25b · L4 · Roll back state and drop effects when a handler traps
 

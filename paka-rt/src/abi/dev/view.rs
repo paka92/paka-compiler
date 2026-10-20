@@ -141,10 +141,26 @@ pub struct Drawing {
     owned: Vec<(u64, usize)>,
 }
 
+impl Default for Drawing {
+    /// No tree yet: one error node with no text, as the interpreter starts.
+    fn default() -> Drawing {
+        Drawing {
+            root: Node::Error(String::new()),
+            words: vec![],
+            owned: vec![],
+        }
+    }
+}
+
 impl Drawing {
-    /// The address of the message's value.
-    pub fn address(&self, m: &Message) -> u64 {
-        self.words[m.at..].as_ptr().expose_provenance() as u64
+    /// The address of the value of the message at `at`.
+    pub fn address(&self, at: usize) -> u64 {
+        self.words[at..].as_ptr().expose_provenance() as u64
+    }
+
+    /// The first word of the message at `at`: an `on_change` function's slot id.
+    pub fn word(&self, at: usize) -> u64 {
+        self.words[at]
     }
 
     pub fn release(self, ctx: &mut Context) {
