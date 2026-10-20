@@ -6,7 +6,7 @@ type Token { kind: Kind, text: String, line: Int, col: Int }
 
 type Problem { line: Int, col: Int, message: String }
 
-enum Value { Text(text: String), Items(items: List<Value>), Table(entries: Map<String, Value>) }
+enum Value { Plain(text: String), Items(items: List<Value>), Table(entries: Map<String, Value>) }
 
 type Parser { tokens: List<Token> = [], pos: Int = 0, duplicate: Option<Problem> = None }
 
@@ -129,7 +129,7 @@ fn value(p: inout Parser) -> Result<Value, Problem> {
   let t = current(p)
   if t.kind == Str {
     p.pos += 1
-    return Ok(Text(t.text))
+    return Ok(Plain(t.text))
   }
   if is_symbol(p, "\{") {
     p.pos += 1
@@ -156,7 +156,7 @@ fn quoted(text: String) -> String {
 
 fn show(path: String, v: Value, out: inout List<String>) {
   match v {
-    Text(text) => append(&out, "{path} = {quoted(text)}")
+    Plain(text) => append(&out, "{path} = {quoted(text)}")
     Items(items) => {
       if is_empty(items) { append(&out, "{path} = []") }
       for i in 0..<len(items) {
