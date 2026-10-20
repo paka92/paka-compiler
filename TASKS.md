@@ -1656,6 +1656,8 @@ or merged during review. Ids with a letter were added during review.
 - note: Per M5-03: the to-do state holds `draft` with a `Draft(text: String)` message; Add appends and clears it in one handler.
 - note: Per M5-04: the to-do sample uses only the five elements; its done mark is a Button.
 - note: Per M5-06: the to-do UI example is the one in docs/decisions/M5-06.md; elements an example clicks are best given keys.
+- status: done
+- note: Done: `tests/cases/examples/sample_todo` is the to-do app as M5-01, M5-03, M5-04 and M5-06 write it, with the M5-06 example, its tree text and three more examples; all five pass. `tests/cases/examples/sample_counter` now holds the whole GENESIS counter, view and app included, with four UI examples: three pass and `reset_to_zero`, which clicks `??reset`, is unfinished (status 3). The case runner now unsets DISPLAY and WAYLAND_DISPLAY; paka/tests/examples.rs checks that both samples check with status 0 (the counter gives its `??reset` hole note). The README.md in each case lists the sources.
 
 ### M5-24 · L4 · Compile views in dev mode and decode their trees in the runtime
 

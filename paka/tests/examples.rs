@@ -337,3 +337,17 @@ typed_at_end pass
         (expected, "", Some(3))
     );
 }
+
+#[test]
+fn both_samples_check_clean() {
+    for sample in ["sample_counter", "sample_todo"] {
+        let file = format!(
+            "{}/../tests/cases/examples/{sample}/main.paka",
+            env!("CARGO_MANIFEST_DIR")
+        );
+        let out = Command::new(PAKA).args(["check", &file]).output().unwrap();
+        let err = String::from_utf8(out.stderr).unwrap();
+        assert_eq!(out.status.code(), Some(0), "{sample}: {err}");
+        assert!(!err.contains("error["), "{sample}: {err}");
+    }
+}

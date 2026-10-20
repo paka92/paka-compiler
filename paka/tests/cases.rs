@@ -1,6 +1,7 @@
 //! Case runner: every folder under `tests/cases/<stage>/` against its hand-written expectations
 //! (spec/m1.md section 11). The stage names the command: `check-text`, `check-json` and `examples`
 //! run the command they are named for, every other stage runs `paka run`.
+//! Every case runs with no display set.
 //! `run-interp` holds the run cases that only the interpreter runs until M4-40 (`native.rs` takes `run`).
 
 #[allow(dead_code)]
@@ -101,7 +102,11 @@ fn all_cases() {
         for case in subfolders(&stage) {
             count += 1;
             let mut command = Command::new(env!("CARGO_BIN_EXE_paka"));
-            command.args(args(&stage)).args(case_args(&case));
+            command
+                .args(args(&stage))
+                .args(case_args(&case))
+                .env_remove("DISPLAY")
+                .env_remove("WAYLAND_DISPLAY");
             if let Err(e) = check(&case, command) {
                 failures.push(format!("{}: {e}", case.display()));
             }
