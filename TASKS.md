@@ -1593,6 +1593,7 @@ or merged during review. Ids with a letter were added during review.
 
 ### M5-18 · L3 · Route clicks and keystrokes to messages, with focus
 
+- status: done
 - needs: M5-17
 - flags: none
 - done when: On hand-built trees, a click on a button yields its message and keys reach only the focused input. Focus stays with its key after a reorder; an event aimed at an element the next diff removed is dropped.
@@ -1600,6 +1601,7 @@ or merged during review. Ids with a letter were added during review.
 - note: Per M5-02: focus is one id held by the runtime, dropped when that element is no longer matched.
 - note: Per M5-03: an input event becomes a message only when its turn in the queue comes; keys with no focused input are dropped.
 - note: Per M5-04: only an Input takes focus and only a click on an Input moves it; a click on a Button leaves it; Tab and Enter are dropped.
+- note: Done: `paka-rt/src/route.rs` adds `route(tree, event)`. An event is a key or a click aimed at a path and the kind found there, worked out against the tree of its turn. A click on a Button sends its message; a click on an Input moves focus there; any other click, or one whose element is gone or changed kind, leaves focus and sends nothing. Keys go to the focused Input through `Edit::key` and give its `on_change` with the change, which the caller turns into a message. Focus is the `focus` mark in the Input's edit, so `keep` carries it by key and drops it with the element. The queue itself is left to the update loop.
 
 ### M5-19 · L3 · Build the text input's editing state: text, cursor, selection
 

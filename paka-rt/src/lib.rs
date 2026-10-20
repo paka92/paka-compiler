@@ -16,6 +16,8 @@ pub mod input;
 #[forbid(unsafe_code)]
 pub mod ops;
 #[forbid(unsafe_code)]
+pub mod route;
+#[forbid(unsafe_code)]
 mod rt;
 #[forbid(unsafe_code)]
 pub mod tree;
