@@ -921,6 +921,7 @@ or merged during review. Ids with a letter were added during review.
 - done when: Owner approves a written interface with a schema for find, view, edit and run, and hand-written example exchanges for each. The base version of an edit is per definition.
 - why this level: A compatibility promise to every agent; type-shape queries, token budgets and base versions have no settled meaning yet.
 - note: Token budgets use M2-18's counting rule. Done: approved by the owner on 2026-10-15; see docs/decisions/M4-03.md.
+- note: Per M5-07: the edit schema gains one optional state field, a call that carries only that field, one more refusal reason and the state result values, added to its schema or amended in M5.
 
 ### M4-04 · L4 · Propose where dev-mode code runs and how a run is stopped
 
@@ -1055,6 +1056,7 @@ or merged during review. Ids with a letter were added during review.
 - why this level: Source files, database and version check must change together or not at all, even when the edit breaks users.
 - note: Edit accepts any layout that parses and stores canonical text for the edited definition only (M4-47). In a directory program an add writes a new file named after the definition, a delete removes an emptied file, and text whose name differs from the call's name is refused (M4-48). Per M4-03: the base version is the 12-digit hash of canonical text; null `base` adds, null `text` deletes; a stale base returns the current version and text; text that does not parse is refused with kind `parse`.
 - note: Done: paka/src/session.rs holds the served program: its workspace and its files. Refusals come in this order: `not_found`, `name_taken`, `stale_base`, then `parse`, `not_one_definition` and `name_mismatch` on the text. Two refusals M4-03 does not list: `conflict` when the edit leaves the program unable to check at all (a built-in's name, a variant named like a type, a second app), and `io` when the file cannot be written; both store nothing. An add whose file name passes 255 bytes is a `bad_request`. Files are replaced through a copy renamed over them; a single-file program's lock moves to each new copy. A delete takes the comment lines right above the definition and the rest of its last line; comments in sent text outside the definition are written to the file but are not part of its text or version. `broke` lists the definitions that checked before the edit and do not after. The `run` field of an edit came with M4-39. Transcripts tests/serve/edit.txt and dir.txt check replies and the files after.
+- note: Per M5-07: unchanged in M4; its Edit path gains the stored-type check in M5-28.
 
 ### M4-18 · L2 · Implement find by name or user, and view within a token budget
 
@@ -1414,52 +1416,73 @@ or merged during review. Ids with a letter were added during review.
 
 ### M5-01 · L5 · Decide what a view is and what its body may contain
 
+- status: done
 - needs: nothing
 - flags: decision, owner
 - done when: Owner approves a written proposal with alternatives; it shows both sample views and says how a visual app starts and ends.
 - why this level: Shapes the language: child lists, loops and conditions in a view, and views calling views, checkable from signatures.
+- note: Done: approved by the owner on 2026-10-13; see docs/decisions/M5-01.md.
 
 ### M5-02 · L5 · Decide key rules: who needs one, scope, tree-wide ids, duplicates
 
+- status: done
 - needs: M5-01
 - flags: decision, owner
 - done when: Owner approves the rules, including what a duplicate key shows and when kept element state is dropped.
 - why this level: Element identity across edits and loops; sibling-scoped keys must still yield ids unique across the tree.
+- note: Done: approved by the owner on 2026-10-13; see docs/decisions/M5-02.md.
 
 ### M5-03 · L5 · Decide the text input model: text held by app or element
 
+- status: done
 - needs: M5-02
 - flags: decision, owner
 - done when: Owner approves a proposal with both models written out for the to-do input, including preedit and a trap.
 - why this level: Decides who owns typed text; interacts with IME preedit, state rollback, keys and what examples can observe.
+- note: Done: approved by the owner on 2026-10-13; see docs/decisions/M5-03.md.
 
 ### M5-04 · L5 · Decide the elements M5 builds and every argument of each
 
+- status: done
 - needs: M5-01, M5-02, M5-03
 - flags: decision, owner
 - done when: Owner approves a table of the elements M5 builds (about seven) with arguments, events and default look, and a list by name of the other elements as not decided; the owner either places them in a milestone or records the paper's "about 20" as open.
 - why this level: Fixes the built-in vocabulary of every Paka GUI; hard to change once programs and the reference use it.
+- note: Per M5-01: the paper's `list` element cannot be named `List`; the table marks which elements take a child block and says whether element arguments may be left out.
+- note: Per M5-02: the table marks which elements hold state and so need a key; every element accepts `key:` as its last labelled argument.
+- note: Per M5-03: the input is `Input(text, on_change:, key:)` with no cursor or focus arguments and needs a key; the table rules on Enter, on a hint text, and on whether a click on a button takes focus from an input.
+- note: Done: approved by the owner on 2026-10-13; see docs/decisions/M5-04.md.
 
 ### M5-05 · L5 · Decide the layout rules and units
 
+- status: done
 - needs: M5-04
 - flags: decision, owner
 - done when: Owner approves rules for size, gap, alignment, overflow and text wrap, each with a worked example in numbers.
 - why this level: Layout is part of the language's meaning: one tree must give one result, with no toolkit to lean on.
+- note: Per M5-04: there are no size, padding or alignment arguments; only `gap:` and the per-kind width class need rules.
+- note: Done: approved by the owner on 2026-10-13; see docs/decisions/M5-05.md.
 
 ### M5-06 · L5 · Decide UI example functions, the tree text form and hole status
 
+- status: done
 - needs: M5-02, M5-03, M5-04
 - flags: decision, owner
 - done when: Owner approves the function list, the tree text form and the hole status; a to-do example is written out.
 - why this level: Defines what counts as evidence for a GUI: how examples address elements and what a drawn hole means.
+- note: Per M5-02: examples address an element by its path of keys and place numbers; the tree text shows keys, place numbers and the duplicate-key error node.
+- note: Per M5-03: the tree text shows an input's text, cursor, selection and preedit as separate fields; the to-do example reads the draft from the tree; nothing has focus at start, so typing names its target or the example clicks the input first.
+- note: Done: approved by the owner on 2026-10-13; see docs/decisions/M5-06.md.
 
 ### M5-07 · L5 · Decide how migrate and explicit reset are written and applied
 
+- status: done
 - needs: nothing
 - flags: decision, owner
 - done when: Owner approves a proposal covering detection of changed stored types, migrate, reset, and a migrate that traps.
 - why this level: Migrate must name a type that no longer exists in the source; a wrong rule corrupts live state.
+- note: Per M5-01: an explicit reset can use the fresh value M5-01 defines: the state type built from its field defaults.
+- note: Done: approved by the owner on 2026-10-13; see docs/decisions/M5-07.md.
 
 ### M5-08 · L4 · Run the library trial: one window, one text field, one button
 
@@ -1475,6 +1498,7 @@ or merged during review. Ids with a letter were added during review.
 - done when: Owner approves one route and the four Look calls: tree, screenshot, click, keystroke, with their inputs and outputs.
 - why this level: Wayland allows no embedding, screen grab or injected input; the route must work without them.
 - note: Per M4-03: the Look calls are added to its envelope and error shape as new `call` values, with no new version.
+- note: Per M5-06: Look's tree call returns the same tree text form, and its click can take the same path form.
 
 ### M5-10 · L2 · Vendor the approved GUI crates, pinned and built offline
 
@@ -1490,6 +1514,8 @@ or merged during review. Ids with a letter were added during review.
 - done when: Tests with hand-written trees pass; printing then parsing the samples changes nothing; errors quote the offending text.
 - why this level: Parser and canonical printer must agree on nested child blocks, keys and holes, with precise errors.
 - note: Views follow the M4-47 block and flat-list rules; only the trailing-block sample is new.
+- note: Per M5-01: a child block is read only where an element may stand and holds only element lines, view calls, holes, `let`, `if`, `for` and `match`; a view body is `let` lines plus one element expression.
+- note: Per M5-02: `key:` is parsed on view calls as well as on elements, though no view declares it.
 
 ### M5-12 · L2 · Add the element table as built-in signatures
 
@@ -1497,6 +1523,10 @@ or merged during review. Ids with a letter were added during review.
 - flags: none
 - done when: A test lists every element, argument, type and needs-key mark, and matches the approved table written by hand.
 - why this level: Transcribes an approved table into data; one module, checked item by item.
+- note: Per M5-01: element names enter the built-in names table for every program, headless ones included; an earlier test case using one as its own name is renamed in a commit before the code, citing M2-02.2.
+- note: Per M5-04: five elements (Text, Button, Input, Row, Col); per argument a type and a default or none; per element the child-block, needs-key, takes-focus and width-class marks.
+- note: Per M5-05: the table carries each element's width class.
+- note: Per M5-06: `Ui` and the six `ui_` names enter the built-in names table for every program.
 
 ### M5-13 · L3 · Resolve and type-check views, holes, required keys and app wiring
 
@@ -1504,6 +1534,9 @@ or merged during review. Ids with a letter were added during review.
 - flags: none
 - done when: Each rule has an accepted and a rejected case with a hand-written error; the counter sample checks clean.
 - why this level: Several rules across resolver and checker: message types, element-position holes, mandatory keys, all from signatures alone.
+- note: Per M5-01: four more checks: elements only inside views and in element position, the same message type on view calls, a visual app's state type is a record with a default on every field, and exactly one root per view.
+- note: Per M5-02: five more checks: a key on stateful elements, a key on every loop child but a hole, no key on a view's root and no root that needs one, no view parameter named `key`, and no literal key twice directly in one block.
+- note: Per M5-04: a labelled element argument with a table default may be left out; written ones follow table order with `key:` last; a negative literal gap is rejected.
 
 ### M5-14 · L4 · Carry views through the derived database and the agent tools
 
@@ -1512,6 +1545,7 @@ or merged during review. Ids with a letter were added during review.
 - done when: Tests: a view body edit rechecks only that view; a Msg edit, an edit to a view it calls, to the state type and to the app's view field each give exactly the hand-written rechecked and broken sets; M4-14's incremental-equals-rebuild test runs with views in its edit generator and passes.
 - why this level: Touches ids, use index, hashes and Find, View, Edit; a missed dependency edge silently skips a recheck.
 - note: Per M4-03: views travel through find, view and edit with kind `view` and no new fields.
+- note: Per M5-07: the index gives the set of types reached from the state type, through built-in containers too.
 
 ### M5-15 · L2 · Define the runtime element tree and print it as text
 
@@ -1519,6 +1553,9 @@ or merged during review. Ids with a letter were added during review.
 - flags: none
 - done when: Three hand-built trees print exactly as hand-written text, including a placeholder and an error node.
 - why this level: One data type and one printer for an approved text form.
+- note: Per M5-02: each tree node carries its key or its place number, and the text form prints it.
+- note: Per M5-05: tree nodes carry no rectangles; layout results live beside the tree.
+- note: Per M5-06: the printer writes one line per node with steps (digits, single-quoted String keys, `#n`, `#n.r`), fields per kind, defaults left out, escaped texts, and `Hole` and `Error` lines.
 
 ### M5-16 · L3 · Lower views to core form and build trees in the interpreter
 
@@ -1526,6 +1563,9 @@ or merged during review. Ids with a letter were added during review.
 - flags: none
 - done when: The interpreter gives the hand-written tree text for the counter view at counts 0 and 3, placeholder included.
 - why this level: Lowering child blocks, loops and holes to core, then turning interpreter values into the runtime tree.
+- note: Per M5-02: lowering numbers the element lines of every child block and puts the number on each unkeyed child.
+- note: Per M5-04: building a Row or Col with a negative computed gap is a trap in the view.
+- note: Per M5-06: trees carry message values and non-default arguments so the printer can show them, in the value text form of M2-09 and M2-14.
 
 ### M5-17 · L4 · Diff trees by key and keep element state with its key
 
@@ -1533,6 +1573,7 @@ or merged during review. Ids with a letter were added during review.
 - flags: none
 - done when: Hand-written cases pass for reorder, insert, remove, kind change, placeholder to element, and duplicate sibling keys.
 - why this level: State silently lands on the wrong element after reorder, insert or kind change; duplicates must show in place.
+- note: Per M5-02: a child matches the old child with the same step (key or place number) and kind, under matched parents only; siblings sharing a key collapse into one error node and their state is dropped.
 
 ### M5-18 · L3 · Route clicks and keystrokes to messages, with focus
 
@@ -1540,6 +1581,9 @@ or merged during review. Ids with a letter were added during review.
 - flags: none
 - done when: On hand-built trees, a click on a button yields its message and keys reach only the focused input. Focus stays with its key after a reorder; an event aimed at an element the next diff removed is dropped.
 - why this level: Focus must follow keys through diffs; events aimed at a removed element must be dropped, not misdelivered.
+- note: Per M5-02: focus is one id held by the runtime, dropped when that element is no longer matched.
+- note: Per M5-03: an input event becomes a message only when its turn in the queue comes; keys with no focused input are dropped.
+- note: Per M5-04: only an Input takes focus and only a click on an Input moves it; a click on a Button leaves it; Tab and Enter are dropped.
 
 ### M5-19 · L3 · Build the text input's editing state: text, cursor, selection
 
@@ -1548,6 +1592,8 @@ or merged during review. Ids with a letter were added during review.
 - done when: Hand-written cases pass for insert, delete, move and select, including non-ASCII text, and emit the approved messages.
 - why this level: Cursor and selection over multi-byte text are easy to get wrong; must follow the approved input model.
 - note: Standard library only. If M5-03 makes grapheme clusters the cursor unit, the table comes from a crate already on M5-08's approved list; otherwise the task gains download and owner.
+- note: Per M5-03: the element stores no text, only cursor, selection and preedit. It sends the whole new text and moves the cursor only when the view hands back a text other than the one from before the key. The cursor steps by code point, so no crate table and no download.
+- note: Per M5-04: no Enter message and no hint text.
 
 ### M5-20 · L3 · Run a visual app with no window in the interpreter
 
@@ -1555,6 +1601,7 @@ or merged during review. Ids with a letter were added during review.
 - flags: none
 - done when: With no display set, a test clicks + and reads hand-written tree text; a trapping view keeps the old tree.
 - why this level: Joins state, update, view, diff and input into one loop; a trapping view must leave the tree untouched.
+- note: Per M5-01: the windowless loop follows the launch order (state from defaults, start message if any, first tree), ends on `Exit`, and holds one error node if the first view run traps.
 
 ### M5-21 · L3 · Parse and check UI examples and their built-in functions
 
@@ -1562,6 +1609,7 @@ or merged during review. Ids with a letter were added during review.
 - flags: none
 - done when: The to-do example from the approved decision checks clean; each misuse case gives its hand-written error.
 - why this level: Extends parser, resolver and checker for the approved functions; wrong element references must fail at check time.
+- note: Per M5-06: it checks the six `ui_` functions and the `Ui` type, allows them only in example bodies, and rejects a badly formed literal path. A wrong element reference fails at check time only in the path's form; whether an element exists depends on state.
 
 ### M5-22 · L3 · Run UI examples with no window and compute their status
 
@@ -1570,6 +1618,7 @@ or merged during review. Ids with a letter were added during review.
 - done when: With no display set, three counter examples report pass, fail and the decided hole status, as written by hand.
 - why this level: Status must come from the toolchain alone; hole status per decision.
 - note: No cache: every UI example runs each time. The cache is M7-09.
+- note: Per M5-06: an example is unfinished only if it touches a placeholder or reaches a hole; any other trap in a handler, a view or a `ui_` call ends it as trapped; an error node ends it as fail; allowed effects are dropped.
 
 ### M5-23 · L3 · Write the to-do sample and UI examples for both samples
 
@@ -1577,6 +1626,10 @@ or merged during review. Ids with a letter were added during review.
 - flags: none
 - done when: Both samples check clean; with no display set, their UI examples report the hand-written expected statuses.
 - why this level: A new GUI app in a language with no examples; the author must tell their own error from a toolchain defect.
+- note: Per M5-01: the to-do sample has one message enum, a `todo_row` view called in a `for`, and the draft text in the state.
+- note: Per M5-03: the to-do state holds `draft` with a `Draft(text: String)` message; Add appends and clears it in one handler.
+- note: Per M5-04: the to-do sample uses only the five elements; its done mark is a Button.
+- note: Per M5-06: the to-do UI example is the one in docs/decisions/M5-06.md; elements an example clicks are best given keys.
 
 ### M5-24 · L4 · Compile views in dev mode and decode their trees in the runtime
 
@@ -1584,6 +1637,7 @@ or merged during review. Ids with a letter were added during review.
 - flags: unsafe, native-only
 - done when: Compiled counter view prints the same hand-written tree text as the interpreter; a trapping view returns trap status; unsafe block reviewed.
 - why this level: Unsafe reading of compiled values holding messages; a layout mistake is silent, and Miri is not available.
+- note: Per M5-02: compiled trees carry the place number; M5-26's comparison shows any disagreement with the interpreter.
 
 ### M5-25 · L3 · Run a visual app with no window on dev-mode code
 
@@ -1598,6 +1652,7 @@ or merged during review. Ids with a letter were added during review.
 - flags: unsafe
 - done when: In the interpreter and in dev mode, a windowless app whose handler traps shows the old tree, answers the next click, and performed none of that handler's effects.
 - why this level: State and effect list must be restored together on every trap path; a miss leaves half-applied state silently.
+- note: Per M5-03: one more case: a handler that traps on an input's message leaves text and cursor as they were.
 
 ### M5-26 · L3 · Compare interpreter and dev mode on view trees and UI examples
 
@@ -1605,6 +1660,7 @@ or merged during review. Ids with a letter were added during review.
 - flags: native-only
 - done when: One command runs every UI example in both back ends, fails on any tree difference, and catches a planted one.
 - why this level: Extends the two-back-end harness to trees and event sequences; it must be shown to catch a planted difference.
+- note: Per M5-06: comparing tree text now also catches a wrong message or gap.
 
 ### M5-27 · L4 · Re-run the view after a code swap, between frames only
 
@@ -1612,6 +1668,7 @@ or merged during review. Ids with a letter were added during review.
 - flags: none
 - done when: Windowless test: replacing ??reset with a button shows the button, count unchanged; a click queued before the swap delivers no stale message.
 - why this level: Input queued against the old tree carries old-layout messages; dispatching one after a swap corrupts memory silently.
+- note: Per M5-07: an input or effect answer queued before a swap is rebuilt against the new code or dropped and reported; on a reset the queue is emptied and later answers to old effects are dropped.
 
 ### M5-28 · L4 · Refuse state-type edits that carry no migrate or reset
 
@@ -1620,6 +1677,7 @@ or merged during review. Ids with a letter were added during review.
 - done when: Tests: editing the state type, or a type held in it through a list, an enum payload, a map, a shared value or a pool, is refused; the old version still answers clicks.
 - why this level: Types stored through lists are outside the interface hash; missing one lets old data run under a new layout.
 - note: Follows docs/decisions/M2-09.md: the interface hash covers every named type a signature reaches, and no app state may hold a function type.
+- note: Per M5-07: compare the stored types of the running and the new version, reached through fields, lists, maps, payloads, shared values and pools, ignoring defaults, comments and layout. While a visual app runs, refuse at the Edit call unless a state choice is carried or waiting; hold back a swap that changes a stored type with no choice; add the state field to the Edit call. The pool case applies only if pools exist by then.
 
 ### M5-29 · L3 · Apply an explicit reset when the state type changes
 
@@ -1627,6 +1685,8 @@ or merged during review. Ids with a letter were added during review.
 - flags: none
 - done when: Test: the refused edit, resent with a reset, installs; state shows its defaults and the tree is rebuilt.
 - why this level: Crosses the edit tool, installer and runtime: state and kept element state restart together, between frames.
+- note: Per M5-02: focus is dropped on a reset along with kept element state.
+- note: Per M5-07: a reset is a relaunch in the same window (defaults, start message, element state and focus dropped, view) and may come with any edit or alone.
 
 ### M5-30 · L4 · Run migrate at swap time; keep the old version if it traps
 
@@ -1634,6 +1694,7 @@ or merged during review. Ids with a letter were added during review.
 - flags: none
 - done when: Both back ends: adding a field with migrate keeps the count; a trapping migrate leaves the old version running.
 - why this level: Old and new layouts of one type live side by side; a failed migrate must leave everything as it was.
+- note: Per M5-07: no task parses and checks a migrate yet; a new task must parse the migrate text and check it against two versions of the types. M5-30 keeps the migrate with the waiting change set, runs it before the swap, and leaves the change set waiting if it traps.
 
 ### M5-31 · L3 · Lay out the element tree and find the element under a point
 
@@ -1641,6 +1702,7 @@ or merged during review. Ids with a letter were added during review.
 - flags: none
 - done when: Each approved layout rule has a test with hand-computed rectangles, using a fixed-width stand-in for text measuring.
 - why this level: Known technique, but sizing, wrapping and rounding rules are easy to get subtly wrong.
+- note: Per M5-05: one pass with widths handed down and heights handed up; hug and fill classes; equal sharing with the spare unit to earlier children; a 40-unit floor; centring in rows; no clipping; last-drawn hit testing that also finds an element sticking out of its parent. All in whole units, tested with the 8-by-20 measure that breaks at spaces and keeps at least one character per line.
 
 ### M5-32 · L3 · Measure and shape text through Parley
 
@@ -1648,6 +1710,7 @@ or merged during review. Ids with a letter were added during review.
 - flags: none
 - done when: Tests: a string measures the same twice, wraps into more lines at half width, and a missing glyph falls back.
 - why this level: Unfamiliar library; font loading, fallback and line breaking must give the same sizes to layout and drawing.
+- note: Per M5-05: text is measured at scale factor 1, widths are rounded up to whole units, the line height is fixed at 20 units and the font size at 14.
 
 ### M5-33 · L3 · Draw the laid-out tree to an image through vello_cpu
 
@@ -1655,6 +1718,8 @@ or merged during review. Ids with a letter were added during review.
 - flags: none
 - done when: With no display set, the counter draws to a PNG; hand-chosen pixels inside and outside each button have the expected colours.
 - why this level: Several element kinds, text runs, placeholder and error boxes; checked by chosen pixels, since golden images are banned.
+- note: Per M5-04: it draws the fixed look M5-04 gives, with no hover or pressed form; pixel tests use those colours.
+- note: Per M5-05: the only clip is an Input's own text; units are multiplied by the scale factor when drawing.
 
 ### M5-34 · L3 · Add the Look tool on the windowless app: tree, screenshot, click, keystroke
 
@@ -1662,6 +1727,7 @@ or merged during review. Ids with a letter were added during review.
 - flags: none
 - done when: A script calls Look on windowless apps: the tree matches hand-written text, a PNG returns, click and keystroke change the tree.
 - why this level: Wires four calls through the tool channel into a running app without racing its handlers or frames.
+- note: Per M5-06: a Look click on an Input by path puts the cursor at the end, as `ui_click` does.
 
 ### M5-35 · L3 · Open a window and present frames with winit and softbuffer
 
@@ -1670,6 +1736,8 @@ or merged during review. Ids with a letter were added during review.
 - done when: The counter opens a window in the Wayland session, logs its first presented frame, and exits cleanly on a close request.
 - why this level: Fits the window event loop to the dev-mode host: redraw on change, resize, scale factor, clean close.
 - note: The windowed test skips, and says so, when WAYLAND_DISPLAY is unset; the caller runs it once on the build machine inside the session.
+- note: Per M5-01: closing the window ends the program with status 0 and sends no message.
+- note: Per M5-05: the window opens at 480 by 360 units; a resize lays the tree out again without running the view.
 
 ### M5-36 · L3 · Turn window pointer and key events into element input
 
@@ -1677,6 +1745,8 @@ or merged during review. Ids with a letter were added during review.
 - flags: owner
 - done when: Translation tests pass; a person confirms by hand that clicks and typing work in the counter and a text input.
 - why this level: Click, focus and key translation with scale factor; the winit side cannot be unit-tested here, only hand-checked.
+- note: Per M5-04: a click is a press and release on the same element; other buttons, double clicks and hover are ignored.
+- note: Per M5-05: pointer positions are divided by the scale factor, rounding down, before hit testing.
 
 ### M5-37 · L4 · Handle IME preedit and commit in the text input
 
@@ -1685,6 +1755,7 @@ or merged during review. Ids with a letter were added during review.
 - done when: Hand-written preedit and commit sequences pass as tests; a person confirms composing with ibus in the window, recorded in the pull request.
 - why this level: Preedit text must never leak into app state; end to end it can only be checked by hand.
 - note: Only if the owner's M5-08 ruling requires IME in M5.
+- note: Per M5-03: preedit stays in the element and is never in a message; a commit sends one `on_change`; a change of the app's text moves the preedit with the cursor and does not cancel it. Still dropped if M5-08 rules IME out.
 
 ### M5-38 · L3 · Serve Look from the windowed app
 
@@ -1701,6 +1772,8 @@ or merged during review. Ids with a letter were added during review.
 - done when: Tests map hand-built trees to AccessKit nodes with tree-wide unique ids, and an AccessKit click action delivers the button's message.
 - why this level: Tree-wide ids from sibling keys, incremental updates and focus; the Linux bridge fails silently.
 - note: Only if the owner's M5-08 ruling requires screen-reader support.
+- note: Per M5-02: the runtime keeps a table from path ids to AccessKit numbers that stays stable while the id lives.
+- note: Per M5-04: a screen-reader ruling in M5-08 reopens the focus rule, since buttons must then be reachable from the keyboard.
 
 ### M5-40 · L4 · Script an AT-SPI and Orca check
 
@@ -1717,6 +1790,9 @@ or merged during review. Ids with a letter were added during review.
 - done when: A checklist maps every decision point of M5-01 to M5-07 to a line; every element of the M5-04 table and every UI-example function appears in a sample that parses and checks; M2-18's checklist still holds; the size stays within the budget under M2-18's counting rule.
 - why this level: Same work and risk as M2-18: one wrong sentence misleads every model.
 - note: If it cannot fit, stop and ask the owner whether the budget moves; never trim M2 text to make room.
+- note: Per M5-04: the reference has five element rows.
+- note: Per M5-06: the reference gains `Ui`, the six `ui_` functions, the path form and the tree text form.
+- note: Per M5-07: the reference describes migrate as text carried by an edit, with one sample, not as a definition kind.
 
 ### M5-42 · L3 · Script the M5 exit check and run it on the build machine
 
@@ -1724,6 +1800,7 @@ or merged during review. Ids with a letter were added during review.
 - flags: owner
 - done when: On the build machine the script exits 0 for every exit-check part, including any clause the M5-08 ruling added; the owner watches the windowed parts once.
 - why this level: Drives windowed and windowless apps, edits and Look in one repeatable script; includes a view that traps on purpose.
+- note: Per M5-07: part 3 is met by the Counter edits in docs/decisions/M5-07.md; since the accepted reset installs the change, the script restores the old type or adds a second field before the migrate part.
 
 ## M6 — Release mode
 
@@ -1865,6 +1942,7 @@ or merged during review. Ids with a letter were added during review.
 - done when: The to-do view, and the counter view with ??reset replaced by the button M5-27's test uses (the hole-free counter, kept as a test fixture), give the same tree text in release as in the interpreter; the hole-free counter's tree text at counts 0 and 3 is written by hand first; a trapping view returns trap status; a test fails when compiler and runtime disagree on the tree layout.
 - why this level: The runtime decodes trees with unsafe code; a layout mismatch is silent.
 - note: The paper's counter keeps ??reset and stays refused by `paka build` (M6-04). Release never lowers a placeholder.
+- note: Per M5-02: release trees carry the same place numbers as the interpreter's.
 
 ### M6-19 · L4 · Shape loop IR so bounds and overflow checks are proven away
 
