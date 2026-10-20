@@ -1578,6 +1578,8 @@ or merged during review. Ids with a letter were added during review.
 - note: Per M5-02: lowering numbers the element lines of every child block and puts the number on each unkeyed child.
 - note: Per M5-04: building a Row or Col with a negative computed gap is a trap in the view.
 - note: Per M5-06: trees carry message values and non-default arguments so the printer can show them, in the value text form of M2-09 and M2-14.
+- status: done
+- note: Done: a view lowers to a function giving `View<M>`; its body ends in `Root`, and each element line is a `Child` holding its line number, whether a `for` holds it, its key and its node (`Element` with arguments in table order and defaults written in, a view call, or `Placeholder`). The interpreter builds a `paka_rt::tree::Node` whose messages keep their value and value text form; a child's step is its key, `#n.r` for a placeholder in a loop, else `#n`. A negative computed gap traps `assert` at the element, a hole off element position traps as usual, and `interp::draw` gives a trap as `trap kind at place`. Siblings sharing a key collapse into one error node at the first one's place through `tree::unique`, which M5-17 can reuse. The dev back end refuses a program with a view until M5-24. `check` now prints a hole note for a placeholder, so three accepted view cases gained their `stderr`. docs/core.md section 8.1 describes the view nodes. Tests: paka/src/interp/view_tests.rs draws the counter at 0 and 3, a keyed loop with loop placeholders and a shared key, string-keyed view calls with payload messages, and the gap and hole traps, each against hand-written text; paka-rt/src/tree/tests.rs covers the key collapse.
 
 ### M5-17 · L4 · Diff trees by key and keep element state with its key
 

@@ -1,7 +1,7 @@
 //! Random programs from paka-gen (M4-21): each checks, finishes in the interpreter, and together
-//! they produce every core-form node kind. `PAKA_GEN_SEEDS` sets how many (default 10,000).
+//! they produce every core-form node kind but a view's. `PAKA_GEN_SEEDS` sets how many (default 10,000).
 
-use paka::coverage::core::{CORE_KINDS, kinds};
+use paka::coverage::core::{CORE_KINDS, VIEW_KINDS, kinds};
 use paka::source::Source;
 use std::collections::BTreeMap;
 use std::path::Path;
@@ -48,7 +48,7 @@ fn generated_programs_check_and_finish() {
     assert!(found.failures.is_empty(), "{}", found.failures.join("\n"));
     let missing: Vec<_> = CORE_KINDS
         .iter()
-        .filter(|k| !found.kinds.contains_key(*k))
+        .filter(|k| !found.kinds.contains_key(*k) && !VIEW_KINDS.contains(k))
         .collect();
     assert!(missing.is_empty(), "never produced: {missing:?}");
 }

@@ -67,6 +67,8 @@ pub enum Type {
     Fn(Vec<Ty>, Option<Ty>),
     Record(RecordId),
     Enum(EnumId),
+    /// `View<M>`: an element tree whose messages are of type `M` (M5-01).
+    View(Ty),
 }
 
 #[derive(Debug, PartialEq)]
@@ -199,6 +201,25 @@ pub enum ExprKind {
     /// `else if` nests in the else block.
     If(Box<Expr>, Block, Option<Block>),
     Match(Box<Expr>, Vec<Arm>),
+    /// A view's root: the one node its element lines give.
+    Root(Block),
+    /// A row of `builtins::ELEMENTS`, its arguments in table order with defaults written in, and
+    /// its child block. The site is the element's name.
+    Element(usize, Vec<Expr>, Option<Block>, Site),
+    /// A hole where an element may stand: a placeholder node.
+    Placeholder(Site),
+    /// An element line of a view: adds its node to the child list being built.
+    Child(Box<Child>),
+}
+
+/// `line` counts the element lines of a child block from 0 (M5-02 section 1.4); `looped` when a
+/// `for` adds it. `node` is an element, a view call or a placeholder.
+#[derive(Clone, Debug, PartialEq)]
+pub struct Child {
+    pub line: usize,
+    pub looped: bool,
+    pub key: Option<Expr>,
+    pub node: Expr,
 }
 
 /// A write or an `inout` argument is rooted at a `Local`; `Root::Value` never appears in one.

@@ -2,12 +2,13 @@
 //! carry no rectangles; layout results live beside the tree (M5-05).
 
 use crate::ops::quoted;
+use std::collections::BTreeMap;
 use std::fmt::{self, Display, Formatter};
 use std::ops::Range;
 
 /// A child's step from its parent: its key, or its place number among the element lines of its
 /// child block. A placeholder made in a loop also counts that line's placeholders from 0.
-#[derive(Debug, Clone, PartialEq, Eq)]
+#[derive(Debug, Clone, PartialEq, Eq, PartialOrd, Ord)]
 pub enum Step {
     Int(i64),
     Str(String),
@@ -68,6 +69,37 @@ impl<M> Node<M> {
             _ => &[],
         }
     }
+}
+
+/// `children` with siblings that share a key replaced by one error node at the place of the
+/// first, the key as its step (M5-02 section 1.7).
+pub fn unique<M>(parent: &str, children: Vec<(Step, Node<M>)>) -> Vec<(Step, Node<M>)> {
+    let mut count = BTreeMap::new();
+    for (step, _) in &children {
+        if let Step::Int(_) | Step::Str(_) = step {
+            *count.entry(step.clone()).or_insert(0) += 1;
+        }
+    }
+    if count.values().all(|&n| n < 2) {
+        return children;
+    }
+    let mut kept = vec![];
+    for (step, node) in children {
+        match count.get_mut(&step) {
+            Some(n) if *n > 1 => {
+                let key = match &step {
+                    Step::Str(s) => quoted(s),
+                    step => step.to_string(),
+                };
+                let message = format!("duplicate key {key}: {n} children of {parent}");
+                *n = 0;
+                kept.push((step, Node::Error(message)));
+            }
+            Some(0) => {}
+            _ => kept.push((step, node)),
+        }
+    }
+    kept
 }
 
 impl Display for Step {

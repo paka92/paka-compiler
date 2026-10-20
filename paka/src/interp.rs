@@ -1,11 +1,12 @@
 //! The reference interpreter: runs the core form (docs/core.md) and performs the effects the
 //! handler returns (spec/m1.md section 9, M2-15).
 
-use crate::core_form::{App, Field, Program, Type};
+use crate::core_form::{App, Field, FnId, Program, Type};
 use crate::core_form::{Fn as Func, Site};
 use crate::source::in_file;
 use effects::{End, Host, Queued, World, perform};
 use eval::{Done, Kind, Machine, Stop, Trap};
+use paka_rt::tree::Node;
 use show::show;
 use std::any::Any;
 use std::collections::VecDeque;
@@ -13,7 +14,7 @@ use std::ffi::OsString;
 use std::io::Write;
 use std::sync::Once;
 use std::{panic, thread};
-use value::{Items, Value};
+use value::{Items, Message, Value};
 
 mod builtin;
 mod effects;
@@ -25,6 +26,8 @@ mod show;
 mod tests;
 mod text;
 mod value;
+#[cfg(test)]
+mod view_tests;
 #[cfg(test)]
 mod world_tests;
 
@@ -184,6 +187,19 @@ fn help(trap: &Trap) -> String {
     };
     let chain = chain.join(", called from ");
     format!("  {}\n  in {chain}{more}\n", &trap.detail[..cut])
+}
+
+/// The tree view `id` draws from `args` (M5-02); a trap or fault gives its message.
+pub fn draw(core: &Program, id: FnId, args: Vec<Value>) -> Result<Node<Message>, String> {
+    match on_big_stack(|| Machine::new(core).draw(id, args)) {
+        Ok(Ok(node)) => Ok(node),
+        Ok(Err(Stop::Trap(trap))) => {
+            let at = place(core, trap.site);
+            Err(format!("trap {} at {at}", trap.kind.name()))
+        }
+        Ok(Err(Stop::Internal(reason))) | Err(reason) => Err(format!("internal error: {reason}")),
+        Ok(Err(_)) => unreachable!("a loop holds its break"),
+    }
 }
 
 /// Runs every example in name order and prints its status (M2-06 section 1.6); the status is 0

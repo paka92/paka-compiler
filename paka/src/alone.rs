@@ -183,6 +183,7 @@ impl Map<'_> {
             Type::Fn(ps, r) => Type::Fn(tys(ps)?, self.maybe(*r)?),
             Type::Record(r) => Type::Record(self.record(*r)?),
             Type::Enum(e) => Type::Enum(self.enum_id(*e)?),
+            Type::View(m) => Type::View(self.ty(*m)?),
         };
         self.to.types.iter().position(|known| *known == to)
     }
@@ -340,6 +341,21 @@ impl Map<'_> {
                 for arm in arms {
                     arm.tags.iter_mut().try_for_each(|t| self.tag(t))?;
                     self.block(&mut arm.body)?;
+                }
+            }
+            ExprKind::Root(b) => self.block(b)?,
+            ExprKind::Element(_, es, children, s) => {
+                self.exprs(es)?;
+                if let Some(b) = children {
+                    self.block(b)?;
+                }
+                *s = self.site(*s)?;
+            }
+            ExprKind::Placeholder(s) => *s = self.site(*s)?,
+            ExprKind::Child(c) => {
+                self.expr(&mut c.node)?;
+                if let Some(k) = &mut c.key {
+                    self.expr(k)?;
                 }
             }
         }

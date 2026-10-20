@@ -252,11 +252,11 @@ pub mod core {
 
     node_kinds! {
         CORE_KINDS;
-        Type: Int Float Bool String List Map Option Result Effect Fn Record Enum;
+        Type: Int Float Bool String List Map Option Result Effect Fn Record Enum View;
         Stmt: Let Assign Return Break Continue For While Expr;
         Walk: List Range;
         ExprKind: Int Float Bool Str Interp Hole Place Record List Map Variant FnValue Unary Binary
-            Call If Match;
+            Call If Match Root Element Placeholder Child;
         Root: Local Value;
         Step: Field Item Key Slice;
         Tag: User Some None Ok Err Effect;
@@ -270,6 +270,15 @@ pub mod core {
         Compound: Int Float Join;
         Cmp: Lt Le Gt Ge;
     }
+
+    /// The kinds only a view gives, which a headless program never produces.
+    pub const VIEW_KINDS: &[&str] = &[
+        "Type::View",
+        "ExprKind::Root",
+        "ExprKind::Element",
+        "ExprKind::Placeholder",
+        "ExprKind::Child",
+    ];
 
     #[derive(Default)]
     pub struct Kinds(pub BTreeSet<&'static str>);
@@ -358,7 +367,8 @@ pub mod core {
                 | ExprKind::Float(_)
                 | ExprKind::Bool(_)
                 | ExprKind::Str(_)
-                | ExprKind::Hole(_) => {}
+                | ExprKind::Hole(_)
+                | ExprKind::Placeholder(_) => {}
                 ExprKind::Interp(parts, _) | ExprKind::List(parts) | ExprKind::Record(_, parts) => {
                     parts.iter().for_each(|e| self.expr(e))
                 }
@@ -411,6 +421,15 @@ pub mod core {
                         arm.tags.iter().for_each(|t| self.add(t.kind()));
                         self.block(&arm.body);
                     }
+                }
+                ExprKind::Root(lines) => self.block(lines),
+                ExprKind::Element(_, args, children, _) => {
+                    args.iter().for_each(|e| self.expr(e));
+                    children.iter().for_each(|b| self.block(b));
+                }
+                ExprKind::Child(c) => {
+                    self.expr(&c.node);
+                    c.key.iter().for_each(|k| self.expr(k));
                 }
             }
         }

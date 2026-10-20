@@ -139,3 +139,26 @@ fn a_lone_root_is_one_line() {
     assert_eq!(text("hi").to_string(), "Text \"hi\"\n");
     assert_eq!(Tree::Hole("main".into()).to_string(), "Hole main\n");
 }
+
+#[test]
+fn siblings_sharing_a_key_become_one_error_node_at_the_first() {
+    let children = vec![
+        (Step::Int(8), text("a")),
+        (key("x"), text("b")),
+        (Step::Int(8), text("c")),
+        (Step::Place(3), text("d")),
+        (key("x"), text("e")),
+        (Step::Int(8), text("f")),
+    ];
+    let tree = Node::Col {
+        gap: 0,
+        children: unique("Col", children),
+    };
+    let want = "\
+Col
+  Error 8 \"duplicate key 8: 3 children of Col\"
+  Error 'x' \"duplicate key \\\"x\\\": 2 children of Col\"
+  Text #3 \"d\"
+";
+    assert_eq!(tree.to_string(), want);
+}

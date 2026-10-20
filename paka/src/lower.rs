@@ -16,6 +16,7 @@ mod expr;
 mod stmt;
 #[cfg(test)]
 mod tests;
+mod view;
 
 struct Cx<'t, 'a> {
     core: Program,
@@ -34,6 +35,8 @@ struct Cx<'t, 'a> {
     /// The local of each name, by the position that declares it.
     slots: BTreeMap<Pos, Local>,
     result: Option<Ty>,
+    /// While lowering a view's element lines: how the next one is numbered.
+    lines: Option<view::Lines>,
 }
 
 /// Runs on a program that `body::check` accepted: every lookup succeeds. Gives the signatures
@@ -71,6 +74,7 @@ pub fn lower<'a>(
         locals: vec![],
         slots: BTreeMap::new(),
         result: None,
+        lines: None,
     };
     let mut reads = vec![];
     for (i, def) in program.defs.iter().enumerate() {
@@ -88,9 +92,9 @@ fn ids(program: &ast::Program) -> Vec<usize> {
         let list = match def {
             Def::Type { .. } => 0,
             Def::Enum { .. } => 1,
-            Def::Fn { .. } => 2,
+            Def::Fn { .. } | Def::View { .. } => 2,
             Def::Example { .. } => 3,
-            Def::App { .. } | Def::View { .. } => return 0,
+            Def::App { .. } => return 0,
         };
         counts[list] += 1;
         counts[list] - 1
@@ -129,8 +133,16 @@ impl<'a> Cx<'_, 'a> {
                 let f = self.function(name, &[], None, body);
                 self.core.examples.push(f);
             }
-            // Views and a visual app run from later tasks (M5-16, M5-20).
-            (Def::View { .. }, _) => {}
+            (
+                Def::View {
+                    name, params, body, ..
+                },
+                Item::View(sig),
+            ) => {
+                let f = self.function(name, params, Some(sig), body);
+                self.core.fns.push(f);
+            }
+            // A visual app runs from a later task (M5-20).
             (Def::App { entries, .. }, _)
                 if entries.iter().any(|e| matches!(e, Entry::View(..))) => {}
             (Def::App { name, entries }, _) => {
@@ -174,7 +186,10 @@ impl<'a> Cx<'_, 'a> {
             Some(s) => s.result.map(|r| self.ty(r)),
             None => Some(self.core.ty(Type::Bool)),
         };
-        let block = self.block(body, self.result.is_some());
+        let block = match self.result.map(|r| &self.core.types[r]) {
+            Some(Type::View(_)) => self.root(body),
+            _ => self.block(body, self.result.is_some()),
+        };
         let claims = if sig.is_none() {
             self.claims(body)
         } else {
@@ -287,6 +302,7 @@ impl<'a> Cx<'_, 'a> {
                     ("Option", &[x]) => Type::Option(x),
                     ("Result", &[x, e]) => Type::Result(x, e),
                     ("Effect", &[m]) => Type::Effect(m),
+                    ("View", &[m]) => Type::View(m),
                     _ => unreachable!("a built-in type and its arguments"),
                 }
             }

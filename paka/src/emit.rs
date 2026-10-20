@@ -774,6 +774,10 @@ impl<'a> Gen<'a> {
                 return self.construct(ty(e), values::alternative(tag)?, fields);
             }
             ExprKind::Match(subject, arms) => return self.matched(e, subject, arms),
+            ExprKind::Root(_)
+            | ExprKind::Element(..)
+            | ExprKind::Placeholder(_)
+            | ExprKind::Child(_) => return Err("a view is not compiled yet".into()),
             ExprKind::Hole(site) => {
                 self.trap(rt::HOLE, self.site(*site), &[]);
                 return self.unreached(e);

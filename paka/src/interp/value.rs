@@ -3,7 +3,9 @@
 use crate::core_form::{EnumId, Tag};
 pub use paka_rt::ops::quoted;
 use paka_rt::ops::{Float, Int, Text};
+use paka_rt::tree::Node;
 use std::collections::BTreeMap;
+use std::fmt::{self, Display, Formatter};
 use std::mem;
 
 /// A copy or a compare reaching deeper than this stops with `stack` (docs/core.md section 9).
@@ -24,6 +26,21 @@ pub enum Value {
     /// The variant number and its fields.
     Variant(usize, Items),
     Fn(FnKey),
+    /// What a view gives; never copied or compared.
+    Node(Box<Node<Message>>),
+}
+
+/// A message a node carries, with its value text form (M5-06).
+#[derive(Debug, PartialEq)]
+pub struct Message {
+    pub value: Value,
+    pub text: String,
+}
+
+impl Display for Message {
+    fn fmt(&self, f: &mut Formatter) -> fmt::Result {
+        f.write_str(&self.text)
+    }
 }
 
 /// A function value: a user function, or the constructor of a user variant.
@@ -139,6 +156,7 @@ impl Value {
                 let copy = |(k, v): (&Key, &Value)| Some((k.clone(), v.copy_within(budget)?));
                 Value::Map(Entries(e.0.iter().map(copy).collect::<Option<_>>()?))
             }
+            Value::Node(_) => unreachable!("a node is never copied"),
         })
     }
 }

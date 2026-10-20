@@ -49,7 +49,15 @@ fn operand<'e, 'a>(e: &'e ast::Expr<'a>) -> Option<&'e ast::Expr<'a>> {
 }
 
 impl<'a> Cx<'_, 'a> {
+    /// A value; in a view, one that holds no element.
     pub(super) fn expr(&mut self, e: &ast::Expr<'a>) -> Expr {
+        let lines = self.lines.take();
+        let value = self.value(e);
+        self.lines = lines;
+        value
+    }
+
+    fn value(&mut self, e: &ast::Expr<'a>) -> Expr {
         let mut links = vec![];
         let mut head = e;
         while let Some(inner) = operand(head) {
@@ -339,7 +347,7 @@ impl<'a> Cx<'_, 'a> {
         self.typed(call, kind)
     }
 
-    fn call(&mut self, callee: Callee, args: &[ast::Arg<'a>], at: Pos) -> ExprKind {
+    pub(super) fn call(&mut self, callee: Callee, args: &[ast::Arg<'a>], at: Pos) -> ExprKind {
         let args = args.iter().map(|a| self.arg(a)).collect();
         ExprKind::Call(callee, args, self.site(at))
     }

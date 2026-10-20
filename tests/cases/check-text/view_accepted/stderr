@@ -1,0 +1,8 @@
+main.paka:36:7: note[hole]: ??more takes View<Msg>
+  definition: counter_view
+  bytes: 679..685
+  text: "??more"
+main.paka:47:5: note[hole]: ??reset takes View<Msg>
+  definition: counter_view
+  bytes: 856..863
+  text: "??reset"

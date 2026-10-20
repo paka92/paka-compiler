@@ -49,6 +49,7 @@ fn name(p: &Program, ty: Ty) -> String {
         Type::Option(t) => format!("Option<{}>", list(&[*t])),
         Type::Result(t, e) => format!("Result<{}>", list(&[*t, *e])),
         Type::Effect(m) => format!("Effect<{}>", list(&[*m])),
+        Type::View(m) => format!("View<{}>", list(&[*m])),
         Type::Fn(params, None) => format!("fn({})", list(params)),
         Type::Fn(params, Some(r)) => format!("fn({}) -> {}", list(params), name(p, *r)),
         Type::Record(i) => p.records[*i].name.clone(),

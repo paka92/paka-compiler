@@ -1,13 +1,16 @@
 //! Evaluation of the core form, node by node (docs/core.md sections 2 to 6).
 
-use super::value::{Entries, FnKey, Items, Key, Value, equals, number, position};
+use super::show::show;
+use super::value::{Entries, FnKey, Items, Key, Message, Value, equals, number, position};
 use super::{RUN_THREAD, STACK, builtin, generic};
+use crate::builtins::ELEMENTS;
 use crate::core_form::Fn as Func;
 use crate::core_form::{
-    App, Arg, Arith, Arm, Bin, Block, Callee, Cmp, Compound, Expr, ExprKind, FloatArith, FnId,
-    FnRef, Local, Place, Program, Root, Site, Step, Stmt, Ty, Un, Walk,
+    App, Arg, Arith, Arm, Bin, Block, Callee, Child, Cmp, Compound, Expr, ExprKind, FloatArith,
+    FnId, FnRef, Local, Place, Program, Root, Site, Step, Stmt, Ty, Un, Walk,
 };
 use paka_rt::ops::{self, Float, Int, Text};
+use paka_rt::tree::{self, Edit, Node};
 use std::cmp::Ordering;
 use std::fmt::Write;
 use std::{mem, panic, thread};
@@ -196,10 +199,15 @@ enum Target {
     Builtin(usize),
 }
 
+/// The children of one child block, in the order their lines ran.
+type Kids = Vec<(tree::Step, Node<Message>)>;
+
 pub struct Machine<'a> {
     core: &'a Program,
     depth: usize,
     levels: usize,
+    /// The child lists being built, innermost last.
+    kids: Vec<Kids>,
 }
 
 impl<'a> Machine<'a> {
@@ -208,6 +216,17 @@ impl<'a> Machine<'a> {
             core,
             depth: 0,
             levels: 0,
+            kids: vec![],
+        }
+    }
+
+    /// The tree view `id` draws from `args`.
+    pub fn draw(&mut self, id: FnId, args: Vec<Value>) -> Done<Node<Message>> {
+        let site = self.core.fns[id].site;
+        self.depth = 0;
+        match self.invoke(id, args, site)?.0 {
+            Value::Node(node) => Ok(*node),
+            _ => unreachable!("a view gives a node"),
         }
     }
 
@@ -488,7 +507,96 @@ impl<'a> Machine<'a> {
             ExprKind::Call(callee, args, site) => self.call(fr, callee, args, *site),
             ExprKind::If(c, then, other) => self.branch(fr, c, then, other.as_ref()),
             ExprKind::Match(subject, arms) => self.matching(fr, subject, arms),
+            ExprKind::Root(lines) => {
+                let mut kids = self.lines(fr, lines)?.into_iter();
+                let (_, root) = kids.next().expect("a view's one root");
+                Ok(Value::Node(Box::new(root)))
+            }
+            ExprKind::Element(row, args, children, site) => {
+                self.element(fr, *row, args, children.as_ref(), *site)
+            }
+            ExprKind::Placeholder(site) => {
+                let name = self.core.sites[*site].hole.clone().unwrap_or_default();
+                Ok(Value::Node(Box::new(Node::Hole(name))))
+            }
+            ExprKind::Child(child) => self.child(fr, child),
         }
+    }
+
+    /// The nodes the element lines of `b` add.
+    fn lines(&mut self, fr: &mut Frame, b: &Block) -> Done<Kids> {
+        self.kids.push(vec![]);
+        let done = self.block(fr, b);
+        let kids = self.kids.pop().expect("the list just pushed");
+        done.map(|_| kids)
+    }
+
+    fn element(
+        &mut self,
+        fr: &mut Frame,
+        row: usize,
+        args: &[Expr],
+        children: Option<&Block>,
+        site: Site,
+    ) -> Done {
+        let mut values = self.all(fr, args)?.into_iter();
+        let mut next = || values.next().expect("a checked argument");
+        let name = ELEMENTS[row].name;
+        let node = match name {
+            "Text" => Node::Text(text(next())),
+            "Button" | "Input" => {
+                let shown = text(next());
+                let value = next();
+                let text = show(self.core, args[1].ty.expect("a typed message"), &value);
+                let message = Message { value, text };
+                match name {
+                    "Button" => Node::Button {
+                        label: shown,
+                        on: message,
+                    },
+                    _ => Node::Input {
+                        text: shown,
+                        on_change: message,
+                        edit: Edit::default(),
+                    },
+                }
+            }
+            _ => {
+                let gap = position(next().int()).ok_or_else(|| Trap::bare(Kind::Assert, site))?;
+                let lines = children.expect("a child block");
+                let children = tree::unique(name, self.lines(fr, lines)?);
+                let gap = gap as u64;
+                match name {
+                    "Row" => Node::Row { gap, children },
+                    _ => Node::Col { gap, children },
+                }
+            }
+        };
+        Ok(Value::Node(Box::new(node)))
+    }
+
+    /// Adds the line's node to the child list being built, under its key or its place.
+    fn child(&mut self, fr: &mut Frame, c: &Child) -> Done {
+        let Value::Node(node) = self.eval(fr, &c.node)? else {
+            unreachable!("a node");
+        };
+        let key = match &c.key {
+            Some(k) => Some(self.eval(fr, k)?.key()),
+            None => None,
+        };
+        let kids = self.kids.last_mut().expect("a child list being built");
+        let step = match key {
+            Some(key) => step(key),
+            None if c.looped && matches!(*node, Node::Hole(_)) => {
+                let made = kids
+                    .iter()
+                    .filter(|(s, _)| matches!(s, tree::Step::LoopHole(l, _) if *l == c.line));
+                tree::Step::LoopHole(c.line, made.count())
+            }
+            None => tree::Step::Place(c.line),
+        };
+        kids.push((step, *node));
+        Ok(Value::Unit)
     }
 
     fn items(&mut self, fr: &mut Frame, es: &[Expr], make: impl FnOnce(Items) -> Value) -> Done {
@@ -992,6 +1100,22 @@ pub(super) fn compare(cmp: &Cmp, a: &Value, b: &Value) -> bool {
         Cmp::Le => matches!(order, Some(Ordering::Less | Ordering::Equal)),
         Cmp::Gt => order == Some(Ordering::Greater),
         Cmp::Ge => matches!(order, Some(Ordering::Greater | Ordering::Equal)),
+    }
+}
+
+/// A key as a step of the tree, where it leaves Paka.
+#[allow(clippy::disallowed_methods)]
+fn step(key: Key) -> tree::Step {
+    match key {
+        Key::Int(n) => tree::Step::Int(n.get()),
+        Key::Str(t) => tree::Step::Str(t.as_str().into()),
+    }
+}
+
+fn text(v: Value) -> String {
+    match v {
+        Value::Str(t) => t.as_str().into(),
+        _ => unreachable!("a checked String"),
     }
 }
 
