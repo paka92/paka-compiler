@@ -57,6 +57,13 @@ pub enum Def<'a> {
         name: Name<'a>,
         entries: Vec<Entry<'a>>,
     },
+    /// Its body is `let` lines and then one element expression (docs/decisions/M5-01.md).
+    View {
+        name: Name<'a>,
+        params: Vec<Param<'a>>,
+        result: Type<'a>,
+        body: Block<'a>,
+    },
 }
 
 impl<'a> Def<'a> {
@@ -66,7 +73,8 @@ impl<'a> Def<'a> {
             | Def::Enum { name, .. }
             | Def::Fn { name, .. }
             | Def::Example { name, .. }
-            | Def::App { name, .. } => name,
+            | Def::App { name, .. }
+            | Def::View { name, .. } => name,
         }
     }
 
@@ -110,6 +118,7 @@ pub enum Entry<'a> {
     Start(Pos, Expr<'a>),
     Update(Pos, Name<'a>),
     Grants(Pos, Vec<Name<'a>>),
+    View(Pos, Name<'a>),
 }
 
 #[derive(Debug, PartialEq)]
@@ -272,6 +281,8 @@ pub enum ExprKind<'a> {
         subject: Box<Expr<'a>>,
         arms: Vec<Arm<'a>>,
     },
+    /// An element call and its child block, read only where an element may stand.
+    Children(Box<Expr<'a>>, Block<'a>),
 }
 
 #[derive(Debug, PartialEq)]

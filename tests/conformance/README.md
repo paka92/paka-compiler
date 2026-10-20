@@ -97,6 +97,8 @@ It is a plain test, so `cargo test --workspace --locked --offline` runs it too.
   names in the table of `paka/src/builtins.rs`: types, variants, grants and functions. A name is
   one item however many rows it has (`len` has three), so the gate counts names, not rows. Both
   lists come from the compiler's own code, so a new variant or row is a gap until a case uses it.
+  The kinds in `NOT_YET_RUN` of `paka/src/coverage.rs` parse but no command accepts them yet,
+  so the gate skips them until one does.
   A case counts when it passes by the rules above, has neither a `reject` file nor an
   `expect.json`, and its `main.paka` parses. A node kind is covered when it occurs in the syntax
   tree of a counted case. A built-in type, variant or grant (upper case) is covered when its name

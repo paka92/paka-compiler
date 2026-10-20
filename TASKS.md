@@ -1517,6 +1517,8 @@ or merged during review. Ids with a letter were added during review.
 - note: Views follow the M4-47 block and flat-list rules; only the trailing-block sample is new.
 - note: Per M5-01: a child block is read only where an element may stand and holds only element lines, view calls, holes, `let`, `if`, `for` and `match`; a view body is `let` lines plus one element expression.
 - note: Per M5-02: `key:` is parsed on view calls as well as on elements, though no view declares it.
+- status: done
+- note: Done: the parser reads `view` definitions, child blocks after a call where an element may stand, and the app's `view:` field; a view line that is not `let` or an element, or a second root element, is refused with the offending text quoted. The printer prints them canonically; `tests/print/views.paka` holds the decision samples and `samples.paka` a view and a `view:` entry. Commands still refuse a view with `unsupported-view` until M5-13, and the conformance gate skips the three new node kinds until then (`NOT_YET_RUN` in `paka/src/coverage.rs`). The trailing-block sample is not yet added to M4-47.
 
 ### M5-12 · L2 · Add the element table as built-in signatures
 
@@ -1538,6 +1540,7 @@ or merged during review. Ids with a letter were added during review.
 - note: Per M5-01: four more checks: elements only inside views and in element position, the same message type on view calls, a visual app's state type is a record with a default on every field, and exactly one root per view.
 - note: Per M5-02: five more checks: a key on stateful elements, a key on every loop child but a hole, no key on a view's root and no root that needs one, no view parameter named `key`, and no literal key twice directly in one block.
 - note: Per M5-04: a labelled element argument with a table default may be left out; written ones follow table order with `key:` last; a negative literal gap is rejected.
+- note: Remove `NOT_YET_RUN` in paka/src/coverage.rs once a view case passes, so the conformance gate covers the view nodes again.
 
 ### M5-14 · L4 · Carry views through the derived database and the agent tools
 

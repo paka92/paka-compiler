@@ -25,12 +25,12 @@ macro_rules! node_kinds {
 
 node_kinds! {
     NODE_KINDS;
-    Def<'_>: Type Enum Fn Example App;
-    Entry<'_>: State Start Update Grants;
+    Def<'_>: Type Enum Fn Example App View;
+    Entry<'_>: State Start Update Grants View;
     Type<'_>: Name Fn;
     StmtKind<'_>: Let Discard Assign Return Break Continue For While Expr;
     ExprKind<'_>: Int Float Bool Str Hole Name Record List Map Unary Binary Range Index Field Try Call
-        Inout If Match;
+        Inout If Match Children;
     StrPart<'_>: Text Expr;
     ArmBody<'_>: Block Line;
     PatKind<'_>: Wild Int Str Bool Bind Variant;
@@ -38,6 +38,10 @@ node_kinds! {
     UnOp: Neg Not;
     BinOp: Or And Eq Ne Lt Le Gt Ge Add Sub Mul Div Rem;
 }
+
+/// Node kinds that parse but no command accepts yet, so no passing case can hold them: views
+/// are checked from M5-13.
+pub const NOT_YET_RUN: &[&str] = &["Def::View", "Entry::View", "ExprKind::Children"];
 
 /// Every distinct name of the built-in table, sorted.
 pub fn builtin_names() -> Vec<&'static str> {
@@ -83,14 +87,22 @@ impl Uses {
                 result,
                 body,
                 ..
-            } => {
-                params.iter().for_each(|p| self.ty(&p.ty));
-                result.iter().for_each(|t| self.ty(t));
-                self.block(body);
-            }
+            } => self.callable(params, result.as_ref(), body),
+            Def::View {
+                params,
+                result,
+                body,
+                ..
+            } => self.callable(params, Some(result), body),
             Def::Example { body, .. } => self.block(body),
             Def::App { entries, .. } => entries.iter().for_each(|e| self.entry(e)),
         }
+    }
+
+    fn callable(&mut self, params: &[Param], result: Option<&Type>, body: &Block) {
+        params.iter().for_each(|p| self.ty(&p.ty));
+        result.iter().for_each(|t| self.ty(t));
+        self.block(body);
     }
 
     fn fields(&mut self, fields: &[Field]) {
@@ -104,7 +116,7 @@ impl Uses {
         self.kinds.insert(entry.kind());
         match entry {
             Entry::State(_, name) => self.name(name.text),
-            Entry::Update(..) => {}
+            Entry::Update(..) | Entry::View(..) => {}
             Entry::Start(_, expr) => self.expr(expr),
             Entry::Grants(_, grants) => grants.iter().for_each(|g| self.name(g.text)),
         }
@@ -211,6 +223,10 @@ impl Uses {
             ExprKind::Match { subject, arms } => {
                 self.expr(subject);
                 arms.iter().for_each(|a| self.arm(a));
+            }
+            ExprKind::Children(call, children) => {
+                self.expr(call);
+                self.block(children);
             }
         }
     }

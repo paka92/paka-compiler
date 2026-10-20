@@ -93,9 +93,13 @@ fn problems(reference: &str, kinds: &[&str], builtins: &[&str], used: &Uses) -> 
 fn exit_gate() {
     let passed = results().iter().filter(|(_, result)| result.is_ok());
     let passing: Vec<_> = passed.map(|(case, _)| case.as_path()).collect();
+    let kinds: Vec<_> = (coverage::NODE_KINDS.iter())
+        .filter(|k| !coverage::NOT_YET_RUN.contains(k))
+        .copied()
+        .collect();
     let problems = problems(
         REFERENCE,
-        coverage::NODE_KINDS,
+        &kinds,
         &coverage::builtin_names(),
         &used_by(&passing),
     );

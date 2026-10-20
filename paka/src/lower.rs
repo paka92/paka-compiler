@@ -90,7 +90,7 @@ fn ids(program: &ast::Program) -> Vec<usize> {
             Def::Enum { .. } => 1,
             Def::Fn { .. } => 2,
             Def::Example { .. } => 3,
-            Def::App { .. } => return 0,
+            Def::App { .. } | Def::View { .. } => return 0,
         };
         counts[list] += 1;
         counts[list] - 1
@@ -243,6 +243,7 @@ impl<'a> Cx<'_, 'a> {
                     app.update = self.ids[f];
                 }
                 Entry::Grants(_, names) => app.grants = names.iter().map(grant).collect(),
+                Entry::View(..) => unreachable!("check refuses views"),
             }
         }
         app

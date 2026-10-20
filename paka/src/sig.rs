@@ -398,6 +398,7 @@ impl<'a> Convert<'_, 'a> {
             Def::Fn { params, result, .. } => Item::Fn(self.sig(params, result.as_ref())),
             Def::Example { .. } => Item::Example,
             Def::App { entries, .. } => self.app(entries),
+            Def::View { .. } => unreachable!("check refuses views"),
         };
         if let Err(d) = &self.resolved.defs[i] {
             earliest(&mut self.error, d.clone());

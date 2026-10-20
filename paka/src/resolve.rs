@@ -281,6 +281,7 @@ impl<'a> Resolver<'a> {
             Def::Type { .. } | Def::Enum { .. } => Kind::Type,
             Def::Fn { .. } => Kind::Fn,
             Def::Example { .. } | Def::App { .. } => Kind::Other,
+            Def::View { .. } => unreachable!("check refuses views"),
         };
         self.declare(name.text, name.at, kind, Binding::Def(i))?;
         let Def::Enum { variants, .. } = def else {
@@ -319,6 +320,7 @@ impl<'a> Resolver<'a> {
                 self.app(name.text, entries);
                 Ok(())
             }
+            Def::View { .. } => unreachable!("check refuses views"),
         }
     }
 
@@ -347,6 +349,7 @@ impl<'a> Resolver<'a> {
                     let grant = |n: &Name| (n.at, self.grant(n.text, n.at));
                     names.iter().map(grant).collect()
                 }
+                Entry::View(..) => unreachable!("check refuses views"),
             };
             for (at, result) in results {
                 if let Err(d) = result {
@@ -523,6 +526,7 @@ impl<'a> Resolver<'a> {
                 self.expr(subject)?;
                 arms.iter().try_for_each(|a| self.arm(a))
             }
+            ExprKind::Children(..) => unreachable!("check refuses views"),
             // Links of a chain: `expr` walks them.
             ExprKind::Unary(..)
             | ExprKind::Try(..)

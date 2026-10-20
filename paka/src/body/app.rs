@@ -35,6 +35,7 @@ impl<'a> Cx<'_, 'a> {
                 Entry::Update(_, n) => message = self.update(n, state, update)?,
                 Entry::Start(_, e) => self.start(e, message)?,
                 Entry::Grants(_, names) => self.grants(names)?,
+                Entry::View(..) => unreachable!("check refuses views"),
             }
         }
         Ok(())
@@ -202,5 +203,6 @@ fn key(entry: &Entry) -> (Pos, &'static str) {
         Entry::Start(at, _) => (*at, "start"),
         Entry::Update(at, _) => (*at, "update"),
         Entry::Grants(at, _) => (*at, "grants"),
+        Entry::View(at, _) => (*at, "view"),
     }
 }

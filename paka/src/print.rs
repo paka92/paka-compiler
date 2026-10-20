@@ -189,7 +189,9 @@ impl<'s> Printer<'s> {
     fn def_lines(&self, def: &Def) -> (usize, usize) {
         let name = def.name();
         let close = match def {
-            Def::Fn { body, .. } | Def::Example { body, .. } => self.offset(body.close),
+            Def::Fn { body, .. } | Def::Example { body, .. } | Def::View { body, .. } => {
+                self.offset(body.close)
+            }
             _ => self.braces(self.offset(name.at)).1,
         };
         (name.at.0, self.line_of(close))
@@ -218,18 +220,16 @@ impl<'s> Printer<'s> {
                 body,
                 ..
             } => {
-                write!(self.out, "fn {}(", name.text).unwrap();
-                let bare = params.iter().take_while(|p| !p.labelled).count();
-                self.join(&params[..bare], Self::param);
-                if bare < params.len() {
-                    self.out += "; ";
-                    self.join(&params[bare..], Self::param);
-                }
-                self.out.push(')');
-                if let Some(result) = result {
-                    write!(self.out, " -> {result}").unwrap();
-                }
-                self.out.push(' ');
+                self.signature("fn", name, params, result.as_ref());
+                self.block(after, body);
+            }
+            Def::View {
+                params,
+                result,
+                body,
+                ..
+            } => {
+                self.signature("view", name, params, Some(result));
                 self.block(after, body);
             }
             Def::Example { body, .. } => {
@@ -240,7 +240,7 @@ impl<'s> Printer<'s> {
                 write!(self.out, "app {} ", name.text).unwrap();
                 let lines = |p: &Self, e: &Entry| {
                     let last = match e {
-                        Entry::State(_, n) | Entry::Update(_, n) => n.at.0,
+                        Entry::State(_, n) | Entry::Update(_, n) | Entry::View(_, n) => n.at.0,
                         Entry::Start(_, e) => p.last_line(e),
                         Entry::Grants(at, names) => names.last().map_or(at.0, |n| n.at.0),
                     };
@@ -249,6 +249,22 @@ impl<'s> Printer<'s> {
                 self.container(self.braces(after), entries, lines, Self::entry);
             }
         }
+    }
+
+    /// `word name(params) -> result ` up to the body.
+    fn signature(&mut self, word: &str, name: &Name, params: &[Param], result: Option<&Type>) {
+        write!(self.out, "{word} {}(", name.text).unwrap();
+        let bare = params.iter().take_while(|p| !p.labelled).count();
+        self.join(&params[..bare], Self::param);
+        if bare < params.len() {
+            self.out += "; ";
+            self.join(&params[bare..], Self::param);
+        }
+        self.out.push(')');
+        if let Some(result) = result {
+            write!(self.out, " -> {result}").unwrap();
+        }
+        self.out.push(' ');
     }
 
     /// `{ a, b }`, or `{}` when empty.
@@ -295,6 +311,7 @@ impl<'s> Printer<'s> {
                 self.expr(e);
             }
             Entry::Update(_, n) => write!(self.out, "update: {}", n.text).unwrap(),
+            Entry::View(_, n) => write!(self.out, "view: {}", n.text).unwrap(),
             Entry::Grants(_, names) => {
                 self.list("grants: [", names, |p, n| p.out += n.text, "]");
             }
@@ -440,6 +457,11 @@ impl<'s> Printer<'s> {
                 };
                 self.container(self.braces(self.end(subject)), arms, lines, Self::arm);
             }
+            ExprKind::Children(call, children) => {
+                self.expr(call);
+                self.out.push(' ');
+                self.block(self.end(call), children);
+            }
         }
         if parens {
             self.out.push(')');
@@ -512,9 +534,11 @@ impl<'s> Printer<'s> {
 
 fn entry_at(e: &Entry) -> Pos {
     match e {
-        Entry::State(at, _) | Entry::Start(at, _) | Entry::Update(at, _) | Entry::Grants(at, _) => {
-            *at
-        }
+        Entry::State(at, _)
+        | Entry::Start(at, _)
+        | Entry::Update(at, _)
+        | Entry::Grants(at, _)
+        | Entry::View(at, _) => *at,
     }
 }
 

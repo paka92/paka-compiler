@@ -36,15 +36,8 @@ fn interface(def: &Def, types: &BTreeMap<&str, Hash>) -> Hash {
     key.word(kind(def));
     key.word(def.name().text);
     match def {
-        Def::Fn { params, result, .. } => {
-            key.count(params.len());
-            for p in params {
-                key.ty(&p.ty);
-                key.flag(p.inout);
-                key.word(if p.labelled { p.name.text } else { "" });
-            }
-            key.option(result.as_ref(), Key::ty);
-        }
+        Def::Fn { params, result, .. } => key.signature(params, result.as_ref()),
+        Def::View { params, result, .. } => key.signature(params, Some(result)),
         Def::App { entries, .. } => entries.iter().for_each(|e| key.entry(e)),
         Def::Example { .. } | Def::Type { .. } | Def::Enum { .. } => {}
     }
@@ -58,6 +51,7 @@ fn kind(def: &Def) -> &'static str {
         Def::Fn { .. } => "fn",
         Def::Example { .. } => "example",
         Def::App { .. } => "app",
+        Def::View { .. } => "view",
     }
 }
 
@@ -199,20 +193,39 @@ impl<'t> Key<'t> {
                 result,
                 body,
                 ..
-            } => {
-                self.list(params.iter(), |k, p| {
-                    k.word(p.name.text);
-                    k.flag(p.inout);
-                    k.flag(p.labelled);
-                    k.ty(&p.ty);
-                });
-                self.option(result.as_ref(), Key::ty);
-                self.block(body);
-            }
+            } => self.callable(params, result.as_ref(), body),
+            Def::View {
+                params,
+                result,
+                body,
+                ..
+            } => self.callable(params, Some(result), body),
             Def::Example { body, .. } => self.block(body),
             Def::App { entries, .. } => entries.iter().for_each(|e| self.entry(e)),
             Def::Type { .. } | Def::Enum { .. } => {}
         }
+    }
+
+    /// What a caller sees: each parameter's type, mark and label, and the result.
+    fn signature(&mut self, params: &[Param], result: Option<&Type>) {
+        self.count(params.len());
+        for p in params {
+            self.ty(&p.ty);
+            self.flag(p.inout);
+            self.word(if p.labelled { p.name.text } else { "" });
+        }
+        self.option(result, Key::ty);
+    }
+
+    fn callable(&mut self, params: &[Param], result: Option<&Type>, body: &Block) {
+        self.list(params.iter(), |k, p| {
+            k.word(p.name.text);
+            k.flag(p.inout);
+            k.flag(p.labelled);
+            k.ty(&p.ty);
+        });
+        self.option(result, Key::ty);
+        self.block(body);
     }
 
     /// A record or enum's kind, name and fields in order; other kinds only their kind and name.
@@ -252,6 +265,10 @@ impl<'t> Key<'t> {
             Entry::Grants(_, ns) => {
                 self.word("grants");
                 self.list(ns.iter(), |k, n| k.word(n.text));
+            }
+            Entry::View(_, n) => {
+                self.word("view");
+                self.word(n.text)
             }
         }
     }
@@ -410,6 +427,11 @@ impl<'t> Key<'t> {
             ExprKind::Inout(e) => {
                 self.word("&");
                 self.expr(e)
+            }
+            ExprKind::Children(call, children) => {
+                self.word("children");
+                self.expr(call);
+                self.block(children)
             }
             ExprKind::If {
                 branches,

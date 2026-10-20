@@ -16,6 +16,7 @@ app wc {
   state: Tally
   start: Start
   update: update
+  view: counter_view
   grants: [ReadFiles, Console]
 }
 
@@ -62,3 +63,21 @@ fn statements(s: inout Tally) {
 }
 
 fn empty() {}
+
+view counter_view(s: Counter) -> View<Msg> {
+  let label = "{s.count}"
+  Col(gap: 8) {
+    Text(label, key: "count")
+    if s.count > 0 {
+      Button("-", on: Dec)
+    }
+    for t in s.items {
+      row(t, key: t.id)
+    }
+    match s.screen {
+      Done => {}
+      Next(n) => Text("{n}")
+    }
+    Spacer() {}
+  }
+}

@@ -78,6 +78,9 @@ pub fn check_each(path: &str, source: &Source) -> Result<Vec<DefCheck>, Diagnost
 fn check_all(path: &str, source: &Source) -> Result<(Vec<DefCheck>, Option<Lowered>), Diagnostic> {
     let files = source.files.iter().map(|f| (f.bytes.clone(), f.line));
     let program = parser::parse_files(path, &source.text, files)?;
+    if let Some(d) = first_view(path, &source.text, &program) {
+        return Err(d);
+    }
     let resolved = resolve::resolve(path, &program)?;
     let mut table = sig::Table::build(path, &program, &resolved);
     if let Some(d) = second_app(path, &program) {
@@ -146,6 +149,26 @@ fn holes(
         }
     };
     sites.into_iter().map(hole).collect()
+}
+
+/// Views parse but are not checked yet (M5-13): the first `view` keyword or `view:` app key.
+fn first_view(path: &str, src: &[u8], program: &ast::Program) -> Option<Diagnostic> {
+    let at = program.defs.iter().find_map(|d| match d {
+        Def::View { name, .. } => Some(keyword_before(src, name.at)),
+        Def::App { entries, .. } => entries.iter().find_map(|e| match e {
+            ast::Entry::View(at, _) => Some(*at),
+            _ => None,
+        }),
+        _ => None,
+    })?;
+    let message = "`view` is not supported yet";
+    Some(Diagnostic::new(path, at, 4, "unsupported-view", message))
+}
+
+/// The position of the four-letter keyword before the name at `at`, on the same line.
+fn keyword_before(src: &[u8], (line, col): ast::Pos) -> ast::Pos {
+    let text = src.split(|&b| b == b'\n').nth(line - 1).unwrap_or_default();
+    (line, text[..col - 1].trim_ascii_end().len() - 3)
 }
 
 fn second_app(path: &str, program: &ast::Program) -> Option<Diagnostic> {
