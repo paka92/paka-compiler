@@ -47,7 +47,7 @@ impl Gen<'_> {
                     ty = item;
                     self.item(here, item, i, site)
                 }
-                (Op::Slice(a, b, site), Some(item)) => self.slice(here, (ty, item), a, b, site),
+                (Op::Slice(a, b, site), Some(item)) => self.slice(here, item, a, b, site),
                 (Op::Item(i, site), None) => self.text(rt::words::INDEX, site, &[here, i]),
                 (Op::Slice(a, b, site), None) => self.text(rt::words::SLICE, site, &[here, a, b]),
                 (Op::Field(_), _) => unreachable!("taken above"),
@@ -68,16 +68,9 @@ impl Gen<'_> {
         self.b.ins().iadd(ptr, skip)
     }
 
-    /// Items `a` up to `b` excluded of the List at `at`, after the bounds check, copied into a
-    /// new List.
-    fn slice(
-        &mut self,
-        at: Value,
-        (list, item): (Ty, Ty),
-        a: Value,
-        b: Value,
-        site: Site,
-    ) -> Value {
+    /// A view of items `a` up to `b` excluded of the List at `at`, after the bounds check. It
+    /// owns nothing: a read copies it (`read`), a borrow lends it.
+    fn slice(&mut self, at: Value, item: Ty, a: Value, b: Value, site: Site) -> Value {
         let flags = MemFlagsData::trusted();
         let len = self.b.ins().load(types::I64, flags, at, LEN);
         let reversed = self.b.ins().icmp(IntCC::UnsignedGreaterThan, a, b);
@@ -89,14 +82,12 @@ impl Gen<'_> {
         let skip = self.b.ins().imul_imm_s(a, size as i64);
         let from = self.b.ins().iadd(ptr, skip);
         let count = self.b.ins().isub(b, a);
+        let zero = self.int_const(0);
         let view = slot(&mut self.b, 24);
-        for (w, at) in [(from, PTR), (count, LEN), (count, LIST_CAP)] {
+        for (w, at) in [(from, PTR), (count, LEN), (zero, LIST_CAP)] {
             self.b.ins().store(flags, w, view, at);
         }
-        let out = slot(&mut self.b, 24);
-        let (record, at) = (self.record(list), self.int_const(self.site(site) as i64));
-        self.rt_try(offset_of!(Rt, copy), &[self.ctx, at, record, view, out]);
-        self.temp(list, out)
+        view
     }
 
     /// A List literal: a zeroed block owned first, then each item stored as it is evaluated.
@@ -129,7 +120,7 @@ impl Gen<'_> {
             unreachable!("a List walk is over a List");
         };
         let size = self.size(item);
-        let at = self.value(xs)?;
+        let at = self.borrowed(xs)?;
         let flags = MemFlagsData::trusted();
         let ptr = self.b.ins().load(types::I64, flags, at, PTR);
         let len = self.b.ins().load(types::I64, flags, at, LEN);

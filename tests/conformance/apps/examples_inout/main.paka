@@ -1,0 +1,84 @@
+type Counter { name: String, hits: Int, on: Bool }
+
+fn bump(n: inout Int, by: Int) {
+  n += by
+}
+
+fn flip(b: inout Bool) {
+  b = !b
+}
+
+fn bump_twice(n: inout Int) {
+  bump(&n, 1)
+  bump(&n, 1)
+}
+
+fn shout(s: inout String) {
+  s += "!"
+}
+
+fn rename(c: inout Counter, name: String) {
+  c.name = name
+  c.hits += 1
+}
+
+fn capped(n: inout Int, cap: Int) -> Bool {
+  n += 1
+  if n > cap {
+    n = cap
+    return false
+  }
+  true
+}
+
+fn total(xs: List<Int>) -> Int {
+  var sum = 0
+  for x in xs {
+    sum += x
+  }
+  sum
+}
+
+fn first(ws: List<String>) -> String { ws[0] }
+
+example int_and_bool_locals {
+  var n = 1
+  var on = false
+  bump(&n, 4)
+  bump_twice(&n)
+  flip(&on)
+  n == 7 && on
+}
+example fields {
+  var c = Counter { name: "a", hits: 0, on: false }
+  bump(&c.hits, 2)
+  flip(&c.on)
+  shout(&c.name)
+  rename(&c, c.name + "b")
+  c.hits == 3 && c.on && c.name == "a!b"
+}
+example list_items {
+  var xs = [1, 2, 3]
+  var ws = ["p", "q"]
+  bump(&xs[1], 10)
+  shout(&ws[0])
+  var cs = [Counter { name: "x", hits: 0, on: false }]
+  rename(&cs[0], "y")
+  bump(&cs[0].hits, 5)
+  xs[1] == 12 && ws[0] == "p!" && ws[1] == "q" && cs[0].name == "y" && cs[0].hits == 6
+}
+example writes_stay_after_return {
+  var n = 4
+  let a = capped(&n, 5)
+  let b = capped(&n, 5)
+  a && !b && n == 5
+}
+example slices_are_lent {
+  let xs = [1, 2, 3, 4]
+  let ws = ["a", "b", "c"]
+  var seen = 0
+  for x in xs[1..<3] {
+    seen += x
+  }
+  total(xs[1..<3]) == 5 && total(xs[0..<0]) == 0 && first(ws[1..<3]) == "b" && seen == 5 && len(xs[2..<4]) == 2
+}

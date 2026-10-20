@@ -4,8 +4,8 @@
 
 use crate::builtins::ROWS;
 use crate::core_form::{
-    Arg, Arith, Bin, Block, Callee, Cmp, Compound, Expr, ExprKind, FloatArith, Fn, Local, Program,
-    Site, Stmt, Ty, Type, Un, Walk,
+    Arg, Arith, Bin, Block, Callee, Cmp, Compound, Expr, ExprKind, FloatArith, Fn, Local, Param,
+    Program, Site, Stmt, Ty, Type, Un, Walk,
 };
 use crate::layout::{Layouts, Owned};
 use crate::owners::Owners;
@@ -109,7 +109,9 @@ fn signature(p: &Program, l: &Layouts, f: &Fn) -> Result<Signature, Refusal> {
     let mut sig = Signature::new(CallConv::SystemV);
     sig.params.push(AbiParam::new(types::I64));
     for q in &f.params {
-        sig.params.push(AbiParam::new(word(ir_type(p, l, q.ty)?)));
+        let t = word(ir_type(p, l, q.ty)?);
+        sig.params
+            .push(AbiParam::new(if q.inout { types::I64 } else { t }));
     }
     if f.result.is_some() {
         sig.params.push(AbiParam::new(types::I64));
@@ -160,6 +162,7 @@ struct Gen<'a> {
     l: &'a Layouts,
     /// The type of each local.
     locals: &'a [Ty],
+    params: &'a [Param],
     def: usize,
     ctx: Value,
     out: Option<Value>,
@@ -192,7 +195,10 @@ impl<'a> Gen<'a> {
         let params = b.block_params(entry).to_vec();
         let mut vars = vec![];
         for (i, &ty) in f.locals.iter().enumerate() {
-            let t = ir_type(p, l, ty)?;
+            let t = match f.params.get(i) {
+                Some(q) if q.inout => types::I64,
+                _ => ir_type(p, l, ty)?,
+            };
             let var = b.declare_var(t);
             if i >= f.params.len() && values::held(&p.types[ty]) {
                 let at = values::slot(&mut b, l.get(ty).size);
@@ -215,6 +221,7 @@ impl<'a> Gen<'a> {
             p,
             l,
             locals: &f.locals,
+            params: &f.params,
             def,
             ctx: params[0],
             out: f.result.map(|_| params[params.len() - 1]),
@@ -349,17 +356,28 @@ impl<'a> Gen<'a> {
         self.b.ins().call_indirect(sig, f, given)
     }
 
-    /// Calls definition `id` through its slot (M4-05 section 7); a nonzero status returns at
-    /// once, a trap after pushing `site` as a frame.
+    /// Calls definition `id` through its slot (M4-05 section 5): each argument in written order,
+    /// an `inout` place's operands in its position, then each place walked to its address. A
+    /// nonzero status returns at once, a trap after pushing `site` as a frame.
     fn call(&mut self, id: usize, given: &[Arg], site: Site) -> Emitted {
         let f = &self.p.fns[id];
         let mut values = vec![self.ctx];
+        let mut places = vec![];
         for a in given {
-            let Arg::Value(e) = a else {
-                return Err("an inout argument is not compiled yet".into());
-            };
-            let v = self.value(e)?;
-            values.push(self.widen(v));
+            match a {
+                Arg::Value(e) => {
+                    let v = self.borrowed(e)?;
+                    values.push(self.widen(v));
+                }
+                Arg::Inout(place) => {
+                    places.push((values.len(), place, self.inout_operands(place)?));
+                    values.push(self.ctx);
+                }
+            }
+        }
+        let mut spilled = vec![];
+        for (i, place, operands) in places {
+            values[i] = self.address(place, operands, &mut spilled);
         }
         let result = f.result.map(|t| ir_type(self.p, self.l, t)).transpose()?;
         let held = f.result.filter(|&t| values::held(&self.p.types[t]));
@@ -386,6 +404,10 @@ impl<'a> Gen<'a> {
         let call = self.b.ins().call_indirect(sig, code, &values);
         let status = self.b.inst_results(call)[0];
         self.pass_on(status, site);
+        for (l, at) in spilled {
+            let v = self.get(self.locals[l], at, 0);
+            self.b.def_var(self.vars[l], v);
+        }
         Ok(match (f.result, slot) {
             (Some(t), Some(at)) => {
                 let v = self.get(t, at, 0);
@@ -393,6 +415,14 @@ impl<'a> Gen<'a> {
             }
             _ => None,
         })
+    }
+
+    /// An argument a callee only reads: a place is lent as it is, a List slice as a view.
+    fn borrowed(&mut self, e: &Expr) -> Result<Value, Refusal> {
+        match &e.kind {
+            ExprKind::Place(place) => Ok(self.borrow(place)?.0),
+            _ => self.value(e),
+        }
     }
 
     /// Returns a callee's nonzero status: 2 as it is, 1 after pushing the call site.
@@ -573,7 +603,7 @@ impl<'a> Gen<'a> {
                 let mut x = vec![];
                 for a in given {
                     match a {
-                        Arg::Value(e) => x.push(self.value(e)?),
+                        Arg::Value(e) => x.push(self.borrowed(e)?),
                         Arg::Inout(_) => return Err("an inout argument is not compiled yet".into()),
                     }
                 }

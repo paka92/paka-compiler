@@ -37,6 +37,8 @@ pub struct Heap {
     /// The most bytes live at once.
     cap: u64,
     used: u64,
+    /// Blocks made so far.
+    made: u64,
     /// Address to size.
     blocks: BTreeMap<usize, u64>,
     faults: Vec<Fault>,
@@ -47,6 +49,7 @@ impl Heap {
         Heap {
             cap,
             used: 0,
+            made: 0,
             blocks: BTreeMap::new(),
             faults: vec![],
         }
@@ -62,6 +65,7 @@ impl Heap {
             return None;
         }
         self.used = used;
+        self.made += 1;
         self.blocks.insert(ptr.expose_provenance(), bytes);
         Some(ptr)
     }
@@ -89,6 +93,11 @@ impl Heap {
     /// The blocks still live, as (address, bytes) in address order.
     pub fn leaks(&self) -> Vec<(usize, u64)> {
         self.blocks.iter().map(|(&a, &b)| (a, b)).collect()
+    }
+
+    /// How many blocks the run has made, freed or not.
+    pub fn made(&self) -> u64 {
+        self.made
     }
 
     pub fn faults(&self) -> &[Fault] {

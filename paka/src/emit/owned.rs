@@ -28,10 +28,15 @@ impl Gen<'_> {
         if !self.l.owns(t) || self.owners.disown(v) {
             return v;
         }
+        self.copy_of(t, v, 0)
+    }
+
+    /// A copy of `v` of type `t` in a new slot, owning new blocks; a `memory` trap at `site`.
+    pub(super) fn copy_of(&mut self, t: Ty, v: Value, site: u64) -> Value {
         let size = self.size(t);
         let to = slot(&mut self.b, size);
         let record = self.record(t);
-        let site = self.int_const(0);
+        let site = self.int_const(site as i64);
         self.rt_try(offset_of!(Rt, copy), &[self.ctx, site, record, v, to]);
         to
     }

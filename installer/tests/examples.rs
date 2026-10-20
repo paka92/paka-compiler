@@ -114,6 +114,7 @@ fn example_statuses_equal_the_interpreters() {
         "examples_lists",
         "examples_list_traps",
         "examples_owned",
+        "examples_inout",
         "examples_trapped",
         "examples_fail_comparisons",
         "examples_unfinished",

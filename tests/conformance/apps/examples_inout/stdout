@@ -1,0 +1,5 @@
+fields pass
+int_and_bool_locals pass
+list_items pass
+slices_are_lent pass
+writes_stay_after_return pass

@@ -9,6 +9,9 @@ use cranelift_codegen::ir::{
 };
 use cranelift_frontend::{FunctionBuilder, Switch};
 
+/// A place's root value and type, then its steps' operands.
+pub(super) type Operands = (Value, Ty, Vec<Op>);
+
 /// Whether a value of type `t` is held in memory.
 pub(super) fn held(t: &Type) -> bool {
     matches!(
@@ -75,9 +78,14 @@ impl Gen<'_> {
             .store(MemFlagsData::trusted(), v, at, offset as i32);
     }
 
-    /// Binds local `l` to `v`: a held local takes its words into its slot.
+    /// Binds local `l` to `v`: a held local takes its words into its slot, and an `inout`
+    /// parameter into its caller's place.
     pub(super) fn bind(&mut self, l: Local, v: Value) {
         let var = self.vars[l];
+        if self.by_pointer(l) {
+            let at = self.b.use_var(var);
+            return self.put(self.locals[l], at, 0, v);
+        }
         match self.held(self.locals[l]) {
             true => {
                 let at = self.b.use_var(var);
@@ -87,10 +95,24 @@ impl Gen<'_> {
         }
     }
 
+    /// Whether local `l` is an `inout` parameter its variable only points to: one not held in
+    /// memory, whose variable is already an address.
+    fn by_pointer(&self, l: Local) -> bool {
+        self.params.get(l).is_some_and(|q| q.inout) && !self.held(self.locals[l])
+    }
+
+    fn local(&mut self, l: Local) -> Value {
+        let v = self.b.use_var(self.vars[l]);
+        match self.by_pointer(l) {
+            true => self.get(self.locals[l], v, 0),
+            false => v,
+        }
+    }
+
     /// The place's root value and type, then its steps' operands, in written order.
-    fn operands(&mut self, place: &Place) -> Result<(Value, Ty, Vec<Op>), Refusal> {
+    fn operands(&mut self, place: &Place) -> Result<Operands, Refusal> {
         let (root, ty) = match &place.root {
-            Root::Local(l) => (self.b.use_var(self.vars[*l]), self.locals[*l]),
+            Root::Local(l) => (self.local(*l), self.locals[*l]),
             Root::Value(e) => (self.value(e)?, e.ty.expect("a place has a type")),
         };
         let mut ops = vec![];
@@ -105,13 +127,60 @@ impl Gen<'_> {
         Ok((root, ty, ops))
     }
 
+    /// The place's value, which a List slice copies into a new List.
     pub(super) fn read(&mut self, place: &Place) -> Result<Value, Refusal> {
+        let (v, ty) = self.borrow(place)?;
+        Ok(match place.steps.last() {
+            Some(Step::Slice(.., site)) if self.p.types[ty] != Type::String => {
+                let copy = self.copy_of(ty, v, self.site(*site));
+                self.temp(ty, copy)
+            }
+            _ => v,
+        })
+    }
+
+    /// The place's value and type, read where it lies: a List slice is a view into its List.
+    pub(super) fn borrow(&mut self, place: &Place) -> Result<(Value, Ty), Refusal> {
         let (root, ty, ops) = self.operands(place)?;
         if ops.is_empty() {
-            return Ok(root);
+            return Ok((root, ty));
         }
         let (at, ty, offset) = self.walk(root, ty, &ops);
-        Ok(self.get(ty, at, offset))
+        Ok((self.get(ty, at, offset), ty))
+    }
+
+    /// An `inout` place's operands, evaluated in the argument's position; a whole local has
+    /// none.
+    pub(super) fn inout_operands(&mut self, place: &Place) -> Result<Option<Operands>, Refusal> {
+        match place.steps.is_empty() {
+            true => Ok(None),
+            false => self.operands(place).map(Some),
+        }
+    }
+
+    /// The address of an `inout` place, walked with its checks. A local held in a variable is
+    /// stored in a slot for the call; `spilled` takes it, to read it back after.
+    pub(super) fn address(
+        &mut self,
+        place: &Place,
+        operands: Option<Operands>,
+        spilled: &mut Vec<(Local, Value)>,
+    ) -> Value {
+        if let Some((root, ty, ops)) = operands {
+            let (at, _, offset) = self.walk(root, ty, &ops);
+            return self.b.ins().iadd_imm_s(at, offset as i64);
+        }
+        let Root::Local(l) = place.root else {
+            unreachable!("an inout place is rooted at a local");
+        };
+        let at = self.b.use_var(self.vars[l]);
+        if self.held(self.locals[l]) || self.by_pointer(l) {
+            return at;
+        }
+        let to = slot(&mut self.b, 8);
+        self.put(self.locals[l], to, 0, at);
+        spilled.push((l, to));
+        to
     }
 
     /// `place = e` or `place op= e`: the steps' operands, then `e`, then the walk with its

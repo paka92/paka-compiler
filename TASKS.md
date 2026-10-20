@@ -1211,6 +1211,7 @@ or merged during review. Ids with a letter were added during review.
 - flags: native-only
 - done when: Fixtures for inout fields, list items and slices match the interpreter; the ledger shows no allocation for a borrow.
 - why this level: Borrowed parts must point into the caller's value without copying; writes through inout must land exactly.
+- note: Done: an `inout` argument's operands are evaluated in its position and each place is walked to its address after all arguments (docs/core.md); a whole local held in a variable is stored in a slot for the call and read back after it, and an `inout` parameter not held in memory is a pointer its reads load and its writes store through. A List slice is a view (ptr at its first item, len, cap 0) that a read copies and an argument, a `for` walk or a built-in borrows; M4-05 section 5 records why read-only Strings and Lists pass as pointers rather than prefixes. The fixture is the conformance program `examples_inout`: Int and Bool locals, fields, List items, writes that stay after a `return`, and lent slices. `installer/tests/borrows.rs` counts blocks with the heap's new `made` and finds none for a borrow. A String slice is still a new String, and built-ins with an `inout` parameter (`push`, `pop` and the rest) wait on the tasks that compile them.
 
 ### M4-36 · L4 · Drive compiled headless apps: first message, effects, console and file grants
 
