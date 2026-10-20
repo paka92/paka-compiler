@@ -4,6 +4,7 @@
 
 pub mod app;
 pub mod items;
+pub mod map;
 pub mod records;
 pub mod words;
 
@@ -201,6 +202,17 @@ pub struct Rt {
     ) -> i32,
     pub sort_by:
         unsafe extern "sysv64" fn(&mut Context, u64, u64, *const words::ListWords, u64) -> i32,
+    #[allow(clippy::type_complexity)]
+    pub map: unsafe extern "sysv64" fn(
+        &mut Context,
+        u64,
+        u64,
+        u64,
+        u64,
+        *mut *mut u8,
+        u64,
+        *mut u8,
+    ) -> i32,
 }
 
 pub static RT: Rt = Rt {
@@ -214,6 +226,7 @@ pub static RT: Rt = Rt {
     drop: records::rt_drop,
     items: items::rt_items,
     sort_by: items::rt_sort_by,
+    map: map::rt_map,
 };
 
 /// `rt.alloc`: a block of `bytes` into `out` and status 0, or a `memory` trap and status 1.

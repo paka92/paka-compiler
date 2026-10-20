@@ -26,6 +26,7 @@ pub(super) fn held(t: &Type) -> bool {
             | Type::Option(_)
             | Type::Result(..)
             | Type::Effect(_)
+            | Type::Map(..)
     )
 }
 
@@ -125,7 +126,7 @@ impl Gen<'_> {
                 Step::Field(i) => Op::Field(*i),
                 Step::Item(i, site) => Op::Item(self.value(i)?, *site),
                 Step::Slice(a, b, site) => Op::Slice(self.value(a)?, self.value(b)?, *site),
-                Step::Key(..) => return Err("a Map step is not compiled yet".into()),
+                Step::Key(k, site) => Op::Key(self.value(k)?, *site, false),
             });
         }
         Ok((root, ty, ops))
@@ -203,7 +204,10 @@ impl Gen<'_> {
         op: Option<&Compound>,
         e: &Expr,
     ) -> Result<(), Refusal> {
-        let (root, ty, ops) = self.operands(place)?;
+        let (root, ty, mut ops) = self.operands(place)?;
+        if let (None, Some(Op::Key(.., add))) = (op, ops.last_mut()) {
+            *add = true;
+        }
         let v = self.value(e)?;
         let (at, ty, offset) = self.walk(root, ty, &ops);
         let whole = ops.is_empty();

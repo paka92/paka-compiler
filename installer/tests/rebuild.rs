@@ -54,8 +54,7 @@ fn a_body_edit_compiles_once_and_its_revert_compiles_nothing() {
 #[test]
 fn a_failed_compile_installs_nothing() {
     let mut dev = dev(BASE);
-    let broken = BASE.replace("{ 1 }", "{ 3 }")
-        + "fn map() -> Int {\n  let m: Map<String, Int> = [\"a\": 1]\n  1\n}\n";
+    let broken = BASE.replace("{ 1 }", "{ 3 }") + "fn shout() -> String {\n  lower(\"A\")\n}\n";
     assert!(dev.edit(&broken).unwrap_err().contains("not compiled yet"));
     assert_eq!((dev.cache.compiles, dev.loader.installed()), (4, 4));
     assert_eq!(run(&dev, "top"), 1);

@@ -1255,10 +1255,12 @@ or merged during review. Ids with a letter were added during review.
 
 ### M4-38b · L4 · Emit the built-in map with its fixed iteration order
 
+- status: done
 - needs: M4-32, M4-38, M4-40, M4-31b
 - flags: unsafe, native-only
 - done when: M2's collection conformance cases agree with the interpreter in dev mode with a clean ledger.
 - why this level: Unsafe container with a fixed order; a wrong order or drop is silent.
+- note: Done: a Map is one word, null or a block of entries in rising key order; `rt.map` (paka-rt/src/abi/dev/map.rs) finds, adds and removes entries, and lists keys or values. Every Map run case compiles and matches the interpreter with a clean ledger. A missing String key traps without the key's text; the trap detail waits on M4-40.
 
 ### M4-39 · L4 · Rebuild and rerun the program after each accepted edit; report its output
 

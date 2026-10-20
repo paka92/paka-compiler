@@ -6,17 +6,21 @@
 //! - `STRING`: nothing.
 //! - `LIST`: the item's record, 0 when items own nothing, and the item's size.
 //! - `VALUE`: a tagged value held inline, and its record.
+//! - `MAP`: the Map's word, its value's record (0 when values own nothing) and its shape
+//!   (`map::STRING_KEY` and the value's size).
 //! - `BOX`: a pointer to a block holding one value, the value's record (0 when it owns nothing)
 //!   and size. A zero word is a box not yet built.
 //!
 //! Both walkers keep a worklist, so no value is deep enough to overflow the stack.
 
+use super::map::Shape;
 use super::words::{ListWords, TextWords};
 use super::{Context, MEMORY, Trap};
 use std::ptr;
 
 pub const STRING: u64 = 1;
 pub const LIST: u64 = 2;
+pub const MAP: u64 = 3;
 pub const BOX: u64 = 4;
 pub const VALUE: u64 = 5;
 pub const TAGGED: u64 = 1 << 63;
@@ -25,6 +29,7 @@ pub const TAGGED: u64 = 1 << 63;
 pub enum Part {
     String,
     List { item: usize, size: u64 },
+    Map { value: usize, shape: u64 },
     Value(usize),
     Box { item: usize, size: u64 },
 }
@@ -76,6 +81,7 @@ impl Records {
                     words.extend(match *part {
                         Part::String => [*offset, STRING, 0, 0],
                         Part::List { item, size } => [*offset, LIST, records.address(item), size],
+                        Part::Map { value, shape } => [*offset, MAP, records.address(value), shape],
                         Part::Value(t) => [*offset, VALUE, records.address(t), 0],
                         Part::Box { item, size } => [*offset, BOX, records.address(item), size],
                     });
@@ -122,6 +128,7 @@ pub unsafe extern "sysv64" fn rt_copy(
                 match kind {
                     STRING => text(ctx, from.cast(), to.cast()),
                     LIST => list(ctx, (a, b), from.cast(), to.cast(), &mut work),
+                    MAP => map(ctx, Shape::new(a, b), from.cast(), to.cast(), &mut work),
                     BOX => boxed(ctx, (a, b), from.cast(), to.cast(), &mut work),
                     _ => {
                         work.push((a, from, to));
@@ -184,6 +191,27 @@ pub unsafe extern "sysv64" fn rt_drop(ctx: &mut Context, record: u64, value: u64
                         work.extend((0..words.len).map(item));
                     }
                 }
+                MAP => {
+                    // SAFETY: a MAP entry holds a Map's word.
+                    let block = unsafe { *part.cast::<*mut u8>() };
+                    // SAFETY: the word is null or a Map block of the entry's shape.
+                    let (len, cap) = unsafe { Shape::head(block) };
+                    if block.is_null() {
+                        continue;
+                    }
+                    let shape = Shape::new(a, b);
+                    work.push(Task::Free(block, shape.bytes(cap)));
+                    for i in 0..len {
+                        // SAFETY: entry `i` is there, its key first.
+                        let key = unsafe { &*shape.key(block, i).cast::<TextWords>() };
+                        if shape.string() && key.cap != 0 {
+                            work.push(Task::Free(key.ptr, key.cap));
+                        }
+                        if a != 0 {
+                            work.push(Task::Walk(a, shape.value(block, i)));
+                        }
+                    }
+                }
                 BOX => {
                     // SAFETY: a BOX entry holds a pointer to its block, or 0.
                     let block = unsafe { *part.cast::<*mut u8>() };
@@ -201,7 +229,11 @@ pub unsafe extern "sysv64" fn rt_drop(ctx: &mut Context, record: u64, value: u64
 }
 
 /// A new block for the String at `to`, a copy of the one at `from`.
-unsafe fn text(ctx: &mut Context, from: *const TextWords, to: *mut TextWords) -> Option<()> {
+pub(super) unsafe fn text(
+    ctx: &mut Context,
+    from: *const TextWords,
+    to: *mut TextWords,
+) -> Option<()> {
     // SAFETY: the caller vouches both are a String's words.
     let (from, to) = unsafe { (&*from, &mut *to) };
     to.cap = from.bytes;
@@ -234,6 +266,39 @@ unsafe fn list(
     if item != 0 {
         let at = |p: *mut u8, i: u64| p.wrapping_add((i * size) as usize);
         work.extend((0..from.len).map(|i| (item, at(from.ptr, i), at(to.ptr, i))));
+    }
+    Some(())
+}
+
+/// A new block for the Map at `to`, a copy of the one at `from`: its String keys copied, its
+/// values that own blocks on `work`.
+unsafe fn map(
+    ctx: &mut Context,
+    shape: Shape,
+    from: *const *mut u8,
+    to: *mut *mut u8,
+    work: &mut Vec<(u64, *mut u8, *mut u8)>,
+) -> Option<()> {
+    // SAFETY: the caller vouches both hold a Map's word, `from`'s null or a block of `shape`.
+    let (from, to, (len, _)) = unsafe { (*from, &mut *to, Shape::head(*from)) };
+    if len == 0 {
+        *to = ptr::null_mut();
+        return Some(());
+    }
+    *to = ctx.heap.alloc(shape.bytes(len))?;
+    // SAFETY: both blocks hold `len` entries, and `*to` is new; its capacity is its length.
+    unsafe {
+        ptr::copy_nonoverlapping(from, *to, shape.bytes(len) as usize);
+        to.cast::<u64>().add(1).write(len);
+    }
+    for i in 0..len {
+        if shape.string() {
+            // SAFETY: entry `i` of each holds a String key, word-copied.
+            unsafe { text(ctx, shape.key(from, i).cast(), shape.key(*to, i).cast())? };
+        }
+        if shape.record() != 0 {
+            work.push((shape.record(), shape.value(from, i), shape.value(*to, i)));
+        }
     }
     Some(())
 }

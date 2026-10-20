@@ -17,6 +17,8 @@ pub(super) enum Op {
     Field(usize),
     Item(Value, Site),
     Slice(Value, Value, Site),
+    /// A Map key; true when a missing entry is added.
+    Key(Value, Site, bool),
 }
 
 /// The words of a String and a List.
@@ -38,6 +40,12 @@ impl Gen<'_> {
             }
             let here = self.b.ins().iadd_imm_s(at, offset as i64);
             offset = 0;
+            if let (Op::Key(key, site, add), Type::Map(_, v)) = (op, &self.p.types[ty]) {
+                let v = *v;
+                at = self.entry(here, ty, key, site, add);
+                ty = v;
+                continue;
+            }
             let item = match self.p.types[ty] {
                 Type::List(item) => Some(item),
                 _ => None,
@@ -50,7 +58,7 @@ impl Gen<'_> {
                 (Op::Slice(a, b, site), Some(item)) => self.slice(here, item, a, b, site),
                 (Op::Item(i, site), None) => self.text(rt::words::INDEX, site, &[here, i]),
                 (Op::Slice(a, b, site), None) => self.text(rt::words::SLICE, site, &[here, a, b]),
-                (Op::Field(_), _) => unreachable!("taken above"),
+                (Op::Field(_) | Op::Key(..), _) => unreachable!("taken above"),
             };
         }
         (at, ty, offset)

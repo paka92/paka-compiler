@@ -245,13 +245,12 @@ fn plain(p: &Program, l: &Layouts, t: Ty, seen: &mut BTreeSet<Ty>) -> bool {
         return true;
     }
     let effect = matches!(p.types[t], Type::Effect(_));
-    !matches!(p.types[t], Type::Map(..))
-        && l.get(t).owned.iter().flatten().all(|e| match e.kind {
-            Owned::String => true,
-            Owned::List(t) | Owned::Value(t) => plain(p, l, t, seen),
-            Owned::Box(t) => effect && plain(p, l, t, seen),
-            Owned::Map(..) => false,
-        })
+    l.get(t).owned.iter().flatten().all(|e| match e.kind {
+        Owned::String => true,
+        Owned::List(t) | Owned::Value(t) => plain(p, l, t, seen),
+        Owned::Map(k, v) => plain(p, l, k, seen) && plain(p, l, v, seen),
+        Owned::Box(t) => effect && plain(p, l, t, seen),
+    })
 }
 
 fn args(values: &[Value]) -> Vec<BlockArg> {
@@ -682,6 +681,7 @@ impl<'a> Gen<'a> {
             ExprKind::Str(s) => self.literal(s),
             ExprKind::Interp(parts, site) => self.interpolate(parts, *site)?,
             ExprKind::List(items) => self.list(ty(e), items)?,
+            ExprKind::Map(entries) => self.map(ty(e), entries)?,
             ExprKind::Place(place) => self.read(place)?,
             ExprKind::Record(_, fields) => return self.construct(ty(e), 0, fields),
             ExprKind::Variant(tag, fields) => {
@@ -768,6 +768,17 @@ impl<'a> Gen<'a> {
                         let i = self.position(arg(1), x[0], x[1])?;
                         self.found(ty(e), i)
                     }
+                    "get(m: Map<K, V>, key: K) -> Option<V>" => {
+                        ir_type(self.p, self.l, ty(e))?;
+                        self.get_key((arg(0), x[0]), x[1], ty(e), *site)
+                    }
+                    "has(m: Map<K, V>, key: K) -> Bool" => self.has_key(arg(0), x[0], x[1]),
+                    "keys(m: Map<K, V>) -> List<K>" => {
+                        self.listed((arg(0), x[0]), true, ty(e), *site)
+                    }
+                    "values(m: Map<K, V>) -> List<V>" => {
+                        self.listed((arg(0), x[0]), false, ty(e), *site)
+                    }
                     row => return self.builtin(row, &x, *site, e),
                 }));
             }
@@ -789,7 +800,6 @@ impl<'a> Gen<'a> {
                 let branches = [(yes, Some(then), vec![]), (no, otherwise.as_ref(), vec![])];
                 return self.join(e, branches);
             }
-            kind => return Err(format!("{} is not compiled yet", what(kind))),
         };
         Ok(Some(v))
     }
@@ -951,6 +961,11 @@ impl<'a> Gen<'a> {
             }
             "len(x: String) -> Int" => self.length(x[0], true),
             "len(x: List<T>) -> Int" => self.length(x[0], false),
+            "len(x: Map<K, V>) -> Int" => self.map_len(x[0]),
+            "is_empty(x: Map<K, V>) -> Bool" => {
+                let n = self.map_len(x[0]);
+                self.b.ins().icmp_imm_s(IntCC::Equal, n, 0)
+            }
             "is_empty(x: String) -> Bool" | "is_empty(x: List<T>) -> Bool" => {
                 let n = self.length(x[0], row.contains("String"));
                 self.b.ins().icmp_imm_s(IntCC::Equal, n, 0)
@@ -1027,18 +1042,11 @@ fn ty(e: &Expr) -> Ty {
     e.ty.expect("the node has a type")
 }
 
-fn what(kind: &ExprKind) -> &'static str {
-    match kind {
-        ExprKind::Map(_) => "a Map",
-        ExprKind::Call(..) => "a call",
-        _ => "this expression",
-    }
-}
-
 mod cache;
 pub use cache::Cache;
 mod equal;
 mod items;
+mod map;
 mod owned;
 #[cfg(test)]
 mod tests;

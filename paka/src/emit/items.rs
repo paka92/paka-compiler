@@ -27,6 +27,11 @@ impl Gen<'_> {
         }
         let mut spilled = vec![];
         let (xs, list) = self.address(place, operands, &mut spilled);
+        if let Type::Map(..) = self.p.types[list] {
+            self.remove_key(list, xs, x[0].1);
+            self.reload(spilled);
+            return Ok(None);
+        }
         let Type::List(item) = self.p.types[list] else {
             unreachable!("a List row's place is a List");
         };

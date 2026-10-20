@@ -1,6 +1,7 @@
 //! Equality of values of any type (M4-38, docs/decisions/M2-09.md section 2), emitted inline: a
-//! List item by item, a record field by field, a variant by its tag and then its fields. Floats
-//! compare as numbers, so NaN differs from itself. A recursive type is refused.
+//! List item by item, a Map entry by entry in key order, a record field by field, a variant by
+//! its tag and then its fields. Floats compare as numbers, so NaN differs from itself. A
+//! recursive type is refused.
 
 use super::values::{held, slot};
 use super::{Gen, Refusal, args, ir_type};
@@ -74,6 +75,7 @@ impl Gen<'_> {
                 self.b.ins().icmp_imm_s(IntCC::Equal, order, 0)
             }
             Type::List(item) => self.equal_items(item, x, y, seen)?,
+            Type::Map(..) => self.equal_entries(t, x, y, seen)?,
             ref u if held(u) => self.equal_fields(t, x, y, seen)?,
             _ => self.b.ins().icmp(IntCC::Equal, x, y),
         };
@@ -90,10 +92,51 @@ impl Gen<'_> {
         seen: &mut Vec<Ty>,
     ) -> Result<Value, Refusal> {
         let flags = MemFlagsData::trusted();
-        let (n, m) = (
-            self.b.ins().load(types::I64, flags, x, 8),
-            self.b.ins().load(types::I64, flags, y, 8),
+        let n = self.b.ins().load(types::I64, flags, x, 8);
+        let m = self.b.ins().load(types::I64, flags, y, 8);
+        self.pairwise(n, m, |g, i| {
+            let (a, b) = (g.item_at(item, x, i), g.item_at(item, y, i));
+            let (a, b) = (g.get(item, a, 0), g.get(item, b, 0));
+            g.equal_in(item, a, b, seen)
+        })
+    }
+
+    /// Two Maps: the same length, then each pair of entries, in key order, until one differs.
+    fn equal_entries(
+        &mut self,
+        t: Ty,
+        x: Value,
+        y: Value,
+        seen: &mut Vec<Ty>,
+    ) -> Result<Value, Refusal> {
+        let Type::Map(k, v) = self.p.types[t] else {
+            unreachable!("Map equality is of Maps");
+        };
+        let (n, m) = (self.map_len(x), self.map_len(y));
+        let flags = MemFlagsData::trusted();
+        let (x, y) = (
+            self.b.ins().load(types::I64, flags, x, 0),
+            self.b.ins().load(types::I64, flags, y, 0),
         );
+        let offset = self.size(k);
+        self.pairwise(n, m, |g, i| {
+            let (a, b) = (g.entry_at(t, x, i), g.entry_at(t, y, i));
+            let (ka, kb) = (g.get(k, a, 0), g.get(k, b, 0));
+            let same = g.equal_in(k, ka, kb, seen)?;
+            let (va, vb) = (g.get(v, a, offset), g.get(v, b, offset));
+            let eq = g.equal_in(v, va, vb, seen)?;
+            Ok(g.b.ins().band(same, eq))
+        })
+    }
+
+    /// Whether lengths `n` and `m` agree and `eq` holds at each position below them, asked in
+    /// order until it fails.
+    fn pairwise(
+        &mut self,
+        n: Value,
+        m: Value,
+        mut eq: impl FnMut(&mut Self, Value) -> Result<Value, Refusal>,
+    ) -> Result<Value, Refusal> {
         let [head, body, done] = [(); 3].map(|()| self.b.create_block());
         let i = self.b.append_block_param(head, types::I64);
         self.b.append_block_param(done, types::I8);
@@ -108,9 +151,7 @@ impl Gen<'_> {
         let all = self.b.ins().iconst(types::I8, 1);
         self.b.ins().brif(more, body, &[], done, &args(&[all]));
         self.b.switch_to_block(body);
-        let (a, b) = (self.item_at(item, x, i), self.item_at(item, y, i));
-        let (a, b) = (self.get(item, a, 0), self.get(item, b, 0));
-        let eq = self.equal_in(item, a, b, seen)?;
+        let eq = eq(self, i)?;
         let next = self.b.ins().iadd_imm_s(i, 1);
         let differ = self.b.ins().iconst(types::I8, 0);
         self.b

@@ -7,6 +7,7 @@
 //! holds a box and every size is finite.
 
 use crate::core_form::{Program, Ty, Type};
+use paka_rt::abi::dev::map::STRING_KEY;
 use paka_rt::abi::dev::records::{Part, Spec};
 use std::collections::{BTreeMap, BTreeSet};
 
@@ -103,8 +104,8 @@ impl Layouts {
         self.get(ty).owned.iter().any(|alt| !alt.is_empty())
     }
 
-    /// The type records' contents for the runtime, by type number. A type that owns nothing, or
-    /// owns a Map, which no back end compiles yet, has none.
+    /// The type records' contents for the runtime, by type number. A type that owns nothing has
+    /// none.
     pub fn specs(&self) -> Vec<Option<Spec>> {
         let part = |e: &Entry| match e.kind {
             Owned::String => Some((e.offset as u64, Part::String)),
@@ -117,7 +118,11 @@ impl Layouts {
                 let size = self.get(item).size as u64;
                 Some((e.offset as u64, Part::Box { item, size }))
             }
-            Owned::Map(..) => None,
+            Owned::Map(k, v) => {
+                let string = if self.owns(k) { STRING_KEY } else { 0 };
+                let shape = string | self.get(v).size as u64;
+                Some((e.offset as u64, Part::Map { value: v, shape }))
+            }
         };
         let spec = |(&ty, l): (&Ty, &Layout)| {
             let alternatives = l.owned.iter().map(|alt| alt.iter().map(part).collect());
