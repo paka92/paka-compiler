@@ -106,7 +106,10 @@ impl Runner {
 impl Live {
     /// The runner's answer to `request` within `wait`; else why it stopped.
     fn ask(&mut self, request: &Value, wait: Duration) -> Result<Value, &'static str> {
-        writeln!(self.stdin, "{request}").map_err(|_| "crash")?;
+        // One write: `Display` would send each piece of the request in its own system call.
+        self.stdin
+            .write_all(format!("{request}\n").as_bytes())
+            .map_err(|_| "crash")?;
         self.stdin.flush().map_err(|_| "crash")?;
         match self.replies.recv_timeout(wait) {
             Ok(line) => parse(&line).map_err(|_| "crash"),
