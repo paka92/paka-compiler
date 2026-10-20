@@ -1,8 +1,10 @@
-//! `paka-bench [DEFS [SAMPLES]]`: edit-to-running time (M4-44, docs/decisions/M4-01.md section 6).
+//! `paka-bench [--gated] [DEFS [SAMPLES]]`: edit-to-running time (M4-44, docs/decisions/M4-01.md
+//! section 6).
 //! Writes a program of DEFS definitions, 5,000 by default, one file each, serves it with the `paka`
 //! beside this binary, and times edit requests that ask for a run, from request written to reply
 //! read. Prints the median and 95th percentile of each edit class over SAMPLES edits, 200 by
-//! default; the worst of three runs counts.
+//! default; the worst of three runs counts. `--gated` times only the gated classes. Exits 1 when a
+//! gated class fails.
 
 use paka_json::{Value, array, object, parse, quote};
 use std::io::{BufRead, BufReader, Write};
@@ -22,16 +24,20 @@ const USERS: usize = 10;
 const SMALLEST: usize = FIXED + USERS + 1;
 
 fn main() -> ExitCode {
-    let arg = |at: usize, default: usize| env::args().nth(at).map_or(Ok(default), |a| a.parse());
-    let (Ok(size @ SMALLEST..), Ok(samples @ 1..)) = (arg(1, 5000), arg(2, 200)) else {
-        eprintln!("usage: paka-bench [DEFS [SAMPLES]], DEFS at least {SMALLEST}");
+    let mut args: Vec<String> = env::args().skip(1).collect();
+    let gated = args.first().is_some_and(|a| a == "--gated");
+    args.drain(..usize::from(gated));
+    let arg = |at: usize, default: usize| args.get(at).map_or(Ok(default), |a| a.parse());
+    let (Ok(size @ SMALLEST..), Ok(samples @ 1..)) = (arg(0, 5000), arg(1, 200)) else {
+        eprintln!("usage: paka-bench [--gated] [DEFS [SAMPLES]], DEFS at least {SMALLEST}");
         return ExitCode::from(2);
     };
     let dir = env::temp_dir().join(format!("paka-bench-{}", process::id()));
-    let result = bench(&dir, size, samples);
+    let result = bench(&dir, size, samples, gated);
     let _ = fs::remove_dir_all(&dir);
     match result {
-        Ok(()) => ExitCode::SUCCESS,
+        Ok(true) => ExitCode::SUCCESS,
+        Ok(false) => ExitCode::FAILURE,
         Err(e) => {
             eprintln!("paka-bench: {e}");
             ExitCode::FAILURE
@@ -39,7 +45,8 @@ fn main() -> ExitCode {
     }
 }
 
-fn bench(dir: &Path, size: usize, samples: usize) -> io::Result<()> {
+/// Whether every gated class passes.
+fn bench(dir: &Path, size: usize, samples: usize, gated: bool) -> io::Result<bool> {
     write_program(dir, size)?;
     let paka = env::current_exe()?.with_file_name("paka");
     let mut server = Server::start(&paka, dir)?;
@@ -66,10 +73,16 @@ fn bench(dir: &Path, size: usize, samples: usize) -> io::Result<()> {
         for s in 0..samples {
             let n = run * samples + s + 1;
             for (class, (name, _)) in CLASSES[..4].iter().enumerate() {
+                if gated && !CLASSES[class].1 {
+                    continue;
+                }
                 let (time, version) =
                     server.edit(name, Some(&base[class]), Some(&body(name, n)))?;
                 base[class] = version;
                 run_times[class].push(time);
+            }
+            if gated {
+                continue;
             }
             let added = format!("g{n}");
             let text = format!("fn {added}(x: Int) -> Int {{\n  x + {n}\n}}");
@@ -82,8 +95,9 @@ fn bench(dir: &Path, size: usize, samples: usize) -> io::Result<()> {
             all.push(these);
         }
     }
-    report(size, samples, &times);
-    server.stop()
+    let passed = report(size, samples, &times);
+    server.stop()?;
+    Ok(passed)
 }
 
 /// Each class: its name and whether it is gated.
@@ -96,7 +110,9 @@ const CLASSES: [(&str, bool); 6] = [
     ("delete", false),
 ];
 
-fn report(size: usize, samples: usize, times: &[Vec<Vec<Duration>>]) {
+/// Prints each timed class; whether every gated one passes.
+fn report(size: usize, samples: usize, times: &[Vec<Vec<Duration>>]) -> bool {
+    let mut passed = true;
     println!("{size} definitions, {samples} edits per class, worst of {RUNS} runs\n");
     println!("{:<12} {:>10} {:>10}  gate", "class", "median", "p95");
     let labels = [
@@ -108,6 +124,9 @@ fn report(size: usize, samples: usize, times: &[Vec<Vec<Duration>>]) {
         "delete",
     ];
     for ((label, (_, gated)), runs) in labels.iter().zip(CLASSES).zip(times) {
+        if runs.iter().all(Vec::is_empty) {
+            continue;
+        }
         let worst =
             |at: fn(&[Duration]) -> Duration| runs.iter().map(|r| at(r)).max().unwrap_or_default();
         let p95 = worst(|r| r[(r.len() * 95).div_ceil(100) - 1]);
@@ -116,12 +135,14 @@ fn report(size: usize, samples: usize, times: &[Vec<Vec<Duration>>]) {
             true if p95 < GATE => "pass",
             true => "FAIL",
         };
+        passed &= gate != "FAIL";
         println!(
             "{label:<12} {:>10} {:>10}  {gate}",
             ms(worst(|r| r[r.len() / 2])),
             ms(p95)
         );
     }
+    passed
 }
 
 fn ms(d: Duration) -> String {

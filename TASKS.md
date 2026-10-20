@@ -1382,6 +1382,7 @@ or merged during review. Ids with a letter were added during review.
 - flags: owner
 - done when: One command on the build machine reports pass for every item of the exit check; the owner signs the recorded results.
 - why this level: Wires existing tests and the benchmark into one script with pass or fail per exit-check item.
+- note: Done, waiting on the owner's signature: `scripts/m4-exit-check` runs each item and prints pass or FAIL; `paka-bench --gated` times only the gated classes and exits 1 on a failure. Every item passed; docs/results/M4-46.md records the run.
 
 ### M4-47 · L4 · Decide the canonical layout and how tools treat other layouts
 

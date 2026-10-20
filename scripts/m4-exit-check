@@ -1,0 +1,50 @@
+#!/usr/bin/env bash
+# The M4 exit check (TASKS.md, M4): runs each item and prints pass or FAIL for it, then exits 1
+# when any item fails. FUZZ and EDITS set how many seeds the generated-program and edit-sequence
+# runs take; by default the counts of M4-41b and M4-43.
+set -u
+cd "$(dirname "$0")/.."
+FUZZ=${FUZZ:-100000}
+EDITS=${EDITS:-10000}
+export TMPDIR=$PWD/target/tmp
+mkdir -p "$TMPDIR"
+log=$TMPDIR/m4-exit-check
+mkdir -p "$log"
+failed=0
+
+item() {
+    local name=$1
+    shift
+    if "$@" > "$log/$name.txt" 2>&1; then
+        echo "pass  $name"
+    else
+        echo "FAIL  $name (see $log/$name.txt)"
+        failed=1
+    fi
+}
+
+# The last line of a paka-diff run, which must report no differences and, for `unsupported`,
+# none unsupported.
+diff_run() {
+    local none_unsupported=$1
+    shift
+    target/release/paka-diff "$@" > "$log/diff.out" 2>&1 || return 1
+    local last
+    last=$(tail -n 1 "$log/diff.out")
+    echo "$last"
+    [[ $last == *" 0 differ, "* ]] || return 1
+    [[ $none_unsupported == no || $last == *" 0 unsupported" ]]
+}
+
+cargo build -q --release -p paka -p paka-installer || exit 1
+
+item 1-edit-to-running target/release/paka-bench --gated 5000 200
+item 2-recheck-sets cargo test -q -p paka --test workspace --test serve
+item 3-last-runnable-version cargo test -q -p paka-installer --test serve_run
+item 4-transcripts cargo test -q -p paka --test serve
+item 5-word-count-and-grants cargo test -q -p paka-installer --test apps
+item 6-conformance diff_run unsupported
+item 6-generated-programs diff_run no --fuzz 0 "$FUZZ" "$TMPDIR/keep-fuzz"
+item 6-edit-sequences diff_run no --edits 0 "$EDITS" "$TMPDIR/keep-edits"
+
+exit $failed
