@@ -78,7 +78,14 @@ fn a_swap_during_a_run_is_refused() {
     slots.swap(&[(0, spin)]).unwrap();
     let ctx = context();
     thread::scope(|s| {
-        let running = s.spawn(|| run(&slots, &ctx));
+        // A run that starts while the loop below swaps is refused; it tries again.
+        let running = s.spawn(|| {
+            let mut ran = run(&slots, &ctx);
+            while ran == Err(Refused::Busy) {
+                ran = run(&slots, &ctx);
+            }
+            ran
+        });
         while slots.swap(&[(0, spin)]).is_ok() {
             thread::yield_now();
         }

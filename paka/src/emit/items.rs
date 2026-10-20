@@ -3,7 +3,7 @@
 //! handed to it is owned first, so the List takes a value no one else holds.
 
 use super::values::{held, slot};
-use super::{Emitted, Gen, Refusal, ir_type, ty};
+use super::{Emitted, Gen, Refusal, ty};
 use crate::core_form::{Arg, Site, Ty, Type};
 use cranelift_codegen::ir::Value;
 use paka_rt::abi::dev::Rt;
@@ -35,7 +35,6 @@ impl Gen<'_> {
         let Type::List(item) = self.p.types[list] else {
             unreachable!("a List row's place is a List");
         };
-        ir_type(self.p, self.l, item)?;
         if name.starts_with("sort_by") {
             self.sort_by(item, xs, x[0].1, site);
             self.reload(spilled);
@@ -74,7 +73,6 @@ impl Gen<'_> {
         let Type::List(item) = self.p.types[list] else {
             unreachable!("list_of makes a List");
         };
-        ir_type(self.p, self.l, item)?;
         let a = self.given(item, x[0]);
         let (zero, size) = (self.int_const(0), self.size(list));
         let out = slot(&mut self.b, size);

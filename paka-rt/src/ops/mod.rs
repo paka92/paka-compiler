@@ -28,6 +28,8 @@ pub enum Trap {
     DivideByZero,
     OutOfBounds,
     BadConversion,
+    /// A String, List or Map past `CAP`.
+    Memory,
 }
 
 impl Trap {
@@ -44,6 +46,7 @@ impl Trap {
             Trap::DivideByZero => "divide_by_zero",
             Trap::OutOfBounds => "out_of_bounds",
             Trap::BadConversion => "bad_conversion",
+            Trap::Memory => "memory",
         }
     }
 

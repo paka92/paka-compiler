@@ -1,6 +1,7 @@
 //! `paka-diff [ROOT]`: runs every run case under ROOT, `tests/conformance` by default, on the
 //! interpreter and in dev mode, and lists each as agree, differ or unsupported, with whether the
-//! dev run's ledger ended clean (M4-40). The status is 1 when a case differs.
+//! dev run's ledger ended clean (M4-40); one that did not differs. The status is 1 when a case
+//! differs.
 //!
 //! `paka-diff --fuzz FIRST COUNT KEEP` does the same for the generated programs of COUNT seeds
 //! from FIRST (M4-41). Each that differs is shrunk while it keeps that kind of difference and
@@ -146,6 +147,10 @@ fn judge(
             difference(&reference, &dev),
         ) {
             (Some(why), _) => (2, format!("unsupported {name}: {why}")),
+            // A leak or a bad free is a fault even when the output agrees.
+            (None, None) if ledger(&note) != "ledger clean" => {
+                (1, format!("differ {name}: {}", ledger(&note)))
+            }
             (None, None) => (0, format!("agree {name}; {}", ledger(&note))),
             (None, Some(why)) => (1, format!("differ {name}: {why}; {}", ledger(&note))),
         },
@@ -254,7 +259,11 @@ fn one(args: &[OsString]) -> ExitCode {
                 return ExitCode::from(1);
             }
             let ran = dev.run(args, &mut Host(Fd1::default()), HEAP, limit);
-            let (leaks, faults) = ran.ledger;
+            let (mut leaks, faults) = ran.ledger;
+            // A trap's unwind drops nothing; the run's end frees what was live (M4-05 section 9).
+            if matches!(ran.end, Err(Stopped::Trap)) {
+                leaks = 0;
+            }
             let _ = fs::write(note, format!("ledger {leaks} {faults}"));
             let (status, line) = match ran.end {
                 Ok(end) => end,

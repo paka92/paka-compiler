@@ -54,12 +54,11 @@ fn a_body_edit_compiles_once_and_its_revert_compiles_nothing() {
 #[test]
 fn a_failed_compile_installs_nothing() {
     let mut dev = dev(BASE);
-    let broken = BASE.replace("{ 1 }", "{ 3 }") + "fn shout() -> String {\n  lower(\"A\")\n}\n";
-    assert!(
-        dev.edit(&source(&broken))
-            .unwrap_err()
-            .contains("not compiled yet")
-    );
+    // Each String literal takes a slot, so enough of them pass the frame limit.
+    let items = vec!["\"a\""; 10_000].join(", ");
+    let broken =
+        BASE.replace("{ 1 }", "{ 3 }") + &format!("fn big() -> List<String> {{ [{items}] }}\n");
+    assert!(dev.edit(&source(&broken)).unwrap_err().contains("frame"));
     assert_eq!((dev.cache.compiles, dev.loader.installed()), (4, 4));
     assert_eq!(run(&dev, "top"), 1);
 }

@@ -1304,6 +1304,35 @@ or merged during review. Ids with a letter were added during review.
 - done when: Every differing or unsupported case in M4-40's report is assigned to a fix task; the caller adds one level-4 task per root cause (done when its tests leave the differ and unsupported lists and a regression test is added); with all merged, the differential command reports zero differ and zero unsupported with a clean ledger.
 - why this level: Root causes span checker, code generator and runtime; the remaining divergences are the subtle ones.
 - note: M4-35 is dropped by docs/decisions/M2-10.md.
+- status: done
+- note: Done: the root causes were the String rows (M4-42a), boxes of user types (M4-42b) and what a trapped run leaves live (M4-42c). The differential command reports 434 agree, 0 differ, 0 unsupported, each ledger clean, and now counts a dirty ledger as a difference, so the fuzz loop shrinks leaks too. That found two more faults, each with a case: an untyped `unreachable()` before a typed List item (`builtins/unreachable_before_a_list_item`), and a record's first field read from a temporary, which shared the record's address and so moved the whole record, leaking its other fields (`ownership/first_field_of_a_temporary`).
+
+### M4-42a · L4 · Compile the String rows in dev mode
+
+- needs: M4-42
+- flags: native-only
+- done when: Every String row of the prelude compiles in dev mode, and the conformance cases that used one leave the unsupported list with a clean ledger.
+- why this level: Twenty rows with three result shapes, each shared with the interpreter so the two cannot drift.
+- status: done
+- note: Done: `ops::Text` holds the rows that grow or cut a String (`split`, `chars`, `lines`, `join`, `repeat`, `pad`, `replace`, `find`), with `ops::Trap::Memory` past the cap; the interpreter and `rt.text` both call them. `rt.text` rows 10 to 29 give a List of Strings, a Bool word, an `Option` of an Int or Float, or a String; a Float operand passes as its bits. 127 conformance cases left the unsupported list, and generated programs now compile: seeds 0 to 5,399 run, where 331 of the first 400 were refused. The fuzz loop then found `[unreachable()]` inside `Ok(...)` left untyped by the checker, which panicked the emitter; `settle` now gives a part with no type its place's type (case `builtins/unreachable_in_a_variant_list`).
+
+### M4-42b · L4 · Compile recursive types: boxes of user types
+
+- needs: M4-42
+- flags: native-only
+- done when: The ownership cases `finite_types_accepted`, `match_arm_changes_subject`, `tree_sample` and `value_used_twice_two_copies` agree in dev mode with a clean ledger.
+- why this level: A box is built, read through, matched, copied and released on every path; a wrong one is a leak or a read of freed memory.
+- status: done
+- note: Done: a place walk and a `match` arm read a boxed field through its block, and the runtime's type records already copied and freed boxes, so every type compiles and the emitter's type refusal is gone. Each record or enum type that holds itself, through any type, gets a definition after the constructors that compares two of its values; inline equality calls it where it meets the type again. The four cases agree with a clean ledger.
+
+### M4-42c · L3 · Decide what a trapped run's live values are
+
+- needs: M4-42
+- flags: native-only
+- done when: The decision is recorded and the differential command's ledger follows it.
+- why this level: A rule, and one place in the harness that applies it.
+- status: done
+- note: Done: a trap's unwind drops nothing and the run's heap is freed whole at its end, so values live at a trap are not leaks (docs/decisions/M4-05.md section 9). `paka-diff` counts only bad frees for a trapped run; the 51 trapped cases now end clean.
 
 ### M4-43 · L4 · Compare dev mode with the interpreter after random edit sequences
 

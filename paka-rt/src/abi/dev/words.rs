@@ -4,7 +4,7 @@
 //! Each result is a new block its caller owns.
 
 use super::{BAD_CONVERSION, Context, MEMORY, OUT_OF_BOUNDS, Trap};
-use crate::ops::{self, CAP, Int, Text};
+use crate::ops::{self, CAP, Float, Int, Text, white};
 use std::str;
 use std::{ptr, slice};
 
@@ -36,8 +36,40 @@ pub const FROM_CODE: u64 = 5;
 pub const SHOW: u64 = 6;
 pub const MIN: u64 = 7;
 pub const MAX: u64 = 8;
-/// A List of `a`'s words, into a List's words.
+/// The rows from here make a List of Strings: `a`'s words, its pieces by `b`, its code points, its
+/// lines.
 pub const WORDS: u64 = 9;
+pub const SPLIT: u64 = 10;
+pub const CHARS: u64 = 11;
+pub const LINES: u64 = 12;
+/// Bool rows, whose result is a word 0 or 1.
+pub const CONTAINS: u64 = 13;
+pub const STARTS_WITH: u64 = 14;
+pub const ENDS_WITH: u64 = 15;
+/// `Option` rows, whose result is a tag word, 0 for `Some`, and the payload: an Int or Float's bits.
+pub const FIND: u64 = 16;
+pub const PARSE_INT: u64 = 17;
+pub const PARSE_FLOAT: u64 = 18;
+/// The List of Strings `a` joined by `b`.
+pub const JOIN_PARTS: u64 = 19;
+pub const REPEAT: u64 = 20;
+pub const PAD_LEFT: u64 = 21;
+pub const PAD_RIGHT: u64 = 22;
+pub const TRIM: u64 = 23;
+pub const TRIM_START: u64 = 24;
+pub const TRIM_END: u64 = 25;
+pub const REPLACE: u64 = 26;
+pub const UPPER: u64 = 27;
+pub const LOWER: u64 = 28;
+/// The Float with bits `a` to `b` places.
+pub const FIXED: u64 = 29;
+
+/// What a row makes.
+enum Made {
+    Text(Text),
+    Word(u64),
+    Option(Option<u64>),
+}
 
 /// `rt.text`: String row `row` on words `a`, `b`, `c`, where a String is the address of its words.
 /// The result goes to `out`: a String's words, or an Int. A trap is recorded at `site`.
@@ -55,53 +87,67 @@ pub unsafe extern "sysv64" fn rt_text(
     out: *mut u64,
 ) -> i32 {
     // SAFETY: the caller vouches each String operand is a String's words.
-    let text = |w: u64| Text::from(unsafe { as_str(w) });
+    let str = |w: u64| unsafe { as_str(w) };
+    let text = |w: u64| Text::from(str(w));
     let int = |w: u64| Int::new(w as i64);
+    if (WORDS..=LINES).contains(&row) {
+        let sep = (row == SPLIT).then(|| text(b));
+        return pieces(ctx, row, &text(a), sep.as_ref(), site, out.cast());
+    }
+    let word = |b: bool| Ok(Made::Word(b.into()));
     let made = match row {
-        JOIN => Ok(text(a).add(&text(b))),
-        COMPARE => {
-            let order = text(a).cmp(&text(b)) as i64;
-            // SAFETY: `out` has room for an Int.
-            unsafe { *out = order as u64 };
-            return 0;
+        JOIN => Ok(Made::Text(text(a).add(&text(b)))),
+        COMPARE => Ok(Made::Word(text(a).cmp(&text(b)) as i64 as u64)),
+        INDEX => text(a).index(int(b)).map(Made::Text),
+        SLICE => text(a).slice(int(b), int(c)).map(Made::Text),
+        CODE_AT => (text(a).code_at(int(b))).map(|n| Made::Word(raw(n) as u64)),
+        FROM_CODE => Text::from_code(int(a)).map(Made::Text),
+        SHOW if b == 0 => Ok(Made::Text(Text::from(int(a).to_string()))),
+        SHOW => Ok(Made::Text(Text::from(if a == 0 {
+            "false"
+        } else {
+            "true"
+        }))),
+        MIN => Ok(Made::Text(text(a).min(text(b)))),
+        MAX => Ok(Made::Text(text(a).max(text(b)))),
+        CONTAINS => word(str(a).contains(str(b))),
+        STARTS_WITH => word(str(a).starts_with(str(b))),
+        ENDS_WITH => word(str(a).ends_with(str(b))),
+        FIND => Ok(Made::Option(text(a).find(&text(b)).map(|n| raw(n) as u64))),
+        PARSE_INT => Ok(Made::Option(Int::parse(str(a)).map(|n| raw(n) as u64))),
+        PARSE_FLOAT => Ok(Made::Option(Float::parse(str(a)).map(Float::bits))),
+        JOIN_PARTS => {
+            // SAFETY: the caller vouches `a` is a List of Strings' words.
+            let parts = unsafe { strings(a) };
+            text(b).join(&parts).map(Made::Text)
         }
-        INDEX => text(a).index(int(b)),
-        SLICE => text(a).slice(int(b), int(c)),
-        CODE_AT => match text(a).code_at(int(b)) {
-            Ok(code) => {
-                // SAFETY: `out` has room for an Int.
-                unsafe { *out = raw(code) as u64 };
-                return 0;
-            }
-            Err(e) => Err(e),
-        },
-        FROM_CODE => Text::from_code(int(a)),
-        SHOW if b == 0 => Ok(Text::from(int(a).to_string())),
-        SHOW => Ok(Text::from(if a == 0 { "false" } else { "true" })),
-        MIN => Ok(text(a).min(text(b))),
-        MAX => Ok(text(a).max(text(b))),
-        WORDS => {
-            let Some(list) = words(ctx, &text(a)) else {
-                return fail(ctx, MEMORY, site, [0; 3]);
-            };
-            // SAFETY: `out` has room for a List's words.
-            unsafe { out.cast::<ListWords>().write(list) };
-            return 0;
-        }
+        REPEAT => text(a).repeat(int(b)).map(Made::Text),
+        PAD_LEFT | PAD_RIGHT => text(a).pad(int(b), row == PAD_LEFT).map(Made::Text),
+        TRIM => Ok(Made::Text(str(a).trim_matches(white).into())),
+        TRIM_START => Ok(Made::Text(str(a).trim_start_matches(white).into())),
+        TRIM_END => Ok(Made::Text(str(a).trim_end_matches(white).into())),
+        REPLACE => text(a).replace(&text(b), &text(c)).map(Made::Text),
+        UPPER => Ok(Made::Text(str(a).to_ascii_uppercase().into())),
+        LOWER => Ok(Made::Text(str(a).to_ascii_lowercase().into())),
+        FIXED => (Float::from_bits(a).fixed(int(b))).map(|t| Made::Text(t.into())),
         _ => unreachable!("no String row {row}"),
     };
     let made = match made {
-        Ok(t) => t,
-        // `from_code` alone converts; the others index: `[i, len]`, or `[from, to, len]`.
-        Err(ops::Trap::BadConversion) => return fail(ctx, BAD_CONVERSION, site, [a, 0, 0]),
-        Err(_) => {
-            let len = raw(text(a).len()) as u64;
-            let operands = match row {
-                SLICE => [b, c, len],
-                _ => [b, len, 0],
-            };
-            return fail(ctx, OUT_OF_BOUNDS, site, operands);
+        Ok(Made::Text(t)) => t,
+        Ok(Made::Word(w)) => {
+            // SAFETY: `out` has room for a word.
+            unsafe { *out = w };
+            return 0;
         }
+        Ok(Made::Option(o)) => {
+            // SAFETY: `out` has room for an `Option` of a word.
+            unsafe {
+                out.cast::<[u64; 2]>()
+                    .write([u64::from(o.is_none()), o.unwrap_or(0)])
+            };
+            return 0;
+        }
+        Err(e) => return fail(ctx, kind(e), site, operands(row, a, b, c)),
     };
     let Some(words) = new_text(ctx, made.as_str()) else {
         return fail(ctx, MEMORY, site, [0; 3]);
@@ -109,6 +155,66 @@ pub unsafe extern "sysv64" fn rt_text(
     // SAFETY: `out` has room for a String's words.
     unsafe { out.cast::<TextWords>().write(words) };
     0
+}
+
+/// The trap kind of an operation's trap, by M4-05 section 6's number.
+fn kind(e: ops::Trap) -> u64 {
+    match e {
+        ops::Trap::OutOfBounds => OUT_OF_BOUNDS,
+        ops::Trap::BadConversion => BAD_CONVERSION,
+        ops::Trap::Memory => MEMORY,
+        ops::Trap::Overflow | ops::Trap::DivideByZero => unreachable!("no String row overflows"),
+    }
+}
+
+/// A trap's operands: `from_code`'s code, an index and the length, or a slice's ends and the
+/// length; a count or a digit count alone.
+fn operands(row: u64, a: u64, b: u64, c: u64) -> [u64; 3] {
+    // SAFETY: the rows that index take a String first.
+    let len = || raw(Text::from(unsafe { as_str(a) }).len()) as u64;
+    match row {
+        FROM_CODE => [a, 0, 0],
+        SLICE => [b, c, len()],
+        INDEX | CODE_AT => [b, len(), 0],
+        _ => [b, 0, 0],
+    }
+}
+
+/// The List of Strings row `row` makes of `t`, by `sep` for `split`, into `out`.
+fn pieces(
+    ctx: &mut Context,
+    row: u64,
+    t: &Text,
+    sep: Option<&Text>,
+    site: u64,
+    out: *mut ListWords,
+) -> i32 {
+    let parts = match row {
+        WORDS => Ok(t.words().collect()),
+        SPLIT => t.split(sep.expect("a separator")),
+        CHARS => Ok(t.chars().collect()),
+        _ => Ok(t.lines()),
+    };
+    let Ok(parts) = parts else {
+        return fail(ctx, MEMORY, site, [0; 3]);
+    };
+    let Some(list) = list_of(ctx, &parts) else {
+        return fail(ctx, MEMORY, site, [0; 3]);
+    };
+    // SAFETY: `out` has room for a List's words.
+    unsafe { out.write(list) };
+    0
+}
+
+/// # Safety
+///
+/// `at` is the address of a List of Strings' words, live and unchanged while the result is used.
+unsafe fn strings<'a>(at: u64) -> Vec<&'a str> {
+    // SAFETY: the caller vouches `at` holds a List's words.
+    let list = unsafe { &*ptr::with_exposed_provenance::<ListWords>(at as usize) };
+    let item = |i| list.ptr as u64 + i * size_of::<TextWords>() as u64;
+    // SAFETY: each of the List's items is a String's words.
+    (0..list.len).map(|i| unsafe { as_str(item(i)) }).collect()
 }
 
 /// `rt.list`: a new List of `count` items of `size` bytes into `out`, copied from `from` unless
@@ -154,16 +260,16 @@ pub unsafe extern "sysv64" fn rt_list(
     0
 }
 
-/// A new List of `t`'s words; `None`, with nothing left made, when the heap refuses.
-fn words(ctx: &mut Context, t: &Text) -> Option<ListWords> {
+/// A new List of Strings holding `parts`; `None`, with nothing left made, when the heap refuses.
+fn list_of(ctx: &mut Context, parts: &[&str]) -> Option<ListWords> {
     const SIZE: usize = size_of::<TextWords>();
-    let count = t.words().count();
+    let count = parts.len();
     let block = match count {
         0 => ptr::null_mut(),
         _ => ctx.heap.alloc((count * SIZE) as u64)?,
     };
-    for (i, word) in t.words().enumerate() {
-        let Some(made) = new_text(ctx, word) else {
+    for (i, part) in parts.iter().enumerate() {
+        let Some(made) = new_text(ctx, part) else {
             // SAFETY: items `..i` were written below; each owns its block.
             let made = unsafe { slice::from_raw_parts(block.cast::<TextWords>(), i) };
             for m in made.iter().filter(|m| m.cap != 0) {

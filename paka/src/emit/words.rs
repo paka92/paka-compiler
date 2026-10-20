@@ -3,11 +3,13 @@
 //! place.
 
 use super::values::slot;
-use super::{Gen, Refusal, ir_type, ty};
+use super::{Gen, Refusal, ty};
 use crate::core_form::{Bin, Block, Expr, Local, Site, Ty, Type};
 use cranelift_codegen::ir::condcodes::IntCC;
 use cranelift_codegen::ir::{InstBuilder, MemFlagsData, Value, types};
-use paka_rt::abi::dev::words::{COMPARE, JOIN, SHOW, WORDS};
+use paka_rt::abi::dev::words::{
+    CODE_AT, COMPARE, CONTAINS, ENDS_WITH, FIND, JOIN, LINES, PARSE_FLOAT, SHOW, WORDS,
+};
 use paka_rt::abi::dev::{self as rt, Rt};
 use std::mem::offset_of;
 
@@ -36,6 +38,10 @@ impl Gen<'_> {
             if let Op::Field(i) = op {
                 let field = self.l.get(ty).alternatives[0][i];
                 (offset, ty) = (offset + field.offset, field.ty);
+                if field.boxed {
+                    let flags = MemFlagsData::trusted();
+                    (at, offset) = (self.b.ins().load(types::I64, flags, at, offset as i32), 0);
+                }
                 continue;
             }
             let here = self.b.ins().iadd_imm_s(at, offset as i64);
@@ -104,7 +110,6 @@ impl Gen<'_> {
 
     /// A List literal: a zeroed block owned first, then each item stored as it is evaluated.
     pub(super) fn list(&mut self, t: Ty, items: &[Expr]) -> Result<Value, Refusal> {
-        ir_type(self.p, self.l, t)?;
         let Type::List(item) = self.p.types[t] else {
             unreachable!("a List literal is a List");
         };
@@ -195,26 +200,42 @@ impl Gen<'_> {
         self.temp(self.string(), out)
     }
 
-    /// `rt.text` row `row` on up to three words; COMPARE and CODE_AT give an Int, the others a
-    /// String.
+    /// `rt.text` row `row` on up to three words, a Float as its bits. The result's shape is the
+    /// row's: an Int, a Bool, an `Option` of an Int or Float, a List of Strings or a String.
     pub(super) fn text(&mut self, row: u64, site: Site, operands: &[Value]) -> Value {
-        let int = matches!(row, COMPARE | rt::words::CODE_AT);
-        let out = slot(&mut self.b, if int { 8 } else { 32 });
+        let size = match row {
+            COMPARE | CODE_AT | CONTAINS..=ENDS_WITH => 8,
+            FIND..=PARSE_FLOAT => 16,
+            _ => 32,
+        };
+        let out = slot(&mut self.b, size);
         let mut given = vec![
             self.ctx,
             self.int_const(row as i64),
             self.int_const(self.site(site) as i64),
         ];
-        given.extend(operands.iter().map(|&v| self.widen(v)));
+        for &v in operands {
+            let v = match self.b.func.dfg.value_type(v) {
+                types::F64 => self.b.ins().bitcast(types::I64, MemFlagsData::new(), v),
+                _ => self.widen(v),
+            };
+            given.push(v);
+        }
         while given.len() < 6 {
             given.push(self.int_const(0));
         }
         given.push(out);
         self.rt_try(offset_of!(Rt, text), &given);
-        match (int, row) {
-            (true, _) => (self.b.ins()).load(types::I64, MemFlagsData::trusted(), out, 0),
-            (false, WORDS) => self.temp(self.strings(), out),
-            (false, _) => self.temp(self.string(), out),
+        let word = |g: &mut Self| g.b.ins().load(types::I64, MemFlagsData::trusted(), out, 0);
+        match row {
+            COMPARE | CODE_AT => word(self),
+            CONTAINS..=ENDS_WITH => {
+                let w = word(self);
+                self.b.ins().icmp_imm_s(IntCC::NotEqual, w, 0)
+            }
+            FIND..=PARSE_FLOAT => out,
+            WORDS..=LINES => self.temp(self.strings(), out),
+            _ => self.temp(self.string(), out),
         }
     }
 
@@ -224,7 +245,7 @@ impl Gen<'_> {
         at.expect("the String type")
     }
 
-    /// `List<String>`, which a program that calls `words` has.
+    /// `List<String>`, which a program that makes one has.
     fn strings(&self) -> Ty {
         let list = Type::List(self.string());
         let at = self.p.types.iter().position(|t| *t == list);

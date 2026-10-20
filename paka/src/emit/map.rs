@@ -2,7 +2,7 @@
 //! word, like any held value; the runtime's `rt.map` finds, adds and removes entries.
 
 use super::values::slot;
-use super::{Gen, Refusal, ir_type};
+use super::{Gen, Refusal};
 use crate::core_form::{Expr, Site, Ty, Type};
 use cranelift_codegen::ir::condcodes::IntCC;
 use cranelift_codegen::ir::{InstBuilder, MemFlagsData, Value, types};
@@ -17,7 +17,6 @@ impl Gen<'_> {
     /// A Map literal: an empty Map owned first, then each entry added as it is evaluated; a later
     /// equal key replaces the value.
     pub(super) fn map(&mut self, t: Ty, entries: &[(Expr, Expr)]) -> Result<Value, Refusal> {
-        ir_type(self.p, self.l, t)?;
         let Type::Map(_, v) = self.p.types[t] else {
             unreachable!("a Map literal is a Map");
         };

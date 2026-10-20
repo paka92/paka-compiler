@@ -55,6 +55,7 @@ impl From<ops::Trap> for Kind {
             ops::Trap::DivideByZero => Kind::DivideByZero,
             ops::Trap::OutOfBounds => Kind::OutOfBounds,
             ops::Trap::BadConversion => Kind::BadConversion,
+            ops::Trap::Memory => Kind::Memory,
         }
     }
 }

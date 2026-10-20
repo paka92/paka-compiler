@@ -3,8 +3,9 @@
 //! Such a value is the address of its words (docs/decisions/M4-05.md section 8): a local's own
 //! stack slot, a temporary slot, a List's item, or a parameter's caller memory.
 
-use super::{Emitted, Gen, Label, Refusal, args, ir_type, words::Op};
+use super::{Emitted, Gen, Label, Refusal, args, words::Op};
 use crate::core_form::{Arm, Compound, Expr, Local, Place, Root, Step, Tag, Ty, Type};
+use crate::layout;
 use cranelift_codegen::ir::{
     InstBuilder, MemFlagsData, StackSlotData, StackSlotKind, Value, types,
 };
@@ -69,6 +70,16 @@ impl Gen<'_> {
             ref t if held(t) => self.b.ins().iadd_imm_s(at, offset as i64),
             _ => self.b.ins().load(types::I64, flags, at, offset as i32),
         }
+    }
+
+    /// The field at `place` of the value at `at`, followed through its box.
+    pub(super) fn field(&mut self, place: &layout::Place, at: Value) -> Value {
+        if !place.boxed {
+            return self.get(place.ty, at, place.offset);
+        }
+        let block =
+            (self.b.ins()).load(types::I64, MemFlagsData::trusted(), at, place.offset as i32);
+        self.get(place.ty, block, 0)
     }
 
     /// Writes `v` of type `t` at `at + offset`: a held value's words are copied.
@@ -151,7 +162,14 @@ impl Gen<'_> {
             return Ok((root, ty));
         }
         let (at, ty, offset) = self.walk(root, ty, &ops);
-        Ok((self.get(ty, at, offset), ty))
+        let v = self.get(ty, at, offset);
+        // A first field lies where its value does; its own name keeps it from passing for the
+        // value's owner.
+        let v = match v == root {
+            true => self.b.ins().iadd_imm_s(v, 0),
+            false => v,
+        };
+        Ok((v, ty))
     }
 
     /// An `inout` place's operands, evaluated in the argument's position; a whole local has
@@ -233,7 +251,6 @@ impl Gen<'_> {
     /// evaluated, so a later field cannot change an earlier one's copy. The slot is zeroed and
     /// owned first, so an exit while building drops what it holds so far.
     pub(super) fn construct(&mut self, t: Ty, alternative: usize, fields: &[Expr]) -> Emitted {
-        ir_type(self.p, self.l, t)?;
         let size = self.size(t);
         let at = slot(&mut self.b, size);
         if self.l.owns(t) {
@@ -292,7 +309,7 @@ impl Gen<'_> {
                 let places = self.l.get(ty).alternatives[alternative(t)?].clone();
                 for (bind, place) in arm.binds.iter().zip(places) {
                     if let Some(l) = bind {
-                        binds.push((*l, self.get(place.ty, at, place.offset)));
+                        binds.push((*l, self.field(&place, at)));
                     }
                 }
             }

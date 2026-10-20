@@ -7,7 +7,7 @@ use crate::core_form::{
     Arg, Arith, Bin, Block, Callee, Cmp, Compound, EnumId, Expr, ExprKind, Field, FloatArith, Fn,
     FnRef, Local, Param, Place, Program, Root, Site, Stmt, Tag, Ty, Type, Un, Walk,
 };
-use crate::layout::{Layouts, Owned};
+use crate::layout::Layouts;
 use crate::owners::Owners;
 use cranelift_codegen::control::ControlPlane;
 use cranelift_codegen::ir::condcodes::{FloatCC, IntCC};
@@ -19,7 +19,7 @@ use cranelift_codegen::ir::{
 use cranelift_codegen::isa::{self, CallConv, OwnedTargetIsa, TargetIsa};
 use cranelift_codegen::settings::{self, Configurable};
 use cranelift_frontend::{FunctionBuilder, FunctionBuilderContext, Variable};
-use paka_rt::abi::dev::words::{CODE_AT, FROM_CODE, JOIN, MAX, MIN, WORDS};
+use paka_rt::abi::dev::words::*;
 use paka_rt::abi::dev::{self as rt, Context, Rt};
 use paka_rt::ops::Int;
 use std::collections::{BTreeMap, BTreeSet};
@@ -88,15 +88,18 @@ impl Emitter {
         let f = match def.checked_sub(p.fns.len() + p.examples.len()) {
             None => p.def(def),
             Some(k) => {
-                made = match constructors(p).get(k) {
-                    Some(&c) => constructor(p, c),
-                    None => state(p),
+                let c = constructors(p);
+                made = match k.checked_sub(c.len()) {
+                    None => constructor(p, c[k]),
+                    Some(i) => equalities(p)
+                        .get(i)
+                        .map_or_else(|| state(p), |&t| equality(p, t)),
                 };
                 &made
             }
         };
         let name = UserFuncName::user(0, def as u32);
-        let mut func = Function::with_name_signature(name, signature(p, l, f)?);
+        let mut func = Function::with_name_signature(name, signature(p, f));
         let cx = &mut self.builder;
         let built = Gen::build(&*self.isa, &mut func, cx, (p, l), (def, f), self.plant);
         if built.is_err() {
@@ -127,11 +130,44 @@ pub fn constructors(p: &Program) -> Vec<(EnumId, usize)> {
     all
 }
 
-/// The slot ids before the type records: functions, examples, constructors, then the app's
-/// state.
+/// The record and enum types that hold themselves, through any type: each has a definition
+/// that compares two of its values, which inline equality calls where it meets the type again.
+pub fn equalities(p: &Program) -> Vec<Ty> {
+    if !p.types.contains(&Type::Bool) {
+        return vec![];
+    }
+    let nominal = |t: &Ty| matches!(p.types[*t], Type::Record(_) | Type::Enum(_));
+    (0..p.types.len())
+        .filter(|t| nominal(t) && holds(p, *t, *t, &mut BTreeSet::new()))
+        .collect()
+}
+
+/// Whether a value of `ty` holds a `target` anywhere inside it.
+fn holds(p: &Program, ty: Ty, target: Ty, seen: &mut BTreeSet<Ty>) -> bool {
+    let inner: Vec<Ty> = match &p.types[ty] {
+        Type::List(t) | Type::Option(t) | Type::Effect(t) => vec![*t],
+        Type::Map(k, v) | Type::Result(k, v) => vec![*k, *v],
+        Type::Record(i) => p.records[*i].fields.iter().map(|f| f.ty).collect(),
+        Type::Enum(i) => (p.enums[*i].variants.iter())
+            .flat_map(|v| v.fields.iter().map(|f| f.ty))
+            .collect(),
+        _ => vec![],
+    };
+    (inner.into_iter()).any(|t| t == target || (seen.insert(t) && holds(p, t, target, seen)))
+}
+
+/// The slot id of the definition that compares two values of type `t`.
+fn equality_slot(p: &Program, t: Ty) -> Option<usize> {
+    let at = equalities(p).iter().position(|&e| e == t)?;
+    Some(p.fns.len() + p.examples.len() + constructors(p).len() + at)
+}
+
+/// The slot ids before the type records: functions, examples, constructors, equalities, then
+/// the app's state.
 pub fn definitions(p: &Program) -> usize {
     let state = p.app.as_ref().is_some_and(|a| a.state.is_some());
-    p.fns.len() + p.examples.len() + constructors(p).len() + usize::from(state)
+    let made = constructors(p).len() + equalities(p).len();
+    p.fns.len() + p.examples.len() + made + usize::from(state)
 }
 
 /// The slot id of the definition that builds the app's state from its defaults, if it has one.
@@ -150,6 +186,40 @@ fn state(p: &Program) -> Fn {
         params: vec![],
         locals: vec![],
         result: value.ty,
+        body: Block {
+            stmts: vec![],
+            value: Some(Box::new(value)),
+        },
+        claims: vec![],
+    }
+}
+
+/// `fn equal(a: T, b: T) -> Bool { a == b }` for type `t`.
+fn equality(p: &Program, t: Ty) -> Fn {
+    let local = |l| {
+        Box::new(Expr {
+            ty: Some(t),
+            kind: ExprKind::Place(Place {
+                root: Root::Local(l),
+                steps: vec![],
+            }),
+        })
+    };
+    let bool = p.types.iter().position(|t| *t == Type::Bool);
+    let value = Expr {
+        ty: bool,
+        kind: ExprKind::Binary(Bin::Eq(0), local(0), local(1)),
+    };
+    let param = Param {
+        ty: t,
+        inout: false,
+    };
+    Fn {
+        name: "equal".into(),
+        site: 0,
+        params: vec![param.clone(), param],
+        locals: vec![t, t],
+        result: bool,
         body: Block {
             stmts: vec![],
             value: Some(Box::new(value)),
@@ -201,20 +271,15 @@ fn has_sse41() -> bool {
 }
 
 /// `fn(ctx, args..., out) -> status` (M4-05 section 5); `out` only when there is a result.
-fn signature(p: &Program, l: &Layouts, f: &Fn) -> Result<Signature, Refusal> {
-    callee_signature(p, l, &f.params, f.result)
+fn signature(p: &Program, f: &Fn) -> Signature {
+    callee_signature(p, &f.params, f.result)
 }
 
-fn callee_signature(
-    p: &Program,
-    l: &Layouts,
-    params: &[Param],
-    result: Option<Ty>,
-) -> Result<Signature, Refusal> {
+fn callee_signature(p: &Program, params: &[Param], result: Option<Ty>) -> Signature {
     let mut sig = Signature::new(CallConv::SystemV);
     sig.params.push(AbiParam::new(types::I64));
     for q in params {
-        let t = word(ir_type(p, l, q.ty)?);
+        let t = word(ir_type(p, q.ty));
         sig.params
             .push(AbiParam::new(if q.inout { types::I64 } else { t }));
     }
@@ -222,7 +287,7 @@ fn callee_signature(
         sig.params.push(AbiParam::new(types::I64));
     }
     sig.returns.push(AbiParam::new(types::I32));
-    Ok(sig)
+    sig
 }
 
 /// A Bool is I8 inside a function and a whole word across one.
@@ -231,30 +296,12 @@ fn word(t: IrType) -> IrType {
 }
 
 /// A value held in memory is the I64 address of its words (`values`).
-fn ir_type(p: &Program, l: &Layouts, t: Ty) -> Result<IrType, Refusal> {
+fn ir_type(p: &Program, t: Ty) -> IrType {
     match p.types[t] {
-        Type::Int => Ok(types::I64),
-        Type::Float => Ok(types::F64),
-        Type::Bool => Ok(types::I8),
-        Type::Fn(..) => Ok(types::I64),
-        ref h if values::held(h) && plain(p, l, t, &mut BTreeSet::new()) => Ok(types::I64),
-        ref other => Err(format!("a value of type {other:?} is not compiled yet")),
+        Type::Float => types::F64,
+        Type::Bool => types::I8,
+        _ => types::I64,
     }
-}
-
-/// Whether a value of type `t` owns only Strings, Lists and `Effect` boxes of such values: no
-/// Map, and no box of a user type, which no code reads through yet.
-fn plain(p: &Program, l: &Layouts, t: Ty, seen: &mut BTreeSet<Ty>) -> bool {
-    if !seen.insert(t) {
-        return true;
-    }
-    let effect = matches!(p.types[t], Type::Effect(_));
-    l.get(t).owned.iter().flatten().all(|e| match e.kind {
-        Owned::String => true,
-        Owned::List(t) | Owned::Value(t) => plain(p, l, t, seen),
-        Owned::Map(k, v) => plain(p, l, k, seen) && plain(p, l, v, seen),
-        Owned::Box(t) => effect && plain(p, l, t, seen),
-    })
 }
 
 fn args(values: &[Value]) -> Vec<BlockArg> {
@@ -308,7 +355,7 @@ impl<'a> Gen<'a> {
         for (i, &ty) in f.locals.iter().enumerate() {
             let t = match f.params.get(i) {
                 Some(q) if q.inout => types::I64,
-                _ => ir_type(p, l, ty)?,
+                _ => ir_type(p, ty),
             };
             let var = b.declare_var(t);
             if i >= f.params.len() && values::held(&p.types[ty]) {
@@ -507,7 +554,27 @@ impl<'a> Gen<'a> {
         for (i, place, operands) in places {
             values[i] = self.address(place, operands, &mut spilled).0;
         }
-        let ir_result = result.map(|t| ir_type(self.p, self.l, t)).transpose()?;
+        let slot = self.invoke(id, params, result, values, site);
+        self.reload(spilled);
+        Ok(match (result, slot) {
+            (Some(t), Some(at)) => {
+                let v = self.get(t, at, 0);
+                Some(self.temp(t, v))
+            }
+            _ => None,
+        })
+    }
+
+    /// Calls slot `id` on `values` and the result's slot, which it returns.
+    pub(super) fn invoke(
+        &mut self,
+        id: Value,
+        params: Vec<Param>,
+        result: Option<Ty>,
+        mut values: Vec<Value>,
+        site: Site,
+    ) -> Option<Value> {
+        let ir_result = result.map(|t| ir_type(self.p, t));
         let held = result.filter(|&t| values::held(&self.p.types[t]));
         let slot = match held {
             Some(t) => Some(values::slot(&mut self.b, self.l.get(t).size)),
@@ -521,7 +588,7 @@ impl<'a> Gen<'a> {
         let sig = match self.sigs.get(&key) {
             Some(&sig) => sig,
             None => {
-                let sig = callee_signature(self.p, self.l, &params, result)?;
+                let sig = callee_signature(self.p, &params, result);
                 let sig = self.b.import_signature(sig);
                 self.sigs.insert(key, sig);
                 sig
@@ -536,14 +603,22 @@ impl<'a> Gen<'a> {
         let call = self.b.ins().call_indirect(sig, code, &values);
         let status = self.b.inst_results(call)[0];
         self.pass_on(status, site);
-        self.reload(spilled);
-        Ok(match (result, slot) {
-            (Some(t), Some(at)) => {
-                let v = self.get(t, at, 0);
-                Some(self.temp(t, v))
-            }
-            _ => None,
-        })
+        slot
+    }
+
+    /// Whether `x` and `y` of type `t` are equal, by the definition that compares them.
+    pub(super) fn equal_call(&mut self, t: Ty, x: Value, y: Value) -> Value {
+        let slot = equality_slot(self.p, t).expect("a type that holds itself");
+        let id = self.int_const(slot as i64);
+        let param = Param {
+            ty: t,
+            inout: false,
+        };
+        let bool = self.p.types.iter().position(|t| *t == Type::Bool);
+        let values = vec![self.ctx, x, y];
+        let at = self.invoke(id, vec![param.clone(), param], bool, values, self.first);
+        let word = (self.b.ins()).load(types::I64, MemFlagsData::trusted(), at.unwrap(), 0);
+        self.b.ins().ireduce(types::I8, word)
     }
 
     /// An argument a callee only reads: a place is lent as it is, a List slice as a view.
@@ -765,7 +840,6 @@ impl<'a> Gen<'a> {
                         self.unwrap_or(arg(0), x[0], x[1])
                     }
                     "ok_or(opt: Option<T>, error: E) -> Result<T, E>" => {
-                        ir_type(self.p, self.l, ty(e))?;
                         self.ok_or((arg(0), x[0]), ty(e), x[1])
                     }
                     "contains(xs: List<T>, item: T) -> Bool" => {
@@ -779,7 +853,6 @@ impl<'a> Gen<'a> {
                         self.found(ty(e), i)
                     }
                     "get(m: Map<K, V>, key: K) -> Option<V>" => {
-                        ir_type(self.p, self.l, ty(e))?;
                         self.get_key((arg(0), x[0]), x[1], ty(e), *site)
                     }
                     "has(m: Map<K, V>, key: K) -> Bool" => self.has_key(arg(0), x[0], x[1]),
@@ -817,7 +890,7 @@ impl<'a> Gen<'a> {
     /// After a trap: dead code, and a stand-in value of the node's type.
     fn unreached(&mut self, e: &Expr) -> Emitted {
         self.dead();
-        let t = e.ty.map(|t| ir_type(self.p, self.l, t)).transpose()?;
+        let t = e.ty.map(|t| ir_type(self.p, t));
         Ok(t.map(|t| self.zero(t)))
     }
 
@@ -828,7 +901,7 @@ impl<'a> Gen<'a> {
         e: &Expr,
         branches: impl IntoIterator<Item = (Label, Option<&'b Block>, Vec<(Local, Value)>)>,
     ) -> Emitted {
-        let t = e.ty.map(|t| ir_type(self.p, self.l, t)).transpose()?;
+        let t = e.ty.map(|t| ir_type(self.p, t));
         let merge = self.b.create_block();
         for (label, body, binds) in branches {
             self.b.switch_to_block(label);
@@ -993,6 +1066,28 @@ impl<'a> Gen<'a> {
             "code_at(text: String, i: Int) -> Int" => self.text(CODE_AT, site, x),
             "from_code(n: Int) -> String" => self.text(FROM_CODE, site, x),
             "words(text: String) -> List<String>" => self.text(WORDS, site, x),
+            "split(text: String, sep: String) -> List<String>" => self.text(SPLIT, site, x),
+            "chars(text: String) -> List<String>" => self.text(CHARS, site, x),
+            "lines(text: String) -> List<String>" => self.text(LINES, site, x),
+            "contains(text: String, part: String) -> Bool" => self.text(CONTAINS, site, x),
+            "starts_with(text: String, part: String) -> Bool" => self.text(STARTS_WITH, site, x),
+            "ends_with(text: String, part: String) -> Bool" => self.text(ENDS_WITH, site, x),
+            "find(text: String, part: String) -> Option<Int>" => self.text(FIND, site, x),
+            "parse_int(text: String) -> Option<Int>" => self.text(PARSE_INT, site, x),
+            "parse_float(text: String) -> Option<Float>" => self.text(PARSE_FLOAT, site, x),
+            "join(parts: List<String>, sep: String) -> String" => self.text(JOIN_PARTS, site, x),
+            "repeat(text: String, n: Int) -> String" => self.text(REPEAT, site, x),
+            "pad_left(text: String, width: Int) -> String" => self.text(PAD_LEFT, site, x),
+            "pad_right(text: String, width: Int) -> String" => self.text(PAD_RIGHT, site, x),
+            "trim(text: String) -> String" => self.text(TRIM, site, x),
+            "trim_start(text: String) -> String" => self.text(TRIM_START, site, x),
+            "trim_end(text: String) -> String" => self.text(TRIM_END, site, x),
+            "replace(text: String, old: String, new: String) -> String" => {
+                self.text(REPLACE, site, x)
+            }
+            "upper(text: String) -> String" => self.text(UPPER, site, x),
+            "lower(text: String) -> String" => self.text(LOWER, site, x),
+            "fixed(x: Float; digits: Int) -> String" => self.text(FIXED, site, x),
             "list_of(item: T; count: Int) -> List<T>" => self.list_of(ty(e), x, site)?,
             "assert(cond: Bool)" => {
                 let failed = self.b.ins().icmp_imm_s(IntCC::Equal, x[0], 0);

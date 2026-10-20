@@ -1,10 +1,10 @@
 //! Equality of values of any type (M4-38, docs/decisions/M2-09.md section 2), emitted inline: a
 //! List item by item, a Map entry by entry in key order, a record field by field, a variant by
-//! its tag and then its fields. Floats compare as numbers, so NaN differs from itself. A
-//! recursive type is refused.
+//! its tag and then its fields. Floats compare as numbers, so NaN differs from itself. A type
+//! met again inside itself is compared by a call to its own equality definition.
 
 use super::values::{held, slot};
-use super::{Gen, Refusal, args, ir_type};
+use super::{Gen, Refusal, args};
 use crate::core_form::{Ty, Type};
 use crate::layout::Place;
 use cranelift_codegen::ir::condcodes::{FloatCC, IntCC};
@@ -63,9 +63,9 @@ impl Gen<'_> {
         y: Value,
         seen: &mut Vec<Ty>,
     ) -> Result<Value, Refusal> {
-        ir_type(self.p, self.l, t)?;
-        if seen.contains(&t) {
-            return Err("equality of a recursive type is not compiled yet".into());
+        let nominal = matches!(self.p.types[t], Type::Record(_) | Type::Enum(_));
+        if nominal && seen.contains(&t) {
+            return Ok(self.equal_call(t, x, y));
         }
         seen.push(t);
         let eq = match self.p.types[t] {
@@ -220,16 +220,6 @@ impl Gen<'_> {
         let all = self.b.ins().iconst(types::I8, 1);
         self.b.ins().jump(done, &args(&[all]));
         Ok(())
-    }
-
-    /// The field at `place` of the value at `at`, followed through its box.
-    fn field(&mut self, place: &Place, at: Value) -> Value {
-        if !place.boxed {
-            return self.get(place.ty, at, place.offset);
-        }
-        let block =
-            (self.b.ins()).load(types::I64, MemFlagsData::trusted(), at, place.offset as i32);
-        self.get(place.ty, block, 0)
     }
 
     /// The address of item `i` of the List at `xs`.
