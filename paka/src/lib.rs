@@ -11,6 +11,7 @@ pub mod diagnostic;
 pub mod emit;
 pub mod hash;
 pub mod index;
+pub mod interp;
 pub mod layout;
 mod lexer;
 mod lower;

@@ -249,6 +249,7 @@ name = "paka-installer"
 version = "0.0.0"
 dependencies = [
  "paka",
+ "paka-json",
  "paka-rt",
 ]
 

@@ -2,7 +2,7 @@
 
 mod common;
 
-use common::Dev;
+use common::{Dev, source};
 use paka::hash::Hash;
 use paka_rt::abi::dev::Context;
 use std::collections::BTreeSet;
@@ -14,9 +14,9 @@ fn one() -> Int { 1 }
 fn top() -> Int { if same(4) { one() } else { 0 } }
 ";
 
-fn dev(source: &str) -> Dev {
+fn dev(text: &str) -> Dev {
     let mut dev = Dev::default();
-    dev.edit(source).unwrap();
+    dev.edit(&source(text)).unwrap();
     dev
 }
 
@@ -40,9 +40,9 @@ fn changed<'a>(dev: &'a Dev, before: &[Hash]) -> BTreeSet<&'a str> {
 fn a_body_edit_compiles_once_and_its_revert_compiles_nothing() {
     let mut dev = dev(BASE);
     assert_eq!((dev.cache.compiles, run(&dev, "top")), (4, 1));
-    dev.edit(&BASE.replace("{ 1 }", "{ 2 }")).unwrap();
+    dev.edit(&source(&BASE.replace("{ 1 }", "{ 2 }"))).unwrap();
     assert_eq!((dev.cache.compiles, run(&dev, "top")), (5, 2));
-    dev.edit(BASE).unwrap();
+    dev.edit(&source(BASE)).unwrap();
     assert_eq!((dev.cache.compiles, run(&dev, "top")), (5, 1));
     assert_eq!(
         dev.loader.installed(),
@@ -55,7 +55,11 @@ fn a_body_edit_compiles_once_and_its_revert_compiles_nothing() {
 fn a_failed_compile_installs_nothing() {
     let mut dev = dev(BASE);
     let broken = BASE.replace("{ 1 }", "{ 3 }") + "fn shout() -> String {\n  lower(\"A\")\n}\n";
-    assert!(dev.edit(&broken).unwrap_err().contains("not compiled yet"));
+    assert!(
+        dev.edit(&source(&broken))
+            .unwrap_err()
+            .contains("not compiled yet")
+    );
     assert_eq!((dev.cache.compiles, dev.loader.installed()), (4, 4));
     assert_eq!(run(&dev, "top"), 1);
 }
@@ -65,8 +69,10 @@ fn a_signature_edit_recompiles_the_definition_and_its_direct_users() {
     let mut dev = dev(BASE);
     let before = dev.keys.clone();
     let float = "fn half(x: Int) -> Float { to_float(x) / 2.0 }";
-    dev.edit(&BASE.replace("fn half(x: Int) -> Int { x / 2 }", float))
-        .unwrap();
+    dev.edit(&source(
+        &BASE.replace("fn half(x: Int) -> Int { x / 2 }", float),
+    ))
+    .unwrap();
     assert_eq!(changed(&dev, &before), BTreeSet::from(["half", "same"]));
     assert_eq!((dev.cache.compiles, run(&dev, "top")), (6, 1));
 }
@@ -75,7 +81,8 @@ fn a_signature_edit_recompiles_the_definition_and_its_direct_users() {
 fn an_edit_elsewhere_leaves_trap_sites_and_code_alone() {
     let mut dev = dev(BASE);
     let before = dev.keys.clone();
-    dev.edit(&BASE.replace("x / 2", "(x + 0) / 2")).unwrap();
+    dev.edit(&source(&BASE.replace("x / 2", "(x + 0) / 2")))
+        .unwrap();
     assert_eq!(changed(&dev, &before), BTreeSet::from(["half"]));
 }
 
@@ -96,8 +103,10 @@ fn top() -> Int {
     let mut dev = dev(LISTS);
     let before = dev.keys.clone();
     assert_eq!((dev.cache.compiles, run(&dev, "top")), (2, 2));
-    dev.edit(&LISTS.replace("a.score > b.score", "a.score < b.score"))
-        .unwrap();
+    dev.edit(&source(
+        &LISTS.replace("a.score > b.score", "a.score < b.score"),
+    ))
+    .unwrap();
     assert_eq!(changed(&dev, &before), BTreeSet::from(["before"]));
     assert_eq!((dev.cache.compiles, run(&dev, "top")), (3, 1));
 }

@@ -20,6 +20,9 @@ use std::ops::Range;
 use std::path::{Path, PathBuf};
 
 mod find;
+mod runner;
+
+pub use runner::Runner;
 
 const PATH: &str = "main.paka";
 
@@ -36,6 +39,15 @@ pub struct Session {
     workspace: Workspace,
     /// Held while the server runs. For a single file it moves to each new copy.
     lock: fs::File,
+    runner: Runner,
+    /// The last version in which every definition checks: its generation, files and apps.
+    runnable: Option<Runnable>,
+}
+
+struct Runnable {
+    generation: u64,
+    files: Vec<(String, String)>,
+    apps: Vec<String>,
 }
 
 struct File {
@@ -44,8 +56,15 @@ struct File {
 }
 
 impl Session {
-    /// The program at `path`, read into `source` and `workspace`, with its `lock` held.
-    pub fn new(path: &OsStr, source: &Source, workspace: Workspace, lock: fs::File) -> Session {
+    /// The program at `path`, read into `source` and `workspace`, with its `lock` held; its runs
+    /// go to `runner`.
+    pub fn new(
+        path: &OsStr,
+        source: &Source,
+        workspace: Workspace,
+        lock: fs::File,
+        runner: Runner,
+    ) -> Session {
         let files = (source.files.iter())
             .map(|f| File {
                 path: PathBuf::from(&f.path),
@@ -53,12 +72,16 @@ impl Session {
             })
             .collect();
         let dir = Path::new(path).is_dir().then(|| path.into());
-        Session {
+        let mut session = Session {
             dir,
             files,
             workspace,
             lock,
-        }
+            runner,
+            runnable: None,
+        };
+        session.installed();
+        session
     }
 
     pub fn handle(&mut self, call: &Call) -> Reply {
@@ -66,6 +89,10 @@ impl Session {
             "edit" => self.edit(call),
             "find" => self.find(call),
             "view" => self.view(call),
+            "run" => {
+                let order = order(|key| call.get(key));
+                Ok(vec![("run", self.run(&order)?)])
+            }
             name => Err(Failure::new(
                 "unknown_call",
                 format!("{name} is not served yet"),
@@ -77,6 +104,13 @@ impl Session {
         let name = call.str("name").expect("an edit names its definition");
         let text = call.str("text");
         self.base_fits(name, call.str("base"), text.is_some())?;
+        let order = (call.get("run")).map(|run| order(|key| run.get(key)));
+        if let Some(app) = order.as_ref().and_then(|o| o.get("app")?.as_str()) {
+            let apps = self.apps();
+            if app != name && !apps.iter().any(|a| a == app) {
+                return Err(no_app(app, &apps));
+            }
+        }
         let printed = text.map(|t| one_definition(name, t)).transpose()?;
         let (path, content) = self.planned(name, printed.as_deref())?;
         let old = self.workspace.def(name).map(|(t, _)| t.to_owned());
@@ -92,7 +126,57 @@ impl Session {
             let message = format!("cannot write {}: {e}; nothing was stored", path.display());
             return Err(Failure::new("io", message));
         }
-        Ok(self.edited(name, &failing))
+        let mut reply = self.edited(name, &failing);
+        if self.installed()
+            && let Some(order) = order
+        {
+            reply.push(("run", self.run(&order).unwrap_or(Value::Null)));
+        } else if order.is_some() {
+            reply.push(("run", Value::Null));
+        }
+        Ok(reply)
+    }
+
+    /// Takes the program as the runnable version when every definition checks.
+    fn installed(&mut self) -> bool {
+        if !self.failing().is_empty() {
+            return false;
+        }
+        let files = (self.files.iter())
+            .map(|f| (f.path.to_string_lossy().into_owned(), f.text.clone()))
+            .collect();
+        let generation = self.runnable.as_ref().map_or(0, |r| r.generation + 1);
+        let apps = self.apps();
+        self.runnable = Some(Runnable {
+            generation,
+            files,
+            apps,
+        });
+        true
+    }
+
+    /// The names of the program's apps.
+    fn apps(&self) -> Vec<String> {
+        (self.workspace.defs())
+            .filter(|(_, text)| text.starts_with("app "))
+            .map(|(names, _)| names[0].clone())
+            .collect()
+    }
+
+    /// The runnable version's run that `order` asks for (M4-03 section 3.4).
+    fn run(&mut self, order: &Value) -> Result<Value, Failure> {
+        let Some(r) = &self.runnable else {
+            let message = "no version of this program has checked yet";
+            return Err(Failure::new("not_runnable", message));
+        };
+        let app = order.get("app").and_then(Value::as_str).unwrap();
+        if !r.apps.iter().any(|a| a == app) {
+            return Err(no_app(app, &r.apps));
+        }
+        match self.runner.run((r.generation, &r.files), order)? {
+            Value::Null => Err(no_app(app, &r.apps)),
+            run => Ok(run),
+        }
     }
 
     /// Refuses a `base` that is not the current version of `name`, or null when `name` exists.
@@ -223,6 +307,22 @@ impl Session {
         }
         Ok(())
     }
+}
+
+/// The runner's request for a run with the fields `get` gives, defaults filled in.
+fn order<'a>(get: impl Fn(&str) -> Option<&'a Value>) -> Value {
+    let or = |key, default: Value| (key, get(key).cloned().unwrap_or(default));
+    Value::object([
+        or("app", Value::Null),
+        or("args", Value::Array(vec![])),
+        or("limit_ms", 10_000usize.into()),
+        or("max_bytes", 16_000usize.into()),
+    ])
+}
+
+fn no_app(app: &str, apps: &[String]) -> Failure {
+    let message = format!("no app `{app}`; apps are {}", apps.join(", "));
+    Failure::new("no_app", message)
 }
 
 /// The canonical text of `text`, which holds the one definition `name`; or why it is refused.

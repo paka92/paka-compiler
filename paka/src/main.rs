@@ -1,7 +1,6 @@
 #![deny(clippy::float_arithmetic)]
 
 mod build;
-mod interp;
 mod llvm;
 #[cfg(test)]
 mod vectors;
@@ -9,8 +8,8 @@ mod vectors;
 use core_form::Program;
 use paka::diagnostic::Diagnostic;
 use paka::serve::serve;
-use paka::session::{self, Session};
-use paka::{Checked, Hole, builtins, check, core_form, diagnostic, source};
+use paka::session::{self, Runner, Session};
+use paka::{Checked, Hole, check, core_form, diagnostic, interp, source};
 use paka_rt::{Fd1, abi};
 use source::{Source, read};
 use std::ffi::OsStr;
@@ -108,7 +107,9 @@ fn serve_program(file: &OsStr) -> ExitCode {
             return reject(&source, Diagnostic::tool(&path, "not-served", why));
         }
     };
-    let mut session = Session::new(file, &source, workspace, lock);
+    let runner = env::current_exe().map(|exe| exe.with_file_name("paka-runner"));
+    let runner = Runner::new(runner.unwrap_or_else(|_| "paka-runner".into()));
+    let mut session = Session::new(file, &source, workspace, lock, runner);
     match serve(io::stdin().lock(), io::stdout().lock(), |call| {
         session.handle(call)
     }) {

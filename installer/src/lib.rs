@@ -9,6 +9,7 @@ compile_error!("the installer runs on Linux x86-64 only");
 use std::ffi::{c_int, c_long, c_void};
 use std::io;
 
+pub mod dev;
 mod load;
 mod slots;
 pub use load::Loader;

@@ -6,6 +6,7 @@ edition = "2024"
 [lints.clippy]
 undocumented_unsafe_blocks = "deny"
 
-[dev-dependencies]
+[dependencies]
 paka = { path = "../paka" }
+paka-json = { path = "../json" }
 paka-rt = { path = "../paka-rt" }

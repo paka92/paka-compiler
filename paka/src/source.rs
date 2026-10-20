@@ -54,7 +54,8 @@ impl Source {
         Ok(())
     }
 
-    fn add(&mut self, path: OsString, text: Vec<u8>) {
+    /// Adds a file after the others.
+    pub fn add(&mut self, path: OsString, text: Vec<u8>) {
         let name = path
             .as_bytes()
             .rsplit(|&b| b == b'/')

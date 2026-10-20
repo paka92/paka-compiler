@@ -1,0 +1,29 @@
+Served program: the wc sample. Runs, and edits with a run, as M4-03 section 4.1 shows them. A run
+uses the last version that checks (5). A trap fills the trap object even when its report is cut
+(7). A compiled loop stops at its limit (9). A loop the interpreter runs, since `lower` is not
+compiled yet, ends with its runner; the next run starts another (11, 12).
+
+> {"v":1,"id":1,"call":"run","app":"wc","args":["words.txt"]}
+< {"v":1,"id":1,"ok":true,"run":{"stdout":"11 words\n","stderr":"","status":0,"trap":null,"stopped":null}}
+> {"v":1,"id":2,"call":"run","app":"wordcount","args":[]}
+< {"v":1,"id":2,"ok":false,"error":{"kind":"no_app","message":"no app `wordcount`; apps are wc"}}
+> {"v":1,"id":3,"call":"edit","name":"count_words","base":"8f37a8d7c74b","text":"fn count_words(text: String) -> Int {\n  len(split(text, \" \"))\n}","run":{"app":"wc","args":["words.txt"]}}
+< {"v":1,"id":3,"ok":true,"name":"count_words","version":"6c4c8968c9e4","text":"fn count_words(text: String) -> Int {\n  len(split(text, \" \"))\n}","errors":[],"broke":[],"installed":true,"run":{"stdout":"11 words\n","stderr":"","status":0,"trap":null,"stopped":null}}
+> {"v":1,"id":4,"call":"edit","name":"count_words","base":"6c4c8968c9e4","text":"fn count_words(text: String) -> String {\n  text\n}","run":{"app":"wc","args":["words.txt"]}}
+< {"v":1,"id":4,"ok":true,"name":"count_words","version":"48baed379965","text":"fn count_words(text: String) -> String {\n  text\n}","errors":[],"broke":["update"],"installed":false,"run":null}
+> {"v":1,"id":5,"call":"run","app":"wc","args":["words.txt"]}
+< {"v":1,"id":5,"ok":true,"run":{"stdout":"11 words\n","stderr":"","status":0,"trap":null,"stopped":null}}
+> {"v":1,"id":6,"call":"edit","name":"count_words","base":"48baed379965","text":"fn count_words(text: String) -> Int {\n  len(text) / 0\n}","run":{"app":"wc","args":["words.txt"]}}
+< {"v":1,"id":6,"ok":true,"name":"count_words","version":"98141fe1280c","text":"fn count_words(text: String) -> Int {\n  len(text) / 0\n}","errors":[],"broke":[],"installed":true,"run":{"stdout":"","stderr":"wc: trap divide_by_zero at main.paka:6:13\n","status":3,"trap":{"kind":"divide_by_zero","line":6,"column":13,"hole":null},"stopped":null}}
+> {"v":1,"id":7,"call":"run","app":"wc","args":["words.txt"],"max_bytes":3}
+< {"v":1,"id":7,"ok":true,"run":{"stdout":"","stderr":"wc:","status":3,"trap":{"kind":"divide_by_zero","line":6,"column":13,"hole":null},"stopped":"output"}}
+> {"v":1,"id":8,"call":"edit","name":"count_words","base":"98141fe1280c","text":"fn count_words(text: String) -> Int {\n  var n = 0\n  while true {\n    n += 1\n  }\n  n\n}"}
+< {"v":1,"id":8,"ok":true,"name":"count_words","version":"c374ec663f11","text":"fn count_words(text: String) -> Int {\n  var n = 0\n  while true {\n    n += 1\n  }\n  n\n}","errors":[],"broke":[],"installed":true}
+> {"v":1,"id":9,"call":"run","app":"wc","args":["words.txt"],"limit_ms":200}
+< {"v":1,"id":9,"ok":true,"run":{"stdout":"","stderr":"","status":null,"trap":null,"stopped":"time"}}
+> {"v":1,"id":10,"call":"run","app":"wc","args":["missing.txt"]}
+< {"v":1,"id":10,"ok":true,"run":{"stdout":"cannot read file: not found\n","stderr":"","status":20,"trap":null,"stopped":null}}
+> {"v":1,"id":11,"call":"edit","name":"count_words","base":"c374ec663f11","text":"fn count_words(text: String) -> Int {\n  var n = len(lower(text))\n  while true {\n    n += 1\n  }\n  n\n}","run":{"app":"wc","args":["words.txt"],"limit_ms":200}}
+< {"v":1,"id":11,"ok":true,"name":"count_words","version":"b166681bee13","text":"fn count_words(text: String) -> Int {\n  var n = len(lower(text))\n  while true {\n    n += 1\n  }\n  n\n}","errors":[],"broke":[],"installed":true,"run":{"stdout":"","stderr":"","status":null,"trap":null,"stopped":"time"}}
+> {"v":1,"id":12,"call":"edit","name":"count_words","base":"b166681bee13","text":"fn count_words(text: String) -> Int {\n  len(words(text))\n}","run":{"app":"wc","args":["words.txt"]}}
+< {"v":1,"id":12,"ok":true,"name":"count_words","version":"8f37a8d7c74b","text":"fn count_words(text: String) -> Int {\n  len(words(text))\n}","errors":[],"broke":[],"installed":true,"run":{"stdout":"11 words\n","stderr":"","status":0,"trap":null,"stopped":null}}

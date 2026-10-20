@@ -1,16 +1,12 @@
-//! Compiles a Paka program to dev machine code, installs every definition and runs one; a `Dev`
-//! session rebuilds it after each edit.
+//! Compiles a Paka program to dev machine code, installs every definition and runs one.
 // Each test crate uses a part.
 #![allow(dead_code)]
 
 use paka::core_form::Program;
-use paka::emit::{Cache, Emitter};
-use paka::hash::Hash;
-use paka::layout::Layouts;
 use paka::source::Source;
-use paka_installer::{Loader, Slots};
+use paka_installer::Slots;
+pub use paka_installer::dev::Dev;
 use paka_rt::abi::dev::Context;
-use paka_rt::abi::dev::records::Records;
 
 pub const UNWRITTEN: u64 = u64::MAX;
 
@@ -23,56 +19,13 @@ pub fn load(source: &str) -> (Program, Slots) {
 /// As `load`; the error is the program's first diagnostic or the emitter's first refusal.
 pub fn try_load(source: &str) -> Result<(Program, Slots), String> {
     let mut dev = Dev::default();
-    dev.edit(source)?;
+    dev.edit(&self::source(source))?;
     Ok((dev.program, dev.slots))
 }
 
-/// A dev session (M4-37): the last installed program, its keys and its slots.
-pub struct Dev {
-    emitter: Emitter,
-    pub cache: Cache,
-    pub loader: Loader<Hash>,
-    pub slots: Slots,
-    pub program: Program,
-    pub layouts: Layouts,
-    /// Each type's record address, 0 when it owns nothing.
-    pub records: Vec<u64>,
-    pub keys: Vec<Hash>,
-}
-
-impl Default for Dev {
-    fn default() -> Dev {
-        Dev {
-            emitter: Emitter::new().unwrap(),
-            cache: Cache::default(),
-            loader: Loader::default(),
-            slots: Slots::new(0),
-            program: Program::default(),
-            layouts: Layouts::default(),
-            records: vec![],
-            keys: vec![],
-        }
-    }
-}
-
-impl Dev {
-    /// Checks, compiles and installs `source` in one swap; on an error the last program stays.
-    pub fn edit(&mut self, source: &str) -> Result<(), String> {
-        let source = Source::file("main.paka", source.as_bytes().to_vec());
-        let (mut p, ..) = paka::check("main.paka", &source).map_err(|d| d.to_string())?;
-        let layouts = Layouts::new(&mut p);
-        let keys = self.cache.build(&mut self.emitter, &p, &layouts)?;
-        let mut group = self.loader.group(&keys, |k| self.cache.code(k)).unwrap();
-        let records = Box::leak(Box::new(Records::new(&layouts.specs())));
-        let addresses: Vec<u64> = (0..p.types.len()).map(|t| records.address(t)).collect();
-        group.extend((addresses.iter().enumerate()).map(|(t, &a)| (keys.len() + t, a as usize)));
-        if group.len() != self.keys.len() + self.program.types.len() {
-            self.slots = Slots::new(group.len());
-        }
-        self.slots.swap(&group).unwrap();
-        (self.program, self.layouts, self.records, self.keys) = (p, layouts, addresses, keys);
-        Ok(())
-    }
+/// `text` as the program's one file.
+pub fn source(text: &str) -> Source {
+    Source::file("main.paka", text.as_bytes().to_vec())
 }
 
 /// Runs definition `id`, which takes no arguments: its status and the word it wrote, `UNWRITTEN`
