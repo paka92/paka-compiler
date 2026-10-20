@@ -132,3 +132,28 @@ fn the_fuzz_loop_finds_and_shrinks_each_planted_fault() {
     });
     let _ = std::fs::remove_dir_all(&keep);
 }
+
+/// Each planted staleness of the compile cache is found by seed 0's edit sequence, which agrees
+/// without it.
+#[test]
+fn edit_sequences_find_each_planted_staleness() {
+    let keep = std::env::temp_dir().join(format!("paka-edits-{}", std::process::id()));
+    std::thread::scope(|s| {
+        for plant in [0, 6, 7] {
+            let keep = keep.join(plant.to_string());
+            s.spawn(move || {
+                let out = Command::new(env!("CARGO_BIN_EXE_paka-diff"))
+                    .args(["--edits", "0", "1"])
+                    .arg(&keep)
+                    .env("PAKA_PLANT", plant.to_string())
+                    .output()
+                    .unwrap();
+                let text = String::from_utf8(out.stdout).unwrap();
+                let found = text.contains("\ndiffer seed 0 ");
+                assert_eq!(found, plant != 0, "plant {plant}:\n{text}");
+                assert_eq!(found, keep.join("0/edits/0.paka").exists());
+            });
+        }
+    });
+    let _ = std::fs::remove_dir_all(&keep);
+}

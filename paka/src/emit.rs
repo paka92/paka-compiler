@@ -37,7 +37,8 @@ pub struct Emitter {
     isa: OwnedTargetIsa,
     builder: FunctionBuilderContext,
     context: cranelift_codegen::Context,
-    /// A planted fault, 1 to 5, for the fuzz loop's self-test (M4-41); 0 in real use.
+    /// A planted fault for a self-test: 1 to 5 in code (M4-41), 6 and 7 in the cache (M4-43); 0
+    /// in real use.
     pub plant: u8,
 }
 

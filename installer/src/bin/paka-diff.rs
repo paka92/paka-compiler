@@ -7,6 +7,12 @@
 //! from FIRST (M4-41). Each that differs is shrunk while it keeps that kind of difference and
 //! written to `KEEP/SEED.paka`. `PAKA_PLANT` plants a fault in the dev back end, for a self-test.
 //!
+//! `paka-diff --edits FIRST COUNT KEEP` runs the edit sequences of COUNT seeds from FIRST (M4-43).
+//! After each edit that checks, the dev run has edited in every version before it, so it runs the
+//! code incremental compiles left; its output must equal the interpreter's on the same version. A
+//! sequence that differs is kept as `KEEP/SEED`, the dev run's folder: `main.paka` and the versions
+//! before it in `edits/`. `PAKA_PLANT` 6 or 7 plants staleness in the compile cache.
+//!
 //! Each run is a child, `paka-diff --one interp|dev NOTE LIMIT_MS ARGS...` in the staged case
 //! folder: it runs `main.paka` as `paka run` does, stopped past the limit, and in dev mode writes
 //! its ledger, or why the dev back end refused the program, to NOTE.
@@ -18,6 +24,7 @@ use paka_installer::diff::{Outcome, cases, difference, no_core_dumps, shrink, st
 use paka_rt::abi::dev::app::Stopped;
 use paka_rt::effects::Host;
 use paka_rt::{Fd1, abi};
+use std::collections::BTreeMap;
 use std::env;
 use std::ffi::OsString;
 use std::fs;
@@ -39,13 +46,17 @@ fn main() -> ExitCode {
     let args: Vec<OsString> = env::args_os().skip(1).collect();
     let r = match args.first().and_then(|a| a.to_str()) {
         Some("--one") => return one(&args[1..]),
-        Some("--fuzz") => {
+        Some(mode @ ("--fuzz" | "--edits")) => {
             let number = |i: usize| args.get(i).and_then(|a| a.to_str()?.parse::<u64>().ok());
             let (Some(first), Some(count), Some(keep)) = (number(1), number(2), args.get(3)) else {
-                eprintln!("usage: paka-diff --fuzz FIRST COUNT KEEP");
+                eprintln!("usage: paka-diff {mode} FIRST COUNT KEEP");
                 return ExitCode::from(2);
             };
-            fuzz(first..first + count, keep.as_ref())
+            let seeds = first..first + count;
+            match mode {
+                "--fuzz" => fuzz(seeds, keep.as_ref()),
+                _ => edits(seeds, keep.as_ref()),
+            }
         }
         _ => compare(
             &args
@@ -107,6 +118,53 @@ fn fuzz(seeds: Range<u64>, keep: &Path) -> io::Result<ExitCode> {
         writeln!(tally.out, "  kept {} ({lines} lines)", kept.display())?;
     }
     let _ = fs::remove_dir_all(&scratch);
+    tally.end()
+}
+
+/// The edits after each generated program.
+const STEPS: usize = 8;
+
+fn edits(seeds: Range<u64>, keep: &Path) -> io::Result<ExitCode> {
+    let scratch = scratch();
+    let dirs = ENGINES.map(|e| scratch.join(e));
+    dirs.iter().try_for_each(fs::create_dir_all)?;
+    let mut tally = Tally::default();
+    let mut kinds: BTreeMap<&str, (u64, u64)> = BTreeMap::new();
+    let before = dirs[1].join("edits");
+    for seed in seeds {
+        let _ = fs::remove_dir_all(&before);
+        fs::create_dir(&before)?;
+        let versions = paka_gen::edit::versions(seed, STEPS, |t| {
+            paka::check("main.paka", &Source::file("main.paka", t.into())).is_ok()
+        });
+        for (step, v) in versions.iter().enumerate() {
+            let counts = kinds.entry(v.kind).or_default();
+            counts.0 += 1;
+            counts.1 += u64::from(v.checks);
+            if v.checks {
+                dirs.iter()
+                    .try_for_each(|d| fs::write(d.join("main.paka"), &v.text))?;
+                let name = format!("seed {seed} step {step} {}", v.kind);
+                let (verdict, line) = judge(&dirs, &name, FUZZ_LIMIT, &[])?;
+                tally.add((verdict, line))?;
+                if verdict == 1 {
+                    let kept = keep.join(seed.to_string());
+                    fs::create_dir_all(kept.join("edits"))?;
+                    fs::write(kept.join("main.paka"), &v.text)?;
+                    for (k, v) in versions[..step].iter().enumerate() {
+                        fs::write(kept.join(format!("edits/{k}.paka")), &v.text)?;
+                    }
+                    writeln!(tally.out, "  kept {}", kept.display())?;
+                    break;
+                }
+            }
+            fs::write(before.join(format!("{step}.paka")), &v.text)?;
+        }
+    }
+    let _ = fs::remove_dir_all(&scratch);
+    for (kind, (made, accepted)) in kinds {
+        writeln!(tally.out, "{kind:>9}: {made} made, {accepted} accepted")?;
+    }
     tally.end()
 }
 
@@ -250,6 +308,13 @@ fn one(args: &[OsString]) -> ExitCode {
             let mut dev = Dev::default();
             let plant = env::var("PAKA_PLANT").ok().and_then(|n| n.parse().ok());
             dev.emitter.plant = plant.unwrap_or(0);
+            // A step of an edit sequence: the versions before it, `edits/0.paka` on, go in first.
+            for k in 0.. {
+                let Ok(text) = fs::read(format!("edits/{k}.paka")) else {
+                    break;
+                };
+                let _ = dev.edit(&Source::file("main.paka", text));
+            }
             let edited = dev.edit(&source).and_then(|()| match dev.program.app {
                 Some(_) => Ok(()),
                 None => Err("the program has no app".into()),

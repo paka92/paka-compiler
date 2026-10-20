@@ -5,6 +5,7 @@
 //! Every random choice goes through `Rng::below`, so a later shrinker can replay a program from
 //! a recorded list of choices instead of a seed.
 
+pub mod edit;
 mod expr;
 mod show;
 mod stmt;

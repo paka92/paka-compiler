@@ -1342,6 +1342,8 @@ or merged during review. Ids with a letter were added during review.
 - flags: native-only, open-ended
 - done when: 10,000 seeded edit sequences: after every accepted edit dev output equals the interpreter on the last fully checked version; planted staleness is caught.
 - why this level: Finds stale compiled code after signature, layout and generic edits, a failure nothing else would notice.
+- status: done
+- note: Done: `paka-diff --edits FIRST COUNT KEEP` runs seeded sequences of 8 edits (`paka-gen` module `edit`): a literal changed, a record field or enum variant put first, a function added or deleted, two definitions swapped, a parameter put first in a function and its calls. Each edit builds on the last version that checks. Seeds 0 to 9,999 made 80,000 edits, 77,724 accepted; 87,609 runs agree, 0 differ, 115 unsupported. Generic functions take signature edits like the rest. Planted staleness is caught: `PAKA_PLANT=6` leaves constants out of the cache key, 7 leaves out loads (test `edit_sequences_find_each_planted_staleness`). A differing sequence is kept as `KEEP/SEED/main.paka` and `edits/0.paka` on; `paka-diff --one dev` in that folder applies the edits first.
 
 ### M4-44 · L3 · Build the repeatable benchmark for edit-to-running time
 
