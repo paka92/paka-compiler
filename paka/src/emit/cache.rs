@@ -34,18 +34,48 @@ impl Cache {
         p: &Program,
         l: &Layouts,
     ) -> Result<Vec<Hash>, Refusal> {
-        let (mut keys, mut fresh) = (vec![], BTreeMap::new());
-        for def in 0..super::definitions(p) {
-            let ir = e.ir(p, l, def)?;
-            let key = sha256(format!("{STAMP}{}", keyed(e.plant, &ir.to_string())).as_bytes());
-            if !self.code.contains_key(&key) {
-                fresh.insert(key, e.compile(ir)?);
-            }
-            keys.push(key);
+        let mut fresh = BTreeMap::new();
+        let keys = (0..super::definitions(p))
+            .map(|def| self.key(e, p, l, def, &mut fresh))
+            .collect::<Result<_, _>>()?;
+        self.keep(fresh);
+        Ok(keys)
+    }
+
+    /// The key of definition `def` alone, compiling it when not held.
+    pub fn rebuild(
+        &mut self,
+        e: &mut Emitter,
+        p: &Program,
+        l: &Layouts,
+        def: usize,
+    ) -> Result<Hash, Refusal> {
+        let mut fresh = BTreeMap::new();
+        let key = self.key(e, p, l, def, &mut fresh)?;
+        self.keep(fresh);
+        Ok(key)
+    }
+
+    /// The key of definition `def`, compiled into `fresh` when not held.
+    fn key(
+        &self,
+        e: &mut Emitter,
+        p: &Program,
+        l: &Layouts,
+        def: usize,
+        fresh: &mut BTreeMap<Hash, Vec<u8>>,
+    ) -> Result<Hash, Refusal> {
+        let ir = e.ir(p, l, def)?;
+        let key = sha256(format!("{STAMP}{}", keyed(e.plant, &ir.to_string())).as_bytes());
+        if !self.code.contains_key(&key) && !fresh.contains_key(&key) {
+            fresh.insert(key, e.compile(ir)?);
         }
+        Ok(key)
+    }
+
+    fn keep(&mut self, fresh: BTreeMap<Hash, Vec<u8>>) {
         self.compiles += fresh.len();
         self.code.extend(fresh);
-        Ok(keys)
     }
 
     /// The machine code of a key `build` returned.

@@ -9,6 +9,7 @@
 //! The last version that checked clean stays released, to run, until a newer one checks clean;
 //! the edits between are released together (M4-13).
 
+use crate::alone::Names;
 use crate::diagnostic::Diagnostic;
 use crate::index::Index;
 use crate::parser::{parse_def, split};
@@ -21,6 +22,7 @@ const PATH: &str = "main.paka";
 pub struct Workspace {
     defs: Vec<Stored>,
     index: Index,
+    names: Names,
     released: Option<String>,
 }
 
@@ -49,7 +51,7 @@ impl Workspace {
         let index = Index::build(&checks);
         let released = clean(&checks).then(|| program(texts.iter().map(String::as_str)));
         let lines = first_lines(&texts);
-        let defs = (texts.into_iter().zip(checks).zip(lines))
+        let defs: Vec<_> = (texts.into_iter().zip(checks).zip(lines))
             .map(|((text, check), line)| Stored {
                 names: names(&text),
                 text,
@@ -58,6 +60,7 @@ impl Workspace {
             })
             .collect();
         Ok(Workspace {
+            names: named(&defs),
             defs,
             index,
             released,
@@ -97,10 +100,23 @@ impl Workspace {
             .collect()
     }
 
+    /// The names of the definitions with an error.
+    pub fn failing(&self) -> BTreeSet<String> {
+        (self.defs.iter())
+            .filter(|d| d.check.error.is_some())
+            .map(|d| d.names[0].clone())
+            .collect()
+    }
+
     /// Replaces the definition named `name` by `new`, adds `new` when none has that name, or
     /// deletes it when `new` is `None`. A program-wide error leaves the workspace as it was.
     pub fn edit(&mut self, name: &str, new: Option<&str>) -> Result<Recheck, Diagnostic> {
         let at = self.defs.iter().position(|d| d.names[0] == name);
+        if let (Some(i), Some(text)) = (at, new)
+            && let Some(recheck) = self.edit_alone(i, text)
+        {
+            return Ok(recheck);
+        }
         let new_names = match new {
             Some(text) => parse_def(PATH, text.as_bytes())?.names(),
             None => vec![],
@@ -131,6 +147,36 @@ impl Workspace {
             .filter_map(|c| c.error)
             .collect();
         Ok(Recheck { rechecked, broken })
+    }
+
+    /// The edit of function `i` to `text` checked alone (crate::alone), when the program is clean
+    /// and `text` checks clean with the same interface; then only `i` is rechecked.
+    fn edit_alone(&mut self, i: usize, text: &str) -> Option<Recheck> {
+        let old = &self.defs[i];
+        if !old.text.starts_with("fn ") || !self.defs.iter().all(|d| d.check.error.is_none()) {
+            return None;
+        }
+        let program = self.names.alone(text)?;
+        let checks = check_each(PATH, &Source::file(PATH, program.into_bytes())).ok()?;
+        let check = checks.first().filter(|_| clean(&checks))?;
+        if check.name != old.check.name || check.interface != old.check.interface {
+            return None;
+        }
+        let rechecked = (check.body != old.check.body).then(|| check.name.clone());
+        self.names.remove(&old.text);
+        self.names.add(text);
+        self.index.set(&check.name, check.reads.clone());
+        self.defs[i] = Stored {
+            names: old.names.clone(),
+            text: text.into(),
+            check: check.clone(),
+            line: 1,
+        };
+        self.released = Some(self.text());
+        Some(Recheck {
+            rechecked: rechecked.into_iter().collect(),
+            broken: vec![],
+        })
     }
 
     fn names(&self, i: usize) -> Vec<&str> {
@@ -217,6 +263,7 @@ impl Workspace {
             };
             self.defs.push(stored);
         }
+        self.names = named(&self.defs);
     }
 }
 
@@ -242,6 +289,12 @@ fn first_lines(texts: &[impl AsRef<str>]) -> Vec<usize> {
         line += text.as_ref().lines().count() + 1;
     }
     lines
+}
+
+fn named(defs: &[Stored]) -> Names {
+    let mut names = Names::default();
+    defs.iter().for_each(|d| names.add(&d.text));
+    names
 }
 
 fn names(text: &str) -> Vec<String> {

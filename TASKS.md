@@ -1371,6 +1371,8 @@ or merged during review. Ids with a letter were added during review.
 - flags: open-ended
 - done when: The benchmark's 95th percentile is under 100 ms for all three edit sizes, and M4-40's command and M4-43's edit-sequence run still pass.
 - why this level: Performance-critical path across checker, database, code generator and installer; fixes must not change any result.
+- status: done
+- note: Done: an edit that changes one function's text and keeps its signature is checked alone (`paka::alone`): in a small program of the function, a stub of each function it names and the text of each type it reaches, since a body checks against signatures only (M2-02). The server's workspace stores the result when it is clean and the interface is unchanged. The runner lowers the function the same way, renumbers its core form into the installed program, compiles only its definition and swaps its slot, keeping the record table. Anything else, including any error, takes the whole-program path as before. The server writes each runner request in one call and sends only the changed files, and indexes each definition's file. `paka-bench 5000 3`: body edits take a 95th percentile of 20, 23 and 32 ms (small, medium, large); signature, add and delete edits still take about 5 s. `paka-diff`: 435 agree, 0 differ, 0 unsupported; `paka-diff --edits 0 2000`: 17,540 agree, 0 differ, 25 unsupported; plants 6 and 7 are still caught. docs/profiles/M4-44b.md section 3 has the numbers.
 
 ### M4-46 · L2 · Run the whole M4 exit check with one command and record results
 

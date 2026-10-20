@@ -1,6 +1,6 @@
 //! The dev-mode runner (docs/decisions/M4-04.md). `paka serve` starts it and keeps it; each line on
 //! standard input is one JSON request, answered by one line. `files` installs a program, which
-//! checks; a run request runs its app as M4-03 section 3.4 says, or answers null when the program
+//! checks, and `change` the same program with some files replaced; a run request runs its app as M4-03 section 3.4 says, or answers null when the program
 //! has no app by that name. A program the dev back end does not compile yet runs on the
 //! interpreter, in this process all the same.
 
@@ -20,17 +20,26 @@ const HEAP: u64 = 1 << 30;
 
 fn main() -> io::Result<()> {
     let mut dev = Dev::default();
-    // The installed program when the dev back end refused it.
-    let mut interpreted = None;
+    // The installed program's files, and its checked form when the dev back end refused it.
+    let (mut files, mut interpreted) = (vec![], None);
     let mut out = io::stdout().lock();
     for line in io::stdin().lock().lines() {
         let request = parse(&line?).expect("the server sends JSON");
-        let reply = match request.get("files") {
-            Some(files) => {
-                interpreted = install(&mut dev, files);
+        let reply = match (request.get("files"), request.get("change")) {
+            (Some(all), _) => {
+                files = items(Some(all)).iter().map(file).collect();
+                interpreted = install(&mut dev, &files);
                 Value::object([])
             }
-            None => run(&dev, interpreted.as_ref(), &request),
+            (_, Some(changed)) => {
+                for (path, text) in items(Some(changed)).iter().map(file) {
+                    let held = files.iter_mut().find(|f| f.0 == path);
+                    held.expect("a change replaces a held file").1 = text;
+                }
+                interpreted = install(&mut dev, &files);
+                Value::object([])
+            }
+            _ => run(&dev, interpreted.as_ref(), &request),
         };
         writeln!(out, "{reply}")?;
         out.flush()?;
@@ -38,11 +47,15 @@ fn main() -> io::Result<()> {
     Ok(())
 }
 
+fn file(v: &Value) -> (String, String) {
+    (text(v, "path").into(), text(v, "text").into())
+}
+
 /// Installs the program in `files`; its checked form when the dev back end refuses it.
-fn install(dev: &mut Dev, files: &Value) -> Option<Program> {
+fn install(dev: &mut Dev, files: &[(String, String)]) -> Option<Program> {
     let mut source = Source::default();
-    for file in items(Some(files)) {
-        source.add(text(file, "path").into(), text(file, "text").into());
+    for (path, text) in files {
+        source.add(path.into(), text.as_str().into());
     }
     let refused = dev.edit(&source).is_err();
     refused.then(|| {

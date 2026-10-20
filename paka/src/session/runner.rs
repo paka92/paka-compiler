@@ -1,5 +1,6 @@
 //! The server's side of the dev runner (docs/decisions/M4-04.md): one child process, sent the
-//! runnable program when it changes and each run after. A run that does not answer by its limit and
+//! runnable program when it changes, or only its changed files when its paths stay, and each run
+//! after. A run that does not answer by its limit and
 //! a little more, or a runner that dies, ends the child; the next run starts another.
 
 use crate::serve::Failure;
@@ -25,8 +26,9 @@ struct Live {
     child: Child,
     stdin: ChildStdin,
     replies: Receiver<String>,
-    /// The generation of the program it holds.
+    /// The generation of the program it holds, and its files.
     loaded: Option<u64>,
+    held: Vec<(String, String)>,
 }
 
 impl Runner {
@@ -46,17 +48,27 @@ impl Runner {
             None => self.live.insert(self.start()?),
         };
         if live.loaded != Some(generation) {
-            let files = files.iter().map(|(path, text)| {
+            let file = |(path, text): &(String, String)| {
                 Value::object([
                     ("path", path.as_str().into()),
                     ("text", text.as_str().into()),
                 ])
-            });
-            let load = Value::object([("files", Value::Array(files.collect()))]);
+            };
+            let same = live.loaded.is_some() && paths(&live.held).eq(paths(files));
+            let load = match same {
+                true => {
+                    let changed = (files.iter().zip(&live.held)).filter(|(a, b)| a != b);
+                    Value::object([(
+                        "change",
+                        Value::Array(changed.map(|(f, _)| file(f)).collect()),
+                    )])
+                }
+                false => Value::object([("files", Value::Array(files.iter().map(file).collect()))]),
+            };
             if live.ask(&load, LOAD).is_err() {
                 return Ok(self.end("crash"));
             }
-            live.loaded = Some(generation);
+            (live.loaded, live.held) = (Some(generation), files.to_vec());
         }
         let limit = Duration::from_millis(order.get("limit_ms").and_then(Value::as_u64).unwrap());
         match live.ask(order, limit + GRACE) {
@@ -88,6 +100,7 @@ impl Runner {
             stdin,
             replies,
             loaded: None,
+            held: vec![],
         })
     }
 
@@ -117,6 +130,10 @@ impl Live {
             Err(RecvTimeoutError::Disconnected) => Err("crash"),
         }
     }
+}
+
+fn paths(files: &[(String, String)]) -> impl Iterator<Item = &str> {
+    files.iter().map(|(path, _)| path.as_str())
 }
 
 impl Drop for Runner {

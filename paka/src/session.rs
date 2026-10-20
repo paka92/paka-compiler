@@ -12,7 +12,7 @@ use crate::sha256::sha256;
 use crate::source::Source;
 use crate::workspace::Workspace;
 use paka_json::Value;
-use std::collections::BTreeSet;
+use std::collections::{BTreeMap, BTreeSet};
 use std::ffi::OsStr;
 use std::fs;
 use std::io::{self, Write};
@@ -36,6 +36,8 @@ pub struct Session {
     /// The program's directory; `None` for a single file.
     dir: Option<PathBuf>,
     files: Vec<File>,
+    /// The file of each definition by name.
+    owners: BTreeMap<String, PathBuf>,
     workspace: Workspace,
     /// Held while the server runs. For a single file it moves to each new copy.
     lock: fs::File,
@@ -75,11 +77,15 @@ impl Session {
         let mut session = Session {
             dir,
             files,
+            owners: BTreeMap::new(),
             workspace,
             lock,
             runner,
             runnable: None,
         };
+        for f in &session.files {
+            session.owners.extend(owned(f));
+        }
         session.installed();
         session
     }
@@ -225,12 +231,8 @@ impl Session {
         ]
     }
 
-    /// The names of the definitions with an error.
     fn failing(&self) -> BTreeSet<String> {
-        (self.workspace.checks().into_iter())
-            .filter(|c| c.error.is_some())
-            .map(|c| c.name)
-            .collect()
+        self.workspace.failing()
     }
 
     /// The file that changes when `name` takes `printed`, and its new text; `None` removes it.
@@ -270,12 +272,12 @@ impl Session {
 
     /// The file that holds the definition `name`, and its bytes there.
     fn located(&self, name: &str) -> Option<(&File, Range<usize>)> {
-        self.files.iter().find_map(|f| {
-            let defs = split(PATH, f.text.as_bytes()).ok()?;
-            let (_, def) = defs.into_iter().find(|(id, _)| *id == name)?;
-            let start = def.as_ptr() as usize - f.text.as_ptr() as usize;
-            Some((f, start..start + def.len()))
-        })
+        let path = self.owners.get(name)?;
+        let f = self.files.iter().find(|f| f.path == *path)?;
+        let defs = split(PATH, f.text.as_bytes()).ok()?;
+        let (_, def) = defs.into_iter().find(|(id, _)| *id == name)?;
+        let start = def.as_ptr() as usize - f.text.as_ptr() as usize;
+        Some((f, start..start + def.len()))
     }
 
     /// Replaces the file at `path` by `text` through a copy renamed over it, or removes it.
@@ -284,6 +286,7 @@ impl Session {
         let Some(text) = text else {
             fs::remove_file(path)?;
             self.files.remove(at.expect("a removed file was read"));
+            self.owners.retain(|_, p| p != path);
             return Ok(());
         };
         let mut copy = path.as_os_str().to_owned();
@@ -298,15 +301,26 @@ impl Session {
         if self.dir.is_none() {
             self.lock = file;
         }
-        match at {
-            Some(i) => self.files[i].text = text,
-            None => self.files.push(File {
+        let i = at.unwrap_or_else(|| {
+            self.files.push(File {
                 path: path.into(),
-                text,
-            }),
-        }
+                text: String::new(),
+            });
+            self.files.len() - 1
+        });
+        self.files[i].text = text;
+        self.owners.retain(|_, p| p != path);
+        self.owners.extend(owned(&self.files[i]));
         Ok(())
     }
+}
+
+/// Each definition of `f` by name, with its path.
+fn owned(f: &File) -> Vec<(String, PathBuf)> {
+    let defs = split(PATH, f.text.as_bytes()).unwrap_or_default();
+    (defs.into_iter())
+        .map(|(name, _)| (name.to_string(), f.path.clone()))
+        .collect()
 }
 
 /// The runner's request for a run with the fields `get` gives, defaults filled in.

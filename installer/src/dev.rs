@@ -2,10 +2,12 @@
 //! of its app (M4-36) that the interrupt stops once its time is up (M4-39).
 
 use crate::{Loader, Slots};
+use paka::alone::{Names, relower};
 use paka::core_form::{Program, Type};
 use paka::emit::{Cache, Emitter};
 use paka::hash::Hash;
 use paka::layout::Layouts;
+use paka::parser::split;
 use paka::source::{Source, in_file};
 use paka_rt::abi::dev::app::{App, Stopped, serve};
 use paka_rt::abi::dev::records::Records;
@@ -28,6 +30,9 @@ pub struct Dev {
     /// Each type's record address, 0 when it owns nothing.
     pub records: Vec<u64>,
     pub keys: Vec<Hash>,
+    /// The installed program's files, and its definitions by name.
+    files: Vec<(OsString, Vec<u8>)>,
+    names: Names,
 }
 
 impl Default for Dev {
@@ -41,6 +46,8 @@ impl Default for Dev {
             layouts: Layouts::default(),
             records: vec![],
             keys: vec![],
+            files: vec![],
+            names: Names::default(),
         }
     }
 }
@@ -54,23 +61,94 @@ pub struct Ran {
 
 impl Dev {
     /// Checks, compiles and installs `source` in one swap; on an error the last program stays.
+    /// When one function is all that changed and it keeps its signature, only it is checked and
+    /// compiled (paka::alone).
     pub fn edit(&mut self, source: &Source) -> Result<(), String> {
+        if self.edit_one(source).is_some() {
+            return Ok(());
+        }
         let (mut p, ..) = paka::check("main.paka", source).map_err(|d| d.to_string())?;
         let layouts = Layouts::new(&mut p);
         let keys = self.cache.build(&mut self.emitter, &p, &layouts)?;
-        let mut group = (self.loader.group(&keys, |k| self.cache.code(k)))
-            .map_err(|e| format!("cannot install the code: {e}"))?;
         let records = Box::leak(Box::new(Records::new(&layouts.specs())));
         let addresses: Vec<u64> = (0..p.types.len()).map(|t| records.address(t)).collect();
-        group.extend((addresses.iter().enumerate()).map(|(t, &a)| (keys.len() + t, a as usize)));
+        self.install(&keys, &addresses)?;
+        (self.program, self.layouts, self.records, self.keys) = (p, layouts, addresses, keys);
+        self.files = files(source);
+        self.names = Names::default();
+        for (_, text) in &self.files {
+            for (_, def) in split("main.paka", text).expect("a checked file splits") {
+                self.names.add(&String::from_utf8_lossy(def));
+            }
+        }
+        Ok(())
+    }
+
+    /// Fills the slots with the code of `keys` and the record of each type.
+    fn install(&mut self, keys: &[Hash], records: &[u64]) -> Result<(), String> {
+        let mut group = (self.loader.group(keys, |k| self.cache.code(k)))
+            .map_err(|e| format!("cannot install the code: {e}"))?;
+        group.extend((records.iter().enumerate()).map(|(t, &a)| (keys.len() + t, a as usize)));
         if group.len() != self.keys.len() + self.program.types.len() {
             self.slots = Slots::new(group.len());
         }
         self.slots
             .swap(&group)
             .expect("a group fills the slot table");
-        (self.program, self.layouts, self.records, self.keys) = (p, layouts, addresses, keys);
         Ok(())
+    }
+
+    /// `edit` of a `source` that differs from the installed one in one function's text alone;
+    /// `None` when it does not, leaving the dev session for a whole build.
+    fn edit_one(&mut self, source: &Source) -> Option<()> {
+        let files = files(source);
+        let changed: Vec<usize> = (0..files.len().min(self.files.len()))
+            .filter(|&k| self.files[k] != files[k])
+            .collect();
+        let [k] = changed[..] else { return None };
+        let (old, new) = (&self.files[k], &files[k]);
+        if self.files.len() != files.len() || old.0 != new.0 {
+            return None;
+        }
+        let (was, now) = (
+            split("main.paka", &old.1).ok()?,
+            split("main.paka", &new.1).ok()?,
+        );
+        let mut differ = (was.iter().zip(&now)).filter(|(a, b)| a != b);
+        let ((_, before), (_, after)) = differ.next()?;
+        if differ.next().is_some() || was.len() != now.len() || !before.starts_with(b"fn ") {
+            return None;
+        }
+        let start = before.as_ptr() as usize - old.1.as_ptr() as usize;
+        if start > 0 && old.1[start - 1] != b'\n' {
+            return None;
+        }
+        let line = self.program.files[k].1 + old.1[..start].iter().filter(|&&b| b == b'\n').count();
+        let before = String::from_utf8(before.to_vec()).ok()?;
+        let after = String::from_utf8(after.to_vec()).ok()?;
+        let mut p = std::mem::take(&mut self.program);
+        let lowered = relower(
+            &mut p,
+            &self.names,
+            &after,
+            line..line + before.lines().count(),
+        );
+        self.program = p;
+        let id = lowered?;
+        let key = self
+            .cache
+            .rebuild(&mut self.emitter, &self.program, &self.layouts, id);
+        let mut keys = self.keys.clone();
+        keys[id] = key.ok()?;
+        let records = self.records.clone();
+        if self.install(&keys, &records).is_err() {
+            return None;
+        }
+        self.keys = keys;
+        self.names.remove(&before);
+        self.names.add(&after);
+        self.files = files;
+        Some(())
     }
 
     /// Runs the app with `args` in `world` on a heap of `cap` bytes; past `limit` the interrupt
@@ -151,6 +229,12 @@ impl Dev {
         }
         report
     }
+}
+
+fn files(source: &Source) -> Vec<(OsString, Vec<u8>)> {
+    (source.files.iter())
+        .map(|f| (f.path.clone(), source.text[f.bytes.clone()].to_vec()))
+        .collect()
 }
 
 /// The trap kinds by number (M4-05 section 6).

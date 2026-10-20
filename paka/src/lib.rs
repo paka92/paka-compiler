@@ -2,6 +2,7 @@
 //! back ends and the tools that read programs without compiling them use it as a library.
 #![deny(clippy::float_arithmetic)]
 
+pub mod alone;
 pub mod ast;
 mod body;
 pub mod builtins;
