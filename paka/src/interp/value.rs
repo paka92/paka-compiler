@@ -1,6 +1,7 @@
 //! The values the interpreter holds: owned trees, never shared.
 
 use crate::core_form::{EnumId, Tag};
+pub use paka_rt::ops::quoted;
 use paka_rt::ops::{Float, Int, Text};
 use std::collections::BTreeMap;
 use std::mem;
@@ -210,22 +211,4 @@ pub fn number(tag: &Tag) -> usize {
 #[allow(clippy::disallowed_methods)]
 pub fn position(i: Int) -> Option<usize> {
     usize::try_from(i.get()).ok()
-}
-
-/// A String in its value text form: quoted, with the escapes of the language.
-pub fn quoted(text: &str) -> String {
-    let mut out = String::from("\"");
-    for c in text.chars() {
-        match c {
-            '\n' => out.push_str("\\n"),
-            '\r' => out.push_str("\\r"),
-            '\t' => out.push_str("\\t"),
-            '\\' | '"' | '{' | '}' => {
-                out.push('\\');
-                out.push(c);
-            }
-            _ => out.push(c),
-        }
-    }
-    out + "\""
 }

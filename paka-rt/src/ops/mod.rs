@@ -16,7 +16,7 @@ pub mod vectors;
 pub use float::Float;
 pub use int::Int;
 pub use sort::sorted;
-pub use text::{Text, white};
+pub use text::{Text, quoted, white};
 
 /// The most bytes in a String, and the most items or entries in a List or Map.
 pub const CAP: usize = 16_777_216;

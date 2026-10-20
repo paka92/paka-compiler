@@ -161,6 +161,24 @@ impl Text {
     }
 }
 
+/// A String in its value text form: quoted, with the escapes of the language.
+pub fn quoted(text: &str) -> String {
+    let mut out = String::from("\"");
+    for c in text.chars() {
+        match c {
+            '\n' => out.push_str("\\n"),
+            '\r' => out.push_str("\\r"),
+            '\t' => out.push_str("\\t"),
+            '\\' | '"' | '{' | '}' => {
+                out.push('\\');
+                out.push(c);
+            }
+            _ => out.push(c),
+        }
+    }
+    out + "\""
+}
+
 /// Checks `CAP` before a String of `bytes` bytes is made.
 fn room(bytes: u128) -> Result<(), Trap> {
     match bytes > CAP as u128 {

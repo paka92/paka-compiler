@@ -1566,6 +1566,8 @@ or merged during review. Ids with a letter were added during review.
 - note: Per M5-02: each tree node carries its key or its place number, and the text form prints it.
 - note: Per M5-05: tree nodes carry no rectangles; layout results live beside the tree.
 - note: Per M5-06: the printer writes one line per node with steps (digits, single-quoted String keys, `#n`, `#n.r`), fields per kind, defaults left out, escaped texts, and `Hole` and `Error` lines.
+- status: done
+- note: Done: `paka-rt/src/tree.rs` holds the tree, shared by the interpreter and the runtime: `Node<M>` with one variant per element plus `Hole` and `Error`, children as `(Step, Node)` pairs under Row and Col, the root the one node with no step, and an Input's cursor, selection, preedit and focus in `Edit`. `M` is the message value; the printer shows it through `Display`, so the builder chooses its value text form. Its `Display` is the tree text, every line ending in a line feed. The value-text `quoted` moved into `paka_rt::ops` so both sides escape alike. Tests: `paka-rt/src/tree/tests.rs` prints the counter at 0 with its placeholder, the M5-06 sample with an error node and focus, and a tree of escaped keys and texts, loop placeholders, selection and preedit, each against hand-written text.
 
 ### M5-16 · L3 · Lower views to core form and build trees in the interpreter
 

@@ -15,5 +15,7 @@ pub mod effects;
 pub mod ops;
 #[forbid(unsafe_code)]
 mod rt;
+#[forbid(unsafe_code)]
+pub mod tree;
 
 pub use rt::*;
