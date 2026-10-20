@@ -1222,6 +1222,8 @@ or merged during review. Ids with a letter were added during review.
 - done when: The wc sample prints the hand-written count in dev mode; an effect outside the grants is refused exactly as in the interpreter.
 - why this level: Unsafe decoding of effect values in native layout; an ungranted effect must be refused identically.
 - note: Follows M4-05's ruling on which runtime code the interpreter shares.
+- status: done
+- note: Done: the effect performer, start arguments and host world moved to `paka_rt::effects`, which the interpreter now calls. `paka_rt::abi::dev::app::serve` runs a compiled app: it builds the state through a new state definition slot, decodes each `Effect` (M4-05 §8), copies a `WriteFile` message out of its box (new `BOX` record kind) and drops every message, effect list and the state. `Slots::session` holds the slots for a whole run. `words` is compiled (`rt.text` row `WORDS`). `installer/tests/apps.rs` runs every app case that compiles, 72 of them including the four wc samples and the refused-grant cases, and checks stdout, stderr and status against the interpreter's expectations with a clean ledger. A trapped run is checked by status alone: native trap reports and the `time` line wait on M4-39 and M4-40. `Program::place` does not yet name constructor or state definitions.
 
 ### M4-37 · L3 · Compile changed definitions one by one and install them together
 

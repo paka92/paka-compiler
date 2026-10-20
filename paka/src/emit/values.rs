@@ -1,4 +1,5 @@
-//! Values held in memory (M4-31, M4-32): Strings, Lists, records, enums, `Option` and `Result`.
+//! Values held in memory (M4-31, M4-32, M4-36): Strings, Lists, records, enums, `Option`,
+//! `Result` and `Effect`.
 //! Such a value is the address of its words (docs/decisions/M4-05.md section 8): a local's own
 //! stack slot, a temporary slot, a List's item, or a parameter's caller memory.
 
@@ -8,6 +9,8 @@ use cranelift_codegen::ir::{
     InstBuilder, MemFlagsData, StackSlotData, StackSlotKind, Value, types,
 };
 use cranelift_frontend::{FunctionBuilder, Switch};
+use paka_rt::abi::dev::Rt;
+use std::mem::offset_of;
 
 /// A place's root value and type, then its steps' operands.
 pub(super) type Operands = (Value, Ty, Vec<Op>);
@@ -22,6 +25,7 @@ pub(super) fn held(t: &Type) -> bool {
             | Type::Enum(_)
             | Type::Option(_)
             | Type::Result(..)
+            | Type::Effect(_)
     )
 }
 
@@ -232,9 +236,23 @@ impl Gen<'_> {
         for (field, place) in fields.iter().zip(places) {
             let v = self.value(field)?;
             let v = self.owned(place.ty, v);
-            self.put(place.ty, at, place.offset, v);
+            match place.boxed {
+                true => self.boxed(place.ty, at, place.offset, v),
+                false => self.put(place.ty, at, place.offset, v),
+            }
         }
         Ok(Some(at))
+    }
+
+    /// Moves `v` of type `t` into a new block, whose address is written at `at + offset`.
+    fn boxed(&mut self, t: Ty, at: Value, offset: usize, v: Value) {
+        let out = slot(&mut self.b, 8);
+        let bytes = self.int_const(self.size(t) as i64);
+        self.rt_try(offset_of!(Rt, alloc), &[self.ctx, bytes, out]);
+        let flags = MemFlagsData::trusted();
+        let block = self.b.ins().load(types::I64, flags, out, 0);
+        self.put(t, block, 0, v);
+        self.b.ins().store(flags, block, at, offset as i32);
     }
 
     /// A `match`: one branch per arm, chosen by the subject's tag; an arm binds its one
@@ -320,6 +338,6 @@ pub(super) fn alternative(tag: &Tag) -> Result<usize, Refusal> {
         Tag::User(_, i) => Ok(*i),
         Tag::Some | Tag::Ok => Ok(0),
         Tag::None | Tag::Err => Ok(1),
-        Tag::Effect(_) => Err("an Effect is not compiled yet".into()),
+        Tag::Effect(e) => Ok(*e as usize),
     }
 }

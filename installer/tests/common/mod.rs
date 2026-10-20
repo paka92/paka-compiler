@@ -34,6 +34,9 @@ pub struct Dev {
     pub loader: Loader<Hash>,
     pub slots: Slots,
     pub program: Program,
+    pub layouts: Layouts,
+    /// Each type's record address, 0 when it owns nothing.
+    pub records: Vec<u64>,
     pub keys: Vec<Hash>,
 }
 
@@ -45,6 +48,8 @@ impl Default for Dev {
             loader: Loader::default(),
             slots: Slots::new(0),
             program: Program::default(),
+            layouts: Layouts::default(),
+            records: vec![],
             keys: vec![],
         }
     }
@@ -59,13 +64,13 @@ impl Dev {
         let keys = self.cache.build(&mut self.emitter, &p, &layouts)?;
         let mut group = self.loader.group(&keys, |k| self.cache.code(k)).unwrap();
         let records = Box::leak(Box::new(Records::new(&layouts.specs())));
-        let types = (0..p.types.len()).map(|t| (keys.len() + t, records.address(t) as usize));
-        group.extend(types);
+        let addresses: Vec<u64> = (0..p.types.len()).map(|t| records.address(t)).collect();
+        group.extend((addresses.iter().enumerate()).map(|(t, &a)| (keys.len() + t, a as usize)));
         if group.len() != self.keys.len() + self.program.types.len() {
             self.slots = Slots::new(group.len());
         }
         self.slots.swap(&group).unwrap();
-        (self.program, self.keys) = (p, keys);
+        (self.program, self.layouts, self.records, self.keys) = (p, layouts, addresses, keys);
         Ok(())
     }
 }

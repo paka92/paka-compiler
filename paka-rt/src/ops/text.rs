@@ -76,10 +76,20 @@ impl Text {
             .ok_or(Trap::BadConversion)
     }
 
+    /// The runs between white space, in order.
+    pub fn words(&self) -> impl Iterator<Item = &str> {
+        self.0.split(white).filter(|w| !w.is_empty())
+    }
+
     fn at(&self, i: Int) -> Result<char, Trap> {
         usize::try_from(i.get())
             .ok()
             .and_then(|i| self.0.chars().nth(i))
             .ok_or(Trap::OutOfBounds)
     }
+}
+
+/// White space: the six characters 9 to 13 and 32 (M2-14 section 1.14).
+pub fn white(c: char) -> bool {
+    matches!(c, '\t'..='\r' | ' ')
 }

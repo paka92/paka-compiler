@@ -1,6 +1,7 @@
 //! The core form: what every back end runs. docs/core.md gives each node its type rule,
 //! evaluation order and trap points; the headings there match the types here.
 
+pub use paka_rt::effects::Grant;
 use paka_rt::ops::{Float, Int};
 use std::collections::BTreeSet;
 
@@ -124,13 +125,6 @@ pub struct App {
     pub grants: BTreeSet<Grant>,
 }
 
-#[derive(Debug, PartialEq, Eq, PartialOrd, Ord)]
-pub enum Grant {
-    Console,
-    ReadFiles,
-    WriteFiles,
-}
-
 /// The variants of `Effect<M>`, in declared order.
 #[derive(Debug, Clone, Copy, PartialEq)]
 pub enum Effect {
@@ -150,13 +144,13 @@ pub struct TrapSite {
     pub hole: Option<String>,
 }
 
-#[derive(Debug, PartialEq)]
+#[derive(Clone, Debug, PartialEq)]
 pub struct Block {
     pub stmts: Vec<Stmt>,
     pub value: Option<Box<Expr>>,
 }
 
-#[derive(Debug, PartialEq)]
+#[derive(Clone, Debug, PartialEq)]
 pub enum Stmt {
     Let(Local, Expr),
     /// `place = e`, or `place op= e` with the operator.
@@ -169,7 +163,7 @@ pub enum Stmt {
     Expr(Expr),
 }
 
-#[derive(Debug, PartialEq)]
+#[derive(Clone, Debug, PartialEq)]
 pub enum Walk {
     List(Expr),
     /// `a..<b`
@@ -177,13 +171,13 @@ pub enum Walk {
 }
 
 /// `ty` is `None` for a node that gives no value.
-#[derive(Debug, PartialEq)]
+#[derive(Clone, Debug, PartialEq)]
 pub struct Expr {
     pub ty: Option<Ty>,
     pub kind: ExprKind,
 }
 
-#[derive(Debug, PartialEq)]
+#[derive(Clone, Debug, PartialEq)]
 pub enum ExprKind {
     Int(Int),
     Float(Float),
@@ -208,20 +202,20 @@ pub enum ExprKind {
 }
 
 /// A write or an `inout` argument is rooted at a `Local`; `Root::Value` never appears in one.
-#[derive(Debug, PartialEq)]
+#[derive(Clone, Debug, PartialEq)]
 pub struct Place {
     pub root: Root,
     pub steps: Vec<Step>,
 }
 
-#[derive(Debug, PartialEq)]
+#[derive(Clone, Debug, PartialEq)]
 pub enum Root {
     Local(Local),
     Value(Box<Expr>),
 }
 
 /// Each site is the step's `[`.
-#[derive(Debug, PartialEq)]
+#[derive(Clone, Debug, PartialEq)]
 pub enum Step {
     Field(usize),
     Item(Expr, Site),
@@ -230,7 +224,7 @@ pub enum Step {
 }
 
 /// A variant of a user enum, `Option`, `Result` or `Effect`.
-#[derive(Debug, PartialEq)]
+#[derive(Clone, Debug, PartialEq)]
 pub enum Tag {
     User(EnumId, usize),
     Some,
@@ -240,13 +234,13 @@ pub enum Tag {
     Effect(Effect),
 }
 
-#[derive(Debug, PartialEq)]
+#[derive(Clone, Debug, PartialEq)]
 pub enum FnRef {
     Fn(FnId),
     Variant(EnumId, usize),
 }
 
-#[derive(Debug, PartialEq)]
+#[derive(Clone, Debug, PartialEq)]
 pub enum Callee {
     Fn(FnId),
     /// An index into `builtins::ROWS`, chosen once by the checker.
@@ -254,21 +248,21 @@ pub enum Callee {
     Value(Box<Expr>),
 }
 
-#[derive(Debug, PartialEq)]
+#[derive(Clone, Debug, PartialEq)]
 pub enum Arg {
     Value(Expr),
     Inout(Place),
 }
 
 /// The tags it decides; a one-tag arm binds each field to a local or to nothing.
-#[derive(Debug, PartialEq)]
+#[derive(Clone, Debug, PartialEq)]
 pub struct Arm {
     pub tags: Vec<Tag>,
     pub binds: Vec<Option<Local>>,
     pub body: Block,
 }
 
-#[derive(Debug, PartialEq)]
+#[derive(Clone, Debug, PartialEq)]
 pub enum Un {
     Neg(Site),
     NegFloat,
@@ -276,7 +270,7 @@ pub enum Un {
 }
 
 /// The site, where an operator has one, is the operator.
-#[derive(Debug, PartialEq)]
+#[derive(Clone, Debug, PartialEq)]
 pub enum Bin {
     Int(Arith, Site),
     Float(FloatArith),
@@ -288,7 +282,7 @@ pub enum Bin {
     Or,
 }
 
-#[derive(Debug, PartialEq)]
+#[derive(Clone, Debug, PartialEq)]
 pub enum Arith {
     Add,
     Sub,
@@ -297,7 +291,7 @@ pub enum Arith {
     Rem,
 }
 
-#[derive(Debug, PartialEq)]
+#[derive(Clone, Debug, PartialEq)]
 pub enum FloatArith {
     Add,
     Sub,
@@ -306,14 +300,14 @@ pub enum FloatArith {
 }
 
 /// The operators `op=` allows: Int `+ - * / %`, Float `+ - * /`, String `+`.
-#[derive(Debug, PartialEq)]
+#[derive(Clone, Debug, PartialEq)]
 pub enum Compound {
     Int(Arith, Site),
     Float(FloatArith),
     Join(Site),
 }
 
-#[derive(Debug, PartialEq)]
+#[derive(Clone, Debug, PartialEq)]
 pub enum Cmp {
     Lt,
     Le,

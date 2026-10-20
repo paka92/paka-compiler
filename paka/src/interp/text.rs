@@ -6,13 +6,9 @@ use super::eval::{CAP, Kind, Trap, out_of_bounds};
 use super::generic::{count, list, option};
 use super::value::{Value, position};
 use crate::core_form::Site;
-use paka_rt::ops::{Float, Int, Text};
+use paka_rt::ops::{Float, Int, Text, white};
 
 type Out = Result<Value, Trap>;
-
-fn white(c: char) -> bool {
-    matches!(c, '\t'..='\r' | ' ')
-}
 
 fn text(s: impl Into<String>) -> Value {
     Value::Str(s.into().into())
@@ -57,7 +53,7 @@ pub fn call(name: &str, args: &[Value], site: Site) -> Option<Out> {
             }
             strings(parts.into_iter())
         }
-        ("words", [Value::Str(t)]) => strings(t.as_str().split(white).filter(|w| !w.is_empty())),
+        ("words", [Value::Str(t)]) => strings(t.words()),
         ("join", [Value::List(parts), Value::Str(sep)]) => join(&parts.0, sep, site),
         ("repeat", [Value::Str(t), n]) => repeat(t, n.int(), site),
         ("pad_left", [Value::Str(t), width]) => pad(t, width.int(), true, site),

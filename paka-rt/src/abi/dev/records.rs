@@ -6,6 +6,8 @@
 //! - `STRING`: nothing.
 //! - `LIST`: the item's record, 0 when items own nothing, and the item's size.
 //! - `VALUE`: a tagged value held inline, and its record.
+//! - `BOX`: a pointer to a block holding one value, the value's record (0 when it owns nothing)
+//!   and size. A zero word is a box not yet built.
 //!
 //! Both walkers keep a worklist, so no value is deep enough to overflow the stack.
 
@@ -15,6 +17,7 @@ use std::ptr;
 
 pub const STRING: u64 = 1;
 pub const LIST: u64 = 2;
+pub const BOX: u64 = 4;
 pub const VALUE: u64 = 5;
 pub const TAGGED: u64 = 1 << 63;
 
@@ -23,6 +26,7 @@ pub enum Part {
     String,
     List { item: usize, size: u64 },
     Value(usize),
+    Box { item: usize, size: u64 },
 }
 
 /// What a type owns: one list of (offset, part), or one per variant when tagged.
@@ -73,6 +77,7 @@ impl Records {
                         Part::String => [*offset, STRING, 0, 0],
                         Part::List { item, size } => [*offset, LIST, records.address(item), size],
                         Part::Value(t) => [*offset, VALUE, records.address(t), 0],
+                        Part::Box { item, size } => [*offset, BOX, records.address(item), size],
                     });
                 }
             }
@@ -117,6 +122,7 @@ pub unsafe extern "sysv64" fn rt_copy(
                 match kind {
                     STRING => text(ctx, from.cast(), to.cast()),
                     LIST => list(ctx, (a, b), from.cast(), to.cast(), &mut work),
+                    BOX => boxed(ctx, (a, b), from.cast(), to.cast(), &mut work),
                     _ => {
                         work.push((a, from, to));
                         Some(())
@@ -178,6 +184,16 @@ pub unsafe extern "sysv64" fn rt_drop(ctx: &mut Context, record: u64, value: u64
                         work.extend((0..words.len).map(item));
                     }
                 }
+                BOX => {
+                    // SAFETY: a BOX entry holds a pointer to its block, or 0.
+                    let block = unsafe { *part.cast::<*mut u8>() };
+                    if !block.is_null() {
+                        work.push(Task::Free(block, b));
+                        if a != 0 {
+                            work.push(Task::Walk(a, block));
+                        }
+                    }
+                }
                 _ => work.push(Task::Walk(a, part)),
             }
         }
@@ -218,6 +234,26 @@ unsafe fn list(
     if item != 0 {
         let at = |p: *mut u8, i: u64| p.wrapping_add((i * size) as usize);
         work.extend((0..from.len).map(|i| (item, at(from.ptr, i), at(to.ptr, i))));
+    }
+    Some(())
+}
+
+/// A new block for the box at `to`, a copy of the one at `from`; its value goes on `work` when it
+/// owns blocks.
+unsafe fn boxed(
+    ctx: &mut Context,
+    (item, size): (u64, u64),
+    from: *const *mut u8,
+    to: *mut *mut u8,
+    work: &mut Vec<(u64, *mut u8, *mut u8)>,
+) -> Option<()> {
+    // SAFETY: the caller vouches both hold a box: a pointer to a block of `size`.
+    let (from, to) = unsafe { (*from, &mut *to) };
+    *to = ctx.heap.alloc(size)?;
+    // SAFETY: both blocks hold `size` bytes, and `*to` is new.
+    unsafe { ptr::copy_nonoverlapping(from, *to, size as usize) };
+    if item != 0 {
+        work.push((item, from, *to));
     }
     Some(())
 }

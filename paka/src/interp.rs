@@ -67,30 +67,11 @@ pub fn run_in(
 
 /// The start variant with its fields filled from the arguments, or the usage line.
 fn start_message(core: &Program, app: &App, args: &[OsString]) -> Result<Value, End> {
-    let fields = start_fields(core, app);
-    let usage = |line: String| (2, format!("{}: {line}\n", app.name));
-    if args.len() != fields.len() {
-        let plural = if fields.len() == 1 { "" } else { "s" };
-        let names: Vec<_> = fields.iter().map(|f| f.name.as_str()).collect();
-        let names = if names.is_empty() {
-            String::new()
-        } else {
-            format!(" ({})", names.join(", "))
-        };
-        let (want, got) = (fields.len(), args.len());
-        return Err(usage(format!(
-            "expected {want} argument{plural}{names}, got {got}"
-        )));
-    }
-    let text = |(i, arg): (usize, &OsString)| match arg.to_str() {
-        Some(text) => Ok(Value::Str(text.into())),
-        None => Err(usage(format!("argument {} is not text", i + 1))),
-    };
-    let items = args
-        .iter()
-        .enumerate()
-        .map(text)
-        .collect::<Result<_, _>>()?;
+    let fields: Vec<_> = (start_fields(core, app).iter())
+        .map(|f| f.name.as_str())
+        .collect();
+    let texts = paka_rt::effects::arguments(&app.name, &fields, args)?;
+    let items = texts.into_iter().map(|t| Value::Str(t.into())).collect();
     Ok(Value::Variant(app.start, Items(items)))
 }
 

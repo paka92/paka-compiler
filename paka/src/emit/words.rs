@@ -7,7 +7,7 @@ use super::{Gen, Refusal, ir_type, ty};
 use crate::core_form::{Bin, Block, Expr, Local, Site, Ty, Type};
 use cranelift_codegen::ir::condcodes::IntCC;
 use cranelift_codegen::ir::{InstBuilder, MemFlagsData, Value, types};
-use paka_rt::abi::dev::words::{COMPARE, JOIN, SHOW};
+use paka_rt::abi::dev::words::{COMPARE, JOIN, SHOW, WORDS};
 use paka_rt::abi::dev::{self as rt, Rt};
 use std::mem::offset_of;
 
@@ -199,9 +199,10 @@ impl Gen<'_> {
         }
         given.push(out);
         self.rt_try(offset_of!(Rt, text), &given);
-        match int {
-            true => (self.b.ins()).load(types::I64, MemFlagsData::trusted(), out, 0),
-            false => self.temp(self.string(), out),
+        match (int, row) {
+            (true, _) => (self.b.ins()).load(types::I64, MemFlagsData::trusted(), out, 0),
+            (false, WORDS) => self.temp(self.strings(), out),
+            (false, _) => self.temp(self.string(), out),
         }
     }
 
@@ -209,6 +210,13 @@ impl Gen<'_> {
     fn string(&self) -> Ty {
         let at = self.p.types.iter().position(|t| *t == Type::String);
         at.expect("the String type")
+    }
+
+    /// `List<String>`, which a program that calls `words` has.
+    fn strings(&self) -> Ty {
+        let list = Type::List(self.string());
+        let at = self.p.types.iter().position(|t| *t == list);
+        at.expect("the List<String> type")
     }
 
     /// Interpolation: the parts joined in order, an Int in decimal and a Bool as `true` or

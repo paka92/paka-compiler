@@ -36,6 +36,8 @@ pub const FROM_CODE: u64 = 5;
 pub const SHOW: u64 = 6;
 pub const MIN: u64 = 7;
 pub const MAX: u64 = 8;
+/// A List of `a`'s words, into a List's words.
+pub const WORDS: u64 = 9;
 
 /// `rt.text`: String row `row` on words `a`, `b`, `c`, where a String is the address of its words.
 /// The result goes to `out`: a String's words, or an Int. A trap is recorded at `site`.
@@ -78,6 +80,14 @@ pub unsafe extern "sysv64" fn rt_text(
         SHOW => Ok(Text::from(if a == 0 { "false" } else { "true" })),
         MIN => Ok(text(a).min(text(b))),
         MAX => Ok(text(a).max(text(b))),
+        WORDS => {
+            let Some(list) = words(ctx, &text(a)) else {
+                return fail(ctx, MEMORY, site, [0; 3]);
+            };
+            // SAFETY: `out` has room for a List's words.
+            unsafe { out.cast::<ListWords>().write(list) };
+            return 0;
+        }
         _ => unreachable!("no String row {row}"),
     };
     let made = match made {
@@ -144,6 +154,35 @@ pub unsafe extern "sysv64" fn rt_list(
     0
 }
 
+/// A new List of `t`'s words; `None`, with nothing left made, when the heap refuses.
+fn words(ctx: &mut Context, t: &Text) -> Option<ListWords> {
+    const SIZE: usize = size_of::<TextWords>();
+    let count = t.words().count();
+    let block = match count {
+        0 => ptr::null_mut(),
+        _ => ctx.heap.alloc((count * SIZE) as u64)?,
+    };
+    for (i, word) in t.words().enumerate() {
+        let Some(made) = new_text(ctx, word) else {
+            // SAFETY: items `..i` were written below; each owns its block.
+            let made = unsafe { slice::from_raw_parts(block.cast::<TextWords>(), i) };
+            for m in made.iter().filter(|m| m.cap != 0) {
+                ctx.heap.release(m.ptr, m.cap);
+            }
+            ctx.heap.release(block, (count * SIZE) as u64);
+            return None;
+        };
+        // SAFETY: `block` holds `count` items and `i` is below it.
+        unsafe { block.cast::<TextWords>().add(i).write(made) };
+    }
+    let len = count as u64;
+    Some(ListWords {
+        ptr: block,
+        len,
+        cap: len,
+    })
+}
+
 fn fail(ctx: &mut Context, kind: u64, site: u64, operands: [u64; 3]) -> i32 {
     ctx.trap = Trap {
         kind,
@@ -155,7 +194,7 @@ fn fail(ctx: &mut Context, kind: u64, site: u64, operands: [u64; 3]) -> i32 {
 }
 
 /// A new String block holding `s`; `None` past the cap or when the heap refuses.
-fn new_text(ctx: &mut Context, s: &str) -> Option<TextWords> {
+pub(super) fn new_text(ctx: &mut Context, s: &str) -> Option<TextWords> {
     let bytes = s.len() as u64;
     if s.len() > CAP {
         return None;
@@ -180,7 +219,7 @@ fn new_text(ctx: &mut Context, s: &str) -> Option<TextWords> {
 /// # Safety
 ///
 /// `at` is the address of a String's words, whose bytes stay live and unchanged while it is used.
-unsafe fn as_str<'a>(at: u64) -> &'a str {
+pub(super) unsafe fn as_str<'a>(at: u64) -> &'a str {
     // SAFETY: the caller vouches `at` holds a String's words.
     let words = unsafe { &*ptr::with_exposed_provenance::<TextWords>(at as usize) };
     if words.bytes == 0 {

@@ -12,7 +12,7 @@ use std::io;
 mod load;
 mod slots;
 pub use load::Loader;
-pub use slots::{Refused, Slots};
+pub use slots::{Refused, Session, Slots};
 
 const PROT_READ: c_int = 1;
 const PROT_WRITE: c_int = 2;

@@ -2,6 +2,7 @@
 //! Every block of a run is in a ledger, so a leak, a double free or a free of the wrong size is reported instead of
 //! corrupting memory, and the run's cap is checked before the host is asked.
 
+pub mod app;
 pub mod records;
 pub mod words;
 

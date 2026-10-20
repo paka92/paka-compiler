@@ -45,14 +45,14 @@ pub enum Owned {
     /// The item type.
     List(Ty),
     Map(Ty, Ty),
-    /// The boxed type. In `WriteFile`'s `then` the word may instead be `u64::MAX`: none given.
+    /// The boxed type.
     Box(Ty),
     /// A tagged value inline: its own record says what the variant at hand owns.
     Value(Ty),
 }
 
 /// The layout of every type of a program.
-#[derive(Debug, PartialEq)]
+#[derive(Debug, Default, PartialEq)]
 pub struct Layouts {
     layouts: BTreeMap<Ty, Layout>,
     /// For each record or enum type, its boxed fields: (alternative, field) positions.
@@ -104,7 +104,7 @@ impl Layouts {
     }
 
     /// The type records' contents for the runtime, by type number. A type that owns nothing, or
-    /// owns a Map or a box, which no back end compiles yet, has none.
+    /// owns a Map, which no back end compiles yet, has none.
     pub fn specs(&self) -> Vec<Option<Spec>> {
         let part = |e: &Entry| match e.kind {
             Owned::String => Some((e.offset as u64, Part::String)),
@@ -113,7 +113,11 @@ impl Layouts {
                 Some((e.offset as u64, Part::List { item, size }))
             }
             Owned::Value(t) => Some((e.offset as u64, Part::Value(t))),
-            Owned::Map(..) | Owned::Box(_) => None,
+            Owned::Box(item) => {
+                let size = self.get(item).size as u64;
+                Some((e.offset as u64, Part::Box { item, size }))
+            }
+            Owned::Map(..) => None,
         };
         let spec = |(&ty, l): (&Ty, &Layout)| {
             let alternatives = l.owned.iter().map(|alt| alt.iter().map(part).collect());

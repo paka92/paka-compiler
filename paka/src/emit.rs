@@ -19,7 +19,7 @@ use cranelift_codegen::ir::{
 use cranelift_codegen::isa::{self, CallConv, OwnedTargetIsa, TargetIsa};
 use cranelift_codegen::settings::{self, Configurable};
 use cranelift_frontend::{FunctionBuilder, FunctionBuilderContext, Variable};
-use paka_rt::abi::dev::words::{CODE_AT, FROM_CODE, JOIN, MAX, MIN};
+use paka_rt::abi::dev::words::{CODE_AT, FROM_CODE, JOIN, MAX, MIN, WORDS};
 use paka_rt::abi::dev::{self as rt, Context, Rt};
 use paka_rt::ops::Int;
 use std::collections::{BTreeMap, BTreeSet};
@@ -85,7 +85,10 @@ impl Emitter {
         let f = match def.checked_sub(p.fns.len() + p.examples.len()) {
             None => p.def(def),
             Some(k) => {
-                made = constructor(p, constructors(p)[k]);
+                made = match constructors(p).get(k) {
+                    Some(&c) => constructor(p, c),
+                    None => state(p),
+                };
                 &made
             }
         };
@@ -120,9 +123,35 @@ pub fn constructors(p: &Program) -> Vec<(EnumId, usize)> {
     all
 }
 
-/// The slot ids before the type records: functions, examples, then constructors.
+/// The slot ids before the type records: functions, examples, constructors, then the app's
+/// state.
 pub fn definitions(p: &Program) -> usize {
-    p.fns.len() + p.examples.len() + constructors(p).len()
+    let state = p.app.as_ref().is_some_and(|a| a.state.is_some());
+    p.fns.len() + p.examples.len() + constructors(p).len() + usize::from(state)
+}
+
+/// The slot id of the definition that builds the app's state from its defaults, if it has one.
+pub fn state_slot(p: &Program) -> Option<usize> {
+    p.app.as_ref()?.state.as_ref()?;
+    Some(definitions(p) - 1)
+}
+
+/// The app's state as a function of nothing.
+fn state(p: &Program) -> Fn {
+    let value = p.app.as_ref().and_then(|a| a.state.clone());
+    let value = value.expect("an app with a state");
+    Fn {
+        name: "state".into(),
+        site: 0,
+        params: vec![],
+        locals: vec![],
+        result: value.ty,
+        body: Block {
+            stmts: vec![],
+            value: Some(Box::new(value)),
+        },
+        claims: vec![],
+    }
 }
 
 /// Variant `v` of enum `e` as a function of its fields.
@@ -209,17 +238,19 @@ fn ir_type(p: &Program, l: &Layouts, t: Ty) -> Result<IrType, Refusal> {
     }
 }
 
-/// Whether a value of type `t` owns only Strings and Lists of such values: no Map, box or
-/// Effect, which wait on later tasks.
+/// Whether a value of type `t` owns only Strings, Lists and `Effect` boxes of such values: no
+/// Map, and no box of a user type, which no code reads through yet.
 fn plain(p: &Program, l: &Layouts, t: Ty, seen: &mut BTreeSet<Ty>) -> bool {
     if !seen.insert(t) {
         return true;
     }
-    !matches!(p.types[t], Type::Map(..) | Type::Effect(_))
+    let effect = matches!(p.types[t], Type::Effect(_));
+    !matches!(p.types[t], Type::Map(..))
         && l.get(t).owned.iter().flatten().all(|e| match e.kind {
             Owned::String => true,
             Owned::List(t) | Owned::Value(t) => plain(p, l, t, seen),
-            Owned::Map(..) | Owned::Box(_) => false,
+            Owned::Box(t) => effect && plain(p, l, t, seen),
+            Owned::Map(..) => false,
         })
 }
 
@@ -906,6 +937,7 @@ impl<'a> Gen<'a> {
             "max(a: String, b: String) -> String" => self.text(MAX, site, x),
             "code_at(text: String, i: Int) -> Int" => self.text(CODE_AT, site, x),
             "from_code(n: Int) -> String" => self.text(FROM_CODE, site, x),
+            "words(text: String) -> List<String>" => self.text(WORDS, site, x),
             "assert(cond: Bool)" => {
                 let failed = self.b.ins().icmp_imm_s(IntCC::Equal, x[0], 0);
                 self.check(failed, rt::ASSERT, site, &[]);
