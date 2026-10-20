@@ -1,0 +1,58 @@
+enum Shape { Circle(r: Int), Rect(w: Int, h: Int), Dot }
+
+type Op { name: String, f: fn(Int, Int) -> Int }
+
+fn add(a: Int, b: Int) -> Int { a + b }
+fn mul(a: Int, b: Int) -> Int { a * b }
+
+fn apply(f: fn(Int, Int) -> Int, a: Int, b: Int) -> Int { f(a, b) }
+
+fn pick(big: Bool) -> fn(Int, Int) -> Int {
+  if big { mul } else { add }
+}
+
+fn area(s: Shape) -> Int {
+  match s {
+    Circle(r) => 3 * r * r
+    Rect(w, h) => w * h
+    Dot => 0
+  }
+}
+
+fn make(f: fn(Int) -> Shape, n: Int) -> Shape { f(n) }
+
+fn named(f: fn(String) -> String, s: String) -> String { f(s) }
+fn loud(s: String) -> String { s + "!" }
+
+example passed {
+  apply(add, 2, 3) == 5 && apply(mul, 2, 3) == 6
+}
+example returned {
+  pick(true)(4, 5) == 20 && pick(false)(4, 5) == 9
+}
+example stored {
+  let ops = [Op { name: "add", f: add }, Op { name: "mul", f: mul }]
+  var total = 0
+  for op in ops {
+    total += op.f(3, 4)
+  }
+  let g = ops[1].f
+  total == 19 && g(2, 2) == 4
+}
+example compared {
+  let f = add
+  f == add && f != mul
+}
+example constructors {
+  let c = Circle
+  let r = Rect
+  let shapes = [c(2), r(3, 4), Dot]
+  var sum = 0
+  for s in shapes {
+    sum += area(s)
+  }
+  sum == 24 && area(r(1, 5)) == 5 && area(make(Circle, 1)) == 3
+}
+example strings_cross {
+  named(loud, "hi") == "hi!"
+}

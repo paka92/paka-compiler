@@ -74,7 +74,7 @@ impl Gen<'_> {
         let flags = MemFlagsData::trusted();
         let at = offset_of!(Context, slots) as i32;
         let slots = self.b.ins().load(types::I64, flags, self.ctx, at);
-        let word = ((self.p.fns.len() + self.p.examples.len() + t) * 8) as i32;
+        let word = ((super::definitions(self.p) + t) * 8) as i32;
         self.b.ins().load(types::I64, flags, slots, word)
     }
 

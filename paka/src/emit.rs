@@ -4,8 +4,8 @@
 
 use crate::builtins::ROWS;
 use crate::core_form::{
-    Arg, Arith, Bin, Block, Callee, Cmp, Compound, Expr, ExprKind, FloatArith, Fn, Local, Param,
-    Program, Site, Stmt, Ty, Type, Un, Walk,
+    Arg, Arith, Bin, Block, Callee, Cmp, Compound, EnumId, Expr, ExprKind, Field, FloatArith, Fn,
+    FnRef, Local, Param, Place, Program, Root, Site, Stmt, Tag, Ty, Type, Un, Walk,
 };
 use crate::layout::{Layouts, Owned};
 use crate::owners::Owners;
@@ -81,7 +81,14 @@ impl Emitter {
 
     /// The Cranelift IR of definition `def`.
     pub(crate) fn ir(&mut self, p: &Program, l: &Layouts, def: usize) -> Result<Function, Refusal> {
-        let f = p.def(def);
+        let made;
+        let f = match def.checked_sub(p.fns.len() + p.examples.len()) {
+            None => p.def(def),
+            Some(k) => {
+                made = constructor(p, constructors(p)[k]);
+                &made
+            }
+        };
         let name = UserFuncName::user(0, def as u32);
         let mut func = Function::with_name_signature(name, signature(p, l, f)?);
         let built = Gen::build(&*self.isa, &mut func, &mut self.builder, (p, l), def, f);
@@ -100,6 +107,59 @@ impl Emitter {
     }
 }
 
+/// The definitions after the examples (M4-05 section 7): each variant with fields of an enum the
+/// program uses, called through its slot when the variant is used as a function.
+pub fn constructors(p: &Program) -> Vec<(EnumId, usize)> {
+    let mut all = vec![];
+    for (e, d) in p.enums.iter().enumerate() {
+        if p.types.contains(&Type::Enum(e)) {
+            let v = d.variants.iter().enumerate();
+            all.extend(v.filter(|(_, v)| !v.fields.is_empty()).map(|(v, _)| (e, v)));
+        }
+    }
+    all
+}
+
+/// The slot ids before the type records: functions, examples, then constructors.
+pub fn definitions(p: &Program) -> usize {
+    p.fns.len() + p.examples.len() + constructors(p).len()
+}
+
+/// Variant `v` of enum `e` as a function of its fields.
+fn constructor(p: &Program, (e, v): (EnumId, usize)) -> Fn {
+    let variant = &p.enums[e].variants[v];
+    let t = p.types.iter().position(|t| *t == Type::Enum(e));
+    let t = t.expect("a constructor's enum is used");
+    let field = |(l, f): (usize, &Field)| Expr {
+        ty: Some(f.ty),
+        kind: ExprKind::Place(Place {
+            root: Root::Local(l),
+            steps: vec![],
+        }),
+    };
+    let fields = variant.fields.iter().enumerate().map(field).collect();
+    let value = Expr {
+        ty: Some(t),
+        kind: ExprKind::Variant(Tag::User(e, v), fields),
+    };
+    let param = |f: &Field| Param {
+        ty: f.ty,
+        inout: false,
+    };
+    Fn {
+        name: variant.name.clone(),
+        site: 0,
+        params: variant.fields.iter().map(param).collect(),
+        locals: variant.fields.iter().map(|f| f.ty).collect(),
+        result: Some(t),
+        body: Block {
+            stmts: vec![],
+            value: Some(Box::new(value)),
+        },
+        claims: vec![],
+    }
+}
+
 fn has_sse41() -> bool {
     #[cfg(target_arch = "x86_64")]
     return std::arch::is_x86_feature_detected!("sse4.1");
@@ -109,14 +169,23 @@ fn has_sse41() -> bool {
 
 /// `fn(ctx, args..., out) -> status` (M4-05 section 5); `out` only when there is a result.
 fn signature(p: &Program, l: &Layouts, f: &Fn) -> Result<Signature, Refusal> {
+    callee_signature(p, l, &f.params, f.result)
+}
+
+fn callee_signature(
+    p: &Program,
+    l: &Layouts,
+    params: &[Param],
+    result: Option<Ty>,
+) -> Result<Signature, Refusal> {
     let mut sig = Signature::new(CallConv::SystemV);
     sig.params.push(AbiParam::new(types::I64));
-    for q in &f.params {
+    for q in params {
         let t = word(ir_type(p, l, q.ty)?);
         sig.params
             .push(AbiParam::new(if q.inout { types::I64 } else { t }));
     }
-    if f.result.is_some() {
+    if result.is_some() {
         sig.params.push(AbiParam::new(types::I64));
     }
     sig.returns.push(AbiParam::new(types::I32));
@@ -134,6 +203,7 @@ fn ir_type(p: &Program, l: &Layouts, t: Ty) -> Result<IrType, Refusal> {
         Type::Int => Ok(types::I64),
         Type::Float => Ok(types::F64),
         Type::Bool => Ok(types::I8),
+        Type::Fn(..) => Ok(types::I64),
         ref h if values::held(h) && plain(p, l, t, &mut BTreeSet::new()) => Ok(types::I64),
         ref other => Err(format!("a value of type {other:?} is not compiled yet")),
     }
@@ -178,9 +248,10 @@ struct Gen<'a> {
     stop: Label,
     /// Where a callee writes its result.
     result_slot: Option<StackSlot>,
-    /// Imported signatures: runtime routines by word count and status, definitions by id.
+    /// Imported signatures: runtime routines by word count and status, definitions by parameters
+    /// and result.
     rt_sigs: BTreeMap<(usize, bool), SigRef>,
-    def_sigs: BTreeMap<usize, SigRef>,
+    sigs: BTreeMap<(Vec<Param>, Option<Ty>), SigRef>,
     owners: Owners<Value>,
 }
 
@@ -236,7 +307,7 @@ impl<'a> Gen<'a> {
             stop,
             result_slot: None,
             rt_sigs: BTreeMap::new(),
-            def_sigs: BTreeMap::new(),
+            sigs: BTreeMap::new(),
             owners: Owners::default(),
         };
         g.poll();
@@ -363,11 +434,25 @@ impl<'a> Gen<'a> {
         self.b.ins().call_indirect(sig, f, given)
     }
 
-    /// Calls definition `id` through its slot (M4-05 section 5): each argument in written order,
-    /// an `inout` place's operands in its position, then each place walked to its address. A
-    /// nonzero status returns at once, a trap after pushing `site` as a frame.
-    fn call(&mut self, id: usize, given: &[Arg], site: Site) -> Emitted {
-        let f = &self.p.fns[id];
+    /// Calls a definition through its slot (M4-05 section 5): a function value first, then each
+    /// argument in written order, an `inout` place's operands in its position, then each place
+    /// walked to its address. A nonzero status returns at once, a trap after pushing `site` as a
+    /// frame.
+    fn call(&mut self, callee: &Callee, given: &[Arg], site: Site) -> Emitted {
+        let (id, params, result) = match callee {
+            Callee::Fn(id) => {
+                let f = &self.p.fns[*id];
+                (self.int_const(*id as i64), f.params.clone(), f.result)
+            }
+            Callee::Value(e) => {
+                let Type::Fn(params, result) = &self.p.types[ty(e)] else {
+                    unreachable!("a called value is a function");
+                };
+                let param = |&ty: &Ty| Param { ty, inout: false };
+                (self.value(e)?, params.iter().map(param).collect(), *result)
+            }
+            Callee::Builtin(_) => unreachable!("a built-in is called in place"),
+        };
         let mut values = vec![self.ctx];
         let mut places = vec![];
         for a in given {
@@ -386,28 +471,32 @@ impl<'a> Gen<'a> {
         for (i, place, operands) in places {
             values[i] = self.address(place, operands, &mut spilled);
         }
-        let result = f.result.map(|t| ir_type(self.p, self.l, t)).transpose()?;
-        let held = f.result.filter(|&t| values::held(&self.p.types[t]));
+        let ir_result = result.map(|t| ir_type(self.p, self.l, t)).transpose()?;
+        let held = result.filter(|&t| values::held(&self.p.types[t]));
         let slot = match held {
             Some(t) => Some(values::slot(&mut self.b, self.l.get(t).size)),
-            None => result.map(|_| {
+            None => ir_result.map(|_| {
                 let slot = self.result_slot();
                 self.b.ins().stack_addr(types::I64, slot, 0)
             }),
         };
         values.extend(slot);
-        let sig = match self.def_sigs.get(&id) {
+        let key = (params.clone(), result);
+        let sig = match self.sigs.get(&key) {
             Some(&sig) => sig,
             None => {
-                let sig = self.b.import_signature(signature(self.p, self.l, f)?);
-                self.def_sigs.insert(id, sig);
+                let sig = callee_signature(self.p, self.l, &params, result)?;
+                let sig = self.b.import_signature(sig);
+                self.sigs.insert(key, sig);
                 sig
             }
         };
         let flags = MemFlagsData::trusted();
         let at = offset_of!(Context, slots) as i32;
         let slots = self.b.ins().load(types::I64, flags, self.ctx, at);
-        let code = self.b.ins().load(types::I64, flags, slots, (id * 8) as i32);
+        let word = self.b.ins().imul_imm_s(id, 8);
+        let at = self.b.ins().iadd(slots, word);
+        let code = self.b.ins().load(types::I64, flags, at, 0);
         let call = self.b.ins().call_indirect(sig, code, &values);
         let status = self.b.inst_results(call)[0];
         self.pass_on(status, site);
@@ -415,7 +504,7 @@ impl<'a> Gen<'a> {
             let v = self.get(self.locals[l], at, 0);
             self.b.def_var(self.vars[l], v);
         }
-        Ok(match (f.result, slot) {
+        Ok(match (result, slot) {
             (Some(t), Some(at)) => {
                 let v = self.get(t, at, 0);
                 Some(self.temp(t, v))
@@ -629,7 +718,17 @@ impl<'a> Gen<'a> {
                     row => return self.builtin(row, &x, *site, e),
                 }));
             }
-            ExprKind::Call(Callee::Fn(id), given, site) => return self.call(*id, given, *site),
+            ExprKind::Call(callee, given, site) => return self.call(callee, given, *site),
+            ExprKind::FnValue(f) => {
+                let id = match *f {
+                    FnRef::Fn(id) => id,
+                    FnRef::Variant(e, v) => {
+                        let k = constructors(self.p).iter().position(|&c| c == (e, v));
+                        self.p.fns.len() + self.p.examples.len() + k.expect("a constructor")
+                    }
+                };
+                self.int_const(id as i64)
+            }
             ExprKind::If(c, then, otherwise) => {
                 let c = self.value(c)?;
                 let [yes, no] = [(); 2].map(|()| self.b.create_block());
@@ -876,7 +975,6 @@ fn ty(e: &Expr) -> Ty {
 fn what(kind: &ExprKind) -> &'static str {
     match kind {
         ExprKind::Map(_) => "a Map",
-        ExprKind::FnValue(_) => "a function value",
         ExprKind::Call(..) => "a call",
         _ => "this expression",
     }

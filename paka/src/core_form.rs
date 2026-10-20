@@ -107,7 +107,7 @@ pub struct Fn {
     pub claims: Vec<Site>,
 }
 
-#[derive(Debug, PartialEq)]
+#[derive(Clone, Debug, PartialEq, Eq, PartialOrd, Ord)]
 pub struct Param {
     pub ty: Ty,
     pub inout: bool,

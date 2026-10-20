@@ -104,8 +104,8 @@ fn example_statuses_equal_the_interpreters() {
     }
     println!("compiled: {compiled:?}\nrefused:\n{}", refused.join("\n"));
     // One program for each status besides pass, and those of records and enums (M4-31), of
-    // `?`, `unwrap_or` and `ok_or` (M4-31b), and of Strings and Lists (M4-32); the rest wait on
-    // the later emitter tasks.
+    // `?`, `unwrap_or` and `ok_or` (M4-31b), of Strings and Lists (M4-32), and of function values
+    // (M4-37b); the rest wait on the later emitter tasks.
     let each = [
         "examples_records",
         "examples_errors",
@@ -115,6 +115,7 @@ fn example_statuses_equal_the_interpreters() {
         "examples_list_traps",
         "examples_owned",
         "examples_inout",
+        "examples_fn_values",
         "examples_trapped",
         "examples_fail_comparisons",
         "examples_unfinished",

@@ -1239,6 +1239,8 @@ or merged during review. Ids with a letter were added during review.
 - done when: Hand-written fixtures for function values and for variant constructors used as functions (passed, stored, called through slots) return the expected values when called through M4-24's entry in both back ends, with a clean ledger.
 - why this level: Indirect calls through slots with a known technique.
 - note: Becomes level 4 if M2-09 allows a function value to capture.
+- status: done
+- note: Done: a function value is the I64 id of its slot; `==` compares ids. A call through a value loads the slot at the run-time id, its signature taken from the function type. Each variant with fields of a used enum gets a constructor definition after the examples (`emit::constructors`), synthesised as a function of its fields, so type records now sit at `emit::definitions(p) + t`. Fixture `tests/conformance/apps/examples_fn_values` passes functions and constructors, returns, stores and compares them, in both back ends with a clean ledger.
 
 ### M4-38 · L4 · Compile generic definitions in dev mode as the generics decision prescribes
 

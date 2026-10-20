@@ -24,7 +24,8 @@ pub struct Cache {
 }
 
 impl Cache {
-    /// The key of each definition of `p`, functions then examples, compiling the ones not held.
+    /// The key of each definition of `p`, functions, examples then constructors, compiling the
+    /// ones not held.
     /// A refusal keeps nothing of this build.
     pub fn build(
         &mut self,
@@ -33,7 +34,7 @@ impl Cache {
         l: &Layouts,
     ) -> Result<Vec<Hash>, Refusal> {
         let (mut keys, mut fresh) = (vec![], BTreeMap::new());
-        for def in 0..p.fns.len() + p.examples.len() {
+        for def in 0..super::definitions(p) {
             let ir = e.ir(p, l, def)?;
             let key = sha256(format!("{STAMP}{ir}").as_bytes());
             if !self.code.contains_key(&key) {
