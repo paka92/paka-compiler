@@ -181,6 +181,7 @@ fn kids<'x>(part: Part<'x>) -> Vec<Part<'x>> {
                         ArmBody::Line(s) => Part::Stmt(s),
                     }))
                     .collect(),
+                K::Children(call, b) => vec![e(call), Part::Block(b)],
                 _ => Vec::new(),
             }
         }

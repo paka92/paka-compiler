@@ -41,6 +41,7 @@ impl<'a> Cx<'_, 'a> {
             }
             Some(Binding::Def(i)) => match &defs[i].item {
                 Item::Fn(sig) => self.bare(e, from_ref(sig), (true, false), want),
+                Item::View(_) => Err(self.outside_view(e)),
                 _ => unknown(self),
             },
             Some(Binding::Variant(i, j)) => {
@@ -50,6 +51,7 @@ impl<'a> Cx<'_, 'a> {
             Some(Binding::Builtin(b)) => match (variants.get(b), fns.get(b)) {
                 (Some(sig), _) => self.bare(e, from_ref(sig), (false, true), want),
                 (_, Some(rows)) => self.bare(e, rows, (false, false), want),
+                _ if self.elements.contains_key(b) => Err(self.outside_view(e)),
                 _ => unknown(self),
             },
             None => unknown(self),
@@ -170,6 +172,7 @@ impl<'a> Cx<'_, 'a> {
         match self.resolved.get(callee.at) {
             Some(Binding::Def(i)) => match &defs[i].item {
                 Item::Fn(sig) => self.invoke(&to(Kind::Fn), from_ref(sig), args, want),
+                Item::View(_) => Err(self.outside_view(callee)),
                 _ => self.unbound(args),
             },
             Some(Binding::Variant(i, j)) => {
@@ -187,12 +190,31 @@ impl<'a> Cx<'_, 'a> {
                 let out = self.invoke(&to(Kind::Fn), &fns[b], args, want)?;
                 Ok(if b == "unreachable" { Out::Never } else { out })
             }
+            Some(Binding::Builtin(b)) if self.elements.contains_key(b) => {
+                Err(self.outside_view(callee))
+            }
             Some(Binding::Local(_)) => {
                 let ty = self.expr_val(callee, None)?;
                 self.call_value(callee, ty, args, want)
             }
             _ => self.unbound(args),
         }
+    }
+
+    /// A call of the function or view `callee` names, with its one signature `sig`.
+    pub(super) fn call_sig(
+        &mut self,
+        callee: &Expr,
+        sig: &Sig<'_>,
+        args: &[Arg],
+        want: Option<Ty>,
+    ) -> Res<Out> {
+        let c = Callee {
+            name: render(callee),
+            at: span(callee),
+            kind: Kind::Fn,
+        };
+        self.invoke(&c, from_ref(sig), args, want)
     }
 
     /// An `ExitWith` written with an Int literal must name a status a program may choose.

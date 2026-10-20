@@ -1,0 +1,49 @@
+type Counter { count: Int = 0, items: List<Int> = [] }
+
+enum Msg { Inc, Dec, Typed(text: String) }
+
+fn update(s: inout Counter, m: Msg) {
+  match m {
+    Inc => s.count += 1
+    Dec => s.count -= 1
+    Typed(t) => s.count = len(t)
+  }
+}
+
+app counter {
+  state:  Counter
+  update: update
+  view:   counter_view
+  grants: []
+}
+
+view line(n: Int) -> View<Msg> {
+  Row(gap: 4) {
+    Text("{n}")
+    Button("+", on: Inc)
+  }
+}
+
+view counter_view(s: Counter) -> View<Msg> {
+  let label = "count {s.count}"
+  Col(gap: 8) {
+    Text(label)
+    Input("", on_change: Typed, key: "draft")
+    Text("one", key: 1)
+    Text("one", key: "1")
+    for n in s.items {
+      line(n, key: n)
+      ??more
+    }
+    if s.count > 0 {
+      Button("-", on: Dec)
+    } else {
+      Text("zero")
+    }
+    match s.count {
+      0 => {}
+      _ => Row() { Text("some") }
+    }
+    ??reset
+  }
+}

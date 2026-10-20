@@ -39,10 +39,6 @@ node_kinds! {
     BinOp: Or And Eq Ne Lt Le Gt Ge Add Sub Mul Div Rem;
 }
 
-/// Node kinds that parse but no command accepts yet, so no passing case can hold them: views
-/// are checked from M5-13.
-pub const NOT_YET_RUN: &[&str] = &["Def::View", "Entry::View", "ExprKind::Children"];
-
 /// Every distinct name of the built-in table, sorted.
 pub fn builtin_names() -> Vec<&'static str> {
     let rows = builtins::ROWS.iter();

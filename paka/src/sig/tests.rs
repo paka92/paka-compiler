@@ -92,6 +92,7 @@ fn lines_of(src: &str, errors: bool) -> Vec<String> {
                     format!("enum {name} {{ {} }}", vs.join(", "))
                 }
                 Item::Fn(sig) => format!("fn {}", sig_text(t, name, sig, false)),
+                Item::View(sig) => format!("view {}", sig_text(t, name, sig, false)),
                 Item::Example => format!("example {name}"),
                 Item::App { state, update } => {
                     let state = state.map(|s| format!("state: {}", t.types.show(s)));
@@ -179,6 +180,18 @@ fn a_record_keeps_fields_types_and_which_have_a_default() {
             "type Empty {}",
             "type Job { done: fn(Int) -> Counter, later: List<fn(String)> }",
         ]
+    );
+}
+
+#[test]
+fn a_view_gives_a_view_of_its_message_type() {
+    let src = program(&[
+        "enum Msg { Inc }",
+        "view counter(n: Int, label: String) -> View<Msg> { Text(label) }",
+    ]);
+    assert_eq!(
+        shown(&src)[1],
+        "view counter(n: Int, label: String) -> View<Msg>"
     );
 }
 

@@ -1,0 +1,28 @@
+type Counter { count: Int = 0, items: List<Int> = [] }
+
+enum Msg { Inc, Dec, Typed(text: String) }
+
+fn update(s: inout Counter, m: Msg) {
+  match m {
+    Inc => s.count += 1
+    Dec => s.count -= 1
+    Typed(t) => s.count = len(t)
+  }
+}
+
+app counter {
+  state:  Counter
+  update: update
+  view:   counter_view
+  grants: []
+}
+
+enum Other { Ping }
+
+view badge(s: Counter) -> View<Other> { Button("{s.count}", on: Ping) }
+
+view counter_view(s: Counter) -> View<Msg> {
+  Col() {
+    badge(s)
+  }
+}

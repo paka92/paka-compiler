@@ -9,7 +9,8 @@ pub enum Kind {
     Variant,
     Fn,
     Grant,
-    /// An `example`, an `app`, or a UI name below: it holds a name but is never used by name.
+    /// An `example`, an `app`, `View` or a UI name below: it holds a name but is never used by
+    /// name.
     Other,
 }
 
@@ -195,6 +196,11 @@ pub const ELEMENTS: &[Element] = &[
 pub const UI: &[&str] = &[
     "Ui", "ui_start", "ui_click", "ui_type", "ui_tree", "ui_text", "ui_has",
 ];
+
+/// The element named `name`, if one is.
+pub fn element(name: &str) -> Option<&'static Element> {
+    ELEMENTS.iter().find(|e| e.name == name)
+}
 
 /// The name a row defines.
 pub fn name(row: &'static str) -> &'static str {

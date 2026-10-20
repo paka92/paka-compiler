@@ -27,6 +27,7 @@ mod stmt;
 #[cfg(test)]
 mod tests;
 mod text;
+mod view;
 
 /// The result of checking a program's bodies, one entry per definition.
 pub struct Bodies {
@@ -66,6 +67,8 @@ enum Use {
     Dropped,
     /// As the value of the block, of this type when it is known.
     Value(Option<Ty>),
+    /// Every line is an element of a view (M5-01).
+    Elements,
 }
 
 impl Use {
@@ -73,7 +76,7 @@ impl Use {
     fn want(self) -> Option<Ty> {
         match self {
             Use::Value(want) => want,
-            Use::Dropped => None,
+            Use::Dropped | Use::Elements => None,
         }
     }
 }
@@ -101,6 +104,10 @@ struct Cx<'t, 'a> {
     defs: &'t Defs<'a>,
     fns: &'t BTreeMap<&'static str, Vec<Sig<'static>>>,
     variants: &'t BTreeMap<&'static str, Sig<'static>>,
+    elements: &'t BTreeMap<&'static str, Sig<'static>>,
+    /// In a view, its result type and where the element being checked stands.
+    view: Ty,
+    place: view::Place,
     /// The definition being checked, its result and the `return`s that end it.
     def: usize,
     result: Option<Ty>,
@@ -127,7 +134,9 @@ pub fn check<'a>(
         defs,
         fns,
         variants,
+        elements,
     } = table;
+    let view = types.unknown();
     let mut cx = Cx {
         path,
         program,
@@ -136,6 +145,9 @@ pub fn check<'a>(
         defs,
         fns,
         variants,
+        elements,
+        view,
+        place: view::Place::Root,
         def: 0,
         result: None,
         tails: BTreeSet::new(),
@@ -183,6 +195,7 @@ impl<'t, 'a> Cx<'t, 'a> {
             (Def::Type { fields, .. }, Item::Record(held)) => (fields.iter().zip(held))
                 .find_map(|(f, h)| self.expect(f.default.as_ref()?, h.ty).err()),
             (Def::Example { body, .. }, _) => self.example(body).err(),
+            (Def::View { params, body, .. }, Item::View(sig)) => self.view(sig, params, body).err(),
             (Def::App { name, entries }, Item::App { state, update }) => {
                 self.app(name, entries, (*state, *update)).err()
             }
@@ -192,11 +205,15 @@ impl<'t, 'a> Cx<'t, 'a> {
     }
 
     fn function(&mut self, sig: &Sig<'_>, params: &[ast::Param<'a>], body: &'a Block<'a>) -> Res {
+        self.params(sig, params);
+        self.run(body, sig.result)
+    }
+
+    fn params(&mut self, sig: &Sig<'_>, params: &[ast::Param<'a>]) {
         for (p, s) in params.iter().zip(&sig.params) {
             let how = if p.inout { How::Inout } else { How::Param };
             self.locals.insert(p.name.at, Local { ty: s.ty, how });
         }
-        self.run(body, sig.result)
     }
 
     /// An example is a function without parameters that gives a Bool.

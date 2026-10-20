@@ -97,8 +97,6 @@ It is a plain test, so `cargo test --workspace --locked --offline` runs it too.
   names in the table of `paka/src/builtins.rs`: types, variants, grants and functions. A name is
   one item however many rows it has (`len` has three), so the gate counts names, not rows. Both
   lists come from the compiler's own code, so a new variant or row is a gap until a case uses it.
-  The kinds in `NOT_YET_RUN` of `paka/src/coverage.rs` parse but no command accepts them yet,
-  so the gate skips them until one does.
   A case counts when it passes by the rules above, has neither a `reject` file nor an
   `expect.json`, and its `main.paka` parses. A node kind is covered when it occurs in the syntax
   tree of a counted case. A built-in type, variant or grant (upper case) is covered when its name
@@ -556,6 +554,7 @@ full in the folder. `(Rn)` marks a case that follows a reading in the Settled re
 | `start` is a variant with String fields only; an unknown name, a function and a non-String field are told apart | `start_unknown_name`, `start_is_function`, `start_field_not_string`, `start_before_grants` (R9) |
 | no app: `check` passes, `run` and `build` give `no-app` after the program is checked | `no_app_check_ok`, `no_app_run`, `no_app_build`, `no_app_empty_file`, `no_app_error_first`, `no_app_check_error_first` (R7) |
 | two apps stay a check error | `multiple_apps`, `multiple_apps_check` |
+| a visual app (M5-01): the counter sample checks clean | `view_counter_check` |
 
 ### Arguments and the first message (M2-15 §1.4)
 
@@ -736,7 +735,6 @@ construct (the target `c.shape.w`, the operand or write `&xs`).
 | `unexpected-token` | `unexpected_token` | 4:12 | spec/m1.md §10; M2-02 §5: `;` |
 | `unexpected-inout-mark` | `unexpected_inout_mark` | 5:11 | spec/m1.md §10; M2-05 §5 |
 | `nesting-too-deep` | `nesting_too_deep` | 4:66 | spec/m1.md §10; M2-02 §5; `tests/cases/parse/nesting_too_deep` |
-| `unsupported-view` | `unsupported_view` | 7:1 | spec/m1.md §10; `tests/cases/parse/view_definition` |
 | `unsupported-form` | `unsupported_form` | via `build`, no position | spec/m1.md §10 (build, no position) |
 | `duplicate-name` | `duplicate_name` | 3:6 | spec/m1.md §10; `tests/cases/check/duplicate_enum` |
 | `duplicate-local` | `duplicate_local` | 5:7 | spec/m1.md §10; M2-02 §5 |
@@ -783,6 +781,12 @@ construct (the target `c.shape.w`, the operand or write `&xs`).
 | `missing-arm` | `missing_arm` | 5:11 | M2-02 §5; `tests/cases/check-text/missing_arm_none` |
 | `duplicate-arm` | `duplicate_arm` | 7:5 | M2-02 §5 |
 | `wildcard-on-enum` | `wildcard_on_enum` | 5:5 | M2-02 §5; `tests/cases/check-text/wildcard_on_option` |
+| `bad-view-signature` | `bad_view_signature` | 16:18 | M5-01 §2; `tests/cases/check/view_inout_parameter` |
+| `element-outside-view` | `element_outside_view` | 17:3 | M5-01 §1.3; `tests/cases/check/view_element_in_fn` |
+| `wrong-child-block` | `wrong_child_block` | 17:3 | M5-01 §2; `tests/cases/check/view_missing_child_block` |
+| `missing-key` | `missing_key` | 19:7 | M5-02; `tests/cases/check/view_loop_child_without_key` |
+| `key-on-root` | `key_on_root` | 16:63 | M5-02; `tests/cases/check/view_key_on_root` |
+| `duplicate-key` | `duplicate_key` | 19:28 | M5-02; `tests/cases/check/view_duplicate_key` |
 
 Not in the table, since a program cannot reach them in a file:
 

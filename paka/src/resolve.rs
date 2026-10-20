@@ -4,8 +4,8 @@
 //! left to the checker. A local no use names is the `unused-name` warning (M2-02 section 5).
 
 use crate::ast::{
-    Arm, ArmBody, Block, Def, Entry, Expr, ExprKind, Field, Name, Pat, PatKind, Pos, Program, Stmt,
-    StmtKind, StrPart, Type,
+    Arm, ArmBody, Block, Def, Entry, Expr, ExprKind, Field, Name, Param, Pat, PatKind, Pos,
+    Program, Stmt, StmtKind, StrPart, Type,
 };
 use crate::builtins::{self, Kind};
 use crate::diagnostic::Diagnostic;
@@ -115,9 +115,12 @@ fn builtins<'a>() -> BTreeMap<&'a str, (Kind, Binding)> {
     let rows = builtins::ROWS
         .iter()
         .map(|&(kind, row)| (kind, builtins::name(row)));
-    let elements = builtins::ELEMENTS.iter().map(|e| (Kind::Other, e.name));
+    let elements = builtins::ELEMENTS.iter().map(|e| (Kind::Fn, e.name));
     let ui = builtins::UI.iter().map(|&name| (Kind::Other, name));
-    let all = rows.chain(elements).chain(ui);
+    let all = rows
+        .chain(elements)
+        .chain(ui)
+        .chain([(Kind::Other, "View")]);
     all.map(|(kind, name)| (name, (kind, Binding::Builtin(name))))
         .collect()
 }
@@ -282,9 +285,8 @@ impl<'a> Resolver<'a> {
         let name = def.name();
         let kind = match def {
             Def::Type { .. } | Def::Enum { .. } => Kind::Type,
-            Def::Fn { .. } => Kind::Fn,
+            Def::Fn { .. } | Def::View { .. } => Kind::Fn,
             Def::Example { .. } | Def::App { .. } => Kind::Other,
-            Def::View { .. } => unreachable!("check refuses views"),
         };
         self.declare(name.text, name.at, kind, Binding::Def(i))?;
         let Def::Enum { variants, .. } = def else {
@@ -323,7 +325,51 @@ impl<'a> Resolver<'a> {
                 self.app(name.text, entries);
                 Ok(())
             }
-            Def::View { .. } => unreachable!("check refuses views"),
+            Def::View {
+                params,
+                result,
+                body,
+                ..
+            } => self.scoped(|r| {
+                for p in params {
+                    r.view_param(p)?;
+                    r.ty(&p.ty)?;
+                    r.bind(p.name.text, p.name.at)?;
+                }
+                r.view_result(result)?;
+                r.block(body)
+            }),
+        }
+    }
+
+    /// A view reads its parameters, and every view call takes `key:` (M5-01, M5-02).
+    fn view_param(&self, p: &Param) -> Res {
+        let (at, len) = (p.name.at, p.name.text.len());
+        if p.inout {
+            let message = "a view reads its parameters; drop inout";
+            return Err(self.fail(at, len, "bad-view-signature", message.into()));
+        }
+        if p.name.text == "key" {
+            let message = "key is the key every view call takes; rename it".into();
+            return Err(self.fail(at, len, "duplicate-name", message));
+        }
+        Ok(())
+    }
+
+    /// A view gives `View<Msg>`, the one place that type is written.
+    fn view_result(&mut self, t: &'a Type<'a>) -> Res {
+        match t {
+            Type::Name { name, args } if name.text == "View" && args.len() == 1 => {
+                self.ty(&args[0])
+            }
+            Type::Name { name, .. } => {
+                let message = "a view gives View<Msg>; write -> View<Msg>".into();
+                Err(self.fail(name.at, name.text.len(), "bad-view-signature", message))
+            }
+            Type::Fn { at, .. } => {
+                let message = "a view gives View<Msg>; write -> View<Msg>".into();
+                Err(self.fail(*at, 2, "bad-view-signature", message))
+            }
         }
     }
 
@@ -352,7 +398,7 @@ impl<'a> Resolver<'a> {
                     let grant = |n: &Name| (n.at, self.grant(n.text, n.at));
                     names.iter().map(grant).collect()
                 }
-                Entry::View(..) => unreachable!("check refuses views"),
+                Entry::View(_, n) => vec![(n.at, self.view(n.text, n.at))],
             };
             for (at, result) in results {
                 if let Err(d) = result {
@@ -363,13 +409,30 @@ impl<'a> Resolver<'a> {
     }
 
     fn update(&mut self, name: &str, at: Pos) -> Res {
-        let own = |k, b| k == Kind::Fn && matches!(b, Binding::Def(_));
+        self.own_def(
+            name,
+            at,
+            |d| matches!(d, Def::Fn { .. }),
+            "not a function of the program",
+        )
+    }
+
+    fn view(&mut self, name: &str, at: Pos) -> Res {
+        self.own_def(
+            name,
+            at,
+            |d| matches!(d, Def::View { .. }),
+            "not a view of the program",
+        )
+    }
+
+    /// `name` is a definition of the program that `keep` picks.
+    fn own_def(&mut self, name: &str, at: Pos, keep: fn(&Def) -> bool, what: &str) -> Res {
+        let defs = &self.program.defs;
+        let own = |_, b| matches!(b, Binding::Def(i) if keep(&defs[i]));
         match self.pool_get(name, own) {
             Some(found) => self.record(at, found),
-            None => {
-                let what = "not a function of the program";
-                Err(self.suggest("unknown-name", (at, name), what, self.names(own)))
-            }
+            None => Err(self.suggest("unknown-name", (at, name), what, self.names(own))),
         }
     }
 
@@ -396,6 +459,10 @@ impl<'a> Resolver<'a> {
     /// Outside in: the name, then the number of arguments, then the arguments.
     fn ty(&mut self, t: &'a Type<'a>) -> Res {
         match t {
+            Type::Name { name, .. } if name.text == "View" => {
+                let message = "View<Msg> is only a view's result type".into();
+                Err(self.fail(name.at, 4, "element-outside-view", message))
+            }
             Type::Name { name, args } => {
                 self.ty_name(name.text, name.at)?;
                 let want = builtins::arity(name.text);
@@ -529,7 +596,10 @@ impl<'a> Resolver<'a> {
                 self.expr(subject)?;
                 arms.iter().try_for_each(|a| self.arm(a))
             }
-            ExprKind::Children(..) => unreachable!("check refuses views"),
+            ExprKind::Children(call, children) => {
+                self.expr(call)?;
+                self.block(children)
+            }
             // Links of a chain: `expr` walks them.
             ExprKind::Unary(..)
             | ExprKind::Try(..)

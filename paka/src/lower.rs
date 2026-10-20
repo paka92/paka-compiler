@@ -129,6 +129,10 @@ impl<'a> Cx<'_, 'a> {
                 let f = self.function(name, &[], None, body);
                 self.core.examples.push(f);
             }
+            // Views and a visual app run from later tasks (M5-16, M5-20).
+            (Def::View { .. }, _) => {}
+            (Def::App { entries, .. }, _)
+                if entries.iter().any(|e| matches!(e, Entry::View(..))) => {}
             (Def::App { name, entries }, _) => {
                 let app = self.app(name, entries);
                 self.core.app = Some(app);
@@ -243,7 +247,7 @@ impl<'a> Cx<'_, 'a> {
                     app.update = self.ids[f];
                 }
                 Entry::Grants(_, names) => app.grants = names.iter().map(grant).collect(),
-                Entry::View(..) => unreachable!("check refuses views"),
+                Entry::View(..) => unreachable!("a visual app is not lowered"),
             }
         }
         app

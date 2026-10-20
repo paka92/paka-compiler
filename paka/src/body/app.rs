@@ -1,5 +1,5 @@
-//! An app definition (docs/decisions/M2-15.md): the keys, then `state`, `update`, `start` and
-//! `grants` in that order, whatever the order written. A name the resolver could not bind is
+//! An app definition (docs/decisions/M2-15.md, M5-01.md): the keys, then `state`, `update`,
+//! `start`, `view` and `grants` in that order, whatever the order written. A name the resolver could not bind is
 //! reported at its turn; a type it could not read leaves the rules that need it silent.
 
 use super::text::render;
@@ -10,7 +10,7 @@ use crate::resolve::Binding;
 use crate::sig::{Field, Item, Node, Ty};
 use std::collections::BTreeSet;
 
-const ORDER: [&str; 4] = ["state", "update", "start", "grants"];
+const ORDER: [&str; 5] = ["state", "update", "start", "view", "grants"];
 const MISSING: [(&str, &str); 3] = [
     ("missing-start", "start"),
     ("missing-update", "update"),
@@ -25,23 +25,58 @@ impl<'a> Cx<'_, 'a> {
         entries: &[Entry],
         (state, update): (Option<Ty>, Option<usize>),
     ) -> Res {
-        self.app_keys(app, entries)?;
+        let visual = entries.iter().any(|e| key(e).1 == "view");
+        self.app_keys(app, entries, visual)?;
         let mut ordered: Vec<_> = entries.iter().collect();
         ordered.sort_by_key(|e| ORDER.iter().position(|&k| k == key(e).1));
         let mut message = None;
         for entry in ordered {
             match entry {
                 Entry::State(_, n) => self.state(n, state)?,
-                Entry::Update(_, n) => message = self.update(n, state, update)?,
+                Entry::Update(_, n) => message = self.update(n, state, update, visual)?,
                 Entry::Start(_, e) => self.start(e, message)?,
+                Entry::View(_, n) => self.app_view(n, state, message)?,
                 Entry::Grants(_, names) => self.grants(names)?,
-                Entry::View(..) => unreachable!("check refuses views"),
             }
         }
         Ok(())
     }
 
-    fn app_keys(&self, app: &Name, entries: &[Entry]) -> Res {
+    /// The app's view takes the state and gives `View<M>`, M being `update`'s message enum.
+    fn app_view(&mut self, n: &Name, state: Option<Ty>, message: Option<usize>) -> Res {
+        self.named(n.at)?;
+        let defs = self.defs;
+        let Some(Binding::Def(i)) = self.resolved.get(n.at) else {
+            return Ok(());
+        };
+        let Item::View(sig) = &defs[i].item else {
+            return Ok(());
+        };
+        let Some(state) = state else {
+            let message = "a visual app needs state:, the type its view takes";
+            return Err(self.fail((n.at, n.text.len()), "bad-view-signature", message));
+        };
+        let msg = message.and_then(|m| self.types.user(m));
+        let takes = matches!(&sig.params[..], [p] if !p.labelled && self.types.fits(p.ty, state));
+        let gives = match (msg, sig.result) {
+            (Some(m), Some(r)) => {
+                let want = self.types.named("View", &[m]);
+                self.types.fits(r, want)
+            }
+            _ => true,
+        };
+        if takes && gives {
+            return Ok(());
+        }
+        let msg = message.map_or("Msg", |m| self.defs.name(m));
+        let text = format!(
+            "view must be view(s: {}) -> View<{msg}>",
+            self.types.show(state)
+        );
+        Err(self.fail((n.at, n.text.len()), "bad-view-signature", text))
+    }
+
+    fn app_keys(&self, app: &Name, entries: &[Entry], visual: bool) -> Res {
         for (i, entry) in entries.iter().enumerate() {
             let (at, name) = key(entry);
             if entries[..i].iter().any(|e| key(e).1 == name) {
@@ -50,7 +85,8 @@ impl<'a> Cx<'_, 'a> {
             }
         }
         for (code, name) in MISSING {
-            if !entries.iter().any(|e| key(e).1 == name) {
+            let optional = visual && name == "start";
+            if !optional && !entries.iter().any(|e| key(e).1 == name) {
                 let message = format!("the app has no `{name}`");
                 return Err(self.fail((app.at, app.text.len()), code, message));
             }
@@ -118,8 +154,14 @@ impl<'a> Cx<'_, 'a> {
         None
     }
 
-    /// The message enum of `update`, when it is known.
-    fn update(&mut self, n: &Name, state: Option<Ty>, update: Option<usize>) -> Res<Option<usize>> {
+    /// The message enum of `update`, when it is known. In a visual app it may have no result.
+    fn update(
+        &mut self,
+        n: &Name,
+        state: Option<Ty>,
+        update: Option<usize>,
+        visual: bool,
+    ) -> Res<Option<usize>> {
         self.named(n.at)?;
         let defs = self.defs;
         let Some(Item::Fn(sig)) = update.map(|i| &defs[i].item) else {
@@ -138,14 +180,14 @@ impl<'a> Cx<'_, 'a> {
             (None, [_]) => true,
             _ => false,
         };
-        let result = message
-            .zip(last)
-            .zip(sig.result)
-            .is_some_and(|((_, p), r)| {
+        let result = message.zip(last).is_some_and(|(_, p)| match sig.result {
+            Some(r) => {
                 let effect = self.types.named("Effect", &[p.ty]);
                 let want = self.types.named("List", &[effect]);
                 self.types.fits(r, want)
-            });
+            }
+            None => visual,
+        });
         if first && result && last.is_some_and(|p| !p.inout && !p.labelled) {
             return Ok(message);
         }
@@ -153,7 +195,12 @@ impl<'a> Cx<'_, 'a> {
         let head = state.map_or(String::new(), |s| {
             format!("s: inout {}, ", self.types.show(s))
         });
-        let text = format!("update must be fn({head}m: {name}) -> List<Effect<{name}>>");
+        let either = if visual {
+            ", or give no result".to_string()
+        } else {
+            String::new()
+        };
+        let text = format!("update must be fn({head}m: {name}) -> List<Effect<{name}>>{either}");
         Err(self.fail((n.at, n.text.len()), "bad-update-signature", text))
     }
 

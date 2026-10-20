@@ -1,0 +1,34 @@
+type Counter { count: Int = 0 }
+
+enum Msg { Inc, Dec }
+
+fn update(s: inout Counter, m: Msg) {
+  match m {
+    Inc => s.count += 1
+    Dec => s.count = max(0, s.count - 1)
+  }
+}
+
+example dec_stops_at_zero {
+  var s = Counter {}
+  update(&s, Dec)
+  s.count == 0
+}
+
+view counter_view(s: Counter) -> View<Msg> {
+  Col(gap: 8) {
+    Text("{s.count}")
+    Row(gap: 8) {
+      Button("-", on: Dec)
+      Button("+", on: Inc)
+    }
+    ??reset
+  }
+}
+
+app counter {
+  state:  Counter
+  update: update
+  view:   counter_view
+  grants: []
+}

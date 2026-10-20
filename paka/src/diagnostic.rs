@@ -15,7 +15,6 @@ const KINDS: &[(&str, bool, bool)] = &[
     ("unexpected-token", false, false),
     ("unexpected-inout-mark", false, false),
     ("nesting-too-deep", false, false),
-    ("unsupported-view", false, false),
     ("unsupported-form", false, false),
     ("duplicate-name", false, false),
     ("duplicate-local", false, false),
@@ -59,6 +58,12 @@ const KINDS: &[(&str, bool, bool)] = &[
     ("missing-arm", false, false),
     ("duplicate-arm", false, false),
     ("wildcard-on-enum", false, false),
+    ("bad-view-signature", false, false),
+    ("element-outside-view", false, false),
+    ("wrong-child-block", false, false),
+    ("missing-key", false, false),
+    ("key-on-root", false, false),
+    ("duplicate-key", false, false),
 ];
 
 fn declared(code: &str) -> &'static (&'static str, bool, bool) {

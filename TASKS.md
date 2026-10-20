@@ -1543,6 +1543,8 @@ or merged during review. Ids with a letter were added during review.
 - note: Per M5-02: five more checks: a key on stateful elements, a key on every loop child but a hole, no key on a view's root and no root that needs one, no view parameter named `key`, and no literal key twice directly in one block.
 - note: Per M5-04: a labelled element argument with a table default may be left out; written ones follow table order with `key:` last; a negative literal gap is rejected.
 - note: Remove `NOT_YET_RUN` in paka/src/coverage.rs once a view case passes, so the conformance gate covers the view nodes again.
+- status: done
+- note: Done: views resolve and check from signatures: elements are built-in signatures with `M` set to the view's message type, a view call must give the caller's `View<M>`, and the app's `view:` must take the state and give `View<M>` for `update`'s enum. New codes `bad-view-signature`, `element-outside-view`, `wrong-child-block`, `missing-key`, `key-on-root` and `duplicate-key` replace `unsupported-view`; a key out of place is `wrong-label`, a negative literal gap `literal-out-of-range`, a view parameter named `key` `duplicate-name`. One root stays a parse rule. A visual app needs no `start:`, and its `update` may give no result. Cases: `tests/cases/check/view_*` (rejected), `tests/cases/check-text/view_accepted` and `view_counter` (the counter sample, clean), conformance `apps/view_counter_check` and one `errors/` case per new code. `NOT_YET_RUN` is removed. Not yet: a visual app is not lowered, so `run` reports no app until M5-16 and M5-20, and `check` prints no note for a hole in a view; the `ui_` names and `Ui` stay unresolved for M5-21.
 
 ### M5-14 · L4 · Carry views through the derived database and the agent tools
 

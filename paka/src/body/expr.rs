@@ -131,6 +131,7 @@ impl Cx<'_, '_> {
             } => return self.if_expr(e, branches, otherwise.as_ref(), Use::Value(want)),
             K::Match { .. } => return self.match_expr(e, Use::Value(want)),
             K::Inout(x) => return self.expr(x, want),
+            K::Children(call, _) => return Err(self.outside_view(call)),
             _ => self.unknown(),
         };
         Ok(Out::Val(ty))
