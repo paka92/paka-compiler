@@ -11,18 +11,23 @@ use cranelift_codegen::control::ControlPlane;
 use cranelift_codegen::ir::condcodes::{FloatCC, IntCC};
 use cranelift_codegen::ir::immediates::Ieee64;
 use cranelift_codegen::ir::{
-    AbiParam, Block as Label, BlockArg, Function, InstBuilder, MemFlagsData, Signature, StackSlot,
-    StackSlotData, StackSlotKind, Type as IrType, UserFuncName, Value, types,
+    AbiParam, Block as Label, BlockArg, Function, InstBuilder, MemFlagsData, SigRef, Signature,
+    StackSlot, StackSlotData, StackSlotKind, Type as IrType, UserFuncName, Value, types,
 };
 use cranelift_codegen::isa::{self, CallConv, OwnedTargetIsa, TargetIsa};
 use cranelift_codegen::settings::{self, Configurable};
 use cranelift_frontend::{FunctionBuilder, FunctionBuilderContext, Variable};
 use paka_rt::abi::dev::{self as rt, Context, Rt};
 use paka_rt::ops::Int;
+use std::collections::BTreeMap;
 use std::mem::offset_of;
 
 /// Why a definition was not compiled.
 pub type Refusal = String;
+
+/// The most stack slot bytes a function may take, so the runner's margin always holds (M4-05
+/// section 6).
+const FRAME_LIMIT: u32 = 256 << 10;
 
 /// One target and one set of contexts, reused for every definition.
 pub struct Emitter {
@@ -78,7 +83,14 @@ impl Emitter {
             // A refusal leaves the builder's context half used.
             self.builder = FunctionBuilderContext::new();
         }
-        built.map(|()| func)
+        built?;
+        let frame: u32 = func.sized_stack_slots.values().map(|s| s.size).sum();
+        if frame > FRAME_LIMIT {
+            return Err(format!(
+                "internal: a frame of {frame} bytes passes {FRAME_LIMIT}"
+            ));
+        }
+        Ok(func)
     }
 }
 
@@ -133,9 +145,12 @@ struct Gen<'a> {
     /// Each enclosing loop's (continue, break) targets.
     loops: Vec<(Label, Label)>,
     /// Returns status 2; filled at the end.
-    stop: Option<Label>,
+    stop: Label,
     /// Where a callee writes its result.
     result_slot: Option<StackSlot>,
+    /// Imported signatures: runtime routines by word count, definitions by id.
+    rt_sigs: BTreeMap<usize, SigRef>,
+    def_sigs: BTreeMap<usize, SigRef>,
 }
 
 impl<'a> Gen<'a> {
@@ -167,6 +182,8 @@ impl<'a> Gen<'a> {
             }
             vars.push(var);
         }
+        let stop = b.create_block();
+        b.set_cold_block(stop);
         let mut g = Gen {
             b,
             p,
@@ -175,18 +192,17 @@ impl<'a> Gen<'a> {
             out: f.result.map(|_| params[params.len() - 1]),
             vars,
             loops: vec![],
-            stop: None,
+            stop,
             result_slot: None,
+            rt_sigs: BTreeMap::new(),
+            def_sigs: BTreeMap::new(),
         };
         g.poll();
         g.stack_check();
         let v = g.block(&f.body)?;
         g.ret_value(v);
-        if g.stop.is_some() {
-            let stop = g.stop();
-            g.b.switch_to_block(stop);
-            g.ret(2);
-        }
+        g.b.switch_to_block(stop);
+        g.ret(2);
         g.b.seal_all_blocks();
         g.b.finalize(isa.frontend_config());
         Ok(())
@@ -224,16 +240,9 @@ impl<'a> Gen<'a> {
     fn poll(&mut self) {
         let at = (self.b.ins()).iadd_imm_s(self.ctx, offset_of!(Context, interrupt) as i64);
         let flag = (self.b.ins()).atomic_load(types::I64, MemFlagsData::trusted(), at);
-        let stop = self.stop();
         let go = self.b.create_block();
-        self.b.ins().brif(flag, stop, &[], go, &[]);
+        self.b.ins().brif(flag, self.stop, &[], go, &[]);
         self.b.switch_to_block(go);
-    }
-
-    fn stop(&mut self) -> Label {
-        let stop = *self.stop.get_or_insert_with(|| self.b.create_block());
-        self.b.set_cold_block(stop);
-        stop
     }
 
     /// Traps with `stack` when the stack pointer is below `ctx.stack_limit` (M4-05 section 6).
@@ -283,9 +292,11 @@ impl<'a> Gen<'a> {
 
     /// Calls the runtime routine at `offset` in `ctx.rt`; every one takes words and returns none.
     fn rt_call(&mut self, offset: usize, given: &[Value]) {
-        let mut sig = Signature::new(CallConv::SystemV);
-        sig.params = vec![AbiParam::new(types::I64); given.len()];
-        let sig = self.b.import_signature(sig);
+        let sig = *self.rt_sigs.entry(given.len()).or_insert_with(|| {
+            let mut sig = Signature::new(CallConv::SystemV);
+            sig.params = vec![AbiParam::new(types::I64); given.len()];
+            self.b.import_signature(sig)
+        });
         let flags = MemFlagsData::trusted();
         let table =
             (self.b.ins()).load(types::I64, flags, self.ctx, offset_of!(Context, rt) as i32);
@@ -310,7 +321,14 @@ impl<'a> Gen<'a> {
         if let Some(slot) = slot {
             values.push(self.b.ins().stack_addr(types::I64, slot, 0));
         }
-        let sig = self.b.import_signature(signature(self.p, f)?);
+        let sig = match self.def_sigs.get(&id) {
+            Some(&sig) => sig,
+            None => {
+                let sig = self.b.import_signature(signature(self.p, f)?);
+                self.def_sigs.insert(id, sig);
+                sig
+            }
+        };
         let flags = MemFlagsData::trusted();
         let at = offset_of!(Context, slots) as i32;
         let slots = self.b.ins().load(types::I64, flags, self.ctx, at);
@@ -336,8 +354,7 @@ impl<'a> Gen<'a> {
         self.b.ins().brif(status, fail, &[], ok, &[]);
         self.b.switch_to_block(fail);
         let stopped = self.b.ins().icmp_imm_s(IntCC::Equal, status, 2);
-        let stop = self.stop();
-        self.b.ins().brif(stopped, stop, &[], push, &[]);
+        self.b.ins().brif(stopped, self.stop, &[], push, &[]);
         self.b.switch_to_block(push);
         let at = self.int_const(self.site(site) as i64);
         self.rt_call(offset_of!(Rt, push_frame), &[self.ctx, at]);

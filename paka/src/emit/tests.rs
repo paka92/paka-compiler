@@ -2,7 +2,7 @@ use super::Emitter;
 use crate::source::Source;
 use cranelift_codegen::ir::{Function, InstructionData, Opcode, ValueDef};
 
-/// Every construct M4-26 compiles, with each check it emits.
+/// Every construct M4-26 and M4-27 compile, with each check they emit.
 const PROGRAM: &str = "\
 fn arith(a: Int, b: Int, x: Float) -> Int {
   var n = a + b * a - b
@@ -23,6 +23,8 @@ fn flow(limit: Int, on: Bool) -> Bool {
   assert(total == 0)
   !on || total < 1
 }
+
+fn calls(n: Int) -> Int { arith(n, n, 0.5) + if flow(n, true) { 1 } else { 0 } }
 
 example arithmetic {
   7 / 2 == 3 && to_float(2) < 2.5
@@ -61,7 +63,7 @@ fn banned(f: &Function) -> Vec<String> {
 
 #[test]
 fn no_emitted_instruction_faults() {
-    for def in 0..3 {
+    for def in 0..4 {
         let f = ir(def);
         assert_eq!(
             banned(&f),
@@ -90,7 +92,7 @@ fn the_scan_finds_an_unguarded_divide() {
 fn every_definition_compiles_to_code() {
     let (p, ..) = crate::check("main.paka", &Source::file("main.paka", PROGRAM.into())).unwrap();
     let mut emitter = Emitter::new().unwrap();
-    for def in 0..3 {
+    for def in 0..4 {
         assert!(!emitter.code(&p, def).unwrap().is_empty());
     }
 }

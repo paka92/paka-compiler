@@ -1167,6 +1167,8 @@ or merged during review. Ids with a letter were added during review.
 - flags: native-only
 - done when: Fixtures: a program with an unreached hole runs; a reached hole traps naming it; example statuses equal the interpreter's.
 - why this level: A hole is one trap kind carrying its name; examples are functions returning a status.
+- status: done
+- note: Done: a reached hole traps `hole` at a site naming it; examples compile as Bool functions. `installer/tests/examples.rs` runs every conformance example program the emitter compiles and matches each status with the expected output; a program that fails to check there fails the test. The emitter now refuses a function whose stack slots pass 256 KiB (M4-05 section 6), imports each signature once per function, and `installer/tests/calls.rs` shows an interrupt stopping a loop and its caller with status 2 and no trap.
 
 ### M4-31 · L3 · Emit code for records, enums and match
 

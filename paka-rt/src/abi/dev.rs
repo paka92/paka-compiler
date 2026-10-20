@@ -130,6 +130,8 @@ pub struct Context {
 
 impl Context {
     /// A context whose heap holds at most `cap` bytes; the slot table is set when a run starts.
+    /// Its `stack_limit` is 0, which turns the stack check off: runs that may recurse use
+    /// `on_runner`.
     pub fn new(cap: u64) -> Context {
         Context {
             slots: std::ptr::null(),
@@ -206,9 +208,10 @@ pub extern "sysv64" fn rt_trap(ctx: &mut Context, kind: u64, site: u64, a: u64, 
 
 /// `rt.push_frame`: records the call site a trap passed through.
 pub extern "sysv64" fn rt_push_frame(ctx: &mut Context, site: u64) {
-    match ctx.trap.frames.len() < FRAMES {
-        true => ctx.trap.frames.push(site),
-        false => ctx.trap.more = true,
+    if ctx.trap.frames.len() < FRAMES {
+        ctx.trap.frames.push(site);
+    } else {
+        ctx.trap.more = true;
     }
 }
 

@@ -1,11 +1,12 @@
 //! Compiled calls go through slots: results and arguments cross them, a trap surfaces through
-//! nested calls with its kind and position, and unbounded recursion ends in a `stack` trap
-//! (M4-27).
+//! nested calls with its kind and position, unbounded recursion ends in a `stack` trap, and an
+//! interrupt stops a run with status 2 (M4-27).
 
 mod common;
 
 use paka::core_form::Program;
 use paka_rt::abi::dev::{self as rt, Context, on_runner};
+use std::sync::atomic::{AtomicU64, Ordering};
 
 const PROGRAM: &str = "\
 fn add(a: Int, b: Int) -> Int { a + b }
@@ -22,6 +23,11 @@ fn flip(on: Bool) -> Bool { !on }
 fn crosses() -> Int { to_int(half(5.0)) + add(1, 2) + if flip(false) { 10 } else { 0 } }
 fn down(n: Int) -> Int { down(n + 1) + 1 }
 fn deep() -> Int { down(0) }
+fn spin() -> Int {
+  while true { }
+  0
+}
+fn waits() -> Int { spin() + 1 }
 ";
 
 fn id(p: &Program, name: &str) -> usize {
@@ -72,7 +78,11 @@ fn a_trap_surfaces_through_nested_calls_with_its_kind_and_position() {
     for (name, kind, want) in cases {
         let mut ctx = Context::new(0);
         let (status, out) = common::run(&slots, id(&p, name), &mut ctx);
-        assert_eq!((status, out), (1, 0), "{name}: a trap leaves out unwritten");
+        assert_eq!(
+            (status, out),
+            (1, common::UNWRITTEN),
+            "{name}: a trap leaves out unwritten"
+        );
         assert_eq!(trace(&p, &ctx), (kind, want), "{name}");
     }
 }
@@ -103,5 +113,27 @@ fn unbounded_recursion_is_a_stack_trap() {
         frames,
         vec![at("down", 13, 26); 8],
         "the first eight frames, innermost first"
+    );
+}
+
+#[test]
+fn an_interrupt_stops_a_loop_and_its_callers() {
+    let (p, slots) = common::load(PROGRAM);
+    let mut ctx = Context::new(0);
+    let flag = (&raw const ctx.interrupt).expose_provenance();
+    let (status, out) = std::thread::scope(|s| {
+        s.spawn(|| {
+            std::thread::sleep(std::time::Duration::from_millis(50));
+            let flag = std::ptr::with_exposed_provenance::<AtomicU64>(flag);
+            // SAFETY: `ctx` outlives the scope, and the run only reads the flag atomically.
+            unsafe { &*flag }.store(1, Ordering::Relaxed);
+        });
+        common::run(&slots, id(&p, "waits"), &mut ctx)
+    });
+    let stopped = (status, out, ctx.trap.kind, ctx.trap.frames.len());
+    assert_eq!(
+        stopped,
+        (2, common::UNWRITTEN, 0, 0),
+        "no trap and no frames"
     );
 }
