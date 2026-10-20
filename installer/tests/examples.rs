@@ -43,7 +43,15 @@ const HEAP: u64 = 1 << 30;
 fn statuses(p: &Program, slots: &Slots) -> Vec<(String, &'static str)> {
     let example = |(i, f): (usize, &paka::core_form::Fn)| {
         let id = p.fns.len() + i;
-        let (run, kind) = on_runner(HEAP, |ctx| (common::run(slots, id, ctx), ctx.trap.kind));
+        let (run, kind, ledger) = on_runner(HEAP, |ctx| {
+            let run = common::run(slots, id, ctx);
+            let ledger = (ctx.heap.leaks().len(), ctx.heap.faults().len());
+            (run, ctx.trap.kind, ledger)
+        });
+        // A run that returns frees every block it made; a trap or a stop leaves them to its end.
+        if run.0 == 0 {
+            assert_eq!(ledger, (0, 0), "{} leaks or faults", f.name);
+        }
         let status = match (run, kind) {
             ((0, 1), _) => "pass",
             ((0, _), _) => "fail",
@@ -105,6 +113,7 @@ fn example_statuses_equal_the_interpreters() {
         "examples_text_traps",
         "examples_lists",
         "examples_list_traps",
+        "examples_owned",
         "examples_trapped",
         "examples_fail_comparisons",
         "examples_unfinished",

@@ -1,8 +1,7 @@
 //! Strings and lists as compiled code holds them (M4-32, docs/decisions/M4-05.md section 8), and
 //! the routines that build them. The String rows run `ops::Text`, which the interpreter shares.
 //!
-//! Until M4-33 places copies and frees, no routine changes a block in place: each result is a new
-//! block, so values that share one never see each other's writes.
+//! Each result is a new block its caller owns.
 
 use super::{BAD_CONVERSION, Context, MEMORY, OUT_OF_BOUNDS, Trap};
 use crate::ops::{self, CAP, Int, Text};
@@ -126,7 +125,10 @@ pub unsafe extern "sysv64" fn rt_list(
             None => return fail(ctx, MEMORY, site, [0; 3]),
         },
     };
-    if from != 0 && bytes != 0 {
+    if bytes != 0 && from == 0 {
+        // SAFETY: `block` is a new block of `bytes`; items that own blocks start as none.
+        unsafe { ptr::write_bytes(block, 0, bytes as usize) };
+    } else if bytes != 0 {
         let from = ptr::with_exposed_provenance::<u8>(from as usize);
         // SAFETY: the caller vouches for `count` items at `from`; `block` is a new block of
         // `bytes`, so the two never overlap.

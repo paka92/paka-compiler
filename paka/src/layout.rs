@@ -7,6 +7,7 @@
 //! holds a box and every size is finite.
 
 use crate::core_form::{Program, Ty, Type};
+use paka_rt::abi::dev::records::{Part, Spec};
 use std::collections::{BTreeMap, BTreeSet};
 
 /// How a value of one type lies in memory.
@@ -95,6 +96,35 @@ impl Layouts {
 
     pub fn get(&self, ty: Ty) -> &Layout {
         &self.layouts[&ty]
+    }
+
+    /// Whether a value of `ty` owns a block, so copying it copies blocks and it must be dropped.
+    pub fn owns(&self, ty: Ty) -> bool {
+        self.get(ty).owned.iter().any(|alt| !alt.is_empty())
+    }
+
+    /// The type records' contents for the runtime, by type number. A type that owns nothing, or
+    /// owns a Map or a box, which no back end compiles yet, has none.
+    pub fn specs(&self) -> Vec<Option<Spec>> {
+        let part = |e: &Entry| match e.kind {
+            Owned::String => Some((e.offset as u64, Part::String)),
+            Owned::List(item) => {
+                let size = self.get(item).size as u64;
+                Some((e.offset as u64, Part::List { item, size }))
+            }
+            Owned::Value(t) => Some((e.offset as u64, Part::Value(t))),
+            Owned::Map(..) | Owned::Box(_) => None,
+        };
+        let spec = |(&ty, l): (&Ty, &Layout)| {
+            let alternatives = l.owned.iter().map(|alt| alt.iter().map(part).collect());
+            let spec = Spec {
+                size: l.size as u64,
+                tagged: l.tagged,
+                alternatives: alternatives.collect::<Option<_>>()?,
+            };
+            self.owns(ty).then_some(spec)
+        };
+        self.layouts.iter().map(spec).collect()
     }
 
     /// Lays out `ty` and what it holds by value; its size in words.

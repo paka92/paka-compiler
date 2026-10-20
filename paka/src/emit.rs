@@ -4,10 +4,11 @@
 
 use crate::builtins::ROWS;
 use crate::core_form::{
-    Arg, Arith, Bin, Block, Callee, Cmp, Compound, Expr, ExprKind, FloatArith, Fn, Program, Site,
-    Stmt, Ty, Type, Un, Walk,
+    Arg, Arith, Bin, Block, Callee, Cmp, Compound, Expr, ExprKind, FloatArith, Fn, Local, Program,
+    Site, Stmt, Ty, Type, Un, Walk,
 };
 use crate::layout::{Layouts, Owned};
+use crate::owners::Owners;
 use cranelift_codegen::control::ControlPlane;
 use cranelift_codegen::ir::condcodes::{FloatCC, IntCC};
 use cranelift_codegen::ir::immediates::Ieee64;
@@ -172,6 +173,7 @@ struct Gen<'a> {
     /// Imported signatures: runtime routines by word count and status, definitions by id.
     rt_sigs: BTreeMap<(usize, bool), SigRef>,
     def_sigs: BTreeMap<usize, SigRef>,
+    owners: Owners<Value>,
 }
 
 impl<'a> Gen<'a> {
@@ -222,11 +224,17 @@ impl<'a> Gen<'a> {
             result_slot: None,
             rt_sigs: BTreeMap::new(),
             def_sigs: BTreeMap::new(),
+            owners: Owners::default(),
         };
         g.poll();
         g.stack_check();
-        let v = g.block(&f.body)?;
-        g.ret_value(v, f.result);
+        g.owners.enter(false);
+        for s in &f.body.stmts {
+            g.statement(s)?;
+        }
+        let e = f.body.value.as_deref();
+        let v = e.map(|e| g.expr(e)).transpose()?.flatten();
+        g.give(e, v);
         g.b.switch_to_block(stop);
         g.ret(2);
         g.b.seal_all_blocks();
@@ -237,14 +245,6 @@ impl<'a> Gen<'a> {
     fn ret(&mut self, status: i64) {
         let status = self.b.ins().iconst(types::I32, status);
         self.b.ins().return_(&[status]);
-    }
-
-    /// Writes the result, if any, and returns status 0.
-    fn ret_value(&mut self, v: Option<Value>, ty: Option<Ty>) {
-        if let (Some(out), Some(v), Some(ty)) = (self.out, v, ty) {
-            self.put(ty, out, 0, v);
-        }
-        self.ret(0);
     }
 
     /// A Bool as the whole word it is across a call.
@@ -387,7 +387,10 @@ impl<'a> Gen<'a> {
         let status = self.b.inst_results(call)[0];
         self.pass_on(status, site);
         Ok(match (f.result, slot) {
-            (Some(t), Some(at)) => Some(self.get(t, at, 0)),
+            (Some(t), Some(at)) => {
+                let v = self.get(t, at, 0);
+                Some(self.temp(t, v))
+            }
             _ => None,
         })
     }
@@ -430,31 +433,22 @@ impl<'a> Gen<'a> {
         }
     }
 
-    fn block(&mut self, block: &Block) -> Emitted {
-        for s in &block.stmts {
-            self.stmt(s)?;
-        }
-        match &block.value {
-            Some(e) => self.expr(e),
-            None => Ok(None),
-        }
-    }
-
     fn stmt(&mut self, s: &Stmt) -> Result<(), Refusal> {
         match s {
             Stmt::Let(l, e) => {
                 let v = self.value(e)?;
-                self.bind(*l, v);
+                self.bind_owned(*l, v);
             }
             Stmt::Assign(place, op, e) => self.assign(place, op.as_ref(), e)?,
             Stmt::Return(e) => {
                 let v = e.as_ref().map(|e| self.value(e)).transpose()?;
-                self.ret_value(v, e.as_ref().and_then(|e| e.ty));
+                self.give(e.as_ref(), v);
                 self.dead();
             }
             Stmt::Break | Stmt::Continue => {
                 let (next, exit) = *self.loops.last().expect("a loop holds it");
                 let to = if matches!(s, Stmt::Break) { exit } else { next };
+                self.leave_loop();
                 self.b.ins().jump(to, &[]);
                 self.dead();
             }
@@ -463,7 +457,9 @@ impl<'a> Gen<'a> {
                 self.b.ins().jump(head, &[]);
                 self.b.switch_to_block(head);
                 self.poll();
+                let mark = self.owners.mark();
                 let c = self.value(cond)?;
+                self.drop_temps(mark);
                 self.b.ins().brif(c, inner, &[], exit, &[]);
                 self.b.switch_to_block(inner);
                 self.body(head, exit, body)?;
@@ -511,7 +507,7 @@ impl<'a> Gen<'a> {
 
     fn body(&mut self, next: Label, exit: Label, body: &Block) -> Result<(), Refusal> {
         self.loops.push((next, exit));
-        self.block(body)?;
+        self.loop_body(body)?;
         self.loops.pop();
         Ok(())
     }
@@ -601,7 +597,8 @@ impl<'a> Gen<'a> {
                 let c = self.value(c)?;
                 let [yes, no] = [(); 2].map(|()| self.b.create_block());
                 self.b.ins().brif(c, yes, &[], no, &[]);
-                return self.join(e, [(yes, Some(then)), (no, otherwise.as_ref())]);
+                let branches = [(yes, Some(then), vec![]), (no, otherwise.as_ref(), vec![])];
+                return self.join(e, branches);
             }
             kind => return Err(format!("{} is not compiled yet", what(kind))),
         };
@@ -615,25 +612,29 @@ impl<'a> Gen<'a> {
         Ok(t.map(|t| self.zero(t)))
     }
 
-    /// Runs each branch from its label, then meets in one block that takes the value, if any.
+    /// Runs each branch from its label, its binds first, then meets in one block that takes the
+    /// value, if any, as a temporary.
     fn join<'b>(
         &mut self,
         e: &Expr,
-        branches: impl IntoIterator<Item = (Label, Option<&'b Block>)>,
+        branches: impl IntoIterator<Item = (Label, Option<&'b Block>, Vec<(Local, Value)>)>,
     ) -> Emitted {
         let t = e.ty.map(|t| ir_type(self.p, self.l, t)).transpose()?;
         let merge = self.b.create_block();
-        for (label, body) in branches {
+        for (label, body, binds) in branches {
             self.b.switch_to_block(label);
             let v = match body {
-                Some(body) => self.block(body)?,
+                Some(body) => self.scoped(&binds, body)?,
                 None => None,
             };
             let v = t.map(|t| v.unwrap_or_else(|| self.zero(t)));
             self.b.ins().jump(merge, &args(v.as_slice()));
         }
         self.b.switch_to_block(merge);
-        Ok(t.map(|t| self.b.append_block_param(merge, t)))
+        Ok(t.map(|t| {
+            let v = self.b.append_block_param(merge, t);
+            self.temp(ty(e), v)
+        }))
     }
 
     fn short(&mut self, and: bool, x: &Expr, y: &Expr) -> Result<Value, Refusal> {
@@ -646,7 +647,9 @@ impl<'a> Gen<'a> {
             false => self.b.ins().brif(x, merge, &done, rhs, &[]),
         };
         self.b.switch_to_block(rhs);
+        let mark = self.owners.mark();
         let y = self.value(y)?;
+        self.drop_temps(mark);
         self.b.ins().jump(merge, &args(&[y]));
         self.b.switch_to_block(merge);
         Ok(v)
@@ -842,6 +845,7 @@ fn what(kind: &ExprKind) -> &'static str {
     }
 }
 
+mod owned;
 #[cfg(test)]
 mod tests;
 mod values;

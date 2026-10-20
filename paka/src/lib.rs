@@ -14,6 +14,7 @@ pub mod index;
 pub mod layout;
 mod lexer;
 mod lower;
+pub mod owners;
 pub mod parser;
 pub mod print;
 mod resolve;

@@ -2,6 +2,7 @@
 //! Every block of a run is in a ledger, so a leak, a double free or a free of the wrong size is reported instead of
 //! corrupting memory, and the run's cap is checked before the host is asked.
 
+pub mod records;
 pub mod words;
 
 use std::alloc::{self, Layout};
@@ -173,6 +174,8 @@ pub struct Rt {
     pub text: unsafe extern "sysv64" fn(&mut Context, u64, u64, u64, u64, u64, *mut u64) -> i32,
     pub list:
         unsafe extern "sysv64" fn(&mut Context, u64, u64, u64, u64, *mut words::ListWords) -> i32,
+    pub copy: unsafe extern "sysv64" fn(&mut Context, u64, u64, u64, u64) -> i32,
+    pub drop: unsafe extern "sysv64" fn(&mut Context, u64, u64),
 }
 
 pub static RT: Rt = Rt {
@@ -182,6 +185,8 @@ pub static RT: Rt = Rt {
     push_frame: rt_push_frame,
     text: words::rt_text,
     list: words::rt_list,
+    copy: records::rt_copy,
+    drop: records::rt_drop,
 };
 
 /// `rt.alloc`: a block of `bytes` into `out` and status 0, or a `memory` trap and status 1.

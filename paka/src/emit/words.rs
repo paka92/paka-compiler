@@ -1,11 +1,10 @@
 //! Strings and Lists (M4-32): literals, the String rows of `rt.text`, and List items and slices
-//! with their bounds checks inline. Until M4-33 places copies and frees, no block is changed in
-//! place: a write through a List item copies the List first, so values sharing a block never
-//! see each other's writes.
+//! with their bounds checks inline. Each value owns its blocks (M4-33), so an item is written in
+//! place.
 
 use super::values::slot;
 use super::{Gen, Refusal, ir_type, ty};
-use crate::core_form::{Bin, Block, Expr, ExprKind, Local, Site, Ty, Type};
+use crate::core_form::{Bin, Block, Expr, Local, Site, Ty, Type};
 use cranelift_codegen::ir::condcodes::IntCC;
 use cranelift_codegen::ir::{InstBuilder, MemFlagsData, Value, types};
 use paka_rt::abi::dev::words::{COMPARE, JOIN, SHOW};
@@ -25,17 +24,11 @@ const PTR: i32 = 0;
 const LEN: i32 = 8;
 const CHARS: i32 = 16;
 const CAP: i32 = 24;
+const LIST_CAP: i32 = 16;
 
 impl Gen<'_> {
     /// Follows `ops` from the value at `root` of type `ty`: the address, type and offset reached.
-    /// A write copies each List it steps into, and stores the copy back first.
-    pub(super) fn walk(
-        &mut self,
-        root: Value,
-        mut ty: Ty,
-        ops: &[Op],
-        write: bool,
-    ) -> (Value, Ty, usize) {
+    pub(super) fn walk(&mut self, root: Value, mut ty: Ty, ops: &[Op]) -> (Value, Ty, usize) {
         let (mut at, mut offset) = (root, 0);
         for &op in ops {
             if let Op::Field(i) = op {
@@ -52,9 +45,9 @@ impl Gen<'_> {
             at = match (op, item) {
                 (Op::Item(i, site), Some(item)) => {
                     ty = item;
-                    self.item(here, item, i, site, write)
+                    self.item(here, item, i, site)
                 }
-                (Op::Slice(a, b, site), Some(item)) => self.slice(here, item, a, b, site),
+                (Op::Slice(a, b, site), Some(item)) => self.slice(here, (ty, item), a, b, site),
                 (Op::Item(i, site), None) => self.text(rt::words::INDEX, site, &[here, i]),
                 (Op::Slice(a, b, site), None) => self.text(rt::words::SLICE, site, &[here, a, b]),
                 (Op::Field(_), _) => unreachable!("taken above"),
@@ -64,23 +57,27 @@ impl Gen<'_> {
     }
 
     /// The address of item `i` of the List at `at`, after the bounds check.
-    fn item(&mut self, at: Value, item: Ty, i: Value, site: Site, write: bool) -> Value {
+    fn item(&mut self, at: Value, item: Ty, i: Value, site: Site) -> Value {
         let flags = MemFlagsData::trusted();
         let len = self.b.ins().load(types::I64, flags, at, LEN);
         let outside = (self.b.ins()).icmp(IntCC::UnsignedGreaterThanOrEqual, i, len);
         self.check(outside, rt::OUT_OF_BOUNDS, site, &[i, len]);
         let size = self.size(item);
-        if write {
-            let from = self.b.ins().load(types::I64, flags, at, PTR);
-            self.new_list(site, from, len, size, at);
-        }
         let ptr = self.b.ins().load(types::I64, flags, at, PTR);
         let skip = self.b.ins().imul_imm_s(i, size as i64);
         self.b.ins().iadd(ptr, skip)
     }
 
-    /// Items `a` up to `b` excluded of the List at `at`, after the bounds check, as a new List.
-    fn slice(&mut self, at: Value, item: Ty, a: Value, b: Value, site: Site) -> Value {
+    /// Items `a` up to `b` excluded of the List at `at`, after the bounds check, copied into a
+    /// new List.
+    fn slice(
+        &mut self,
+        at: Value,
+        (list, item): (Ty, Ty),
+        a: Value,
+        b: Value,
+        site: Site,
+    ) -> Value {
         let flags = MemFlagsData::trusted();
         let len = self.b.ins().load(types::I64, flags, at, LEN);
         let reversed = self.b.ins().icmp(IntCC::UnsignedGreaterThan, a, b);
@@ -92,23 +89,17 @@ impl Gen<'_> {
         let skip = self.b.ins().imul_imm_s(a, size as i64);
         let from = self.b.ins().iadd(ptr, skip);
         let count = self.b.ins().isub(b, a);
+        let view = slot(&mut self.b, 24);
+        for (w, at) in [(from, PTR), (count, LEN), (count, LIST_CAP)] {
+            self.b.ins().store(flags, w, view, at);
+        }
         let out = slot(&mut self.b, 24);
-        self.new_list(site, from, count, size, out);
-        out
+        let (record, at) = (self.record(list), self.int_const(self.site(site) as i64));
+        self.rt_try(offset_of!(Rt, copy), &[self.ctx, at, record, view, out]);
+        self.temp(list, out)
     }
 
-    /// `rt.list`: `count` items of `size` bytes copied from `from`, or none when it is 0, as a
-    /// new List written to `out`.
-    fn new_list(&mut self, site: Site, from: Value, count: Value, size: usize, out: Value) {
-        let at = self.int_const(self.site(site) as i64);
-        let size = self.int_const(size as i64);
-        self.rt_try(
-            offset_of!(Rt, list),
-            &[self.ctx, at, from, count, size, out],
-        );
-    }
-
-    /// A List literal: the block first, then each item stored as it is evaluated.
+    /// A List literal: a zeroed block owned first, then each item stored as it is evaluated.
     pub(super) fn list(&mut self, t: Ty, items: &[Expr]) -> Result<Value, Refusal> {
         ir_type(self.p, self.l, t)?;
         let Type::List(item) = self.p.types[t] else {
@@ -116,11 +107,16 @@ impl Gen<'_> {
         };
         let size = self.size(item);
         let out = slot(&mut self.b, 24);
-        let (none, count) = (self.int_const(0), self.int_const(items.len() as i64));
+        let given = [0, 0, items.len(), size].map(|n| self.int_const(n as i64));
         // A literal has no site of its own; only a full heap can trap here.
-        self.new_list(0, none, count, size, out);
+        self.rt_try(
+            offset_of!(Rt, list),
+            &[self.ctx, given[0], given[1], given[2], given[3], out],
+        );
+        self.temp(t, out);
         for (i, e) in items.iter().enumerate() {
             let v = self.value(e)?;
+            let v = self.owned(item, v);
             let ptr = (self.b.ins()).load(types::I64, MemFlagsData::trusted(), out, PTR);
             self.put(item, ptr, i * size, v);
         }
@@ -193,7 +189,7 @@ impl Gen<'_> {
         {
             self.b.ins().store(flags, w, out, at);
         }
-        out
+        self.temp(self.string(), out)
     }
 
     /// `rt.text` row `row` on up to three words; COMPARE and CODE_AT give an Int, the others a
@@ -214,8 +210,14 @@ impl Gen<'_> {
         self.rt_try(offset_of!(Rt, text), &given);
         match int {
             true => (self.b.ins()).load(types::I64, MemFlagsData::trusted(), out, 0),
-            false => out,
+            false => self.temp(self.string(), out),
         }
+    }
+
+    /// The String type, which every program has.
+    fn string(&self) -> Ty {
+        let at = self.p.types.iter().position(|t| *t == Type::String);
+        at.expect("the String type")
     }
 
     /// Interpolation: the parts joined in order, an Int in decimal and a Bool as `true` or
@@ -223,7 +225,7 @@ impl Gen<'_> {
     pub(super) fn interpolate(&mut self, parts: &[Expr], site: Site) -> Result<Value, Refusal> {
         let mut text = None;
         for part in parts {
-            let v = self.steady(part)?;
+            let v = self.value(part)?;
             let v = match self.p.types[ty(part)] {
                 Type::Int => self.text(SHOW, site, &[v]),
                 Type::Bool => {
@@ -242,7 +244,7 @@ impl Gen<'_> {
 
     /// `x + y`, `x == y` and the order of two Strings.
     pub(super) fn text_binary(&mut self, op: &Bin, x: &Expr, y: &Expr) -> Result<Value, Refusal> {
-        let x = self.steady(x)?;
+        let x = self.value(x)?;
         let y = self.value(y)?;
         Ok(match op {
             Bin::Join(site) => self.text(JOIN, *site, &[x, y]),
@@ -258,17 +260,5 @@ impl Gen<'_> {
     pub(super) fn length(&mut self, at: Value, string: bool) -> Value {
         let word = if string { CHARS } else { LEN };
         (self.b.ins()).load(types::I64, MemFlagsData::trusted(), at, word)
-    }
-
-    /// The value of `e`; a String read from a place is copied, so evaluating a later operand
-    /// cannot change it.
-    fn steady(&mut self, e: &Expr) -> Result<Value, Refusal> {
-        let v = self.value(e)?;
-        if !matches!(e.kind, ExprKind::Place(_)) || self.p.types[ty(e)] != Type::String {
-            return Ok(v);
-        }
-        let to = slot(&mut self.b, 32);
-        self.put(ty(e), to, 0, v);
-        Ok(to)
     }
 }

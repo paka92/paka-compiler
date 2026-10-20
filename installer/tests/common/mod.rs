@@ -6,10 +6,12 @@ use paka::layout::Layouts;
 use paka::source::Source;
 use paka_installer::{Slots, install};
 use paka_rt::abi::dev::Context;
+use paka_rt::abi::dev::records::Records;
 
 pub const UNWRITTEN: u64 = u64::MAX;
 
-/// The checked program and a slot table holding all its definitions, functions then examples.
+/// The checked program and a slot table holding all its definitions, functions then examples,
+/// then its type records.
 pub fn load(source: &str) -> (Program, Slots) {
     try_load(source).unwrap_or_else(|e| panic!("{e}"))
 }
@@ -24,12 +26,11 @@ pub fn try_load(source: &str) -> Result<(Program, Slots), String> {
     let code = (0..defs).map(|d| emitter.code(&p, &layouts, d));
     let code = code.collect::<Result<Vec<_>, _>>()?;
     let installed = install(&code.iter().map(Vec::as_slice).collect::<Vec<_>>()).unwrap();
-    let slots = Slots::new(defs);
-    let group: Vec<_> = installed
-        .iter()
-        .enumerate()
-        .map(|(id, c)| (id, c.address))
-        .collect();
+    let records = Box::leak(Box::new(Records::new(&layouts.specs())));
+    let slots = Slots::new(defs + p.types.len());
+    let code = installed.iter().map(|c| c.address);
+    let types = (0..p.types.len()).map(|t| records.address(t) as usize);
+    let group: Vec<_> = code.chain(types).enumerate().collect();
     slots.swap(&group).unwrap();
     Ok((p, slots))
 }

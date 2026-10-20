@@ -57,12 +57,13 @@ impl Gen<'_> {
                 let word = self.b.ins().load(types::I64, flags, at, offset as i32);
                 self.b.ins().ireduce(types::I8, word)
             }
+            ref t if held(t) && offset == 0 => at,
             ref t if held(t) => self.b.ins().iadd_imm_s(at, offset as i64),
             _ => self.b.ins().load(types::I64, flags, at, offset as i32),
         }
     }
 
-    /// Writes `v` of type `t` at `at + offset`: a held value is copied.
+    /// Writes `v` of type `t` at `at + offset`: a held value's words are copied.
     pub(super) fn put(&mut self, t: Ty, at: Value, offset: usize, v: Value) {
         if self.held(t) {
             let to = self.b.ins().iadd_imm_s(at, offset as i64);
@@ -74,7 +75,7 @@ impl Gen<'_> {
             .store(MemFlagsData::trusted(), v, at, offset as i32);
     }
 
-    /// Binds local `l` to `v`: a held local copies it into its slot.
+    /// Binds local `l` to `v`: a held local takes its words into its slot.
     pub(super) fn bind(&mut self, l: Local, v: Value) {
         let var = self.vars[l];
         match self.held(self.locals[l]) {
@@ -109,12 +110,12 @@ impl Gen<'_> {
         if ops.is_empty() {
             return Ok(root);
         }
-        let (at, ty, offset) = self.walk(root, ty, &ops, false);
+        let (at, ty, offset) = self.walk(root, ty, &ops);
         Ok(self.get(ty, at, offset))
     }
 
     /// `place = e` or `place op= e`: the steps' operands, then `e`, then the walk with its
-    /// checks, then the write.
+    /// checks, then the write. The new value is owned before the old one is dropped.
     pub(super) fn assign(
         &mut self,
         place: &Place,
@@ -122,17 +123,20 @@ impl Gen<'_> {
         e: &Expr,
     ) -> Result<(), Refusal> {
         let (root, ty, ops) = self.operands(place)?;
-        let mut v = self.value(e)?;
-        let (at, ty, offset) = self.walk(root, ty, &ops, true);
+        let v = self.value(e)?;
+        let (at, ty, offset) = self.walk(root, ty, &ops);
         let whole = ops.is_empty();
-        if let Some(op) = op {
-            let old = if whole {
-                root
-            } else {
-                self.get(ty, at, offset)
-            };
-            v = self.compound(op, old, v)?;
-        }
+        let old = if whole {
+            root
+        } else {
+            self.get(ty, at, offset)
+        };
+        let v = match op {
+            Some(op) => self.compound(op, old, v)?,
+            None => v,
+        };
+        let v = self.owned(ty, v);
+        self.drop_at(ty, old);
         match (whole, &place.root) {
             (true, &Root::Local(l)) => self.bind(l, v),
             _ => self.put(ty, at, offset, v),
@@ -141,11 +145,16 @@ impl Gen<'_> {
     }
 
     /// A record or variant of type `t`, built in a new slot; each field is stored as it is
-    /// evaluated, so a later field cannot change an earlier one's copy.
+    /// evaluated, so a later field cannot change an earlier one's copy. The slot is zeroed and
+    /// owned first, so an exit while building drops what it holds so far.
     pub(super) fn construct(&mut self, t: Ty, alternative: usize, fields: &[Expr]) -> Emitted {
         ir_type(self.p, self.l, t)?;
         let size = self.size(t);
         let at = slot(&mut self.b, size);
+        if self.l.owns(t) {
+            self.zeroed(t, at);
+            self.temp(t, at);
+        }
         if self.l.get(t).tagged {
             let tag = self.int_const(alternative as i64);
             self.b.ins().store(MemFlagsData::trusted(), tag, at, 0);
@@ -153,6 +162,7 @@ impl Gen<'_> {
         let places = self.l.get(t).alternatives[alternative].clone();
         for (field, place) in fields.iter().zip(places) {
             let v = self.value(field)?;
+            let v = self.owned(place.ty, v);
             self.put(place.ty, at, place.offset, v);
         }
         Ok(Some(at))
@@ -178,24 +188,24 @@ impl Gen<'_> {
         let mut bodies = vec![];
         for (arm, &label) in arms.iter().zip(&labels) {
             self.b.switch_to_block(label);
+            let mut binds = vec![];
             if let [t] = &arm.tags[..] {
                 let places = self.l.get(ty).alternatives[alternative(t)?].clone();
                 for (bind, place) in arm.binds.iter().zip(places) {
                     if let Some(l) = bind {
-                        let v = self.get(place.ty, at, place.offset);
-                        self.bind(*l, v);
+                        binds.push((*l, self.get(place.ty, at, place.offset)));
                     }
                 }
             }
             let body = self.b.create_block();
             self.b.ins().jump(body, &args(&[]));
-            bodies.push((body, Some(&arm.body)));
+            bodies.push((body, Some(&arm.body), binds));
         }
         self.join(e, bodies)
     }
 
     /// `unwrap_or(opt, fallback)`: the payload when `opt` is `Some`, read either way and
-    /// dropped by a select.
+    /// dropped by a select. The result borrows from one of the two.
     pub(super) fn unwrap_or(&mut self, opt: Ty, at: Value, fallback: Value) -> Value {
         let payload = self.l.get(opt).alternatives[0][0];
         let tag = self
@@ -206,7 +216,8 @@ impl Gen<'_> {
         self.b.ins().select(tag, fallback, v)
     }
 
-    /// `ok_or(opt, error)`: `Some` and `Ok` share tag 0, `None` and `Err` tag 1.
+    /// `ok_or(opt, error)`: `Some` and `Ok` share tag 0, `None` and `Err` tag 1. The result's
+    /// payload borrows from `opt` or `error`.
     pub(super) fn ok_or(&mut self, (opt, at): (Ty, Value), result: Ty, error: Value) -> Value {
         let size = self.size(result);
         let to = slot(&mut self.b, size);
