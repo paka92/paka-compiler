@@ -1603,6 +1603,7 @@ or merged during review. Ids with a letter were added during review.
 
 ### M5-19 · L3 · Build the text input's editing state: text, cursor, selection
 
+- status: done
 - needs: M5-03, M5-17, M5-10
 - flags: none
 - done when: Hand-written cases pass for insert, delete, move and select, including non-ASCII text, and emit the approved messages.
@@ -1610,6 +1611,7 @@ or merged during review. Ids with a letter were added during review.
 - note: Standard library only. If M5-03 makes grapheme clusters the cursor unit, the table comes from a crate already on M5-08's approved list; otherwise the task gains download and owner.
 - note: Per M5-03: the element stores no text, only cursor, selection and preedit. It sends the whole new text and moves the cursor only when the view hands back a text other than the one from before the key. The cursor steps by code point, so no crate table and no download.
 - note: Per M5-04: no Enter message and no hint text.
+- note: Done: `paka-rt/src/input.rs` adds keys for typing, back, delete, left, right, home and end, each with or without extending the selection, over `Edit`. Moves change cursor and selection and send nothing; edits leave the element as is and return the whole new text and the cursor to send; a key that changes nothing sends nothing. `Edit::follow` keeps everything when the view hands back the old text and otherwise moves the cursor where the key put it, or keeps it for a text the app set, pulled back to the end, selection cleared. Positions count code points and are clipped to the text first. Line break and tab type nothing. Word moves are not in the records and are not built.
 
 ### M5-20 · L3 · Run a visual app with no window in the interpreter
 

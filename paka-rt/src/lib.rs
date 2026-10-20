@@ -12,6 +12,8 @@ pub mod abi;
 #[forbid(unsafe_code)]
 pub mod effects;
 #[forbid(unsafe_code)]
+pub mod input;
+#[forbid(unsafe_code)]
 pub mod ops;
 #[forbid(unsafe_code)]
 mod rt;
