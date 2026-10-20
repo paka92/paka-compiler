@@ -14,6 +14,8 @@ pub mod effects;
 #[forbid(unsafe_code)]
 pub mod input;
 #[forbid(unsafe_code)]
+pub mod layout;
+#[forbid(unsafe_code)]
 pub mod ops;
 #[forbid(unsafe_code)]
 pub mod route;

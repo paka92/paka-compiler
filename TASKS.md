@@ -1732,11 +1732,13 @@ or merged during review. Ids with a letter were added during review.
 
 ### M5-31 · L3 · Lay out the element tree and find the element under a point
 
+- status: done
 - needs: M5-05, M5-15
 - flags: none
 - done when: Each approved layout rule has a test with hand-computed rectangles, using a fixed-width stand-in for text measuring.
 - why this level: Known technique, but sizing, wrapping and rounding rules are easy to get subtly wrong.
 - note: Per M5-05: one pass with widths handed down and heights handed up; hug and fill classes; equal sharing with the spare unit to earlier children; a 40-unit floor; centring in rows; no clipping; last-drawn hit testing that also finds an element sticking out of its parent. All in whole units, tested with the 8-by-20 measure that breaks at spaces and keeps at least one character per line.
+- note: Done: paka-rt/src/layout.rs. `layout` takes the tree, the window width and a `Measure` (one-line width and wrapped line count, in whole units) and gives one `Rect` per node in pre-order, which is also the drawing order. `hit` gives the path of the last-drawn element under a point. Read as: a Row or Col keeps the width it is handed even when its children overflow; an error node's 6 units include its border; a hugging root keeps its own width. A Row measures each hugging child twice, so M5-32 may want to cache widths.
 
 ### M5-32 · L3 · Measure and shape text through Parley
 
