@@ -1274,10 +1274,12 @@ or merged during review. Ids with a letter were added during review.
 
 ### M4-40 · L3 · Add dev mode to the differential harness and run all conformance tests
 
+- status: done
 - needs: M4-36, M4-37
 - flags: native-only
 - done when: One command runs every M2 conformance test in both back ends and lists each as agree, differ or unsupported. A self-test with a planted difference in output, in exit status, in trap kind and in trap position lists each as differ; death by signal counts as differ. Agree means the same output, exit status and the trap fields M2-06 fixes as meaning. The command also reports, per case, whether the dev-mode run ended with a clean ledger (M4-25).
 - why this level: Defining equal results across back ends, trap kind and place included, while excluding stack and memory limits.
+- note: Done: `paka-diff [ROOT]` (installer/src/bin/paka-diff.rs, installer/src/diff.rs) stages each run case twice and runs it in a child on the interpreter and on the dev back end, then compares stdout, death by signal, status and M2-06 §1.2's meaning. It lists each case as agree, differ or unsupported (with the dev back end's refusal), with the dev run's ledger, and exits 1 when any case differs. First run: 299 agree, 0 differ, 131 unsupported; every refusal is a String row (join, fixed, repeat, parse_int, pad, lines, find and others). 51 agreeing cases end with leaks, all trapped runs: the trap path skips drops and the heap goes at run end. Native reports print the first line and a hole's `??name` line; the other detail lines and the chain are still to come. installer/tests/diff.rs plants each difference and checks every case is listed once.
 
 ### M4-41 · L3 · Build the fuzz loop: two back ends, compare, shrink, keep failures
 

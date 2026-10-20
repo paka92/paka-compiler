@@ -10,6 +10,7 @@ use std::ffi::{c_int, c_long, c_void};
 use std::io;
 
 pub mod dev;
+pub mod diff;
 mod load;
 mod slots;
 pub use load::Loader;

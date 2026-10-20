@@ -73,8 +73,8 @@ fn the_word_count_sample_prints_its_count() {
 }
 
 /// Every run case whose app compiles ends as the interpreter's hand-written expectations say: the
-/// same output and status, and the same line on standard error unless it traps, whose report
-/// waits on M4-40.
+/// same output and status, and the same line on standard error unless it traps; `paka-diff`
+/// compares trap reports (M4-40).
 #[test]
 fn compiled_apps_end_as_the_interpreter_does() {
     let mut compiled = vec![];

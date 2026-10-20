@@ -6,10 +6,10 @@ use paka::core_form::{Program, Type};
 use paka::emit::{Cache, Emitter};
 use paka::hash::Hash;
 use paka::layout::Layouts;
-use paka::source::Source;
+use paka::source::{Source, in_file};
 use paka_rt::abi::dev::app::{App, Stopped, serve};
 use paka_rt::abi::dev::records::Records;
-use paka_rt::abi::dev::{Context, Trap, on_runner};
+use paka_rt::abi::dev::{Context, HOLE, Trap, on_runner};
 use paka_rt::effects::{End, World};
 use std::ffi::OsString;
 use std::ptr;
@@ -132,7 +132,38 @@ impl Dev {
             Ran { end, trap, ledger }
         })
     }
+
+    /// The first line of the report of `trap` (M2-06 section 1.2), and a hole's detail line; the
+    /// other detail lines and the chain are still to come.
+    pub fn report(&self, trap: &Trap) -> String {
+        let p = &self.program;
+        let app = &p.app.as_ref().expect("an app").name;
+        let kind = KINDS[trap.kind as usize - 1];
+        let site = match trap.site {
+            0 => trap.frames.first().copied().unwrap_or(0),
+            site => site,
+        };
+        let (_, at) = p.place(site);
+        let ((file, _), line) = in_file(&p.files, |f| f.1, at.line);
+        let mut report = format!("{app}: trap {kind} at {file}:{line}:{}\n", at.col);
+        if let (HOLE, Some(name)) = (trap.kind, &at.hole) {
+            report += &format!("  ??{name}\n");
+        }
+        report
+    }
 }
+
+/// The trap kinds by number (M4-05 section 6).
+const KINDS: [&str; 8] = [
+    "overflow",
+    "divide_by_zero",
+    "out_of_bounds",
+    "bad_conversion",
+    "assert",
+    "hole",
+    "stack",
+    "memory",
+];
 
 /// Runs `f` on `ctx`, setting its interrupt once `limit` passes (docs/decisions/M4-04.md).
 fn until<R>(ctx: &mut Context, limit: Duration, f: impl FnOnce(&mut Context) -> R) -> R {
