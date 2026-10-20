@@ -38,6 +38,22 @@ impl Index {
         self.reads.insert(user.into(), reads);
     }
 
+    /// The names `from` reaches through what each reads, passing only names where `follow` holds;
+    /// `from` itself only through a cycle.
+    pub fn reached(&self, from: &str, follow: impl Fn(&str) -> bool) -> BTreeSet<String> {
+        let mut seen = BTreeSet::new();
+        let mut todo = vec![from];
+        while let Some(name) = todo.pop() {
+            let next = self.reads.get(name).into_iter().flatten();
+            for read in next.filter(|r| follow(r)) {
+                if seen.insert(read.clone()) {
+                    todo.push(read);
+                }
+            }
+        }
+        seen
+    }
+
     pub fn remove(&mut self, user: &str) {
         for name in self.reads.remove(user).into_iter().flatten() {
             let users = self.users.get_mut(&name).expect("every read has its users");

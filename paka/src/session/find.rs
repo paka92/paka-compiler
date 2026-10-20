@@ -4,17 +4,18 @@
 
 use super::{Session, version};
 use crate::ast::Def;
-use crate::builtins::{self, ROWS};
+use crate::builtins::{self, ELEMENTS, ROWS};
 use crate::lexer::{Kind, Lexer};
 use crate::parser::parse_def;
 use crate::serve::{Call, Failure, Reply, line_len};
 use paka_json::Value;
+use std::borrow::Cow;
 
 /// One definition or built-in as find lists it.
 struct Entry<'a> {
     name: &'a str,
     kind: &'a str,
-    sig: &'a str,
+    sig: Cow<'a, str>,
     version: Option<String>,
 }
 
@@ -23,7 +24,7 @@ impl Entry<'_> {
         Value::object([
             ("name", self.name.into()),
             ("kind", self.kind.into()),
-            ("sig", self.sig.into()),
+            ("sig", self.sig.as_ref().into()),
             ("version", self.version.clone().into()),
         ])
     }
@@ -55,22 +56,9 @@ impl Session {
             .collect();
         let exact = name.filter(|n| !n.contains('*'));
         if !shaped && call.get("users_of").is_none() && call.bool("failing") != Some(true) {
-            let builtin = |row: &&'static str| {
-                exact.map_or(call.str("kind") == Some("builtin"), |n| {
-                    builtins::name(row) == n
-                })
-            };
-            found.extend(
-                ROWS.iter()
-                    .map(|&(_, row)| row)
-                    .filter(builtin)
-                    .map(|row| Entry {
-                        name: builtins::name(row),
-                        kind: "builtin",
-                        sig: row,
-                        version: None,
-                    }),
-            );
+            let listed =
+                |e: &Entry| exact.map_or(call.str("kind") == Some("builtin"), |n| e.name == n);
+            found.extend(builtin_entries().filter(listed));
         }
         found.retain(|e| call.str("kind").is_none_or(|k| k == e.kind));
         found.retain(|e| call.str("after").is_none_or(|a| e.name > a));
@@ -139,7 +127,8 @@ impl Session {
         let defined = self.workspace.defs().any(|(names, _)| names[0] == name);
         let variant =
             (self.workspace.defs()).any(|(names, _)| names[1..].iter().any(|n| n == name));
-        let builtin = ROWS.iter().any(|(_, row)| builtins::name(row) == name);
+        let builtin = ROWS.iter().any(|(_, row)| builtins::name(row) == name)
+            || builtins::element(name).is_some();
         if user.iter().any(|n| n == name) {
             false
         } else if variant || (builtin && !defined) {
@@ -149,6 +138,23 @@ impl Session {
             self.workspace.index().users(name).any(|u| u == user[0])
         }
     }
+}
+
+/// The built-in rows, then the elements.
+fn builtin_entries<'a>() -> impl Iterator<Item = Entry<'a>> {
+    let row = |&(_, row): &(_, &'static str)| Entry {
+        name: builtins::name(row),
+        kind: "builtin",
+        sig: row.into(),
+        version: None,
+    };
+    let element = |e: &'static builtins::Element| Entry {
+        name: e.name,
+        kind: "builtin",
+        sig: e.sig().into(),
+        version: None,
+    };
+    ROWS.iter().map(row).chain(ELEMENTS.iter().map(element))
 }
 
 /// The reply that holds the longest prefix of `entries` that fits `budget`, and how many it left
@@ -192,11 +198,13 @@ fn type_text(field: &str, text: &str) -> Result<String, Failure> {
     }
 }
 
-/// Whether `text` is a fn whose parameters include the types `takes`, one each, and whose result
-/// is `gives`.
+/// Whether `text` is a fn or view whose parameters include the types `takes`, one each, and
+/// whose result is `gives`.
 fn shape_fits(text: &str, takes: &[String], gives: Option<&str>) -> bool {
-    let Ok(Def::Fn { params, result, .. }) = parse_def("", text.as_bytes()) else {
-        return false;
+    let (params, result) = match parse_def("", text.as_bytes()) {
+        Ok(Def::Fn { params, result, .. }) => (params, result),
+        Ok(Def::View { params, result, .. }) => (params, Some(result)),
+        _ => return false,
     };
     let mut left: Vec<String> = params.iter().map(|p| p.ty.to_string()).collect();
     let took = takes
@@ -224,7 +232,7 @@ fn entry<'a>(name: &'a str, text: &'a str) -> Entry<'a> {
     Entry {
         name,
         kind,
-        sig,
+        sig: sig.into(),
         version: Some(version(text)),
     }
 }

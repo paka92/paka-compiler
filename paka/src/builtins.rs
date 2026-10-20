@@ -146,6 +146,25 @@ pub struct Element {
     pub width: Width,
 }
 
+impl Element {
+    /// Its signature in the syntax of a row, labelled arguments after `;`, giving `View<M>`.
+    pub fn sig(&self) -> String {
+        let arg = |&(name, ty, default): &(&str, &str, Option<&str>)| {
+            let default = default.map_or(String::new(), |d| format!(" = {d}"));
+            format!("{}: {ty}{default}", name.trim_end_matches(':'))
+        };
+        let (labelled, bare): (Vec<_>, Vec<_>) = self.args.iter().partition(|a| a.0.ends_with(':'));
+        let bare: Vec<_> = bare.into_iter().map(arg).collect();
+        let labelled: Vec<_> = labelled.into_iter().map(arg).collect();
+        let labelled = if labelled.is_empty() {
+            String::new()
+        } else {
+            format!("; {}", labelled.join(", "))
+        };
+        format!("{}({}{labelled}) -> View<M>", self.name, bare.join(", "))
+    }
+}
+
 pub const ELEMENTS: &[Element] = &[
     Element {
         name: "Text",
@@ -277,6 +296,18 @@ mod tests {
             format!("{}({}){marks} {width}", e.name, args.join(", "))
         };
         assert_eq!(ELEMENTS.iter().map(line).collect::<Vec<_>>(), want);
+    }
+
+    #[test]
+    fn element_signatures_read_as_rows() {
+        let want = [
+            "Text(text: String) -> View<M>",
+            "Button(label: String; on: M) -> View<M>",
+            "Input(text: String; on_change: fn(String) -> M) -> View<M>",
+            "Row(; gap: Int = 0) -> View<M>",
+            "Col(; gap: Int = 0) -> View<M>",
+        ];
+        assert_eq!(ELEMENTS.iter().map(Element::sig).collect::<Vec<_>>(), want);
     }
 
     #[test]

@@ -31,7 +31,7 @@ entry and refused views. Exchange 28 comes before the program breaks, as there.
 > {"v":1,"id":33,"call":"find","users_of":"split"}
 < {"v":1,"id":33,"ok":true,"found":[{"name":"count_words","kind":"fn","sig":"fn count_words(text: String) -> Int","version":"6c4c8968c9e4"}],"more":0}
 > {"v":1,"id":34,"call":"find","kind":"builtin","budget":60}
-< {"v":1,"id":34,"ok":true,"found":[{"name":"Bool","kind":"builtin","sig":"Bool","version":null},{"name":"Console","kind":"builtin","sig":"Console","version":null}],"more":95}
+< {"v":1,"id":34,"ok":true,"found":[{"name":"Bool","kind":"builtin","sig":"Bool","version":null}],"more":101}
 > {"v":1,"id":35,"call":"find","name":"c*t*_*o"}
 < {"v":1,"id":35,"ok":true,"found":[{"name":"counts_two","kind":"example","sig":"example counts_two","version":"ed43af615b75"}],"more":0}
 > {"v":1,"id":36,"call":"find","name":"nothing"}

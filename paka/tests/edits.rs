@@ -1,6 +1,7 @@
 //! Incremental state equals a clean rebuild (M4-14): seeded edit sequences over generated
 //! programs, each step compared with a workspace built from the same text: names, index, errors,
-//! reads and hashes. `PAKA_EDIT_SEEDS` sets how many sequences (default 10,000).
+//! reads and hashes. Views and an app naming one are added and edited too (M5-14).
+//! `PAKA_EDIT_SEEDS` sets how many sequences (default 10,000).
 
 use paka::parser::split;
 use paka::workspace::Workspace;
@@ -9,7 +10,15 @@ use std::sync::Mutex;
 use std::sync::atomic::{AtomicU64, Ordering};
 
 const STEPS: usize = 8;
-const KINDS: [&str; 6] = ["body", "signature", "layout", "add", "delete", "rename"];
+const KINDS: [&str; 7] = [
+    "body",
+    "signature",
+    "layout",
+    "add",
+    "delete",
+    "rename",
+    "view",
+];
 
 #[test]
 fn edit_sequences_match_a_clean_rebuild() {
@@ -143,11 +152,23 @@ impl Edits {
         let (header, rest) = text.split_once('\n').unwrap_or((text, ""));
         let replace = |text: String| Some(vec![(name.clone(), Some(text))]);
         match kind {
-            "body" if header.starts_with("fn ") => {
+            "body" if header.starts_with("fn ") || header.starts_with("view ") => {
                 let read = self.read(defs);
                 replace(format!("{header}\n  let z{n} = {read}\n{rest}"))
             }
-            "signature" if header.starts_with("fn ") => {
+            "body" if header.starts_with("app ") => {
+                let view = self.pick(defs, "view ")?;
+                let line = |l: &str| {
+                    let field = l.trim_start().starts_with("view:");
+                    if field {
+                        format!("  view: {view}")
+                    } else {
+                        l.into()
+                    }
+                };
+                replace(text.lines().map(line).collect::<Vec<_>>().join("\n"))
+            }
+            "signature" if header.starts_with("fn ") || header.starts_with("view ") => {
                 let param = if header.contains("()") { "" } else { ", " };
                 replace(header.replacen('(', &format!("(q{n}: Int{param}"), 1) + "\n" + rest)
             }
@@ -168,6 +189,27 @@ impl Edits {
                 let text = format!("fn g{n}() -> Int {{\n  let a = {read}\n  {n}\n}}");
                 Some(vec![(format!("g{n}"), Some(text))])
             }
+            "view" if !defs.iter().any(|d| d.1.starts_with("app ")) && self.rng.below(2) == 0 => {
+                let view = self.pick(defs, "view ")?;
+                let state = self.pick(defs, "type ").unwrap_or("Int".into());
+                let update = self.pick(defs, "fn ").unwrap_or("update".into());
+                let text = format!(
+                    "app a{n} {{\n  state: {state}\n  update: {update}\n  view: {view}\n  grants: []\n}}"
+                );
+                Some(vec![(format!("a{n}"), Some(text))])
+            }
+            "view" => {
+                let read = self.read(defs);
+                let msg = self.pick(defs, "enum ").unwrap_or("Msg".into());
+                let call = match self.pick(defs, "view ") {
+                    Some(v) => format!("\n    {v}(s)"),
+                    None => String::new(),
+                };
+                let text = format!(
+                    "view v{n}(s: Int) -> View<{msg}> {{\n  Col() {{\n    Text(\"{{{read}}}\"){call}\n  }}\n}}"
+                );
+                Some(vec![(format!("v{n}"), Some(text))])
+            }
             "delete" => {
                 self.deleted.push(text.clone());
                 Some(vec![(name.clone(), None)])
@@ -180,6 +222,12 @@ impl Edits {
             }
             _ => None,
         }
+    }
+
+    /// The name of a definition whose text starts with `start`, if one does.
+    fn pick(&mut self, defs: &[(String, String)], start: &str) -> Option<String> {
+        let some: Vec<_> = defs.iter().filter(|d| d.1.starts_with(start)).collect();
+        (!some.is_empty()).then(|| some[self.rng.below(some.len())].0.clone())
     }
 
     /// A name to read: one defined or once defined, sometimes misspelled by one letter.

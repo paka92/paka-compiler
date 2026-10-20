@@ -80,6 +80,22 @@ impl Workspace {
         &self.index
     }
 
+    /// The stored types of an app whose state is `state`: it and every record and enum it reaches
+    /// through fields, containers and payloads (docs/decisions/M5-07.md section 1.2). None when
+    /// `state` names no record or enum.
+    pub fn stored(&self, state: &str) -> BTreeSet<String> {
+        let types: BTreeSet<&str> = (self.defs.iter())
+            .filter(|d| d.text.starts_with("type ") || d.text.starts_with("enum "))
+            .map(|d| d.names[0].as_str())
+            .collect();
+        if !types.contains(state) {
+            return BTreeSet::new();
+        }
+        let mut stored = self.index.reached(state, |n| types.contains(n));
+        stored.insert(state.into());
+        stored
+    }
+
     /// Each definition's names, its own first, and its text.
     pub fn defs(&self) -> impl Iterator<Item = (&[String], &str)> {
         (self.defs.iter()).map(|d| (d.names.as_slice(), d.text.as_str()))

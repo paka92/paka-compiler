@@ -1554,6 +1554,8 @@ or merged during review. Ids with a letter were added during review.
 - why this level: Touches ids, use index, hashes and Find, View, Edit; a missed dependency edge silently skips a recheck.
 - note: Per M4-03: views travel through find, view and edit with kind `view` and no new fields.
 - note: Per M5-07: the index gives the set of types reached from the state type, through built-in containers too.
+- status: done
+- note: Done: views already carried their reads and hashes, so a view edit rechecks the view and its users through the index like any definition; paka/tests/workspace.rs adds the scripted view edits (view body, Msg, a called view's signature, the state type, a type it holds, the app's `view:`) with exact rechecked and broken sets. `Index::reached` and `Workspace::stored` give the state type and every record and enum it reaches, for M5-28. The M4-14 edit generator adds views that call views and an app naming one, edits their bodies, signatures and the app's `view:` field. find lists the elements as built-ins with a row-style signature giving `View<M>` (`Row(; gap: Int = 0) -> View<M>`), `users_of` an element finds the views that call it, and `takes`/`gives` match views; transcript tests/serve/views.txt. Not changed: `coverage::builtin_names` keeps the rows only, since the exit gate would then demand a passing case for Input, which none has yet, and for the `ui_` names, unresolved until M5-21.
 
 ### M5-15 · L2 · Define the runtime element tree and print it as text
 
