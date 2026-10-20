@@ -2,6 +2,8 @@
 //! Every block of a run is in a ledger, so a leak, a double free or a free of the wrong size is reported instead of
 //! corrupting memory, and the run's cap is checked before the host is asked.
 
+pub mod words;
+
 use std::alloc::{self, Layout};
 use std::collections::BTreeMap;
 use std::sync::atomic::AtomicU64;
@@ -168,6 +170,9 @@ pub struct Rt {
     pub release: extern "sysv64" fn(&mut Context, *mut u8, u64),
     pub trap: extern "sysv64" fn(&mut Context, u64, u64, u64, u64, u64),
     pub push_frame: extern "sysv64" fn(&mut Context, u64),
+    pub text: unsafe extern "sysv64" fn(&mut Context, u64, u64, u64, u64, u64, *mut u64) -> i32,
+    pub list:
+        unsafe extern "sysv64" fn(&mut Context, u64, u64, u64, u64, *mut words::ListWords) -> i32,
 }
 
 pub static RT: Rt = Rt {
@@ -175,6 +180,8 @@ pub static RT: Rt = Rt {
     release: rt_release,
     trap: rt_trap,
     push_frame: rt_push_frame,
+    text: words::rt_text,
+    list: words::rt_list,
 };
 
 /// `rt.alloc`: a block of `bytes` into `out` and status 0, or a `memory` trap and status 1.

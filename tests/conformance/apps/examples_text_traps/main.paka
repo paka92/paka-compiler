@@ -1,0 +1,9 @@
+fn third(s: String) -> String { s[2] }
+
+example index_past_end { third("ab") == "" }
+example negative_index { "abc"[-1] == "" }
+example slice_reversed { "abc"[2..<1] == "" }
+example slice_past_end { "abc"[1..<4] == "" }
+example code_past_end { code_at("", 0) == 0 }
+example bad_code { from_code(55296) == "" }
+example in_range { third("abc") == "c" }

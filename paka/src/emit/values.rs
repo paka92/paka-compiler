@@ -1,8 +1,8 @@
-//! Values held in memory (M4-31): records, enums, `Option` and `Result` whose layout owns
-//! nothing. Such a value is the address of its words (docs/decisions/M4-05.md section 8): a
-//! local's own stack slot, a temporary slot, or a parameter's caller memory.
+//! Values held in memory (M4-31, M4-32): Strings, Lists, records, enums, `Option` and `Result`.
+//! Such a value is the address of its words (docs/decisions/M4-05.md section 8): a local's own
+//! stack slot, a temporary slot, a List's item, or a parameter's caller memory.
 
-use super::{Emitted, Gen, Label, Refusal, args, ir_type};
+use super::{Emitted, Gen, Label, Refusal, args, ir_type, words::Op};
 use crate::core_form::{Arm, Compound, Expr, Local, Place, Root, Step, Tag, Ty, Type};
 use cranelift_codegen::ir::{
     InstBuilder, MemFlagsData, StackSlotData, StackSlotKind, Value, types,
@@ -13,7 +13,12 @@ use cranelift_frontend::{FunctionBuilder, Switch};
 pub(super) fn held(t: &Type) -> bool {
     matches!(
         t,
-        Type::Record(_) | Type::Enum(_) | Type::Option(_) | Type::Result(..)
+        Type::String
+            | Type::List(_)
+            | Type::Record(_)
+            | Type::Enum(_)
+            | Type::Option(_)
+            | Type::Result(..)
     )
 }
 
@@ -29,7 +34,7 @@ impl Gen<'_> {
         held(&self.p.types[t])
     }
 
-    fn size(&self, t: Ty) -> usize {
+    pub(super) fn size(&self, t: Ty) -> usize {
         self.l.get(t).size
     }
 
@@ -81,52 +86,56 @@ impl Gen<'_> {
         }
     }
 
-    /// The place's root value, and the type and offset its field steps reach.
-    fn walk(&mut self, place: &Place) -> Result<(Value, Ty, usize), Refusal> {
-        let (root, mut ty) = match &place.root {
+    /// The place's root value and type, then its steps' operands, in written order.
+    fn operands(&mut self, place: &Place) -> Result<(Value, Ty, Vec<Op>), Refusal> {
+        let (root, ty) = match &place.root {
             Root::Local(l) => (self.b.use_var(self.vars[*l]), self.locals[*l]),
             Root::Value(e) => (self.value(e)?, e.ty.expect("a place has a type")),
         };
-        let mut offset = 0;
+        let mut ops = vec![];
         for step in &place.steps {
-            let Step::Field(i) = step else {
-                return Err("a List or Map step is not compiled yet".into());
-            };
-            let field = self.l.get(ty).alternatives[0][*i];
-            offset += field.offset;
-            ty = field.ty;
+            ops.push(match step {
+                Step::Field(i) => Op::Field(*i),
+                Step::Item(i, site) => Op::Item(self.value(i)?, *site),
+                Step::Slice(a, b, site) => Op::Slice(self.value(a)?, self.value(b)?, *site),
+                Step::Key(..) => return Err("a Map step is not compiled yet".into()),
+            });
         }
-        Ok((root, ty, offset))
+        Ok((root, ty, ops))
     }
 
     pub(super) fn read(&mut self, place: &Place) -> Result<Value, Refusal> {
-        let (root, ty, offset) = self.walk(place)?;
-        Ok(match place.steps.is_empty() {
-            true => root,
-            false => self.get(ty, root, offset),
-        })
+        let (root, ty, ops) = self.operands(place)?;
+        if ops.is_empty() {
+            return Ok(root);
+        }
+        let (at, ty, offset) = self.walk(root, ty, &ops, false);
+        Ok(self.get(ty, at, offset))
     }
 
+    /// `place = e` or `place op= e`: the steps' operands, then `e`, then the walk with its
+    /// checks, then the write.
     pub(super) fn assign(
         &mut self,
         place: &Place,
         op: Option<&Compound>,
         e: &Expr,
     ) -> Result<(), Refusal> {
+        let (root, ty, ops) = self.operands(place)?;
         let mut v = self.value(e)?;
-        let (root, ty, offset) = self.walk(place)?;
-        let whole = place.steps.is_empty();
+        let (at, ty, offset) = self.walk(root, ty, &ops, true);
+        let whole = ops.is_empty();
         if let Some(op) = op {
             let old = if whole {
                 root
             } else {
-                self.get(ty, root, offset)
+                self.get(ty, at, offset)
             };
             v = self.compound(op, old, v)?;
         }
         match (whole, &place.root) {
             (true, &Root::Local(l)) => self.bind(l, v),
-            _ => self.put(ty, root, offset, v),
+            _ => self.put(ty, at, offset, v),
         }
         Ok(())
     }

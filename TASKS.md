@@ -1194,7 +1194,8 @@ or merged during review. Ids with a letter were added during review.
 - flags: unsafe, native-only
 - done when: Hand-written fixtures for strings, interpolation and lists match in both back ends, and every out-of-range access traps.
 - why this level: Unsafe runtime functions on memory laid out by compiled code; every index needs an explicit bounds branch.
-- note: Follows M4-05's ruling on which runtime code the interpreter shares.
+- status: done
+- note: Done: a String or List is held in memory as M4-05 section 8's words and passed as its address until M4-34's prefixes. Literals, interpolation, `+`, `+=`, comparisons, indexing, slicing, `len`, `is_empty`, `min`, `max`, `code_at` and `from_code` compile; the String rows run `paka_rt::ops::Text` through `rt.text`, so both back ends share them, and a List's items, slices and walks have their bounds checks inline, with new blocks from `rt.list`. The size cap moved into `paka_rt::ops`. Until M4-33 places copies and frees, no block is changed in place: a write through a List item copies the List first, which costs O(n) per write, and old blocks stay live until the run ends. The fixtures are the conformance programs `examples_text`, `examples_lists`, `examples_text_traps` and `examples_list_traps`, one trap per out-of-range access; `installer/tests/examples.rs` requires them to compile with the interpreter's statuses. The other text rows (`split`, `trim`, `replace`, `pad`, `repeat`, `join` and the rest) move into `ops` with the first compiled program that needs them; until then the emitter refuses them by name.
 
 ### M4-33 · L4 · Place moves, copies and drops in one pass shared by the native back ends
 

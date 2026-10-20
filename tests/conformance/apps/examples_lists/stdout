@@ -1,0 +1,12 @@
+a_failing_item fail at main.paka:65:36
+  left: 2
+  right: 1
+bools_and_floats pass
+items pass
+literal_and_len pass
+loop_total pass
+nested pass
+records_in_lists pass
+slices pass
+strings_in_lists pass
+writes pass

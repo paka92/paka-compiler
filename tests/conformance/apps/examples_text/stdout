@@ -1,0 +1,13 @@
+a_failing_compare fail at main.paka:38:39
+  left: "ab"
+  right: "ba"
+codes pass
+compares pass
+copies pass
+in_records pass
+indexes pass
+interpolation pass
+joins pass
+literals pass
+long_literal pass
+min_max pass

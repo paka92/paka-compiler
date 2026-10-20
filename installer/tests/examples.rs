@@ -36,11 +36,14 @@ fn an_unreached_hole_runs_and_a_reached_one_traps_naming_it() {
     );
 }
 
+/// A heap no fixture fills.
+const HEAP: u64 = 1 << 30;
+
 /// Each example's status word, as `paka examples` prints it (M2-06 section 1.6).
 fn statuses(p: &Program, slots: &Slots) -> Vec<(String, &'static str)> {
     let example = |(i, f): (usize, &paka::core_form::Fn)| {
         let id = p.fns.len() + i;
-        let (run, kind) = on_runner(0, |ctx| (common::run(slots, id, ctx), ctx.trap.kind));
+        let (run, kind) = on_runner(HEAP, |ctx| (common::run(slots, id, ctx), ctx.trap.kind));
         let status = match (run, kind) {
             ((0, 1), _) => "pass",
             ((0, _), _) => "fail",
@@ -92,11 +95,17 @@ fn example_statuses_equal_the_interpreters() {
         compiled.push(name);
     }
     println!("compiled: {compiled:?}\nrefused:\n{}", refused.join("\n"));
-    // One program for each status besides pass, and those of records and enums (M4-31) and of
-    // `?`, `unwrap_or` and `ok_or` (M4-31b); the rest wait on the later emitter tasks.
+    // One program for each status besides pass, and those of records and enums (M4-31), of
+    // `?`, `unwrap_or` and `ok_or` (M4-31b), and of Strings and Lists (M4-32); the rest wait on
+    // the later emitter tasks.
     let each = [
         "examples_records",
         "examples_errors",
+        "examples_text",
+        "examples_text_traps",
+        "examples_lists",
+        "examples_list_traps",
+        "examples_trapped",
         "examples_fail_comparisons",
         "examples_unfinished",
         "examples_assert_is_trapped",

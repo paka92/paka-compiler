@@ -7,20 +7,21 @@ use crate::core_form::{
     Arg, Arith, Bin, Block, Callee, Cmp, Compound, Expr, ExprKind, FloatArith, Fn, Program, Site,
     Stmt, Ty, Type, Un, Walk,
 };
-use crate::layout::Layouts;
+use crate::layout::{Layouts, Owned};
 use cranelift_codegen::control::ControlPlane;
 use cranelift_codegen::ir::condcodes::{FloatCC, IntCC};
 use cranelift_codegen::ir::immediates::Ieee64;
 use cranelift_codegen::ir::{
-    AbiParam, Block as Label, BlockArg, Function, InstBuilder, MemFlagsData, SigRef, Signature,
-    StackSlot, StackSlotData, StackSlotKind, Type as IrType, UserFuncName, Value, types,
+    AbiParam, Block as Label, BlockArg, Function, Inst, InstBuilder, MemFlagsData, SigRef,
+    Signature, StackSlot, StackSlotData, StackSlotKind, Type as IrType, UserFuncName, Value, types,
 };
 use cranelift_codegen::isa::{self, CallConv, OwnedTargetIsa, TargetIsa};
 use cranelift_codegen::settings::{self, Configurable};
 use cranelift_frontend::{FunctionBuilder, FunctionBuilderContext, Variable};
+use paka_rt::abi::dev::words::{CODE_AT, FROM_CODE, JOIN, MAX, MIN};
 use paka_rt::abi::dev::{self as rt, Context, Rt};
 use paka_rt::ops::Int;
-use std::collections::BTreeMap;
+use std::collections::{BTreeMap, BTreeSet};
 use std::mem::offset_of;
 
 /// Why a definition was not compiled.
@@ -127,13 +128,23 @@ fn ir_type(p: &Program, l: &Layouts, t: Ty) -> Result<IrType, Refusal> {
         Type::Int => Ok(types::I64),
         Type::Float => Ok(types::F64),
         Type::Bool => Ok(types::I8),
-        Type::Record(_) | Type::Enum(_) | Type::Option(_) | Type::Result(..)
-            if l.get(t).owned.iter().all(Vec::is_empty) =>
-        {
-            Ok(types::I64)
-        }
+        ref h if values::held(h) && plain(p, l, t, &mut BTreeSet::new()) => Ok(types::I64),
         ref other => Err(format!("a value of type {other:?} is not compiled yet")),
     }
+}
+
+/// Whether a value of type `t` owns only Strings and Lists of such values: no Map, box or
+/// Effect, which wait on later tasks.
+fn plain(p: &Program, l: &Layouts, t: Ty, seen: &mut BTreeSet<Ty>) -> bool {
+    if !seen.insert(t) {
+        return true;
+    }
+    !matches!(p.types[t], Type::Map(..) | Type::Effect(_))
+        && l.get(t).owned.iter().flatten().all(|e| match e.kind {
+            Owned::String => true,
+            Owned::List(t) | Owned::Value(t) => plain(p, l, t, seen),
+            Owned::Map(..) | Owned::Box(_) => false,
+        })
 }
 
 fn args(values: &[Value]) -> Vec<BlockArg> {
@@ -158,8 +169,8 @@ struct Gen<'a> {
     stop: Label,
     /// Where a callee writes its result.
     result_slot: Option<StackSlot>,
-    /// Imported signatures: runtime routines by word count, definitions by id.
-    rt_sigs: BTreeMap<usize, SigRef>,
+    /// Imported signatures: runtime routines by word count and status, definitions by id.
+    rt_sigs: BTreeMap<(usize, bool), SigRef>,
     def_sigs: BTreeMap<usize, SigRef>,
 }
 
@@ -304,18 +315,38 @@ impl<'a> Gen<'a> {
         self.ret(1);
     }
 
-    /// Calls the runtime routine at `offset` in `ctx.rt`; every one takes words and returns none.
+    /// Calls the runtime routine at `offset` in `ctx.rt`, which takes words and returns none.
     fn rt_call(&mut self, offset: usize, given: &[Value]) {
-        let sig = *self.rt_sigs.entry(given.len()).or_insert_with(|| {
+        self.rt_invoke(offset, given, false);
+    }
+
+    /// Calls a runtime routine that returns a status: nonzero returns 1, the trap recorded.
+    fn rt_try(&mut self, offset: usize, given: &[Value]) {
+        let call = self.rt_invoke(offset, given, true);
+        let status = self.b.inst_results(call)[0];
+        let [fail, ok] = [(); 2].map(|()| self.b.create_block());
+        self.b.set_cold_block(fail);
+        self.b.ins().brif(status, fail, &[], ok, &[]);
+        self.b.switch_to_block(fail);
+        self.ret(1);
+        self.b.switch_to_block(ok);
+    }
+
+    fn rt_invoke(&mut self, offset: usize, given: &[Value], status: bool) -> Inst {
+        let key = (given.len(), status);
+        let sig = *self.rt_sigs.entry(key).or_insert_with(|| {
             let mut sig = Signature::new(CallConv::SystemV);
             sig.params = vec![AbiParam::new(types::I64); given.len()];
+            if status {
+                sig.returns.push(AbiParam::new(types::I32));
+            }
             self.b.import_signature(sig)
         });
         let flags = MemFlagsData::trusted();
         let table =
             (self.b.ins()).load(types::I64, flags, self.ctx, offset_of!(Context, rt) as i32);
         let f = self.b.ins().load(types::I64, flags, table, offset as i32);
-        self.b.ins().call_indirect(sig, f, given);
+        self.b.ins().call_indirect(sig, f, given)
     }
 
     /// Calls definition `id` through its slot (M4-05 section 7); a nonzero status returns at
@@ -462,7 +493,7 @@ impl<'a> Gen<'a> {
                 self.b.ins().jump(head, &[]);
                 self.b.switch_to_block(exit);
             }
-            Stmt::For(_, Walk::List(_), _) => return Err("a List is not compiled yet".into()),
+            Stmt::For(l, Walk::List(xs), body) => self.each(*l, xs, body)?,
             Stmt::Expr(e) => {
                 self.expr(e)?;
             }
@@ -474,7 +505,7 @@ impl<'a> Gen<'a> {
         Ok(match op {
             Compound::Int(a, site) => self.int(a, *site, old, v),
             Compound::Float(a) => self.float(a, old, v),
-            Compound::Join(_) => return Err("text is not compiled yet".into()),
+            Compound::Join(site) => self.text(JOIN, *site, &[old, v]),
         })
     }
 
@@ -498,6 +529,9 @@ impl<'a> Gen<'a> {
             ExprKind::Int(n) => self.int_const(raw(*n)),
             ExprKind::Float(x) => self.float_const(x.bits()),
             ExprKind::Bool(v) => self.b.ins().iconst(types::I8, i64::from(*v)),
+            ExprKind::Str(s) => self.literal(s),
+            ExprKind::Interp(parts, site) => self.interpolate(parts, *site)?,
+            ExprKind::List(items) => self.list(ty(e), items)?,
             ExprKind::Place(place) => self.read(place)?,
             ExprKind::Record(_, fields) => return self.construct(ty(e), 0, fields),
             ExprKind::Variant(tag, fields) => {
@@ -524,16 +558,18 @@ impl<'a> Gen<'a> {
             ExprKind::Binary(op @ (Bin::And | Bin::Or), x, y) => {
                 self.short(matches!(op, Bin::And), x, y)?
             }
+            ExprKind::Binary(op, x, y) if self.p.types[ty(x)] == Type::String => {
+                self.text_binary(op, x, y)?
+            }
             ExprKind::Binary(op, x, y) => {
-                if x.ty.is_some_and(|t| values::held(&self.p.types[t])) {
-                    return Err("comparing records or variants is not compiled yet".into());
+                if values::held(&self.p.types[ty(x)]) {
+                    return Err("comparing Lists, records or variants is not compiled yet".into());
                 }
                 let float = self.is_float(x);
                 let (x, y) = (self.value(x)?, self.value(y)?);
                 match op {
                     Bin::Int(a, site) => self.int(a, *site, x, y),
                     Bin::Float(a) => self.float(a, x, y),
-                    Bin::Join(_) => return Err("text is not compiled yet".into()),
                     _ => self.compare(op, float, x, y),
                 }
             }
@@ -721,6 +757,16 @@ impl<'a> Gen<'a> {
                     false => self.b.ins().sshr(x[0], x[1]),
                 }
             }
+            "len(x: String) -> Int" => self.length(x[0], true),
+            "len(x: List<T>) -> Int" => self.length(x[0], false),
+            "is_empty(x: String) -> Bool" | "is_empty(x: List<T>) -> Bool" => {
+                let n = self.length(x[0], row.contains("String"));
+                self.b.ins().icmp_imm_s(IntCC::Equal, n, 0)
+            }
+            "min(a: String, b: String) -> String" => self.text(MIN, site, x),
+            "max(a: String, b: String) -> String" => self.text(MAX, site, x),
+            "code_at(text: String, i: Int) -> Int" => self.text(CODE_AT, site, x),
+            "from_code(n: Int) -> String" => self.text(FROM_CODE, site, x),
             "assert(cond: Bool)" => {
                 let failed = self.b.ins().icmp_imm_s(IntCC::Equal, x[0], 0);
                 self.check(failed, rt::ASSERT, site, &[]);
@@ -789,8 +835,6 @@ fn ty(e: &Expr) -> Ty {
 
 fn what(kind: &ExprKind) -> &'static str {
     match kind {
-        ExprKind::Str(_) | ExprKind::Interp(..) => "text",
-        ExprKind::List(_) => "a List",
         ExprKind::Map(_) => "a Map",
         ExprKind::FnValue(_) => "a function value",
         ExprKind::Call(..) => "a call",
@@ -801,3 +845,4 @@ fn what(kind: &ExprKind) -> &'static str {
 #[cfg(test)]
 mod tests;
 mod values;
+mod words;

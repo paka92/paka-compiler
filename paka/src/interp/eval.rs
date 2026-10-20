@@ -17,8 +17,7 @@ const DEPTH: usize = 10_000;
 /// The most expressions and blocks under evaluation on one stack segment. A level takes under
 /// 5 KiB in a debug build, so a segment of `STACK` bytes holds it with a wide margin.
 const BUDGET: usize = 1_000;
-/// The most bytes in a String, and the most items or entries in a List or Map.
-pub const CAP: usize = 16_777_216;
+pub use paka_rt::ops::CAP;
 /// Frame names a trap keeps: the report shows eight, one more says there were others.
 const KEPT: usize = 9;
 

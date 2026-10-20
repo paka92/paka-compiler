@@ -16,6 +16,9 @@ pub use float::Float;
 pub use int::Int;
 pub use text::Text;
 
+/// The most bytes in a String, and the most items or entries in a List or Map.
+pub const CAP: usize = 16_777_216;
+
 /// The kinds of trap an operation can end in.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum Trap {
