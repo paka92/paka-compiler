@@ -162,29 +162,37 @@ impl Gen<'_> {
         }
     }
 
-    /// The address of an `inout` place, walked with its checks. A local held in a variable is
-    /// stored in a slot for the call; `spilled` takes it, to read it back after.
+    /// The address and type of an `inout` place, walked with its checks. A local held in a
+    /// variable is stored in a slot for the call; `spilled` takes it, to read it back after.
     pub(super) fn address(
         &mut self,
         place: &Place,
         operands: Option<Operands>,
         spilled: &mut Vec<(Local, Value)>,
-    ) -> Value {
+    ) -> (Value, Ty) {
         if let Some((root, ty, ops)) = operands {
-            let (at, _, offset) = self.walk(root, ty, &ops);
-            return self.b.ins().iadd_imm_s(at, offset as i64);
+            let (at, ty, offset) = self.walk(root, ty, &ops);
+            return (self.b.ins().iadd_imm_s(at, offset as i64), ty);
         }
         let Root::Local(l) = place.root else {
             unreachable!("an inout place is rooted at a local");
         };
-        let at = self.b.use_var(self.vars[l]);
-        if self.held(self.locals[l]) || self.by_pointer(l) {
-            return at;
+        let (at, ty) = (self.b.use_var(self.vars[l]), self.locals[l]);
+        if self.held(ty) || self.by_pointer(l) {
+            return (at, ty);
         }
         let to = slot(&mut self.b, 8);
-        self.put(self.locals[l], to, 0, at);
+        self.put(ty, to, 0, at);
         spilled.push((l, to));
-        to
+        (to, ty)
+    }
+
+    /// Reads back the locals a call's `inout` arguments spilled.
+    pub(super) fn reload(&mut self, spilled: Vec<(Local, Value)>) {
+        for (l, at) in spilled {
+            let v = self.get(self.locals[l], at, 0);
+            self.b.def_var(self.vars[l], v);
+        }
     }
 
     /// `place = e` or `place op= e`: the steps' operands, then `e`, then the walk with its

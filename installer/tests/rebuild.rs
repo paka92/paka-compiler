@@ -22,7 +22,7 @@ fn dev(source: &str) -> Dev {
 
 fn run(dev: &Dev, name: &str) -> u64 {
     let id = dev.program.fns.iter().position(|f| f.name == name);
-    let (status, out) = common::run(&dev.slots, id.unwrap(), &mut Context::new(0));
+    let (status, out) = common::run(&dev.slots, id.unwrap(), &mut Context::new(1 << 20));
     assert_eq!(status, 0, "{name}");
     out
 }
@@ -78,4 +78,27 @@ fn an_edit_elsewhere_leaves_trap_sites_and_code_alone() {
     let before = dev.keys.clone();
     dev.edit(&BASE.replace("x / 2", "(x + 0) / 2")).unwrap();
     assert_eq!(changed(&dev, &before), BTreeSet::from(["half"]));
+}
+
+/// The List rows are runtime code told each item's record and size (M2-09 section 3), so editing
+/// a comparator compiles that one definition and no collection code.
+#[test]
+fn a_comparator_edit_compiles_only_the_comparator() {
+    const LISTS: &str = "\
+type P { id: Int, score: Int }
+fn before(a: P, b: P) -> Bool { a.score > b.score }
+fn top() -> Int {
+  var ps = [P { id: 1, score: 5 }, P { id: 2, score: 9 }]
+  append(&ps, P { id: 3, score: 7 })
+  sort_by(&ps, before)
+  if contains(ps, P { id: 3, score: 7 }) { ps[0].id } else { 0 }
+}
+";
+    let mut dev = dev(LISTS);
+    let before = dev.keys.clone();
+    assert_eq!((dev.cache.compiles, run(&dev, "top")), (2, 2));
+    dev.edit(&LISTS.replace("a.score > b.score", "a.score < b.score"))
+        .unwrap();
+    assert_eq!(changed(&dev, &before), BTreeSet::from(["before"]));
+    assert_eq!((dev.cache.compiles, run(&dev, "top")), (3, 1));
 }

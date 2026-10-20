@@ -751,8 +751,7 @@ impl<'a> Machine<'a> {
             frame = kept;
             Ok(answer.bool())
         };
-        let mut scratch = Vec::with_capacity(xs.0.len());
-        generic::merge_sort(&mut xs.0, &mut scratch, &mut ask)?;
+        generic::merge_sort(&mut xs.0, &mut ask)?;
         Ok(Value::Unit)
     }
 

@@ -500,7 +500,7 @@ impl<'a> Gen<'a> {
         }
         let mut spilled = vec![];
         for (i, place, operands) in places {
-            values[i] = self.address(place, operands, &mut spilled);
+            values[i] = self.address(place, operands, &mut spilled).0;
         }
         let ir_result = result.map(|t| ir_type(self.p, self.l, t)).transpose()?;
         let held = result.filter(|&t| values::held(&self.p.types[t]));
@@ -531,10 +531,7 @@ impl<'a> Gen<'a> {
         let call = self.b.ins().call_indirect(sig, code, &values);
         let status = self.b.inst_results(call)[0];
         self.pass_on(status, site);
-        for (l, at) in spilled {
-            let v = self.get(self.locals[l], at, 0);
-            self.b.def_var(self.vars[l], v);
-        }
+        self.reload(spilled);
         Ok(match (result, slot) {
             (Some(t), Some(at)) => {
                 let v = self.get(t, at, 0);
@@ -716,7 +713,18 @@ impl<'a> Gen<'a> {
             }
             ExprKind::Binary(op, x, y) => {
                 if values::held(&self.p.types[ty(x)]) {
-                    return Err("comparing Lists, records or variants is not compiled yet".into());
+                    let (Bin::Eq(_) | Bin::Ne(_)) = op else {
+                        return Err(
+                            "ordering Lists, records or variants is not compiled yet".into()
+                        );
+                    };
+                    let t = ty(x);
+                    let (x, y) = (self.value(x)?, self.value(y)?);
+                    let eq = self.equal(t, x, y)?;
+                    return Ok(Some(match op {
+                        Bin::Ne(_) => self.b.ins().icmp_imm_s(IntCC::Equal, eq, 0),
+                        _ => eq,
+                    }));
                 }
                 let float = self.is_float(x);
                 let (x, y) = (self.value(x)?, self.value(y)?);
@@ -727,6 +735,10 @@ impl<'a> Gen<'a> {
                 }
             }
             ExprKind::Call(Callee::Builtin(row), given, site) => {
+                let name = ROWS[*row].1;
+                if matches!(given.first(), Some(Arg::Inout(_))) {
+                    return self.items(name, given, *site);
+                }
                 let mut x = vec![];
                 for a in given {
                     match a {
@@ -745,6 +757,16 @@ impl<'a> Gen<'a> {
                     "ok_or(opt: Option<T>, error: E) -> Result<T, E>" => {
                         ir_type(self.p, self.l, ty(e))?;
                         self.ok_or((arg(0), x[0]), ty(e), x[1])
+                    }
+                    "contains(xs: List<T>, item: T) -> Bool" => {
+                        let i = self.position(arg(1), x[0], x[1])?;
+                        self.b
+                            .ins()
+                            .icmp_imm_s(IntCC::SignedGreaterThanOrEqual, i, 0)
+                    }
+                    "find(xs: List<T>, item: T) -> Option<Int>" => {
+                        let i = self.position(arg(1), x[0], x[1])?;
+                        self.found(ty(e), i)
                     }
                     row => return self.builtin(row, &x, *site, e),
                 }));
@@ -938,6 +960,7 @@ impl<'a> Gen<'a> {
             "code_at(text: String, i: Int) -> Int" => self.text(CODE_AT, site, x),
             "from_code(n: Int) -> String" => self.text(FROM_CODE, site, x),
             "words(text: String) -> List<String>" => self.text(WORDS, site, x),
+            "list_of(item: T; count: Int) -> List<T>" => self.list_of(ty(e), x, site)?,
             "assert(cond: Bool)" => {
                 let failed = self.b.ins().icmp_imm_s(IntCC::Equal, x[0], 0);
                 self.check(failed, rt::ASSERT, site, &[]);
@@ -1014,6 +1037,8 @@ fn what(kind: &ExprKind) -> &'static str {
 
 mod cache;
 pub use cache::Cache;
+mod equal;
+mod items;
 mod owned;
 #[cfg(test)]
 mod tests;

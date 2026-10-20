@@ -1246,10 +1246,12 @@ or merged during review. Ids with a letter were added during review.
 
 ### M4-38 · L4 · Compile generic definitions in dev mode as the generics decision prescribes
 
+- status: done
 - needs: M4-33, M4-37, M2-09
 - flags: native-only
 - done when: Generic fixtures match the interpreter; editing a generic body recompiles only what the decision says, shown by a compile counter.
 - why this level: Generic code meets slots, hashes and layouts at once; a stale or missing instantiation is silent.
+- note: Done: the List rows run as `rt.items` and `rt.sort_by`, equality is emitted inline (M4-05 section 10); `contains`, `find` and `list_of` compile. Every run case that compiles matches the interpreter with a clean ledger; `installer/tests/rebuild.rs` shows a comparator edit compiling only the comparator. String rows (`join`, `parse_int`, `repeat`, padding, `fixed`) and Maps (M4-38b) are still refused.
 
 ### M4-38b · L4 · Emit the built-in map with its fixed iteration order
 

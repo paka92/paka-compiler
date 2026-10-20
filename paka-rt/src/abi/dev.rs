@@ -3,6 +3,7 @@
 //! corrupting memory, and the run's cap is checked before the host is asked.
 
 pub mod app;
+pub mod items;
 pub mod records;
 pub mod words;
 
@@ -186,6 +187,20 @@ pub struct Rt {
         unsafe extern "sysv64" fn(&mut Context, u64, u64, u64, u64, *mut words::ListWords) -> i32,
     pub copy: unsafe extern "sysv64" fn(&mut Context, u64, u64, u64, u64) -> i32,
     pub drop: unsafe extern "sysv64" fn(&mut Context, u64, u64),
+    #[allow(clippy::type_complexity)]
+    pub items: unsafe extern "sysv64" fn(
+        &mut Context,
+        u64,
+        u64,
+        u64,
+        u64,
+        *mut words::ListWords,
+        u64,
+        u64,
+        *mut u8,
+    ) -> i32,
+    pub sort_by:
+        unsafe extern "sysv64" fn(&mut Context, u64, u64, *const words::ListWords, u64) -> i32,
 }
 
 pub static RT: Rt = Rt {
@@ -197,6 +212,8 @@ pub static RT: Rt = Rt {
     list: words::rt_list,
     copy: records::rt_copy,
     drop: records::rt_drop,
+    items: items::rt_items,
+    sort_by: items::rt_sort_by,
 };
 
 /// `rt.alloc`: a block of `bytes` into `out` and status 0, or a `memory` trap and status 1.
