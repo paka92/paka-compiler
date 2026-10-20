@@ -54,6 +54,7 @@ fn name(p: &Program, ty: Ty) -> String {
         Type::Fn(params, Some(r)) => format!("fn({}) -> {}", list(params), name(p, *r)),
         Type::Record(i) => p.records[*i].name.clone(),
         Type::Enum(i) => p.enums[*i].name.clone(),
+        Type::Ui => "Ui".into(),
     }
 }
 

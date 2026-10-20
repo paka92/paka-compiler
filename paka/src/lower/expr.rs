@@ -330,6 +330,14 @@ impl<'a> Cx<'_, 'a> {
             Binding::Builtin(name) if self.table.variants.contains_key(name) => {
                 ExprKind::Variant(builtin_tag(name), self.values(args))
             }
+            Binding::Builtin(name) if builtins::is_ui(name) => {
+                let k = builtins::UI
+                    .iter()
+                    .position(|r| builtins::name(r.1) == name);
+                let row = builtins::ROWS.len() + k.expect("a UI row");
+                let args = if name == "ui_start" { &[][..] } else { args };
+                self.call(Callee::Builtin(row), args, callee.at)
+            }
             Binding::Builtin(_) => {
                 let row = self.row(callee);
                 self.call(Callee::Builtin(row), args, callee.at)

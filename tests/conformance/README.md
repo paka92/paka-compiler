@@ -555,7 +555,7 @@ full in the folder. `(Rn)` marks a case that follows a reading in the Settled re
 | no app: `check` passes, `run` and `build` give `no-app` after the program is checked | `no_app_check_ok`, `no_app_run`, `no_app_build`, `no_app_empty_file`, `no_app_error_first`, `no_app_check_error_first` (R7) |
 | two apps stay a check error | `multiple_apps`, `multiple_apps_check` |
 | a visual app (M5-01): the counter sample checks clean | `view_counter_check` |
-| UI examples (M5-06): the to-do sample and its examples check clean | `ui_todo_check` |
+| UI examples (M5-06): the to-do sample checks clean and its examples pass with no window (M5-22) | `ui_todo_check` |
 
 ### Arguments and the first message (M2-15 §1.4)
 

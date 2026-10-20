@@ -259,7 +259,7 @@ pub mod core {
 
     node_kinds! {
         CORE_KINDS;
-        Type: Int Float Bool String List Map Option Result Effect Fn Record Enum View;
+        Type: Int Float Bool String List Map Option Result Effect Fn Record Enum View Ui;
         Stmt: Let Assign Return Break Continue For While Expr;
         Walk: List Range;
         ExprKind: Int Float Bool Str Interp Hole Place Record List Map Variant FnValue Unary Binary
@@ -278,9 +278,10 @@ pub mod core {
         Cmp: Lt Le Gt Ge;
     }
 
-    /// The kinds only a view gives, which a headless program never produces.
+    /// The kinds only a view or a UI example gives, which a headless program never produces.
     pub const VIEW_KINDS: &[&str] = &[
         "Type::View",
+        "Type::Ui",
         "ExprKind::Root",
         "ExprKind::Element",
         "ExprKind::Placeholder",
@@ -293,7 +294,9 @@ pub mod core {
     pub fn kinds(program: &Program) -> Kinds {
         let mut k = Kinds::default();
         program.types.iter().for_each(|t| k.add(t.kind()));
-        let bodies = program.fns.iter().chain(&program.examples);
+        let bodies = (program.fns.iter())
+            .chain(&program.examples)
+            .chain(&program.ui_examples);
         bodies.for_each(|f| k.block(&f.body));
         if let Some(state) = program.app.as_ref().and_then(|a| a.state.as_ref()) {
             k.expr(state);

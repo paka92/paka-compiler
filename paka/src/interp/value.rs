@@ -1,5 +1,6 @@
 //! The values the interpreter holds: owned trees, never shared.
 
+use super::eval::Ui;
 use crate::core_form::{EnumId, Tag};
 pub use paka_rt::ops::quoted;
 use paka_rt::ops::{Float, Int, Text};
@@ -28,6 +29,8 @@ pub enum Value {
     Fn(FnKey),
     /// What a view gives; never copied or compared.
     Node(Box<Node<Message>>),
+    /// A UI example's app; never compared.
+    Ui(Box<Ui>),
 }
 
 /// A message a node carries, with its value text form (M5-06).
@@ -157,6 +160,7 @@ impl Value {
                 Value::Map(Entries(e.0.iter().map(copy).collect::<Option<_>>()?))
             }
             Value::Node(_) => unreachable!("a node is never copied"),
+            Value::Ui(ui) => Value::Ui(ui.copy()?),
         })
     }
 }

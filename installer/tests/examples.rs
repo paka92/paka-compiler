@@ -98,6 +98,10 @@ fn example_statuses_equal_the_interpreters() {
                 continue;
             }
         };
+        if !p.ui_examples.is_empty() {
+            refused.push(format!("{name}: UI examples run in the interpreter"));
+            continue;
+        }
         let stdout = fs::read_to_string(dir.join("stdout")).unwrap();
         assert_eq!(statuses(&p, &slots), expected(&stdout), "{name}");
         compiled.push(name);

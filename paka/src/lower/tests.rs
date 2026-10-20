@@ -170,6 +170,7 @@ fn light_paka_lowers() {
         }],
         fns: vec![update],
         examples: vec![],
+        ui_examples: vec![],
         app: Some(App {
             name: "light".into(),
             state: None,
@@ -1037,6 +1038,7 @@ fn an_app_with_state_an_inout_handler_and_an_example() {
         }],
         fns: vec![update],
         examples: vec![one],
+        ui_examples: vec![],
         app: Some(app),
         sites: vec![
             site(4, 4),

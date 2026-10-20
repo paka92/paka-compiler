@@ -144,7 +144,9 @@ impl Layouts {
         let leaf = |words, owned: Vec<Entry>| (false, words, vec![], vec![owned]);
         let at0 = |kind| vec![Entry { offset: 0, kind }];
         let (tagged, words, alternatives, owned) = match p.types[ty] {
-            Type::Int | Type::Float | Type::Bool | Type::Fn(..) | Type::View(_) => leaf(1, vec![]),
+            Type::Int | Type::Float | Type::Bool | Type::Fn(..) | Type::View(_) | Type::Ui => {
+                leaf(1, vec![])
+            }
             Type::String => leaf(4, at0(Owned::String)),
             Type::List(item) => leaf(3, at0(Owned::List(item))),
             Type::Map(k, v) => leaf(1, at0(Owned::Map(k, v))),

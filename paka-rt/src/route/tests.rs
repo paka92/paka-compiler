@@ -72,11 +72,10 @@ fn nothing_has_focus_at_launch_so_keys_are_dropped() {
 }
 
 #[test]
-fn a_click_on_an_input_focuses_it_and_keys_reach_only_it() {
+fn a_click_on_an_input_focuses_it_at_the_end_and_keys_reach_only_it() {
     let mut tree = form("mil", "ab");
     assert_eq!(route(&mut tree, &click(&[key("b")], "Input")), None);
     assert_eq!(focus(&tree), [key("b")]);
-    route(&mut tree, &Event::Key(Key::End(false)));
     assert_eq!(
         route(&mut tree, &Event::Key(Key::Type('c'))),
         Some(Sent::Change(&"B", typed("abc", 3)))
@@ -85,7 +84,7 @@ fn a_click_on_an_input_focuses_it_and_keys_reach_only_it() {
     assert_eq!(focus(&tree), [key("a")]);
     assert_eq!(
         route(&mut tree, &Event::Key(Key::Type('k'))),
-        Some(Sent::Change(&"A", typed("kmil", 1)))
+        Some(Sent::Change(&"A", typed("milk", 4)))
     );
 }
 
@@ -125,7 +124,7 @@ fn focus_stays_with_its_key_after_a_reorder() {
     assert_eq!(focus(&new), [key("b")]);
     assert_eq!(
         route(&mut new, &Event::Key(Key::Type('x'))),
-        Some(Sent::Change(&"B", typed("xb", 1)))
+        Some(Sent::Change(&"B", typed("bx", 2)))
     );
 }
 

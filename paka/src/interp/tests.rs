@@ -278,6 +278,7 @@ fn program(mut fns: Vec<Func>, mut update: Func) -> Program {
         }),
         fns,
         examples: vec![],
+        ui_examples: vec![],
         sites,
     }
 }

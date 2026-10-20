@@ -20,8 +20,8 @@ pub enum Sent<'a, M> {
 }
 
 /// Works `event` out against `tree`, the tree of its turn in the queue (M5-03). A click whose
-/// element is gone or changed kind is dropped; a click on an Input moves focus there, any other
-/// leaves it (M5-04). A key with no focused Input is dropped.
+/// element is gone or changed kind is dropped; a click on an Input moves focus there with the
+/// cursor at the end (M5-06), any other leaves it (M5-04). A key with no focused Input is dropped.
 pub fn route<'a, M>(tree: &'a mut Node<M>, event: &Event) -> Option<Sent<'a, M>> {
     match event {
         Event::Key(key) => match focused(tree)? {
@@ -45,8 +45,9 @@ pub fn route<'a, M>(tree: &'a mut Node<M>, event: &Event) -> Option<Sent<'a, M>>
             }
             match at(tree, path)? {
                 Node::Button { on, .. } => Some(Sent::Click(on)),
-                Node::Input { edit, .. } => {
+                Node::Input { text, edit, .. } => {
                     edit.focus = true;
+                    edit.key(text, Key::End(false));
                     None
                 }
                 _ => None,

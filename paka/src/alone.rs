@@ -184,6 +184,7 @@ impl Map<'_> {
             Type::Record(r) => Type::Record(self.record(*r)?),
             Type::Enum(e) => Type::Enum(self.enum_id(*e)?),
             Type::View(m) => Type::View(self.ty(*m)?),
+            Type::Ui => Type::Ui,
         };
         self.to.types.iter().position(|known| *known == to)
     }

@@ -3,7 +3,7 @@
 use super::show::show;
 use super::value::{Entries, FnKey, Items, Key, Message, Value, equals, number, position};
 use super::{RUN_THREAD, STACK, builtin, generic};
-use crate::builtins::ELEMENTS;
+use crate::builtins::{ELEMENTS, ROWS};
 use crate::core_form::Fn as Func;
 use crate::core_form::{
     App, Arg, Arith, Arm, Bin, Block, Callee, Child, Cmp, Compound, Expr, ExprKind, FloatArith,
@@ -14,6 +14,9 @@ use paka_rt::tree::{self, Edit, Node};
 use std::cmp::Ordering;
 use std::fmt::Write;
 use std::{mem, panic, thread};
+pub use ui::Ui;
+
+mod ui;
 
 /// The call depth no call may pass; the handler is at depth 1.
 const DEPTH: usize = 10_000;
@@ -103,6 +106,9 @@ pub enum Stop {
     Return(Value),
     Break,
     Continue,
+    /// A UI example's app stopped with this line: an effect it does not grant, or start fields
+    /// with no arguments to fill them.
+    Ended(String),
 }
 
 impl From<Trap> for Stop {
@@ -197,6 +203,8 @@ enum Target {
     User(FnId),
     Ctor(usize),
     Builtin(usize),
+    /// A row of `builtins::UI`.
+    Ui(usize),
 }
 
 /// The children of one child block, in the order their lines ran.
@@ -208,6 +216,9 @@ pub struct Machine<'a> {
     levels: usize,
     /// The child lists being built, innermost last.
     kids: Vec<Kids>,
+    /// Of a UI example: the first frame that held an error node, as the call that drew it and
+    /// the node's line.
+    pub broken: Option<(Site, String)>,
 }
 
 impl<'a> Machine<'a> {
@@ -217,6 +228,7 @@ impl<'a> Machine<'a> {
             depth: 0,
             levels: 0,
             kids: vec![],
+            broken: None,
         }
     }
 
@@ -812,7 +824,10 @@ impl<'a> Machine<'a> {
     fn call(&mut self, fr: &mut Frame, callee: &Callee, args: &[Arg], site: Site) -> Done {
         let target = match callee {
             Callee::Fn(id) => Target::User(*id),
-            Callee::Builtin(row) => Target::Builtin(*row),
+            Callee::Builtin(row) => match row.checked_sub(ROWS.len()) {
+                Some(k) => Target::Ui(k),
+                None => Target::Builtin(*row),
+            },
             Callee::Value(e) => match self.eval(fr, e)? {
                 Value::Fn(FnKey::Fn(id)) => Target::User(id),
                 Value::Fn(FnKey::Ctor(_, v)) => Target::Ctor(v),
@@ -822,7 +837,7 @@ impl<'a> Machine<'a> {
         let lend = |i| match target {
             Target::Ctor(_) => false,
             Target::Builtin(row) => !generic::keeps(row, i),
-            Target::User(_) => true,
+            Target::User(_) | Target::Ui(_) => true,
         };
         let mut given: Vec<Given> = Vec::with_capacity(args.len());
         for (i, arg) in args.iter().enumerate() {
@@ -835,6 +850,7 @@ impl<'a> Machine<'a> {
             Target::Ctor(v) => return Ok(Value::Variant(v, Items(params))),
             Target::Builtin(row) if generic::calls_back(row) => self.sort_by(&mut params, site)?,
             Target::Builtin(row) => builtin::call(row, &mut params, site)?,
+            Target::Ui(k) => self.ui(k, &mut params, site)?,
             Target::User(id) => {
                 let (value, locals) = self.invoke(id, params, site)?;
                 params = locals;

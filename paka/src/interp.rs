@@ -222,7 +222,7 @@ pub fn draw(core: &Program, id: FnId, args: Vec<Value>) -> Result<Node<Message>,
 /// Runs every example in name order and prints its status (M2-06 section 1.6); the status is 0
 /// when all pass, else 3.
 pub fn examples(core: &Program, out: &mut impl Write, err: &mut impl Write) -> u8 {
-    let mut order: Vec<_> = core.examples.iter().collect();
+    let mut order: Vec<_> = core.examples.iter().chain(&core.ui_examples).collect();
     order.sort_by(|a, b| a.name.cmp(&b.name));
     let entries = on_big_stack(|| {
         order
@@ -250,7 +250,13 @@ pub fn examples(core: &Program, out: &mut impl Write, err: &mut impl Write) -> u
 /// Whether the example passed, and its entry; the reason if the interpreter faults.
 fn entry(core: &Program, f: &Func) -> Result<(bool, String), String> {
     let name = &f.name;
-    Ok(match Machine::new(core).example(f) {
+    let mut machine = Machine::new(core);
+    let done = machine.example(f);
+    Ok(match done {
+        Ok(_) if let Some((site, node)) = machine.broken => (
+            false,
+            format!("{name} fail at {}\n  {node}\n", place(core, site)),
+        ),
         Ok(None) => (true, format!("{name} pass\n")),
         Ok(Some(fail)) => {
             let mut text = format!("{name} fail at {}\n", place(core, f.claims[fail.claim]));
@@ -272,6 +278,7 @@ fn entry(core: &Program, f: &Func) -> Result<(bool, String), String> {
             };
             (false, text)
         }
+        Err(Stop::Ended(line)) => (false, format!("{name} trapped\n  {line}")),
         Err(Stop::Internal(reason)) => return Err(reason),
         Err(_) => unreachable!("a loop holds its break"),
     })

@@ -23,6 +23,8 @@ pub struct Program {
     pub enums: Vec<Enum>,
     pub fns: Vec<Fn>,
     pub examples: Vec<Fn>,
+    /// The examples that drive the app through a `Ui` (M5-06): only the interpreter runs them.
+    pub ui_examples: Vec<Fn>,
     pub app: Option<App>,
     pub sites: Vec<TrapSite>,
 }
@@ -69,6 +71,8 @@ pub enum Type {
     Enum(EnumId),
     /// `View<M>`: an element tree whose messages are of type `M` (M5-01).
     View(Ty),
+    /// The program's visual app running with no window (M5-06).
+    Ui,
 }
 
 #[derive(Debug, PartialEq)]
@@ -266,7 +270,8 @@ pub enum FnRef {
 #[derive(Clone, Debug, PartialEq)]
 pub enum Callee {
     Fn(FnId),
-    /// An index into `builtins::ROWS`, chosen once by the checker.
+    /// An index into `builtins::ROWS`, chosen once by the checker; `ROWS.len() + k` is row `k` of
+    /// `builtins::UI`. `ui_start` takes no argument, since a program holds one app.
     Builtin(usize),
     Value(Box<Expr>),
 }
@@ -351,6 +356,7 @@ mod tests {
             enums: vec![],
             fns: vec![],
             examples: vec![],
+            ui_examples: vec![],
             app: None,
             sites: vec![],
         };

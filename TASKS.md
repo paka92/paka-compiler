@@ -1643,6 +1643,8 @@ or merged during review. Ids with a letter were added during review.
 - why this level: Status must come from the toolchain alone; hole status per decision.
 - note: No cache: every UI example runs each time. The cache is M7-09.
 - note: Per M5-06: an example is unfinished only if it touches a placeholder or reaches a hole; any other trap in a handler, a view or a `ui_` call ends it as trapped; an error node ends it as fail; allowed effects are dropped.
+- status: done
+- note: Done: an example that drives a `Ui` is lowered into `Program.ui_examples`, which only the interpreter runs; the dev back end never compiles them, so `paka examples` always runs them in the interpreter. `Ui` is a core type and each `ui_` call is a built-in row after `ROWS`; `ui_start` takes no argument, as a program holds one app. The app runs on the example's own machine, so a trap in a handler or view names its frames; effects are performed in a world that drops them, a refused one ends the example as `trapped` with the stop line, and after `Exit` an action is an assert trap. A click on an Input now puts the cursor at the end in `paka_rt::route`. Formats chosen where M5-06 is silent: an error node gives `NAME fail at <ui call>` then `Error <path> "<text>"`; a refused effect gives `NAME trapped` then the stop line; a touched placeholder gives `NAME unfinished at <ui call>` with `??name`. A hole in a UI example now gets its note. Tests: paka/tests/examples.rs (counter pass, fail and placeholder; error node, refusal, exit, handler hole, no focus, click on Text); `tests/cases/examples/ui_todo` (moved from check-text) and conformance `apps/ui_todo_check` now run the examples.
 
 ### M5-23 · L3 · Write the to-do sample and UI examples for both samples
 
@@ -1662,10 +1664,10 @@ or merged during review. Ids with a letter were added during review.
 - done when: Compiled counter view prints the same hand-written tree text as the interpreter; a trapping view returns trap status; unsafe block reviewed.
 - why this level: Unsafe reading of compiled values holding messages; a layout mistake is silent, and Miri is not available.
 - note: Per M5-02: compiled trees carry the place number; M5-26's comparison shows any disagreement with the interpreter.
-
-### M5-25 · L3 · Run a visual app with no window on dev-mode code
 - status: done
 - note: Done: a compiled view writes its nodes into the run's tree buffer through `rt.view` (ops with their operands; a String is its byte length and packed bytes; a message's words are copied in with the blocks they own). `paka_rt::abi::dev::view::draw` decodes the buffer into a `tree::Node<Message>` as the interpreter builds it; a `Drawing` keeps the message words, gives each message's address for update, and frees them on `release`. The dev back end no longer refuses a view; `paka::emit::show` gives a message's value text and `Dev::draw` draws a view. installer/tests/views.rs checks the counter, keyed loops, String keys and payload messages against the interpreter's tree text, and that a negative gap and a hole trap. A `memory` trap while copying a message reports no site. The visual loop is M5-25.
+
+### M5-25 · L3 · Run a visual app with no window on dev-mode code
 
 - needs: M5-20, M5-24
 - flags: native-only

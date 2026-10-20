@@ -28,7 +28,8 @@ struct Cx<'t, 'a> {
     source: &'t [u8],
     /// The offset of each line's start in `source`.
     starts: Vec<usize>,
-    /// Each definition's place in the list of its kind: records, enums, functions, examples.
+    /// Each definition's place in the list of its kind: records, enums, functions, examples, UI
+    /// examples.
     ids: Vec<usize>,
     /// The definition being lowered, which `bodies.types` is indexed by.
     def: usize,
@@ -59,6 +60,7 @@ pub fn lower<'a>(
             enums: vec![],
             fns: vec![],
             examples: vec![],
+            ui_examples: vec![],
             app: None,
             sites: vec![],
         },
@@ -88,13 +90,13 @@ pub fn lower<'a>(
 }
 
 fn ids(program: &ast::Program) -> Vec<usize> {
-    let mut counts = [0; 4];
+    let mut counts = [0; 5];
     let place = |def: &Def| {
         let list = match def {
             Def::Type { .. } => 0,
             Def::Enum { .. } => 1,
             Def::Fn { .. } | Def::View { .. } => 2,
-            Def::Example { .. } if drives_ui(def) => return 0,
+            Def::Example { .. } if drives_ui(def) => 4,
             Def::Example { .. } => 3,
             Def::App { .. } => return 0,
         };
@@ -104,7 +106,7 @@ fn ids(program: &ast::Program) -> Vec<usize> {
     program.defs.iter().map(place).collect()
 }
 
-/// An example that drives a UI runs from a later task (M5-22).
+/// An example that drives a UI, which only the interpreter runs.
 fn drives_ui(def: &Def) -> bool {
     matches!(def, Def::Example { .. }) && coverage::names(def).iter().any(|n| builtins::is_ui(n))
 }
@@ -136,10 +138,15 @@ impl<'a> Cx<'_, 'a> {
                 let f = self.function(name, params, Some(sig), body);
                 self.core.fns.push(f);
             }
-            (Def::Example { .. }, _) if drives_ui(def) => {}
             (Def::Example { name, body }, _) => {
                 let f = self.function(name, &[], None, body);
-                self.core.examples.push(f);
+                let core = &mut self.core;
+                let list = if drives_ui(def) {
+                    &mut core.ui_examples
+                } else {
+                    &mut core.examples
+                };
+                list.push(f);
             }
             (
                 Def::View {
@@ -312,6 +319,7 @@ impl<'a> Cx<'_, 'a> {
                     ("Result", &[x, e]) => Type::Result(x, e),
                     ("Effect", &[m]) => Type::Effect(m),
                     ("View", &[m]) => Type::View(m),
+                    ("Ui", []) => Type::Ui,
                     _ => unreachable!("a built-in type and its arguments"),
                 }
             }
