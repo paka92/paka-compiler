@@ -1352,6 +1352,8 @@ or merged during review. Ids with a letter were added during review.
 - done when: One command prints median and 95th-percentile times for the six M4-01 edit classes (three gated) on a program whose size is an argument, 5,000 by default, written by its own fixed-shape generator as one file per definition; timing runs from request written to reply read.
 - why this level: Honest timing from request to first handler of the new run, on a generated program of stated size.
 - note: Per M4-03: one timed sample is one edit request with a `run` field.
+- status: done
+- note: Done: `cargo build --release -p paka -p paka-installer`, then `target/release/paka-bench [DEFS [SAMPLES]]` (`installer/src/bin/paka-bench.rs`; DEFS 5,000 and SAMPLES 200 by default). The program is `defs.paka`'s three definitions without its examples, `t`, `total`, `Msg`, `update`, an app `bench`, and fillers of 20 numeric lines in a binary call tree from `f0`; fillers 1 to 10 use `t`. Body edits change one constant (`step` gains one on its `Hold` arm); the signature edit turns `t` between Int and Float results; add and delete pair a new function `gN`. Each edit must install and its run end with status 0. First numbers, gate failed: every class takes about 130 ms at 100 definitions, 1.4 s at 1,000 and 7 s at 5,000, nearly all in the runner's rebuild of the whole program after an edit (the first run after an edit takes about 115 ms at 100 definitions; a repeat run 0.3 ms). M4-44b profiles it.
 
 ### M4-44b · L4 · Profile edit-to-running time and list fixes with expected gains
 
