@@ -102,6 +102,25 @@ pub fn unique<M>(parent: &str, children: Vec<(Step, Node<M>)>) -> Vec<(Step, Nod
     kept
 }
 
+/// Gives `new` the element state of `old` (M5-02 section 1.8). Nodes match by kind; a child
+/// matches the old child with the same step under a matched parent. Anything unmatched starts
+/// fresh, and so does a duplicate key, since `unique` left an error node in its place.
+pub fn keep<M>(old: &Node<M>, new: &mut Node<M>) {
+    match (old, new) {
+        (Node::Input { edit: was, .. }, Node::Input { edit, .. }) => *edit = was.clone(),
+        (Node::Row { children: was, .. }, Node::Row { children, .. })
+        | (Node::Col { children: was, .. }, Node::Col { children, .. }) => {
+            let was: BTreeMap<_, _> = was.iter().map(|(step, node)| (step, node)).collect();
+            for (step, child) in children {
+                if let Some(old) = was.get(step) {
+                    keep(old, child);
+                }
+            }
+        }
+        _ => {}
+    }
+}
+
 impl Display for Step {
     fn fmt(&self, f: &mut Formatter) -> fmt::Result {
         match self {

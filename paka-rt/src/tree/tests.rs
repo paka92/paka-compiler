@@ -162,3 +162,159 @@ Col
 ";
     assert_eq!(tree.to_string(), want);
 }
+
+fn col(children: Vec<(Step, Tree)>) -> Tree {
+    Node::Col {
+        gap: 0,
+        children: unique("Col", children),
+    }
+}
+
+fn row(children: Vec<(Step, Tree)>) -> Tree {
+    Node::Row {
+        gap: 0,
+        children: unique("Row", children),
+    }
+}
+
+fn typed(cursor: usize) -> Tree {
+    let edit = Edit {
+        cursor,
+        sel: 0..cursor,
+        preedit: String::new(),
+        focus: cursor == 2,
+    };
+    input("abc", "Draft", edit)
+}
+
+fn fresh() -> Tree {
+    input("abc", "Draft", Edit::default())
+}
+
+fn kept(old: &Tree, mut new: Tree) -> String {
+    keep(old, &mut new);
+    new.to_string()
+}
+
+#[test]
+fn reordered_keyed_inputs_keep_their_own_state() {
+    let old = col(vec![
+        (key("a"), typed(1)),
+        (key("b"), typed(2)),
+        (Step::Int(7), row(vec![(key("in"), typed(3))])),
+    ]);
+    let new = col(vec![
+        (Step::Int(7), row(vec![(key("in"), fresh())])),
+        (key("b"), fresh()),
+        (key("a"), fresh()),
+    ]);
+    let want = "\
+Col
+  Row 7
+    Input 'in' \"abc\" cursor=3 sel=0..3 on_change=Draft
+  Input 'b' \"abc\" cursor=2 sel=0..2 on_change=Draft focus
+  Input 'a' \"abc\" cursor=1 sel=0..1 on_change=Draft
+";
+    assert_eq!(kept(&old, new), want);
+}
+
+#[test]
+fn an_inserted_input_starts_fresh_and_the_others_keep_theirs() {
+    let old = col(vec![(key("a"), typed(1)), (key("b"), typed(2))]);
+    let new = col(vec![
+        (key("a"), fresh()),
+        (key("new"), fresh()),
+        (key("b"), fresh()),
+    ]);
+    let want = "\
+Col
+  Input 'a' \"abc\" cursor=1 sel=0..1 on_change=Draft
+  Input 'new' \"abc\" cursor=0 on_change=Draft
+  Input 'b' \"abc\" cursor=2 sel=0..2 on_change=Draft focus
+";
+    assert_eq!(kept(&old, new), want);
+}
+
+#[test]
+fn a_removed_input_loses_its_state_for_good() {
+    let old = col(vec![(key("a"), typed(1)), (key("b"), typed(2))]);
+    let mut gone = col(vec![(key("a"), fresh())]);
+    keep(&old, &mut gone);
+    let back = col(vec![(key("a"), fresh()), (key("b"), fresh())]);
+    let want = "\
+Col
+  Input 'a' \"abc\" cursor=1 sel=0..1 on_change=Draft
+  Input 'b' \"abc\" cursor=0 on_change=Draft
+";
+    assert_eq!(kept(&gone, back), want);
+}
+
+#[test]
+fn a_kind_change_drops_the_state_inside() {
+    let old = col(vec![
+        (key("a"), typed(1)),
+        (Step::Int(7), row(vec![(key("in"), typed(2))])),
+    ]);
+    let mut swapped = col(vec![
+        (key("a"), text("abc")),
+        (Step::Int(7), col(vec![(key("in"), fresh())])),
+    ]);
+    let want = "\
+Col
+  Text 'a' \"abc\"
+  Col 7
+    Input 'in' \"abc\" cursor=0 on_change=Draft
+";
+    keep(&old, &mut swapped);
+    assert_eq!(swapped.to_string(), want);
+    let back = col(vec![
+        (key("a"), fresh()),
+        (Step::Int(7), row(vec![(key("in"), fresh())])),
+    ]);
+    let want = "\
+Col
+  Input 'a' \"abc\" cursor=0 on_change=Draft
+  Row 7
+    Input 'in' \"abc\" cursor=0 on_change=Draft
+";
+    assert_eq!(kept(&swapped, back), want);
+}
+
+#[test]
+fn an_element_replacing_a_placeholder_starts_fresh() {
+    let old = col(vec![
+        (Step::Place(0), Node::Hole("draft".into())),
+        (Step::LoopHole(1, 0), Node::Hole("row".into())),
+    ]);
+    let new = col(vec![(Step::Place(0), fresh()), (Step::Int(0), fresh())]);
+    let want = "\
+Col
+  Input #0 \"abc\" cursor=0 on_change=Draft
+  Input 0 \"abc\" cursor=0 on_change=Draft
+";
+    assert_eq!(kept(&old, new), want);
+}
+
+#[test]
+fn siblings_sharing_a_key_drop_its_state_and_show_one_error_node() {
+    let old = col(vec![(Step::Int(3), typed(2)), (key("b"), typed(1))]);
+    let mut dup = col(vec![
+        (Step::Int(3), fresh()),
+        (key("b"), fresh()),
+        (Step::Int(3), fresh()),
+    ]);
+    keep(&old, &mut dup);
+    let want = "\
+Col
+  Error 3 \"duplicate key 3: 2 children of Col\"
+  Input 'b' \"abc\" cursor=1 sel=0..1 on_change=Draft
+";
+    assert_eq!(dup.to_string(), want);
+    let fixed = col(vec![(Step::Int(3), fresh()), (key("b"), fresh())]);
+    let want = "\
+Col
+  Input 3 \"abc\" cursor=0 on_change=Draft
+  Input 'b' \"abc\" cursor=1 sel=0..1 on_change=Draft
+";
+    assert_eq!(kept(&dup, fixed), want);
+}

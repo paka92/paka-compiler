@@ -1583,11 +1583,13 @@ or merged during review. Ids with a letter were added during review.
 
 ### M5-17 · L4 · Diff trees by key and keep element state with its key
 
+- status: done
 - needs: M5-02, M5-15
 - flags: none
 - done when: Hand-written cases pass for reorder, insert, remove, kind change, placeholder to element, and duplicate sibling keys.
 - why this level: State silently lands on the wrong element after reorder, insert or kind change; duplicates must show in place.
 - note: Per M5-02: a child matches the old child with the same step (key or place number) and kind, under matched parents only; siblings sharing a key collapse into one error node and their state is dropped.
+- note: Done: `tree::keep(old, new)` copies each Input's cursor, selection, preedit and focus from the old tree into the new one. Nodes match by kind; a child matches the old child with the same step under a matched parent, so anything unmatched, and anything under a kind change, starts fresh. A duplicate key needs no case of its own: `unique` has already put an error node in its place, which matches no Input. Pulling the cursor back when the app sets a shorter text is left to M5-19. Tests: paka-rt/src/tree/tests.rs covers reorder, insert, remove and re-add, kind change of an element and of its parent, an element replacing a placeholder, and duplicate keys followed by the fixed tree.
 
 ### M5-18 · L3 · Route clicks and keystrokes to messages, with focus
 
