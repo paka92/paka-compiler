@@ -1203,6 +1203,7 @@ or merged during review. Ids with a letter were added during review.
 - flags: native-only
 - done when: Fixtures covering early exit, match arms and loops return the hand-written expected values through M4-24's entry in both back ends and finish with a clean ledger. Fixtures with hand-written drop lists pass; the pass is back-end neutral, so release mode (M6) reuses it.
 - why this level: A wrong drop is a silent leak, double free or use after free on some control-flow path.
+- status: done
 - note: Done: `paka/src/owners.rs` tracks the owner of each local and temporary by scope and knows nothing of the machine, so release mode reuses it; its unit tests check hand-written drop lists for statements, scopes, loops, `break`, `continue` and `return`. The emitter moves a temporary into its new owner and copies anything else through `rt.copy`; each owner is dropped through `rt.drop` at its statement's or scope's end, on overwrite, and before `break`, `continue` and `return`. Both walk M4-05 section 10's type records, which `paka_rt::abi::dev::records` builds from the layout table. A `for` name borrows the walked List, a match bind is copied, and a slice copies its view, so its items are deep copies. M4-32's copy on write is gone: List items are written in place. The fixture is the conformance program `examples_owned`, covering early exits, match arms, loops, overwrites and nested owners; `installer/tests/examples.rs` now requires every compiled fixture that finishes to leave no leak and no fault in the ledger. Maps and boxes wait on their tasks.
 
 ### M4-34 · L3 · Emit inout arguments and borrows, including slices of lists
@@ -1211,6 +1212,7 @@ or merged during review. Ids with a letter were added during review.
 - flags: native-only
 - done when: Fixtures for inout fields, list items and slices match the interpreter; the ledger shows no allocation for a borrow.
 - why this level: Borrowed parts must point into the caller's value without copying; writes through inout must land exactly.
+- status: done
 - note: Done: an `inout` argument's operands are evaluated in its position and each place is walked to its address after all arguments (docs/core.md); a whole local held in a variable is stored in a slot for the call and read back after it, and an `inout` parameter not held in memory is a pointer its reads load and its writes store through. A List slice is a view (ptr at its first item, len, cap 0) that a read copies and an argument, a `for` walk or a built-in borrows; M4-05 section 5 records why read-only Strings and Lists pass as pointers rather than prefixes. The fixture is the conformance program `examples_inout`: Int and Bool locals, fields, List items, writes that stay after a `return`, and lent slices. `installer/tests/borrows.rs` counts blocks with the heap's new `made` and finds none for a borrow. A String slice is still a new String, and built-ins with an `inout` parameter (`push`, `pop` and the rest) wait on the tasks that compile them.
 
 ### M4-36 · L4 · Drive compiled headless apps: first message, effects, console and file grants
@@ -1227,6 +1229,8 @@ or merged during review. Ids with a letter were added during review.
 - flags: native-only
 - done when: A compile counter shows one compile per body edit; reverting an edit compiles nothing; a failed compile installs nothing. A signature edit that leaves its users valid recompiles exactly the edited definition and its direct users, checked against a hand-written set by the compile counter; the cache key includes the interface hash of every definition used.
 - why this level: Glue from change set to slots; cache keys must include hashes, compiler version, target and mode.
+- status: done
+- note: Done: `paka::emit::Cache` keys each definition by SHA-256 of compiler version, target, mode and its Cranelift IR (M4-05 §7), compiles only new keys and keeps nothing from a refused build. `paka_installer::Loader` installs only code it has not seen, in one mapping, and returns the whole slot group for one swap. Trap sites now count from the definition's first site (`Program::place`), so an edit elsewhere leaves a definition's code alone. `installer/tests/rebuild.rs` checks one compile per body edit, none on revert, nothing installed on a refusal, and {half, same} recompiled after `half` changes its result type. Adding a definition or a new type still recompiles the definitions numbered after it.
 
 ### M4-37b · L3 · Emit function values and variant constructors used as functions
 

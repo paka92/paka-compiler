@@ -36,8 +36,8 @@ fn id(p: &Program, name: &str) -> usize {
 
 /// A trap record position as (definition, line, column).
 fn place(p: &Program, at: u64) -> (String, usize, usize) {
-    let site = &p.sites[(at & 0xFFFF_FFFF) as usize];
-    (p.fns[(at >> 32) as usize].name.clone(), site.line, site.col)
+    let (f, site) = p.place(at);
+    (f.name.clone(), site.line, site.col)
 }
 
 /// The trap's kind, its position and then each frame's.

@@ -60,7 +60,13 @@ impl Emitter {
 
     /// Machine code for definition `def`: a function, or example `def - fns.len()`.
     pub fn code(&mut self, p: &Program, l: &Layouts, def: usize) -> Result<Vec<u8>, Refusal> {
-        self.context.func = self.ir(p, l, def)?;
+        let ir = self.ir(p, l, def)?;
+        self.compile(ir)
+    }
+
+    /// Machine code for a definition's IR.
+    fn compile(&mut self, ir: Function) -> Result<Vec<u8>, Refusal> {
+        self.context.func = ir;
         let code = match self
             .context
             .compile(&*self.isa, &mut ControlPlane::default())
@@ -75,10 +81,7 @@ impl Emitter {
 
     /// The Cranelift IR of definition `def`.
     pub(crate) fn ir(&mut self, p: &Program, l: &Layouts, def: usize) -> Result<Function, Refusal> {
-        let f = p
-            .fns
-            .get(def)
-            .unwrap_or_else(|| &p.examples[def - p.fns.len()]);
+        let f = p.def(def);
         let name = UserFuncName::user(0, def as u32);
         let mut func = Function::with_name_signature(name, signature(p, l, f)?);
         let built = Gen::build(&*self.isa, &mut func, &mut self.builder, (p, l), def, f);
@@ -164,6 +167,8 @@ struct Gen<'a> {
     locals: &'a [Ty],
     params: &'a [Param],
     def: usize,
+    /// The definition's first site.
+    first: Site,
     ctx: Value,
     out: Option<Value>,
     vars: Vec<Variable>,
@@ -223,6 +228,7 @@ impl<'a> Gen<'a> {
             locals: &f.locals,
             params: &f.params,
             def,
+            first: f.site,
             ctx: params[0],
             out: f.result.map(|_| params[params.len() - 1]),
             vars,
@@ -302,9 +308,10 @@ impl<'a> Gen<'a> {
         self.b.switch_to_block(ok);
     }
 
-    /// `definition << 32 | site`, as the trap record and frames hold it.
+    /// `definition << 32 | offset`, the offset counted from the definition's first site, so an
+    /// edit elsewhere leaves the code alone; the trap record and frames hold it.
     fn site(&self, site: Site) -> u64 {
-        (self.def << 32 | site) as u64
+        (self.def << 32 | (site - self.first)) as u64
     }
 
     /// Calls `rt.trap(ctx, kind, at, a, b, c)` and returns status 1.
@@ -875,6 +882,8 @@ fn what(kind: &ExprKind) -> &'static str {
     }
 }
 
+mod cache;
+pub use cache::Cache;
 mod owned;
 #[cfg(test)]
 mod tests;

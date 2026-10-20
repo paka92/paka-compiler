@@ -13,7 +13,7 @@ pub type EnumId = usize;
 /// Parameters first, then each binding in order of appearance.
 pub type Local = usize;
 
-#[derive(Debug, PartialEq)]
+#[derive(Debug, Default, PartialEq)]
 pub struct Program {
     /// Each file's own name and the line it starts on, in program order (M2-02 section 1.3).
     pub files: Vec<(String, usize)>,
@@ -36,6 +36,18 @@ impl Program {
                 self.types.len() - 1
             }
         }
+    }
+
+    /// Definition `def`: a function, or example `def - fns.len()`.
+    pub fn def(&self, def: usize) -> &Fn {
+        (self.fns.get(def)).unwrap_or_else(|| &self.examples[def - self.fns.len()])
+    }
+
+    /// The definition and site that compiled code's `def << 32 | offset` names: the offset counts
+    /// from the definition's first site (M4-05 section 6).
+    pub fn place(&self, at: u64) -> (&Fn, &TrapSite) {
+        let f = self.def((at >> 32) as usize);
+        (f, &self.sites[f.site + (at & 0xFFFF_FFFF) as usize])
     }
 }
 

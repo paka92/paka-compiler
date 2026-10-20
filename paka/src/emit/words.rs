@@ -240,7 +240,7 @@ impl Gen<'_> {
         Ok(match op {
             Bin::Join(site) => self.text(JOIN, *site, &[x, y]),
             _ => {
-                let order = self.text(COMPARE, 0, &[x, y]);
+                let order = self.text(COMPARE, self.first, &[x, y]);
                 let zero = self.int_const(0);
                 self.compare(op, false, order, zero)
             }

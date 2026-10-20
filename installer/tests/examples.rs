@@ -26,9 +26,9 @@ fn an_unreached_hole_runs_and_a_reached_one_traps_naming_it() {
     assert_eq!((status, out), (0, 3));
     let ((status, _), trap) = run(2);
     assert_eq!((status, trap.kind), (1, rt::HOLE));
-    let hole = &p.sites[(trap.site & 0xFFFF_FFFF) as usize];
+    let hole = p.place(trap.site).1;
     assert_eq!(hole.hole.as_deref(), Some("negative"));
-    let caller = |at: &u64| p.fns[(at >> 32) as usize].name.as_str();
+    let caller = |&at: &u64| p.place(at).0.name.as_str();
     assert_eq!(caller(&trap.site), "pick");
     assert_eq!(
         trap.frames.iter().map(caller).collect::<Vec<_>>(),
