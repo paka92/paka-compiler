@@ -64,6 +64,9 @@ const KINDS: &[(&str, bool, bool)] = &[
     ("missing-key", false, false),
     ("key-on-root", false, false),
     ("duplicate-key", false, false),
+    ("ui-outside-example", false, false),
+    ("bad-ui-start", false, false),
+    ("bad-ui-path", false, false),
 ];
 
 fn declared(code: &str) -> &'static (&'static str, bool, bool) {

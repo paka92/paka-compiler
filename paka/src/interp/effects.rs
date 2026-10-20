@@ -4,6 +4,7 @@
 use super::value::{FnKey, Value};
 use crate::core_form::{App, Effect as Number};
 use paka_rt::effects::{self, Effect, Next};
+use paka_rt::route::Event;
 use std::collections::VecDeque;
 use std::mem;
 
@@ -17,10 +18,12 @@ const WRITE_FILE: usize = Number::WriteFile as usize;
 const EXIT: usize = Number::Exit as usize;
 const EXIT_WITH: usize = Number::ExitWith as usize;
 
-/// A message waiting its turn: given, or an answer whose function is applied at the front.
+/// A message waiting its turn: given, an answer whose function is applied at the front, or a
+/// visual app's event, worked out against the tree of its turn.
 pub enum Queued {
     Message(Value),
     Answer(FnKey, Value),
+    Event(Event),
 }
 
 /// Performs the effects in order, queueing the answers; `Some` when one ends the run, `None`

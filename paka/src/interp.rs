@@ -15,6 +15,7 @@ use std::io::Write;
 use std::sync::Once;
 use std::{panic, thread};
 use value::{Items, Message, Value};
+pub use windowless::Windowless;
 
 mod builtin;
 mod effects;
@@ -28,6 +29,9 @@ mod text;
 mod value;
 #[cfg(test)]
 mod view_tests;
+mod windowless;
+#[cfg(test)]
+mod windowless_tests;
 #[cfg(test)]
 mod world_tests;
 
@@ -60,7 +64,7 @@ pub fn run_in(
     err: &mut impl Write,
 ) -> u8 {
     let app = core.app.as_ref().expect("a program with an app");
-    let (status, line) = match start_message(core, app, args) {
+    let (status, line) = match start_message(core, app, headless(app), args) {
         Ok(start) => serve(core, app, start, world),
         Err(stop) => stop,
     };
@@ -68,14 +72,14 @@ pub fn run_in(
     status
 }
 
-/// The start variant with its fields filled from the arguments, or the usage line.
-fn start_message(core: &Program, app: &App, args: &[OsString]) -> Result<Value, End> {
-    let fields: Vec<_> = (start_fields(core, app).iter())
+/// Variant `start` with its fields filled from the arguments, or the usage line.
+fn start_message(core: &Program, app: &App, start: usize, args: &[OsString]) -> Result<Value, End> {
+    let fields: Vec<_> = (start_fields(core, app, start).iter())
         .map(|f| f.name.as_str())
         .collect();
     let texts = paka_rt::effects::arguments(&app.name, &fields, args)?;
     let items = texts.into_iter().map(|t| Value::Str(t.into())).collect();
-    Ok(Value::Variant(app.start, Items(items)))
+    Ok(Value::Variant(start, Items(items)))
 }
 
 /// The message loop: the handler answers each message in turn and its effects are performed.
@@ -88,6 +92,7 @@ fn serve(core: &Program, app: &App, start: Value, world: &mut (impl World + Send
             let message = match next {
                 Queued::Message(message) => message,
                 Queued::Answer(f, arg) => machine.answer(f, arg)?,
+                Queued::Event(_) => unreachable!("a headless app has no events"),
             };
             let (mut effects, next) = machine.update(app, state, message)?;
             state = next;
@@ -106,17 +111,24 @@ fn guest<T: Send>(
     app: &App,
     f: impl FnOnce(&mut Machine) -> Done<T> + Send,
 ) -> Result<T, End> {
-    let internal = |reason: &str| (4, format!("{}: internal error: {reason}\n", app.name));
     match on_big_stack(|| f(&mut Machine::new(core))) {
         Ok(Ok(done)) => Ok(done),
-        Ok(Err(Stop::Trap(trap))) => Err((3, report(core, &app.name, &trap))),
-        Ok(Err(Stop::Internal(reason))) | Err(reason) => Err(internal(&reason)),
-        Ok(Err(_)) => unreachable!("a loop holds its break"),
+        Ok(Err(stop)) => Err(ended(core, app, stop)),
+        Err(reason) => Err(ended(core, app, Stop::Internal(reason))),
+    }
+}
+
+/// The end a trap or a fault brings.
+fn ended(core: &Program, app: &App, stop: Stop) -> End {
+    match stop {
+        Stop::Trap(trap) => (3, report(core, &app.name, &trap)),
+        Stop::Internal(reason) => (4, format!("{}: internal error: {reason}\n", app.name)),
+        _ => unreachable!("a loop holds its break"),
     }
 }
 
 /// The fields of the start message's variant.
-fn start_fields<'a>(core: &'a Program, app: &App) -> &'a [Field] {
+fn start_fields<'a>(core: &'a Program, app: &App, start: usize) -> &'a [Field] {
     let message = core.fns[app.update]
         .params
         .last()
@@ -124,7 +136,12 @@ fn start_fields<'a>(core: &'a Program, app: &App) -> &'a [Field] {
     let Type::Enum(msg) = core.types[message.ty] else {
         unreachable!("the message is a user enum");
     };
-    &core.enums[msg].variants[app.start].fields
+    &core.enums[msg].variants[start].fields
+}
+
+/// The start variant of an app with no view, which always has one.
+fn headless(app: &App) -> usize {
+    app.start.expect("a headless app has a start")
 }
 
 /// Runs `f` on a thread with room for the deepest call chain; the reason if the thread cannot

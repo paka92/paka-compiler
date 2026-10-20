@@ -78,6 +78,7 @@ pub fn resolve<'a>(path: &'a str, program: &'a Program<'a>) -> Res<Resolved> {
         uses: BTreeMap::new(),
         entries: BTreeMap::new(),
         reads: RefCell::default(),
+        example: false,
     };
     for (i, def) in program.defs.iter().enumerate() {
         resolver
@@ -116,7 +117,9 @@ fn builtins<'a>() -> BTreeMap<&'a str, (Kind, Binding)> {
         .iter()
         .map(|&(kind, row)| (kind, builtins::name(row)));
     let elements = builtins::ELEMENTS.iter().map(|e| (Kind::Fn, e.name));
-    let ui = builtins::UI.iter().map(|&name| (Kind::Other, name));
+    let ui = builtins::UI
+        .iter()
+        .map(|&(kind, row)| (kind, builtins::name(row)));
     let all = rows
         .chain(elements)
         .chain(ui)
@@ -210,6 +213,8 @@ struct Resolver<'a> {
     uses: BTreeMap<Pos, Binding>,
     entries: BTreeMap<Pos, Diagnostic>,
     reads: RefCell<BTreeSet<String>>,
+    /// Whether the definition being resolved is an example, the one place for UI names.
+    example: bool,
 }
 
 impl<'a> Resolver<'a> {
@@ -261,6 +266,15 @@ impl<'a> Resolver<'a> {
     fn record(&mut self, at: Pos, found: Binding) -> Res {
         self.uses.insert(at, found);
         Ok(())
+    }
+
+    /// A UI name is for example bodies only (M5-06 section 2).
+    fn ui_only(&self, name: &str, at: Pos) -> Res {
+        if self.example || !builtins::is_ui(name) {
+            return Ok(());
+        }
+        let message = format!("{name} is only for example bodies");
+        Err(self.fail(at, name.len(), "ui-outside-example", message))
     }
 
     /// Looks `name` up in the pool and records the use.
@@ -320,7 +334,12 @@ impl<'a> Resolver<'a> {
                 result.iter().try_for_each(|t| r.ty(t))?;
                 r.block(body)
             }),
-            Def::Example { body, .. } => self.block(body),
+            Def::Example { body, .. } => {
+                self.example = true;
+                let done = self.block(body);
+                self.example = false;
+                done
+            }
             Def::App { name, entries } => {
                 self.app(name.text, entries);
                 Ok(())
@@ -448,6 +467,7 @@ impl<'a> Resolver<'a> {
 
     fn ty_name(&mut self, name: &str, at: Pos) -> Res {
         match self.pool_use(name, at, TYPES) {
+            Some(Binding::Builtin(b)) => self.ui_only(b, at),
             Some(_) => Ok(()),
             None => {
                 let near = self.names(of(TYPES));
@@ -560,7 +580,19 @@ impl<'a> Resolver<'a> {
             ExprKind::Binary(_, _, _, x) | ExprKind::Range(_, x) | ExprKind::Index(_, x) => {
                 self.expr(x)
             }
-            ExprKind::Call(_, args) => args.iter().try_for_each(|a| self.expr(&a.value)),
+            // `ui_start` takes an app's bare name (M5-06 section 2).
+            ExprKind::Call(callee, args) => args.iter().try_for_each(|a| match &a.value.kind {
+                ExprKind::Name(name)
+                    if matches!(
+                        self.uses.get(&callee.at),
+                        Some(Binding::Builtin("ui_start"))
+                    ) =>
+                {
+                    let app = |d: &Def| matches!(d, Def::App { .. });
+                    self.own_def(name, a.value.at, app, "not an app of the program")
+                }
+                _ => self.expr(&a.value),
+            }),
             _ => Ok(()),
         }
     }
@@ -618,6 +650,10 @@ impl<'a> Resolver<'a> {
         let local = self.locals.iter().rfind(|l| l.0 == name);
         let local = local.map(|&(_, declared)| Binding::Local(declared));
         match local.or_else(|| self.pool_get(name, of(VALUES))) {
+            Some(found @ Binding::Builtin(b)) => {
+                self.ui_only(b, at)?;
+                self.record(at, found)
+            }
             Some(found) => self.record(at, found),
             None => {
                 if let Some(message) = habit(name) {

@@ -67,7 +67,11 @@ fn install(dev: &mut Dev, files: &[(String, String)]) -> Option<Program> {
 fn run(dev: &Dev, interpreted: Option<&Program>, request: &Value) -> Value {
     let program = interpreted.unwrap_or(&dev.program);
     let app = text(request, "app");
-    if program.app.as_ref().is_none_or(|a| a.name != app) {
+    if program
+        .app
+        .as_ref()
+        .is_none_or(|a| a.name != app || a.view.is_some())
+    {
         return Value::Null;
     }
     let args: Vec<OsString> = (items(request.get("args")).iter())

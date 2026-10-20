@@ -41,7 +41,7 @@ node_kinds! {
 
 /// Every distinct name of the built-in table, sorted.
 pub fn builtin_names() -> Vec<&'static str> {
-    let rows = builtins::ROWS.iter();
+    let rows = builtins::ROWS.iter().chain(builtins::UI);
     let names: BTreeSet<_> = rows.map(|(_, row)| builtins::name(row)).collect();
     names.into_iter().collect()
 }
@@ -59,6 +59,13 @@ pub fn uses(program: &Program) -> Uses {
     let mut uses = Uses::default();
     program.defs.iter().for_each(|d| uses.def(d));
     uses
+}
+
+/// The names one definition writes.
+pub fn names(def: &Def) -> BTreeSet<String> {
+    let mut uses = Uses::default();
+    uses.def(def);
+    uses.names
 }
 
 impl Uses {

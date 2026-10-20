@@ -305,7 +305,7 @@ type BuiltIns = (
 
 fn built_ins(types: &mut Types) -> BuiltIns {
     let (mut fns, mut variants) = (BTreeMap::new(), BTreeMap::new());
-    for &(kind, text) in builtins::ROWS {
+    for &(kind, text) in builtins::ROWS.iter().chain(builtins::UI) {
         let name = builtins::name(text);
         match kind {
             Kind::Fn => fns

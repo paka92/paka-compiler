@@ -1,7 +1,7 @@
 //! Hand-written programs and the signature table they must give.
 
 use super::*;
-use crate::builtins::{Kind, ROWS, arity, name};
+use crate::builtins::{Kind, ROWS, UI, arity, name};
 use crate::parser::parse;
 use crate::resolve::resolve;
 use std::collections::BTreeSet;
@@ -867,10 +867,10 @@ fn built_in_rows() -> Vec<String> {
 }
 
 #[test]
-fn the_table_holds_63_functions_in_76_rows_and_9_variants() {
+fn the_table_holds_69_functions_in_82_rows_and_9_variants() {
     with("", |_, t| {
-        assert_eq!(t.fns.len(), 63);
-        assert_eq!(t.fns.values().map(Vec::len).sum::<usize>(), 76);
+        assert_eq!(t.fns.len(), 69);
+        assert_eq!(t.fns.values().map(Vec::len).sum::<usize>(), 82);
         assert_eq!(t.variants.len(), 9);
     });
 }
@@ -967,6 +967,11 @@ const DECIDED: [&str; 85] = [
 #[test]
 fn the_rows_are_exactly_the_signatures_of_the_decision() {
     let (mut have, mut want) = (built_in_rows(), DECIDED.map(String::from).to_vec());
+    want.extend(
+        UI.iter()
+            .filter(|r| r.0 == Kind::Fn)
+            .map(|r| r.1.to_string()),
+    );
     have.sort();
     want.sort();
     assert_eq!(have, want);
@@ -1017,6 +1022,7 @@ fn the_rows_follow_the_rules_of_the_decision() {
         }
         let no_result = [
             "append", "extend", "insert", "swap", "reverse", "sort", "sort_by", "remove", "assert",
+            "ui_click", "ui_type",
         ];
         for (name, sigs) in &t.fns {
             let gives = sigs.iter().all(|s| s.result.is_some());
@@ -1032,11 +1038,12 @@ fn the_names_of_the_table_are_the_names_the_resolver_binds() {
         table.extend(t.fns.keys().copied());
         table.extend(t.variants.keys().copied());
     });
-    let named = |kind| ROWS.iter().filter(move |r| r.0 == kind).map(|r| name(r.1));
+    let rows = || ROWS.iter().chain(UI);
+    let named = |kind| rows().filter(move |r| r.0 == kind).map(|r| name(r.1));
     let mut want: BTreeSet<_> = named(Kind::Fn).chain(named(Kind::Variant)).collect();
     assert_eq!(table, want);
     want.extend(named(Kind::Type).chain(named(Kind::Grant)));
-    assert_eq!(want.len(), 84);
+    assert_eq!(want.len(), 91);
 }
 
 #[test]

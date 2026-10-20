@@ -4,7 +4,7 @@
 
 use super::{Session, version};
 use crate::ast::Def;
-use crate::builtins::{self, ELEMENTS, ROWS};
+use crate::builtins::{self, ELEMENTS, ROWS, UI};
 use crate::lexer::{Kind, Lexer};
 use crate::parser::parse_def;
 use crate::serve::{Call, Failure, Reply, line_len};
@@ -128,7 +128,8 @@ impl Session {
         let variant =
             (self.workspace.defs()).any(|(names, _)| names[1..].iter().any(|n| n == name));
         let builtin = ROWS.iter().any(|(_, row)| builtins::name(row) == name)
-            || builtins::element(name).is_some();
+            || builtins::element(name).is_some()
+            || builtins::is_ui(name);
         if user.iter().any(|n| n == name) {
             false
         } else if variant || (builtin && !defined) {
@@ -140,7 +141,7 @@ impl Session {
     }
 }
 
-/// The built-in rows, then the elements.
+/// The built-in rows, then the elements, then the UI rows.
 fn builtin_entries<'a>() -> impl Iterator<Item = Entry<'a>> {
     let row = |&(_, row): &(_, &'static str)| Entry {
         name: builtins::name(row),
@@ -154,7 +155,9 @@ fn builtin_entries<'a>() -> impl Iterator<Item = Entry<'a>> {
         sig: e.sig().into(),
         version: None,
     };
-    ROWS.iter().map(row).chain(ELEMENTS.iter().map(element))
+    (ROWS.iter().map(row))
+        .chain(ELEMENTS.iter().map(element))
+        .chain(UI.iter().map(row))
 }
 
 /// The reply that holds the longest prefix of `entries` that fits `budget`, and how many it left

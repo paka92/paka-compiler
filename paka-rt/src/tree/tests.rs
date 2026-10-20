@@ -318,3 +318,31 @@ Col
 ";
     assert_eq!(kept(&dup, fixed), want);
 }
+
+#[test]
+fn paths_read_back_the_steps_they_print() {
+    let steps = [
+        Step::Int(-7),
+        Step::Str("a/'b\\".into()),
+        Step::Place(1),
+        Step::LoopHole(4, 0),
+    ];
+    assert_eq!(path(r"-7/'a/\'b\\'/#1/#4.0"), Some(steps.to_vec()));
+    assert_eq!(path(""), Some(vec![]));
+    for bad in [
+        "/", "1/", "/1", "01", "+1", "-0", "#", "#1.", "'a", r"'\a'", "'a'b", "x",
+    ] {
+        assert_eq!(path(bad), None, "{bad}");
+    }
+}
+
+#[test]
+fn a_kept_input_follows_a_shorter_text_the_app_set() {
+    let old = col(vec![(key("a"), typed(3))]);
+    let new = col(vec![(key("a"), input("ab", "Draft", Edit::default()))]);
+    let want = "\
+Col
+  Input 'a' \"ab\" cursor=2 on_change=Draft
+";
+    assert_eq!(kept(&old, new), want);
+}

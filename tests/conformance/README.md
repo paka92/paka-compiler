@@ -555,6 +555,7 @@ full in the folder. `(Rn)` marks a case that follows a reading in the Settled re
 | no app: `check` passes, `run` and `build` give `no-app` after the program is checked | `no_app_check_ok`, `no_app_run`, `no_app_build`, `no_app_empty_file`, `no_app_error_first`, `no_app_check_error_first` (R7) |
 | two apps stay a check error | `multiple_apps`, `multiple_apps_check` |
 | a visual app (M5-01): the counter sample checks clean | `view_counter_check` |
+| UI examples (M5-06): the to-do sample and its examples check clean | `ui_todo_check` |
 
 ### Arguments and the first message (M2-15 §1.4)
 
@@ -787,6 +788,9 @@ construct (the target `c.shape.w`, the operand or write `&xs`).
 | `missing-key` | `missing_key` | 19:7 | M5-02; `tests/cases/check/view_loop_child_without_key` |
 | `key-on-root` | `key_on_root` | 16:63 | M5-02; `tests/cases/check/view_key_on_root` |
 | `duplicate-key` | `duplicate_key` | 19:28 | M5-02; `tests/cases/check/view_duplicate_key` |
+| `ui-outside-example` | `ui_outside_example` | 27:15 | M5-06 §2; `tests/cases/check/ui_type_in_fn` |
+| `bad-ui-start` | `bad_ui_start` | 14:21 | M5-06 §2; `tests/cases/check/ui_start_string` |
+| `bad-ui-path` | `bad_ui_path` | 28:17 | M5-06 §1.2; `tests/cases/check/ui_bad_path` |
 
 Not in the table, since a program cannot reach them in a file:
 

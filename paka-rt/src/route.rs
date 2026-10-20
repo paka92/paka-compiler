@@ -63,7 +63,8 @@ fn at<'a, M>(node: &'a mut Node<M>, path: &[Step]) -> Option<&'a mut Node<M>> {
     at(&mut child.1, rest)
 }
 
-fn focused<M>(node: &mut Node<M>) -> Option<&mut Node<M>> {
+/// The Input that holds focus, if any.
+pub fn focused<M>(node: &mut Node<M>) -> Option<&mut Node<M>> {
     if matches!(node, Node::Input { edit, .. } if edit.focus) {
         return Some(node);
     }

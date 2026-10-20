@@ -173,7 +173,8 @@ fn light_paka_lowers() {
         app: Some(App {
             name: "light".into(),
             state: None,
-            start: 0,
+            start: Some(0),
+            view: None,
             update: 0,
             grants: BTreeSet::from([Grant::Console]),
         }),
@@ -998,7 +999,8 @@ fn an_app_with_state_an_inout_handler_and_an_example() {
     let app = App {
         name: "tally".into(),
         state: Some(ex(2, ExprKind::Record(0, fields))),
-        start: 0,
+        start: Some(0),
+        view: None,
         update: 0,
         grants: BTreeSet::from([Grant::Console, Grant::ReadFiles]),
     };

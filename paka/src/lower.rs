@@ -9,6 +9,7 @@ use crate::core_form::{
 };
 use crate::resolve::{Binding, Resolved};
 use crate::sig::{self, Item, Node, Table};
+use crate::{builtins, coverage};
 use std::collections::{BTreeMap, BTreeSet};
 
 mod arms;
@@ -93,6 +94,7 @@ fn ids(program: &ast::Program) -> Vec<usize> {
             Def::Type { .. } => 0,
             Def::Enum { .. } => 1,
             Def::Fn { .. } | Def::View { .. } => 2,
+            Def::Example { .. } if drives_ui(def) => return 0,
             Def::Example { .. } => 3,
             Def::App { .. } => return 0,
         };
@@ -100,6 +102,11 @@ fn ids(program: &ast::Program) -> Vec<usize> {
         counts[list] - 1
     };
     program.defs.iter().map(place).collect()
+}
+
+/// An example that drives a UI runs from a later task (M5-22).
+fn drives_ui(def: &Def) -> bool {
+    matches!(def, Def::Example { .. }) && coverage::names(def).iter().any(|n| builtins::is_ui(n))
 }
 
 impl<'a> Cx<'_, 'a> {
@@ -129,6 +136,7 @@ impl<'a> Cx<'_, 'a> {
                 let f = self.function(name, params, Some(sig), body);
                 self.core.fns.push(f);
             }
+            (Def::Example { .. }, _) if drives_ui(def) => {}
             (Def::Example { name, body }, _) => {
                 let f = self.function(name, &[], None, body);
                 self.core.examples.push(f);
@@ -142,9 +150,6 @@ impl<'a> Cx<'_, 'a> {
                 let f = self.function(name, params, Some(sig), body);
                 self.core.fns.push(f);
             }
-            // A visual app runs from a later task (M5-20).
-            (Def::App { entries, .. }, _)
-                if entries.iter().any(|e| matches!(e, Entry::View(..))) => {}
             (Def::App { name, entries }, _) => {
                 let app = self.app(name, entries);
                 self.core.app = Some(app);
@@ -242,8 +247,9 @@ impl<'a> Cx<'_, 'a> {
         let mut app = App {
             name: name.text.into(),
             state: None,
-            start: 0,
+            start: None,
             update: 0,
+            view: None,
             grants: Default::default(),
         };
         for entry in entries {
@@ -253,19 +259,22 @@ impl<'a> Cx<'_, 'a> {
                     let Some(Binding::Variant(_, v)) = self.resolved.get(e.at) else {
                         unreachable!("start names a variant");
                     };
-                    app.start = v;
+                    app.start = Some(v);
                 }
-                Entry::Update(_, n) => {
-                    let Some(Binding::Def(f)) = self.resolved.get(n.at) else {
-                        unreachable!("update names a function");
-                    };
-                    app.update = self.ids[f];
-                }
+                Entry::Update(_, n) => app.update = self.def(n),
+                Entry::View(_, n) => app.view = Some(self.def(n)),
                 Entry::Grants(_, names) => app.grants = names.iter().map(grant).collect(),
-                Entry::View(..) => unreachable!("a visual app is not lowered"),
             }
         }
         app
+    }
+
+    /// The function or view `n` names.
+    fn def(&self, n: &ast::Name) -> usize {
+        let Some(Binding::Def(f)) = self.resolved.get(n.at) else {
+            unreachable!("an app entry names a definition");
+        };
+        self.ids[f]
     }
 
     /// The record `n` names, built from its defaults.

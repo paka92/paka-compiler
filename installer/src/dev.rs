@@ -167,7 +167,8 @@ impl Dev {
         let Type::Enum(e) = p.types[msg] else {
             unreachable!("the message is a user enum");
         };
-        let fields = &p.enums[e].variants[a.start].fields;
+        let start = a.start.expect("the dev back end refuses a visual app");
+        let fields = &p.enums[e].variants[start].fields;
         let names: Vec<_> = fields.iter().map(|f| f.name.as_str()).collect();
         let typed = |t: usize| (self.records[t], self.layouts.get(t).size as u64);
         let state = paka::emit::state_slot(p).map(|def| {
@@ -179,7 +180,7 @@ impl Dev {
             grants: &a.grants,
             update: a.update,
             state,
-            start: a.start as u64,
+            start: start as u64,
             message: typed(msg),
             effects: self.records[effects],
         };

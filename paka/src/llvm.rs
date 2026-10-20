@@ -25,6 +25,7 @@ pub enum Effect {
 /// The M1 view of `core`, or `None` when it holds what the back end cannot build.
 pub fn view(core: &Program) -> Option<M1> {
     let app = core.app.as_ref()?;
+    let start = app.start?;
     let update = &core.fns[app.update];
     if app.state.is_some() || !update.body.stmts.is_empty() {
         return None;
@@ -32,7 +33,7 @@ pub fn view(core: &Program) -> Option<M1> {
     let Type::Enum(msg) = core.types[update.params.last()?.ty] else {
         return None;
     };
-    if !core.enums[msg].variants[app.start].fields.is_empty() {
+    if !core.enums[msg].variants[start].fields.is_empty() {
         return None;
     }
     let ExprKind::List(items) = &update.body.value.as_ref()?.kind else {
@@ -40,7 +41,7 @@ pub fn view(core: &Program) -> Option<M1> {
     };
     Some(M1 {
         app: app.name.clone(),
-        start: app.start,
+        start,
         console: app.grants.contains(&Grant::Console),
         update_name: update.name.clone(),
         update: items.iter().map(effect).collect::<Option<_>>()?,

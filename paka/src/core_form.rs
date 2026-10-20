@@ -122,8 +122,10 @@ pub struct App {
     /// The state record literal with every default written in.
     pub state: Option<Expr>,
     /// A variant of the message enum, the type of `update`'s last parameter.
-    pub start: usize,
+    pub start: Option<usize>,
     pub update: FnId,
+    /// The view of a visual app.
+    pub view: Option<FnId>,
     pub grants: BTreeSet<Grant>,
 }
 

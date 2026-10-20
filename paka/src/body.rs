@@ -27,6 +27,7 @@ mod stmt;
 #[cfg(test)]
 mod tests;
 mod text;
+mod ui;
 mod view;
 
 /// The result of checking a program's bodies, one entry per definition.

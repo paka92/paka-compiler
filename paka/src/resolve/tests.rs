@@ -327,7 +327,7 @@ fn every_built_in_name_is_taken() {
 #[test]
 fn ui_names_are_taken_from_headless_programs() {
     let elements = builtins::ELEMENTS.iter().map(|e| e.name);
-    for name in elements.chain(builtins::UI.iter().copied()) {
+    for name in elements.chain(builtins::UI.iter().map(|&(_, row)| builtins::name(row))) {
         let template = if name.starts_with(char::is_uppercase) {
             "enum Msg { @ }"
         } else {

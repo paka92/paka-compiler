@@ -66,10 +66,14 @@ fn read_and_check(file: &OsStr) -> (Source, Checked) {
     (source, found)
 }
 
-/// The core form of a checked program that holds an app, and its holes.
+/// The core form of a checked program that holds a headless app, and its holes.
 fn load(path: &str, found: Checked) -> Result<(Program, Vec<Hole>), Diagnostic> {
     let (core, holes, _) = found?;
-    match core.app {
+    match &core.app {
+        Some(app) if app.view.is_some() => {
+            let why = "a visual app is not run or built from the command line yet";
+            Err(Diagnostic::tool(path, "no-app", why))
+        }
         Some(_) => Ok((core, holes)),
         None => Err(Diagnostic::tool(path, "no-app", "the program has no app")),
     }

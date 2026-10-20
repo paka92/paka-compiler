@@ -104,10 +104,21 @@ pub fn unique<M>(parent: &str, children: Vec<(Step, Node<M>)>) -> Vec<(Step, Nod
 
 /// Gives `new` the element state of `old` (M5-02 section 1.8). Nodes match by kind; a child
 /// matches the old child with the same step under a matched parent. Anything unmatched starts
-/// fresh, and so does a duplicate key, since `unique` left an error node in its place.
+/// fresh, and so does a duplicate key, since `unique` left an error node in its place. A kept
+/// Input follows a text the app set (M5-03 section 1.3).
 pub fn keep<M>(old: &Node<M>, new: &mut Node<M>) {
     match (old, new) {
-        (Node::Input { edit: was, .. }, Node::Input { edit, .. }) => *edit = was.clone(),
+        (
+            Node::Input {
+                text: before,
+                edit: was,
+                ..
+            },
+            Node::Input { text, edit, .. },
+        ) => {
+            *edit = was.clone();
+            edit.follow(before, text, None);
+        }
         (Node::Row { children: was, .. }, Node::Row { children, .. })
         | (Node::Col { children: was, .. }, Node::Col { children, .. }) => {
             let was: BTreeMap<_, _> = was.iter().map(|(step, node)| (step, node)).collect();
@@ -130,6 +141,48 @@ impl Display for Step {
             Step::LoopHole(n, r) => write!(f, "#{n}.{r}"),
         }
     }
+}
+
+/// The steps of a UI path (M5-06 point 1.2), if it is written the one way `Step` prints them,
+/// joined by `/`. The root is the empty path.
+pub fn path(text: &str) -> Option<Vec<Step>> {
+    let mut steps = Vec::new();
+    let mut rest = text;
+    while !rest.is_empty() {
+        if !steps.is_empty() {
+            rest = rest.strip_prefix('/')?;
+        }
+        let (step, left) = step(rest)?;
+        steps.push(step);
+        rest = left;
+    }
+    let printed: Vec<String> = steps.iter().map(Step::to_string).collect();
+    (printed.join("/") == text).then_some(steps)
+}
+
+/// The first step of `text` and what follows it.
+fn step(text: &str) -> Option<(Step, &str)> {
+    if let Some(quoted) = text.strip_prefix('\'') {
+        let mut key = String::new();
+        let mut chars = quoted.char_indices();
+        while let Some((i, c)) = chars.next() {
+            match c {
+                '\'' => return Some((Step::Str(key), &quoted[i + 1..])),
+                '\\' => key.push(chars.next()?.1),
+                c => key.push(c),
+            }
+        }
+        return None;
+    }
+    let (word, rest) = text.split_at(text.find('/').unwrap_or(text.len()));
+    let step = match word.strip_prefix('#') {
+        Some(place) => match place.split_once('.') {
+            Some((n, r)) => Step::LoopHole(n.parse().ok()?, r.parse().ok()?),
+            None => Step::Place(place.parse().ok()?),
+        },
+        None => Step::Int(word.parse().ok()?),
+    };
+    Some((step, rest))
 }
 
 /// The tree text: one line per node, two spaces deeper than its parent, each ending in a line

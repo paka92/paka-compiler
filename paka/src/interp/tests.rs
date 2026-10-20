@@ -271,7 +271,8 @@ fn program(mut fns: Vec<Func>, mut update: Func) -> Program {
         app: Some(App {
             name: "light".into(),
             state: None,
-            start: 0,
+            start: Some(0),
+            view: None,
             update: fns.len() - 1,
             grants: BTreeSet::from([Grant::Console]),
         }),

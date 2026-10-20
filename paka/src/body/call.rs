@@ -187,6 +187,7 @@ impl<'a> Cx<'_, 'a> {
                 Ok(out)
             }
             Some(Binding::Builtin(b)) if fns.contains_key(b) => {
+                self.ui_call(b, args)?;
                 let out = self.invoke(&to(Kind::Fn), &fns[b], args, want)?;
                 Ok(if b == "unreachable" { Out::Never } else { out })
             }

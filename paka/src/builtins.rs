@@ -9,8 +9,7 @@ pub enum Kind {
     Variant,
     Fn,
     Grant,
-    /// An `example`, an `app`, `View` or a UI name below: it holds a name but is never used by
-    /// name.
+    /// An `example`, an `app` or `View`: it holds a name but is never used by name.
     Other,
 }
 
@@ -211,10 +210,22 @@ pub const ELEMENTS: &[Element] = &[
     },
 ];
 
-/// The UI example type and functions (M5-06 section 2), taken from every program.
-pub const UI: &[&str] = &[
-    "Ui", "ui_start", "ui_click", "ui_type", "ui_tree", "ui_text", "ui_has",
+/// The UI example type and functions (M5-06 section 2), for example bodies only. `App` stands for
+/// the bare name of a visual app.
+pub const UI: &[(Kind, &str)] = &[
+    (Kind::Type, "Ui"),
+    (Kind::Fn, "ui_start(app: App) -> Ui"),
+    (Kind::Fn, "ui_click(ui: inout Ui, path: String)"),
+    (Kind::Fn, "ui_type(ui: inout Ui, text: String)"),
+    (Kind::Fn, "ui_tree(ui: Ui) -> String"),
+    (Kind::Fn, "ui_text(ui: Ui, path: String) -> String"),
+    (Kind::Fn, "ui_has(ui: Ui, path: String) -> Bool"),
 ];
+
+/// Whether `name` is a UI type or function.
+pub fn is_ui(name: &str) -> bool {
+    UI.iter().any(|&(_, row)| self::name(row) == name)
+}
 
 /// The element named `name`, if one is.
 pub fn element(name: &str) -> Option<&'static Element> {

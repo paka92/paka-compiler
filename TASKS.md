@@ -1622,6 +1622,8 @@ or merged during review. Ids with a letter were added during review.
 - done when: With no display set, a test clicks + and reads hand-written tree text; a trapping view keeps the old tree.
 - why this level: Joins state, update, view, diff and input into one loop; a trapping view must leave the tree untouched.
 - note: Per M5-01: the windowless loop follows the launch order (state from defaults, start message if any, first tree), ends on `Exit`, and holds one error node if the first view run traps.
+- status: done
+- note: Done: a visual app lowers with its view and optional start; `interp::Windowless` runs it with no window: state from defaults, the start message (a trap there keeps the defaults), the first tree (one error node if it traps), then one queue of clicks, keys and effect results, each handled to the end: message, `update`, effects, view, `keep`, the cursor following. A trapping view keeps the old tree; `Exit` ends the app; a handler trap ends it until M5-25b rolls state back. `keep` now makes a kept Input follow a text the app set. `paka run` and `paka build` refuse a visual app with `no-app` until a window exists. Tests: `paka/src/interp/windowless_tests.rs` (the counter sample).
 
 ### M5-21 · L3 · Parse and check UI examples and their built-in functions
 
@@ -1630,6 +1632,8 @@ or merged during review. Ids with a letter were added during review.
 - done when: The to-do example from the approved decision checks clean; each misuse case gives its hand-written error.
 - why this level: Extends parser, resolver and checker for the approved functions; wrong element references must fail at check time.
 - note: Per M5-06: it checks the six `ui_` functions and the `Ui` type, allows them only in example bodies, and rejects a badly formed literal path. A wrong element reference fails at check time only in the path's form; whether an element exists depends on state.
+- status: done
+- note: Done: `Ui` and the six `ui_` functions are built-in rows (`builtins::UI`) with M5-06's signatures; `ui_start` takes `App`, a visual app's bare name, which the resolver looks up among the program's apps. New codes: `ui-outside-example` (a UI name outside an example body, so `Ui` cannot be stored in a type or passed to a function), `bad-ui-start` (an argument that is not an app's bare name, or an app with no view) and `bad-ui-path` (a literal path, without interpolation, that `paka_rt::tree::path` rejects: it parses the steps and requires them to print back as written). Comparing a `Ui` with `==` or `!=` is `type-mismatch`. find lists the UI rows as built-ins and `coverage::builtin_names` includes them. Cases: `tests/cases/check/ui_*` (rejected), `tests/cases/check-text/ui_todo` (the M5-06 to-do example, clean), conformance `apps/ui_todo_check` and one `errors/` case per new code. Not yet: an example that uses a UI name is not lowered until M5-22, so `paka examples` leaves it out and a hole in it gets no note.
 
 ### M5-22 · L3 · Run UI examples with no window and compute their status
 
