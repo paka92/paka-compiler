@@ -1362,6 +1362,8 @@ or merged during review. Ids with a letter were added during review.
 - done when: A committed profile splits the time across checker, database, code generator and installer; each proposed fix names its expected gain.
 - why this level: Finding where the time goes on a speed-critical path across four components.
 - note: Dropped, and counted as done for M4-45, if M4-44 already reports a 95th percentile under 100 ms for all three sizes.
+- status: done
+- note: Done: docs/profiles/M4-44b.md. At 5,000 definitions an edit takes about 7.2 s, all whole-program work: 2.3 s writing the runner's load request unbuffered, 3.1 s building, printing and hashing IR for every definition, 0.76 s and 0.68 s checking the whole program in the server and the runner. Seven fixes are listed with expected gains; checking only what an edit can change is needed to come under 100 ms.
 
 ### M4-45 · L4 · Bring edit-to-running time under 100 ms
 
