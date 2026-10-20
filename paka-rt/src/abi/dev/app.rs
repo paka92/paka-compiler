@@ -99,7 +99,7 @@ pub(super) fn close(ctx: &mut Context, app: &App, state: &mut Words, queue: VecD
 
 /// Runs the handler on the message at `message`, which it borrows, then performs its effects in
 /// order, queueing the answers; the end they bring, if any.
-pub(super) fn handle(
+fn handle(
     ctx: &mut Context,
     app: &App,
     call: &mut Call,
@@ -108,6 +108,18 @@ pub(super) fn handle(
     message: u64,
     queue: &mut VecDeque<Queued>,
 ) -> Result<Option<End>, Stopped> {
+    let list = update(ctx, app, call, state, message)?;
+    effects(ctx, app, list, world, queue)
+}
+
+/// Runs the handler on the message at `message`, which it borrows; the effect list it returns.
+pub(super) fn update(
+    ctx: &mut Context,
+    app: &App,
+    call: &mut Call,
+    state: &mut Words,
+    message: u64,
+) -> Result<[u64; 3], Stopped> {
     let mut list = [0u64; 3];
     let mut args = vec![];
     if app.state.is_some() {
@@ -118,6 +130,18 @@ pub(super) fn handle(
         args.push(addr(&mut list));
     }
     status(call(ctx, app.update, &args))?;
+    Ok(list)
+}
+
+/// Performs the effects of `list` in order, queueing the answers, then frees it; the end one
+/// brings, if any.
+pub(super) fn effects(
+    ctx: &mut Context,
+    app: &App,
+    mut list: [u64; 3],
+    world: &mut impl World,
+    queue: &mut VecDeque<Queued>,
+) -> Result<Option<End>, Stopped> {
     let ended = perform(ctx, app, list, world, queue);
     release(ctx, app.effects.unwrap_or(0), &mut list);
     ended
@@ -217,15 +241,19 @@ unsafe fn decode<'a>(at: u64) -> Effect<'a, u64, u64> {
     }
 }
 
-/// A copy of the message at `from`, owning new blocks.
-fn copy(ctx: &mut Context, (record, size): (u64, u64), from: u64) -> Result<Words, Stopped> {
+/// A copy of the value at `from`, owning new blocks.
+pub(super) fn copy(
+    ctx: &mut Context,
+    (record, size): (u64, u64),
+    from: u64,
+) -> Result<Words, Stopped> {
     let mut to = words(size);
     let at = addr(&mut to);
     if record == 0 {
         let from = ptr::with_exposed_provenance::<u8>(from as usize);
-        // SAFETY: `from` is a message's box, `size` bytes, apart from the new `to`.
+        // SAFETY: `from` is a value of `size` bytes, apart from the new `to`.
         unsafe { ptr::copy_nonoverlapping(from, to.as_mut_ptr().cast(), size as usize) };
-    // SAFETY: `record` is the message's, and `to` has room for one apart from `from`.
+    // SAFETY: `record` is the value's, and `to` has room for one apart from `from`.
     } else if unsafe { rt_copy(ctx, 0, record, from, at) } != 0 {
         return Err(Stopped::Trap);
     }

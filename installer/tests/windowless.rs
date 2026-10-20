@@ -1,6 +1,6 @@
 //! Visual apps with no window on dev code (M5-25): each script of paka/src/interp/
-//! windowless_tests.rs gives the interpreter's tree text, trap count and end, the reports
-//! compared by their first line, and frees all it made.
+//! windowless_tests.rs gives the interpreter's tree text, trap count, end and printed text, the
+//! reports compared by their first line, and frees all it made.
 
 mod common;
 
@@ -82,31 +82,32 @@ fn first_line(report: &str) -> String {
     report.lines().next().unwrap_or_default().into()
 }
 
-/// The tree text, each trap report's first line and the end, its report's first line.
-type Seen = (String, Vec<String>, Option<(u8, String)>);
+/// The tree text, each trap report's first line, the end, its report's first line, and the
+/// printed text.
+type Seen = (String, Vec<String>, Option<(u8, String)>, String);
 
 /// Plays `events` on `text` in the interpreter and on dev code, checks they agree and the dev
 /// run frees all, and gives what they saw.
 fn play(text: &str, events: Vec<Event>) -> Seen {
     let (core, ..) = paka::check("main.paka", &source(text)).unwrap_or_else(|d| panic!("{d}"));
-    let mut ui = Windowless::start(&core, &[], Host(vec![]));
+    let mut out = vec![];
+    let mut ui = Windowless::start(&core, &[], Host(&mut out));
     ui.send(events.clone());
     let end = ui.end.map(|(code, report)| (code, first_line(&report)));
-    let want = (
-        ui.tree.to_string(),
-        ui.traps.iter().map(|r| first_line(r)).collect(),
-        end,
-    );
+    let (tree, traps) = (ui.tree.to_string(), ui.traps.iter().map(|r| first_line(r)));
+    let want = (tree, traps.collect(), end, String::from_utf8(out).unwrap());
 
     let mut dev = Dev::default();
     dev.edit(&source(text)).unwrap();
-    let played = dev.play(&[], &mut Host(vec![]), HEAP, Duration::MAX, events);
+    let mut out = vec![];
+    let played = dev.play(&[], &mut Host(&mut out), HEAP, Duration::MAX, events);
     let end = played.end.map(|end| {
         let (code, report) = end.expect("no interrupt");
         (code, first_line(&report))
     });
     let traps = played.traps.iter().map(|r| first_line(r)).collect();
-    assert_eq!((played.tree, traps, end), want);
+    let printed = String::from_utf8(out).unwrap();
+    assert_eq!((played.tree, traps, end, printed), want);
     assert_eq!(played.ledger, (0, 0));
     want
 }
@@ -148,7 +149,7 @@ fn a_click_on_no_button_sends_nothing() {
 fn a_trapping_view_keeps_the_old_tree_and_the_next_click_draws_again() {
     let source = COUNTER.replace("Text(\"{s.count}\")", "Text(\"{100 / (2 - s.count)}\")");
     let plus = || click(&PLUS, "Button");
-    let (tree, traps, _) = play(&source, vec![plus(), plus()]);
+    let (tree, traps, ..) = play(&source, vec![plus(), plus()]);
     assert_eq!((tree, traps.len()), (counter("100"), 1));
     assert_eq!(
         play(&source, vec![plus(), plus(), plus()]).0,
@@ -169,16 +170,44 @@ fn the_start_message_is_handled_and_a_trapping_one_leaves_the_defaults() {
     let source = start(&COUNTER.replace("Text(\"{s.count}\")", "Text(\"{100 / s.count}\")"));
     assert_eq!(play(&source, vec![]).0, counter("100"));
     let source = start(&COUNTER.replace("Inc => s.count += 1", "Inc => s.count = 1 / s.count"));
-    let (tree, traps, _) = play(&source, vec![]);
+    let (tree, traps, ..) = play(&source, vec![]);
     assert_eq!((tree, traps.len()), (counter("0"), 1));
 }
 
 #[test]
-fn a_trapping_handler_ends_the_app_with_the_last_tree() {
+fn a_trapping_handler_keeps_the_old_tree_and_the_next_click_is_answered() {
     let source = COUNTER.replace("Inc => s.count += 1", "Inc => s.count = 1 / s.count");
-    let end = play(&source, vec![click(&PLUS, "Button")]).2;
+    let (tree, traps, end, _) = play(&source, vec![click(&PLUS, "Button")]);
     let report = "counter: trap divide_by_zero at main.paka:7:24";
-    assert_eq!(end, Some((3, report.into())));
+    assert_eq!(
+        (tree, traps, end),
+        (counter("0"), vec![report.into()], None)
+    );
+}
+
+#[test]
+fn a_trapping_handler_rolls_back_its_state_and_performs_none_of_its_effects() {
+    let source = COUNTER
+        .replace(
+            "\
+fn update(s: inout Counter, m: Msg) {
+  match m {
+    Inc => s.count += 1",
+            "\
+fn update(s: inout Counter, m: Msg) -> List<Effect<Msg>> {
+  match m {
+    Inc => {
+      s.count += 1
+      return [Print(\"inc {s.count}\"), Print(\"{1 / (2 - s.count)}\")]
+    }",
+        )
+        .replace("s.count - 1)\n  }\n}", "s.count - 1)\n  }\n  []\n}")
+        .replace("grants: []", "grants: [Console]");
+    let plus = || click(&PLUS, "Button");
+    let clicks = vec![plus(), plus(), plus(), click(&MINUS, "Button")];
+    let (tree, traps, end, printed) = play(&source, clicks);
+    assert_eq!((tree, traps.len(), end), (counter("0"), 2, None));
+    assert_eq!(printed, "inc 1\n1\n");
 }
 
 #[test]
@@ -207,7 +236,7 @@ fn update(s: inout Counter, m: Msg) -> List<Effect<Msg>> {
         click(&MINUS, "Button"),
         click(&PLUS, "Button"),
     ];
-    let (tree, _, end) = play(&source, clicks);
+    let (tree, _, end, _) = play(&source, clicks);
     assert_eq!((tree, end), (counter("1"), Some((0, String::new()))));
 }
 
@@ -235,4 +264,28 @@ Col
   Text #1 \"ml\"
 ";
     assert_eq!(play(FORM, events).0, want);
+}
+
+#[test]
+fn a_handler_that_traps_on_a_key_leaves_text_and_cursor_as_they_were() {
+    let source = FORM.replace(
+        "if len(text) <= 3 { s.draft = text }",
+        "{\n      s.draft = text\n      _ = 1 / (4 - len(text))\n    }",
+    );
+    let mut events = vec![click(&[Step::Str("new".into())], "Input")];
+    events.extend("milk".chars().map(|c| Event::Key(Key::Type(c))));
+    let (tree, traps, end, _) = play(&source, events.clone());
+    let want = "\
+Col
+  Input 'new' \"mil\" cursor=3 on_change=Draft focus
+  Text #1 \"mil\"
+";
+    assert_eq!((tree.as_str(), traps.len(), end), (want, 1, None));
+    events.push(Event::Key(Key::Left(false)));
+    let want = "\
+Col
+  Input 'new' \"mil\" cursor=2 on_change=Draft focus
+  Text #1 \"mil\"
+";
+    assert_eq!(play(&source, events).0, want);
 }

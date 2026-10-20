@@ -1,10 +1,13 @@
 //! A visual app with no window on dev code (M5-25), run as the interpreter runs one
 //! (paka/src/interp/windowless.rs): one queue of events and effect results, each handled to the
 //! end, its view included, before the next. A message a click sends is borrowed from the drawing
-//! it lies in, which is released only once the next tree is drawn.
+//! it lies in, which is released only once the next tree is drawn. The handler works on a copy of
+//! the state: in-place writes and frees leave the old one whole, and a trap frees all the turn
+//! made since it began.
 
 use super::app::{
-    App, Call, Queued, Stopped, Words, addr, answer, close, handle, release, start_message, state,
+    App, Call, Queued, Stopped, Words, addr, answer, close, copy, effects, release, start_message,
+    state, update,
 };
 use super::view::{self, Drawing};
 use super::{Context, Trap};
@@ -22,7 +25,8 @@ pub struct Code<'a> {
     pub at: &'a dyn Fn(&Trap) -> String,
 }
 
-/// Why the app ended: an effect, a trap in a handler (in the context) or the interrupt.
+/// Why the app ended: an effect, a trap outside a handler or view (in the context) or the
+/// interrupt.
 type Ended = Result<End, Stopped>;
 
 pub struct Windowless<'a, W> {
@@ -34,7 +38,7 @@ pub struct Windowless<'a, W> {
     queue: VecDeque<Queued>,
     /// The tree last drawn: one error node if the first view run trapped.
     pub drawing: Drawing,
-    /// The traps that leave the app running: in the start handler or a view.
+    /// The traps that leave the app running: in a handler or a view.
     pub traps: Vec<Trap>,
     pub end: Option<Ended>,
 }
@@ -88,16 +92,8 @@ impl<'a, W: World> Windowless<'a, W> {
     fn launch(&mut self, start: &[String]) -> Result<(), Ended> {
         self.state = state(self.ctx, self.app, self.code.call).map_err(Err)?;
         if let Some(tag) = self.app.start {
-            let mut message = start_message(self.ctx, self.app, tag, start).map_err(Err)?;
-            let handled = self.handle(addr(&mut message));
-            release(self.ctx, self.app.message.0, &mut message);
-            if handled == Err(Err(Stopped::Trap)) {
-                self.traps.push(mem::take(&mut self.ctx.trap));
-                self.release_state();
-                self.state = state(self.ctx, self.app, self.code.call).map_err(Err)?;
-            } else {
-                handled?;
-            }
+            let message = start_message(self.ctx, self.app, tag, start).map_err(Err)?;
+            self.handle(Queued::Message(message), &mut None)?;
         }
         self.redraw(true)?;
         self.drain()
@@ -113,29 +109,9 @@ impl<'a, W: World> Windowless<'a, W> {
     /// One turn: the message, `update`, its effects, the view; a key's cursor follows last.
     fn turn(&mut self, next: Queued) -> Result<(), Ended> {
         let mut typed = None;
-        let (mut owned, at) = match next {
-            Queued::Message(m) => (Some(m), 0),
-            Queued::Answer(f, text) => (Some(self.answer(f, &text)?), 0),
-            Queued::Event(event) => match route(&mut self.drawing.root, &event) {
-                None => return Ok(()),
-                Some(Sent::Click(on)) => (None, on.at),
-                Some(Sent::Change(on, change)) => {
-                    let at = on.at;
-                    let f = self.drawing.word(at);
-                    typed = Some((self.shown(), change.cursor));
-                    (Some(self.answer(f, &change.text)?), 0)
-                }
-            },
-        };
-        let message = match &mut owned {
-            Some(m) => addr(m),
-            None => self.drawing.address(at),
-        };
-        let handled = self.handle(message);
-        if let Some(mut m) = owned {
-            release(self.ctx, self.app.message.0, &mut m);
+        if !self.handle(next, &mut typed)? {
+            return Ok(());
         }
-        handled?;
         self.redraw(false)?;
         if let Some((before, cursor)) = typed
             && let Some(Node::Input { text, edit, .. }) = focused(&mut self.drawing.root)
@@ -145,24 +121,75 @@ impl<'a, W: World> Windowless<'a, W> {
         Ok(())
     }
 
-    fn answer(&mut self, f: u64, text: &str) -> Result<Words, Ended> {
-        answer(self.ctx, self.app, self.code.call, f, text).map_err(Err)
-    }
-
-    fn handle(&mut self, message: u64) -> Result<(), Ended> {
-        let (ctx, app, call) = (&mut *self.ctx, self.app, &mut *self.code.call);
-        match handle(
-            ctx,
-            app,
-            call,
-            self.world,
-            &mut self.state,
-            message,
-            &mut self.queue,
-        ) {
-            Ok(None) => Ok(()),
+    /// Handles `next` and performs its effects; false when it sends no message or traps. A trap
+    /// is recorded and frees all the turn made, leaving state, tree and queue as they were.
+    fn handle(&mut self, next: Queued, typed: &mut Option<(String, usize)>) -> Result<bool, Ended> {
+        let made = self.ctx.heap.made();
+        let list = match self.update(next, typed) {
+            Ok(Some(list)) => list,
+            Ok(None) => return Ok(false),
+            Err(stopped) => {
+                self.ctx.heap.sweep(made);
+                if stopped != Stopped::Trap {
+                    return Err(Err(stopped));
+                }
+                self.traps.push(mem::take(&mut self.ctx.trap));
+                return Ok(false);
+            }
+        };
+        match effects(self.ctx, self.app, list, self.world, &mut self.queue) {
+            Ok(None) => Ok(true),
             Ok(Some(end)) => Err(Ok(end)),
             Err(stopped) => Err(Err(stopped)),
+        }
+    }
+
+    /// The effect list the handler returns for `next`, `None` when it sends no message. The
+    /// handler runs on a copy of the state, which replaces the state once it returns.
+    fn update(
+        &mut self,
+        next: Queued,
+        typed: &mut Option<(String, usize)>,
+    ) -> Result<Option<[u64; 3]>, Stopped> {
+        let (mut owned, at) = match next {
+            Queued::Message(m) => (Some(m), 0),
+            Queued::Answer(f, text) => (Some(self.answer(f, &text)?), 0),
+            Queued::Event(event) => match route(&mut self.drawing.root, &event) {
+                None => return Ok(None),
+                Some(Sent::Click(on)) => (None, on.at),
+                Some(Sent::Change(on, change)) => {
+                    let at = on.at;
+                    let f = self.drawing.word(at);
+                    *typed = Some((self.shown(), change.cursor));
+                    (Some(self.answer(f, &change.text)?), 0)
+                }
+            },
+        };
+        let message = match &mut owned {
+            Some(m) => addr(m),
+            None => self.drawing.address(at),
+        };
+        let ran = self.copy_state().and_then(|mut state| {
+            let list = update(self.ctx, self.app, self.code.call, &mut state, message)?;
+            Ok((state, list))
+        });
+        if let Some(mut m) = owned {
+            release(self.ctx, self.app.message.0, &mut m);
+        }
+        let (state, list) = ran?;
+        self.release_state();
+        self.state = state;
+        Ok(Some(list))
+    }
+
+    fn answer(&mut self, f: u64, text: &str) -> Result<Words, Stopped> {
+        answer(self.ctx, self.app, self.code.call, f, text)
+    }
+
+    fn copy_state(&mut self) -> Result<Words, Stopped> {
+        match self.app.state {
+            Some((_, record, size)) => copy(self.ctx, (record, size), addr(&mut self.state)),
+            None => Ok(vec![]),
         }
     }
 

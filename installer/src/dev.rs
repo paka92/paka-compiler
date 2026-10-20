@@ -63,8 +63,8 @@ pub struct Ran {
 }
 
 /// A visual app's run with no window: the last tree's text, the reports of traps that left it
-/// running, its end if it ended (a handler's trap as status 3), and the ledger's leaks and faults
-/// once all is freed.
+/// running, its end if it ended (a trap that ends it as status 3), and the ledger's leaks and
+/// faults once all is freed.
 pub struct Played {
     pub tree: String,
     pub traps: Vec<String>,

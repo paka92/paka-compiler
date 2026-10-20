@@ -68,11 +68,20 @@ Col gap=8
 
 /// Launches `source`, sends `events`, and gives the tree text, the trap reports and the end.
 fn play(source: &str, events: Vec<Event>) -> (String, Vec<String>, Option<(u8, String)>) {
+    play_in(source, events, &mut vec![])
+}
+
+/// As `play`, printing to `out`.
+fn play_in(
+    source: &str,
+    events: Vec<Event>,
+    out: &mut Vec<u8>,
+) -> (String, Vec<String>, Option<(u8, String)>) {
     let source = crate::source::Source::file("main.paka", source.into());
     let core = crate::check("main.paka", &source)
         .unwrap_or_else(|d| panic!("{d}"))
         .0;
-    let mut ui = Windowless::start(&core, &[], Host(vec![]));
+    let mut ui = Windowless::start(&core, &[], Host(out));
     ui.send(events);
     (ui.tree.to_string(), ui.traps, ui.end)
 }
@@ -145,12 +154,41 @@ fn a_trapping_start_handler_leaves_the_defaults() {
 }
 
 #[test]
-fn a_trapping_handler_ends_the_app_with_the_last_tree() {
+fn a_trapping_handler_keeps_the_old_tree_and_the_next_click_is_answered() {
     let source = COUNTER.replace("Inc => s.count += 1", "Inc => s.count = 1 / s.count");
     let (tree, traps, end) = play(&source, vec![click(&PLUS, "Button")]);
     let report = "counter: trap divide_by_zero at main.paka:7:24\n  1 / 0\n  in update\n";
-    assert_eq!((tree, traps), (counter("0"), vec![]));
-    assert_eq!(end, Some((3, report.into())));
+    assert_eq!(
+        (tree, traps, end),
+        (counter("0"), vec![report.into()], None)
+    );
+}
+
+#[test]
+fn a_trapping_handler_rolls_back_its_state_and_performs_none_of_its_effects() {
+    let source = COUNTER
+        .replace(
+            "\
+fn update(s: inout Counter, m: Msg) {
+  match m {
+    Inc => s.count += 1",
+            "\
+fn update(s: inout Counter, m: Msg) -> List<Effect<Msg>> {
+  match m {
+    Inc => {
+      s.count += 1
+      return [Print(\"inc {s.count}\"), Print(\"{1 / (2 - s.count)}\")]
+    }",
+        )
+        .replace("s.count - 1)\n  }\n}", "s.count - 1)\n  }\n  []\n}")
+        .replace("  update(&s, Dec)", "  _ = update(&s, Dec)")
+        .replace("grants: []", "grants: [Console]");
+    let mut out = vec![];
+    let plus = || click(&PLUS, "Button");
+    let clicks = vec![plus(), plus(), plus(), click(&MINUS, "Button")];
+    let (tree, traps, end) = play_in(&source, clicks, &mut out);
+    assert_eq!((tree, traps.len(), end), (counter("0"), 2, None));
+    assert_eq!(String::from_utf8(out).unwrap(), "inc 1\n1\n");
 }
 
 #[test]
@@ -239,4 +277,28 @@ Col
   Text #1 \"ml\"
 ";
     assert_eq!(play(FORM, events).0, want);
+}
+
+#[test]
+fn a_handler_that_traps_on_a_key_leaves_text_and_cursor_as_they_were() {
+    let source = FORM.replace(
+        "if len(text) <= 3 { s.draft = text }",
+        "{\n      s.draft = text\n      _ = 1 / (4 - len(text))\n    }",
+    );
+    let mut events = vec![click(&[Step::Str("new".into())], "Input")];
+    events.extend("milk".chars().map(|c| Event::Key(Key::Type(c))));
+    let (tree, traps, end) = play(&source, events.clone());
+    let want = "\
+Col
+  Input 'new' \"mil\" cursor=3 on_change=Draft focus
+  Text #1 \"mil\"
+";
+    assert_eq!((tree.as_str(), traps.len(), end), (want, 1, None));
+    events.push(Event::Key(Key::Left(false)));
+    let want = "\
+Col
+  Input 'new' \"mil\" cursor=2 on_change=Draft focus
+  Text #1 \"mil\"
+";
+    assert_eq!(play(&source, events).0, want);
 }

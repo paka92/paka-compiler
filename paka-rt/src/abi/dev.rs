@@ -44,8 +44,8 @@ pub struct Heap {
     used: u64,
     /// Blocks made so far.
     made: u64,
-    /// Address to size.
-    blocks: BTreeMap<usize, u64>,
+    /// Address to size and the block's number in the order made.
+    blocks: BTreeMap<usize, (u64, u64)>,
     faults: Vec<Fault>,
 }
 
@@ -71,7 +71,8 @@ impl Heap {
         }
         self.used = used;
         self.made += 1;
-        self.blocks.insert(ptr.expose_provenance(), bytes);
+        self.blocks
+            .insert(ptr.expose_provenance(), (bytes, self.made));
         Some(ptr)
     }
 
@@ -79,7 +80,7 @@ impl Heap {
     /// block is freed, so a bad pointer is never touched.
     pub fn release(&mut self, ptr: *mut u8, bytes: u64) {
         let address = ptr.addr();
-        let Some(allocated) = self.blocks.remove(&address) else {
+        let Some((allocated, _)) = self.blocks.remove(&address) else {
             self.faults.push(Fault::NotLive { address });
             return;
         };
@@ -97,7 +98,21 @@ impl Heap {
 
     /// The blocks still live, as (address, bytes) in address order.
     pub fn leaks(&self) -> Vec<(usize, u64)> {
-        self.blocks.iter().map(|(&a, &b)| (a, b)).collect()
+        self.blocks.iter().map(|(&a, &(b, _))| (a, b)).collect()
+    }
+
+    /// Frees every block made after the first `made` and still live: what a trap left.
+    pub fn sweep(&mut self, made: u64) {
+        let used = &mut self.used;
+        self.blocks.retain(|&address, &mut (bytes, n)| {
+            if n <= made {
+                return true;
+            }
+            *used -= bytes;
+            // SAFETY: the ledger held `address` as a live block of `bytes`, and drops it here.
+            unsafe { free(address, bytes) };
+            false
+        });
     }
 
     /// How many blocks the run has made, freed or not.
@@ -112,7 +127,7 @@ impl Heap {
 
 impl Drop for Heap {
     fn drop(&mut self) {
-        for (address, bytes) in std::mem::take(&mut self.blocks) {
+        for (address, (bytes, _)) in std::mem::take(&mut self.blocks) {
             // SAFETY: the ledger held `address` as a live block of `bytes`.
             unsafe { free(address, bytes) };
         }

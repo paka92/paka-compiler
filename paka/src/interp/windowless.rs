@@ -2,7 +2,7 @@
 //! each is handled to the end, its view included, before the next.
 
 use super::effects::{End, Queued, World, perform};
-use super::eval::{Kind, Machine, Stop, Trap};
+use super::eval::{Done, Kind, Machine, Stop, Trap};
 use super::value::{Message, Value};
 use super::{ended, on_big_stack, place, report, start_message};
 use crate::core_form::{App, Program};
@@ -19,10 +19,9 @@ pub struct Windowless<'a, W> {
     world: W,
     /// The tree last drawn: one error node if the first view run trapped.
     pub tree: Node<Message>,
-    /// The reports of traps that leave the app running: in the start handler or a view.
+    /// The reports of traps that leave the app running: in a handler or a view.
     pub traps: Vec<String>,
-    /// How the app ended: by an effect, or by a trap in a handler, which ends it until state can
-    /// be rolled back.
+    /// How the app ended: by an effect, or by a fault outside a handler or view.
     pub end: Option<End>,
 }
 
@@ -69,17 +68,7 @@ impl<'a, W: World + Send> Windowless<'a, W> {
         self.state = m.state(self.app).map_err(|stop| self.ended(stop))?;
         if let Some(start) = self.app.start {
             let message = start_message(self.core, self.app, start, args)?;
-            match m.update(self.app, self.state.take(), message) {
-                Ok((effects, state)) => {
-                    self.state = state;
-                    self.perform(effects)?;
-                }
-                Err(Stop::Trap(trap)) => {
-                    self.traps.push(report(self.core, &self.app.name, &trap));
-                    self.state = m.state(self.app).map_err(|stop| self.ended(stop))?;
-                }
-                Err(stop) => return Err(self.ended(stop)),
-            }
+            self.handle(m, Ok(message))?;
         }
         self.redraw(m, true)?;
         self.drain(m)
@@ -112,11 +101,9 @@ impl<'a, W: World + Send> Windowless<'a, W> {
                 }
             },
         };
-        let message = message.map_err(|stop| self.ended(stop))?;
-        let (effects, state) =
-            (m.update(self.app, self.state.take(), message)).map_err(|stop| self.ended(stop))?;
-        self.state = state;
-        self.perform(effects)?;
+        if !self.handle(m, message)? {
+            return Ok(());
+        }
         self.redraw(m, false)?;
         if let Some((before, cursor)) = typed
             && let Some(Node::Input { text, edit, .. }) = focused(&mut self.tree)
@@ -124,6 +111,31 @@ impl<'a, W: World + Send> Windowless<'a, W> {
             edit.follow(&before, text, Some(cursor));
         }
         Ok(())
+    }
+
+    /// Runs `update` on `message` and a copy of the state, which replaces the state once it
+    /// returns, then performs its effects; false after a trap, which is recorded and leaves
+    /// state, tree and queue as they were.
+    fn handle(&mut self, m: &mut Machine, message: Done) -> Result<bool, End> {
+        let handled = message.and_then(|message| {
+            let state = match &self.state {
+                Some(state) => Some(state.copy().ok_or_else(|| too_deep(self.core, self.app))?),
+                None => None,
+            };
+            m.update(self.app, state, message)
+        });
+        match handled {
+            Ok((effects, state)) => {
+                self.state = state;
+                self.perform(effects)?;
+                Ok(true)
+            }
+            Err(Stop::Trap(trap)) => {
+                self.traps.push(report(self.core, &self.app.name, &trap));
+                Ok(false)
+            }
+            Err(stop) => Err(self.ended(stop)),
+        }
     }
 
     fn perform(&mut self, mut effects: Value) -> Result<(), End> {
