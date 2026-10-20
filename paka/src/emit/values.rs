@@ -184,6 +184,45 @@ impl Gen<'_> {
         }
         self.join(e, bodies)
     }
+
+    /// `unwrap_or(opt, fallback)`: the payload when `opt` is `Some`, read either way and
+    /// dropped by a select.
+    pub(super) fn unwrap_or(&mut self, opt: Ty, at: Value, fallback: Value) -> Value {
+        let payload = self.l.get(opt).alternatives[0][0];
+        let tag = self
+            .b
+            .ins()
+            .load(types::I64, MemFlagsData::trusted(), at, 0);
+        let v = self.get(payload.ty, at, payload.offset);
+        self.b.ins().select(tag, fallback, v)
+    }
+
+    /// `ok_or(opt, error)`: `Some` and `Ok` share tag 0, `None` and `Err` tag 1.
+    pub(super) fn ok_or(&mut self, (opt, at): (Ty, Value), result: Ty, error: Value) -> Value {
+        let size = self.size(result);
+        let to = slot(&mut self.b, size);
+        let tag = self
+            .b
+            .ins()
+            .load(types::I64, MemFlagsData::trusted(), at, 0);
+        self.b.ins().store(MemFlagsData::trusted(), tag, to, 0);
+        let [some, none, merge] = [(); 3].map(|()| self.b.create_block());
+        self.b.ins().brif(tag, none, &[], some, &[]);
+        self.b.switch_to_block(some);
+        let (from, ok) = (
+            self.l.get(opt).alternatives[0][0],
+            self.l.get(result).alternatives[0][0],
+        );
+        let v = self.get(from.ty, at, from.offset);
+        self.put(ok.ty, to, ok.offset, v);
+        self.b.ins().jump(merge, &[]);
+        self.b.switch_to_block(none);
+        let err = self.l.get(result).alternatives[1][0];
+        self.put(err.ty, to, err.offset, error);
+        self.b.ins().jump(merge, &[]);
+        self.b.switch_to_block(merge);
+        to
+    }
 }
 
 /// The variant's position: its tag word, and its alternative in the layout.

@@ -545,7 +545,20 @@ impl<'a> Gen<'a> {
                         Arg::Inout(_) => return Err("an inout argument is not compiled yet".into()),
                     }
                 }
-                return self.builtin(ROWS[*row].1, &x, *site, e);
+                let arg = |i: usize| match &given[i] {
+                    Arg::Value(e) => ty(e),
+                    Arg::Inout(_) => unreachable!("taken above"),
+                };
+                return Ok(Some(match ROWS[*row].1 {
+                    "unwrap_or(opt: Option<T>, fallback: T) -> T" => {
+                        self.unwrap_or(arg(0), x[0], x[1])
+                    }
+                    "ok_or(opt: Option<T>, error: E) -> Result<T, E>" => {
+                        ir_type(self.p, self.l, ty(e))?;
+                        self.ok_or((arg(0), x[0]), ty(e), x[1])
+                    }
+                    row => return self.builtin(row, &x, *site, e),
+                }));
             }
             ExprKind::Call(Callee::Fn(id), given, site) => return self.call(*id, given, *site),
             ExprKind::If(c, then, otherwise) => {

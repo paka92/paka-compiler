@@ -1185,6 +1185,8 @@ or merged during review. Ids with a letter were added during review.
 - flags: native-only
 - done when: Hand-written fixtures for every error-handling form in the reference, early-exit paths included, return the expected values when called through M4-24's entry, in dev mode and in the interpreter.
 - why this level: Known desugaring; early-exit paths are easy to miss.
+- status: done
+- note: Done: `?` reaches the emitter as a match and a `return` (docs/core.md), so it needed nothing new; `unwrap_or` and `ok_or` compile in place. The fixture is the conformance program `examples_errors`: `?` on `Option` and `Result`, inside a loop, nested in a call and followed by a field, and through `ok_or`. Error types that own a String wait on M4-32.
 
 ### M4-32 · L4 · Emit strings and lists through shared runtime functions with bounds checks
 
