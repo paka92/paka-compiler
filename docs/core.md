@@ -232,7 +232,12 @@ element lines ending in `Root`, which gives the one node those lines add.
   sharing a key become one error node at the first one's place (M5-02 §1.7).
 - **Messages.** A node's message keeps its value and its value text form.
 - **Traps.** A trap in a view ends the view; the caller keeps its message, `trap kind at place`.
-- The dev back end refuses a program with a view; the interpreter runs it.
+- **Dev code.** A compiled view writes each node as it is made into a buffer of words in the run's
+  context, through `rt.view`: an op, then its operands, a String as its byte length and its
+  packed bytes. A child list opens before its children and closes into its Row, Col or root; a
+  child line follows its node with its line, loop flag and key. A message's words follow its
+  node, copied with the blocks they own. The runtime decodes the buffer into the same tree, its
+  rules as above, and frees the messages when the tree is released.
 
 ## 9. Points the records left open
 

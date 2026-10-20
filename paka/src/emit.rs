@@ -777,7 +777,7 @@ impl<'a> Gen<'a> {
             ExprKind::Root(_)
             | ExprKind::Element(..)
             | ExprKind::Placeholder(_)
-            | ExprKind::Child(_) => return Err("a view is not compiled yet".into()),
+            | ExprKind::Child(_) => return self.view(e),
             ExprKind::Hole(site) => {
                 self.trap(rt::HOLE, self.site(*site), &[]);
                 return self.unreached(e);
@@ -1166,7 +1166,10 @@ mod equal;
 mod items;
 mod map;
 mod owned;
+mod show;
+pub use show::show;
 #[cfg(test)]
 mod tests;
 mod values;
+mod view;
 mod words;

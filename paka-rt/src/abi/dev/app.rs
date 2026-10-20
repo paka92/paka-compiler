@@ -223,7 +223,7 @@ fn addr(words: &mut [u64]) -> u64 {
 }
 
 /// A call's status as the loop's outcome.
-fn status(status: i32) -> Result<(), Stopped> {
+pub(super) fn status(status: i32) -> Result<(), Stopped> {
     match status {
         0 => Ok(()),
         2 => Err(Stopped::Time),

@@ -6,6 +6,7 @@ pub mod app;
 pub mod items;
 pub mod map;
 pub mod records;
+pub mod view;
 pub mod words;
 
 use std::alloc::{self, Layout};
@@ -141,6 +142,8 @@ pub struct Context {
     pub interrupt: AtomicU64,
     pub trap: Trap,
     pub heap: Heap,
+    /// The tree a view is drawing (`view`).
+    pub tree: Vec<u64>,
 }
 
 impl Context {
@@ -155,6 +158,7 @@ impl Context {
             interrupt: AtomicU64::new(0),
             trap: Trap::default(),
             heap: Heap::new(cap),
+            tree: vec![],
         }
     }
 }
@@ -213,6 +217,7 @@ pub struct Rt {
         u64,
         *mut u8,
     ) -> i32,
+    pub view: unsafe extern "sysv64" fn(&mut Context, u64, u64, u64, u64, u64, u64) -> i32,
 }
 
 pub static RT: Rt = Rt {
@@ -227,6 +232,7 @@ pub static RT: Rt = Rt {
     items: items::rt_items,
     sort_by: items::rt_sort_by,
     map: map::rt_map,
+    view: view::rt_view,
 };
 
 /// `rt.alloc`: a block of `bytes` into `out` and status 0, or a `memory` trap and status 1.

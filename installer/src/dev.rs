@@ -3,14 +3,15 @@
 
 use crate::{Loader, Slots};
 use paka::alone::{Names, relower};
-use paka::core_form::{Program, Type};
-use paka::emit::{Cache, Emitter};
+use paka::core_form::{FnId, Program, Type};
+use paka::emit::{Cache, Emitter, show};
 use paka::hash::Hash;
 use paka::layout::Layouts;
 use paka::parser::split;
 use paka::source::{Source, in_file};
 use paka_rt::abi::dev::app::{App, Stopped, serve};
 use paka_rt::abi::dev::records::Records;
+use paka_rt::abi::dev::view::{self, Drawing};
 use paka_rt::abi::dev::{Context, HOLE, Trap, on_runner};
 use paka_rt::effects::{End, World};
 use std::ffi::OsString;
@@ -167,7 +168,9 @@ impl Dev {
         let Type::Enum(e) = p.types[msg] else {
             unreachable!("the message is a user enum");
         };
-        let start = a.start.expect("the dev back end refuses a visual app");
+        let start = a
+            .start
+            .expect("a headless app: the visual loop is still to come");
         let fields = &p.enums[e].variants[start].fields;
         let names: Vec<_> = fields.iter().map(|f| f.name.as_str()).collect();
         let typed = |t: usize| (self.records[t], self.layouts.get(t).size as u64);
@@ -210,6 +213,26 @@ impl Dev {
             let trap = std::mem::take(&mut ctx.trap);
             Ran { end, trap, ledger }
         })
+    }
+
+    /// Draws view `id` from its argument words on `ctx` (M5-24); release the drawing on the same
+    /// context.
+    pub fn draw(&self, ctx: &mut Context, id: FnId, args: &[u64]) -> Result<Drawing, Stopped> {
+        // SAFETY: `ctx` is a context that lives through the session.
+        let session = unsafe { self.slots.session((&raw mut *ctx).cast()) }.unwrap();
+        let mut call = |ctx: &mut Context, id: usize, args: &[u64]| {
+            // SAFETY: `edit` installed every definition as M4-05 section 5 compiles it, and
+            // `view::draw` passes the view the argument words its signature takes.
+            unsafe { session.call(id, (&raw mut *ctx).cast(), args) }.unwrap()
+        };
+        let read = |at: u64, to: &mut [u8]| {
+            let from = ptr::with_exposed_provenance::<u8>(at as usize);
+            // SAFETY: `show` reads only the words and blocks of a message the drawing holds.
+            unsafe { ptr::copy_nonoverlapping(from, to.as_mut_ptr(), to.len()) };
+        };
+        let (p, l) = (&self.program, &self.layouts);
+        let mut show = |t: u64, at: u64| show(p, l, t as usize, at, &read);
+        view::draw(ctx, &mut call, id, args, &mut show)
     }
 
     /// The first line of the report of `trap` (M2-06 section 1.2), and a hole's detail line; the

@@ -1664,6 +1664,8 @@ or merged during review. Ids with a letter were added during review.
 - note: Per M5-02: compiled trees carry the place number; M5-26's comparison shows any disagreement with the interpreter.
 
 ### M5-25 · L3 · Run a visual app with no window on dev-mode code
+- status: done
+- note: Done: a compiled view writes its nodes into the run's tree buffer through `rt.view` (ops with their operands; a String is its byte length and packed bytes; a message's words are copied in with the blocks they own). `paka_rt::abi::dev::view::draw` decodes the buffer into a `tree::Node<Message>` as the interpreter builds it; a `Drawing` keeps the message words, gives each message's address for update, and frees them on `release`. The dev back end no longer refuses a view; `paka::emit::show` gives a message's value text and `Dev::draw` draws a view. installer/tests/views.rs checks the counter, keyed loops, String keys and payload messages against the interpreter's tree text, and that a negative gap and a hole trap. A `memory` trap while copying a message reports no site. The visual loop is M5-25.
 
 - needs: M5-20, M5-24
 - flags: native-only
