@@ -1296,6 +1296,8 @@ or merged during review. Ids with a letter were added during review.
 - flags: native-only, open-ended
 - done when: 100,000 seeds agree in both back ends; each fixed divergence has a regression test.
 - why this level: Each divergence is a miscompile or meaning bug across checker, generator and runtime.
+- status: done
+- note: Done: seeds 0 to 99,999 agree with a clean ledger. The one divergence was in the checker: a hole in a List or Map literal passed to `Some`, `Ok` or `Err` did not take its type from the position (M2-06 section 1.5), so the program was refused. Such an argument now waits for the letters the position binds (case `types/hole_in_a_literal_inside_a_variant`).
 
 ### M4-42 · L4 · Sort dev-mode differences into one fix task per root cause, then see them closed
 

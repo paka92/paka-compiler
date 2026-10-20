@@ -409,13 +409,18 @@ impl<'a> Cx<'_, 'a> {
         want: Option<Ty>,
     ) -> Res<Out> {
         let (mut bound, mut open, picked) = (Bound::new(), Vec::new(), first.is_some());
-        let mut misfit = None;
+        let (mut misfit, mut waiting) = (None, Vec::new());
         for (i, (arg, param)) in args.iter().zip(&sig.params).enumerate() {
             let hint = self.subst(param.ty, &bound);
             let later = i > 0 || c.kind == Kind::Variant;
             if matches!(arg.value.kind, K::Hole(_)) && later && self.free(hint) {
                 self.info.insert(span(&arg.value), hint);
                 open.push((i, hint));
+                continue;
+            }
+            // A hole deeper in waits, like a bare one, for the letters the position binds.
+            if later && self.free(hint) && holds_hole(&arg.value) {
+                waiting.push(i);
                 continue;
             }
             let got = self.argument(c, arg, param, hint, first.take())?;
@@ -440,6 +445,14 @@ impl<'a> Cx<'_, 'a> {
                 let (w, r) = (self.types.show(w), self.types.show(r));
                 return Err(self.mismatch(c.at, &w, &r, ""));
             }
+        }
+        for i in waiting.into_iter().filter(|_| misfit.is_none()) {
+            let hint = self.subst(sig.params[i].ty, &bound);
+            let got = self.argument(c, &args[i], &sig.params[i], hint, None)?;
+            if !self.free(got) {
+                self.bind(hint, got, &mut bound);
+            }
+            open.push((i, got));
         }
         for (i, got) in open {
             let (param, value) = (sig.params[i].ty, &args[i].value);
@@ -710,5 +723,16 @@ impl<'a> Cx<'_, 'a> {
     fn bind_all(&self, rows: &[Ty], found: &[Ty], bound: &mut Bound) -> bool {
         let each = |ok, (&r, &f)| self.bind(r, f, bound) & ok;
         rows.len() == found.len() && rows.iter().zip(found).fold(true, each)
+    }
+}
+
+/// Whether a hole sits in `e` as an item or an argument, at any depth.
+fn holds_hole(e: &Expr) -> bool {
+    match &e.kind {
+        K::Hole(_) => true,
+        K::List(items) => items.iter().any(holds_hole),
+        K::Map(pairs) => pairs.iter().any(|(k, v)| holds_hole(k) || holds_hole(v)),
+        K::Call(_, args) => args.iter().any(|a| holds_hole(&a.value)),
+        _ => false,
     }
 }
