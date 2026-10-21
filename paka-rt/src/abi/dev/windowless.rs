@@ -71,10 +71,29 @@ impl<'a, W: World> Windowless<'a, W> {
 
     /// Queues `events` and handles the queue until it is empty or the app ends.
     pub fn send(&mut self, events: impl IntoIterator<Item = Event>) {
+        self.queue(events);
         if self.end.is_none() {
-            self.queue.extend(events.into_iter().map(Queued::Event));
             let drained = self.drain();
             self.ended(drained);
+        }
+    }
+
+    /// Queues `events` without handling them, as input that comes while a turn runs.
+    pub fn queue(&mut self, events: impl IntoIterator<Item = Event>) {
+        if self.end.is_none() {
+            self.queue.extend(events.into_iter().map(Queued::Event));
+        }
+    }
+
+    /// Moves the run onto `code` and `app`, the next version with the same stored types, between
+    /// turns, as `paka::interp::Windowless::swap` does: the state words are kept, the view runs
+    /// again, then the queue, which holds only events, is handled against the new tree. A view
+    /// that traps here shows one error node; the old drawing's messages are never sent.
+    pub fn swap(&mut self, code: Code<'a>, app: &'a App<'a>) {
+        if self.end.is_none() {
+            (self.code, self.app) = (code, app);
+            let drawn = self.redraw(true).and_then(|()| self.drain());
+            self.ended(drawn);
         }
     }
 
@@ -193,8 +212,9 @@ impl<'a, W: World> Windowless<'a, W> {
         }
     }
 
-    /// Runs the view on the state, which it borrows; a trap there keeps both state and tree.
-    fn redraw(&mut self, first: bool) -> Result<(), Ended> {
+    /// Runs the view on the state, which it borrows; a trap there keeps both state and tree, or
+    /// shows one error node when the tree is `fresh`: the first, or the first after a swap.
+    fn redraw(&mut self, fresh: bool) -> Result<(), Ended> {
         let view = self.app.view.expect("a visual app");
         let args = match self.app.state {
             Some(_) => vec![addr(&mut self.state)],
@@ -208,7 +228,7 @@ impl<'a, W: World> Windowless<'a, W> {
             }
             Err(Stopped::Trap) => {
                 let trap = mem::take(&mut self.ctx.trap);
-                if first {
+                if fresh {
                     self.drawing.root = Node::Error((self.code.at)(&trap));
                 }
                 self.traps.push(trap);

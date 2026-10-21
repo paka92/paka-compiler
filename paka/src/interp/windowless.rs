@@ -46,9 +46,32 @@ impl<'a, W: World + Send> Windowless<'a, W> {
 
     /// Queues `events` and handles the queue until it is empty or the app ends.
     pub fn send(&mut self, events: impl IntoIterator<Item = Event>) {
+        self.queue(events);
+        if self.end.is_none() {
+            self.on_stack(Self::drain);
+        }
+    }
+
+    /// Queues `events` without handling them, as input that comes while a turn runs.
+    pub fn queue(&mut self, events: impl IntoIterator<Item = Event>) {
         if self.end.is_none() {
             self.queue.extend(events.into_iter().map(Queued::Event));
-            self.on_stack(Self::drain);
+        }
+    }
+
+    /// Installs `core`, the next version of the app with the same stored types, between turns
+    /// (M5-07): the state is kept, the view runs again keeping element state as M5-02 matches it,
+    /// then the queue is handled. Only events wait here, since a turn's answers are handled in
+    /// the same `send`; each is worked out against the new tree. A view that traps here shows one
+    /// error node, since the old tree's messages are the old code's.
+    pub fn swap(&mut self, core: &'a Program) {
+        if self.end.is_none() {
+            self.core = core;
+            self.app = core.app.as_ref().expect("a visual app");
+            self.on_stack(|ui, m| {
+                ui.redraw(m, true)?;
+                ui.drain(m)
+            });
         }
     }
 
@@ -148,8 +171,9 @@ impl<'a, W: World + Send> Windowless<'a, W> {
         }
     }
 
-    /// Runs the view on a copy of the state, since a trap there keeps both state and tree.
-    fn redraw(&mut self, m: &mut Machine, first: bool) -> Result<(), End> {
+    /// Runs the view on a copy of the state, since a trap there keeps both state and tree; one
+    /// error node when the tree is `fresh`: the first, or the first after a swap.
+    fn redraw(&mut self, m: &mut Machine, fresh: bool) -> Result<(), End> {
         let view = self.app.view.expect("a visual app");
         let state = self.state.as_ref().and_then(Value::copy);
         let drawn = match state {
@@ -162,7 +186,7 @@ impl<'a, W: World + Send> Windowless<'a, W> {
                 self.tree = tree;
             }
             Err(Stop::Trap(trap)) => {
-                if first {
+                if fresh {
                     let at = place(self.core, trap.site);
                     self.tree = Node::Error(format!("trap {} at {at}", trap.kind.name()));
                 }

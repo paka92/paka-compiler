@@ -1,6 +1,7 @@
 //! Visual apps with no window on dev code (M5-25): each script of paka/src/interp/
 //! windowless_tests.rs gives the interpreter's tree text, trap count, end and printed text, the
-//! reports compared by their first line, and frees all it made.
+//! reports compared by their first line, and frees all it made. So does a code swap between
+//! turns (M5-27).
 
 mod common;
 
@@ -110,6 +111,50 @@ fn play(text: &str, events: Vec<Event>) -> Seen {
     assert_eq!((played.tree, traps, end, printed), want);
     assert_eq!(played.ledger, (0, 0));
     want
+}
+
+/// Plays `events` on `text`, then queues `queued` and swaps to `next` with the same stored types,
+/// in the interpreter and on dev code; checks they agree and the dev run frees all, and gives
+/// what they saw.
+fn swap(text: &str, events: Vec<Event>, queued: Vec<Event>, next: &str) -> Seen {
+    let checked = |text| paka::check("main.paka", &source(text)).unwrap_or_else(|d| panic!("{d}"));
+    let ((core, ..), (after, ..)) = (checked(text), checked(next));
+    let mut out = vec![];
+    let mut ui = Windowless::start(&core, &[], Host(&mut out));
+    ui.send(events.clone());
+    ui.queue(queued.clone());
+    ui.swap(&after);
+    let end = ui.end.map(|(code, report)| (code, first_line(&report)));
+    let (tree, traps) = (ui.tree.to_string(), ui.traps.iter().map(|r| first_line(r)));
+    let want = (tree, traps.collect(), end, String::from_utf8(out).unwrap());
+
+    let (mut dev, mut swapped) = (Dev::default(), Dev::default());
+    dev.edit(&source(text)).unwrap();
+    swapped.edit(&source(next)).unwrap();
+    let mut out = vec![];
+    let world = &mut Host(&mut out);
+    let played = dev.play_swap(&[], world, HEAP, Duration::MAX, events, queued, &swapped);
+    let end = played.end.map(|end| {
+        let (code, report) = end.expect("no interrupt");
+        (code, first_line(&report))
+    });
+    let traps = played.traps.iter().map(|r| first_line(r)).collect();
+    let printed = String::from_utf8(out).unwrap();
+    assert_eq!((played.tree, traps, end, printed), want);
+    assert_eq!(played.ledger, (0, 0));
+    want
+}
+
+/// The counter with `??reset` made a button, and its message first, so an old message's tag
+/// means `Reset` in the new code.
+fn with_reset() -> String {
+    COUNTER
+        .replace("enum Msg { Inc, Dec }", "enum Msg { Reset, Inc, Dec }")
+        .replace(
+            "    Inc => s.count += 1",
+            "    Reset => s.count = 0\n    Inc => s.count += 1",
+        )
+        .replace("??reset", "Button(\"reset\", on: Reset)")
 }
 
 fn counter(count: &str) -> String {
@@ -288,4 +333,56 @@ Col
   Text #1 \"mil\"
 ";
     assert_eq!(play(&source, events).0, want);
+}
+
+fn reset_counter(count: &str) -> String {
+    counter(count).replace("Hole #2 reset", "Button #2 \"reset\" on=Reset")
+}
+
+#[test]
+fn a_swap_shows_the_new_button_and_keeps_the_count() {
+    let plus = || click(&PLUS, "Button");
+    let next = with_reset();
+    assert_eq!(
+        swap(COUNTER, vec![plus(), plus()], vec![], &next).0,
+        reset_counter("2")
+    );
+    let reset = click(&[Step::Place(2)], "Button");
+    let queued = vec![plus(), reset, plus()];
+    assert_eq!(
+        swap(COUNTER, vec![plus()], queued, &next).0,
+        reset_counter("1")
+    );
+}
+
+#[test]
+fn a_click_queued_before_a_swap_is_routed_through_the_new_tree() {
+    let plus = || click(&PLUS, "Button");
+    let hole = click(&[Step::Place(2)], "Hole");
+    let (tree, traps, end, _) = swap(COUNTER, vec![plus()], vec![plus(), hole], &with_reset());
+    assert_eq!((tree, traps.len(), end), (reset_counter("2"), 0, None));
+}
+
+#[test]
+fn a_view_that_traps_at_a_swap_shows_one_error_node_and_sends_nothing() {
+    let next = COUNTER.replace("Text(\"{s.count}\")", "Text(\"{100 / (2 - s.count)}\")");
+    let plus = || click(&PLUS, "Button");
+    let (tree, traps, ..) = swap(COUNTER, vec![plus(), plus()], vec![plus()], &next);
+    let error = "Error \"trap divide_by_zero at main.paka:14:16\"\n";
+    assert_eq!((tree.as_str(), traps.len()), (error, 1));
+}
+
+#[test]
+fn a_swap_keeps_the_focused_input_and_its_cursor() {
+    let mut events = vec![click(&[Step::Str("new".into())], "Input")];
+    events.extend("mi".chars().map(|c| Event::Key(Key::Type(c))));
+    events.push(Event::Key(Key::Left(false)));
+    let next = FORM.replace("Text(s.draft)", "Text(\"draft: {s.draft}\")");
+    let queued = vec![Event::Key(Key::Type('l'))];
+    let want = "\
+Col
+  Input 'new' \"mli\" cursor=2 on_change=Draft focus
+  Text #1 \"draft: mli\"
+";
+    assert_eq!(swap(FORM, events, queued, &next).0, want);
 }

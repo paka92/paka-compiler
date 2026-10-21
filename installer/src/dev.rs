@@ -9,7 +9,7 @@ use paka::hash::Hash;
 use paka::layout::Layouts;
 use paka::parser::split;
 use paka::source::{Source, in_file};
-use paka_rt::abi::dev::app::{App, Stopped, serve};
+use paka_rt::abi::dev::app::{App, Call, Stopped, serve};
 use paka_rt::abi::dev::records::Records;
 use paka_rt::abi::dev::view::{self, Drawing};
 use paka_rt::abi::dev::windowless::{Code, Windowless};
@@ -212,6 +212,35 @@ impl Dev {
         limit: Duration,
         events: Vec<Event>,
     ) -> Played {
+        self.played(args, world, cap, limit, events, None)
+    }
+
+    /// `play`, then `queued` waits while the run moves onto `next`'s code between turns, as
+    /// `paka::interp::Windowless::swap` does (M5-27), and is handled after. `next` holds the
+    /// next version of the app with the same stored types, installed on its own slot table.
+    #[allow(clippy::too_many_arguments)]
+    pub fn play_swap(
+        &self,
+        args: &[OsString],
+        world: &mut (impl World + Send),
+        cap: u64,
+        limit: Duration,
+        events: Vec<Event>,
+        queued: Vec<Event>,
+        next: &Dev,
+    ) -> Played {
+        self.played(args, world, cap, limit, events, Some((queued, next)))
+    }
+
+    fn played(
+        &self,
+        args: &[OsString],
+        world: &mut (impl World + Send),
+        cap: u64,
+        limit: Duration,
+        events: Vec<Event>,
+        swap: Option<(Vec<Event>, &Dev)>,
+    ) -> Played {
         let (app, start) = match self.app(args) {
             Ok(started) => started,
             Err(end) => {
@@ -223,31 +252,27 @@ impl Dev {
                 };
             }
         };
-        let (p, l) = (&self.program, &self.layouts);
+        let swap = swap.map(|(queued, next)| (queued, next, next.app(args).expect("the app")));
         on_runner(cap, |ctx| {
-            let (tree, traps, end) = until(ctx, limit, |ctx| {
-                // SAFETY: `ctx` is a context that lives through the session.
-                let session = unsafe { self.slots.session((&raw mut *ctx).cast()) }.unwrap();
-                let mut call = |ctx: &mut Context, id: usize, args: &[u64]| {
-                    // SAFETY: `edit` installed every definition as M4-05 section 5 compiles it,
-                    // and the loop passes each the argument words its signature takes.
-                    unsafe { session.call(id, (&raw mut *ctx).cast(), args) }.unwrap()
-                };
-                let mut show = |t: u64, at: u64| show(p, l, t as usize, at, &read);
-                let at = |trap: &Trap| self.at(trap);
-                let code = Code {
-                    call: &mut call,
-                    show: &mut show,
-                    at: &at,
-                };
-                let mut ui = Windowless::start(ctx, code, &app, &start, world);
+            let (tree, traps, end, last) = until(ctx, limit, |ctx| {
+                let mut first = calls(self);
+                let mut second = swap.as_ref().map(|(_, next, _)| calls(next));
+                let mut ui = Windowless::start(ctx, first.code(), &app, &start, world);
                 ui.send(events);
-                let tree = ui.drawing.root.to_string();
-                let traps = ui.traps.iter().map(|t| self.report(t)).collect();
-                (tree, traps, ui.end.take())
+                let mut traps: Vec<_> = ui.traps.drain(..).map(|t| self.report(&t)).collect();
+                let mut last = self;
+                if let (Some((queued, next, (app, _))), Some(calls)) = (&swap, &mut second)
+                    && ui.end.is_none()
+                {
+                    ui.queue(queued.clone());
+                    ui.swap(calls.code(), app);
+                    last = next;
+                }
+                traps.extend(ui.traps.iter().map(|t| last.report(t)));
+                (ui.drawing.root.to_string(), traps, ui.end.take(), last)
             });
             let end = end.map(|end| match end {
-                Err(Stopped::Trap) => Ok((3, self.report(&ctx.trap))),
+                Err(Stopped::Trap) => Ok((3, last.report(&ctx.trap))),
                 end => end,
             });
             let ledger = (ctx.heap.leaks().len(), ctx.heap.faults().len());
@@ -325,6 +350,43 @@ impl Dev {
         let (_, at) = p.place(site(trap));
         let ((file, _), line) = in_file(&p.files, |f| f.1, at.line);
         format!("trap {kind} at {file}:{line}:{}", at.col)
+    }
+}
+
+/// What a visual loop calls in a dev session's code (`Code`).
+struct Calls<'d> {
+    call: Box<Call<'d>>,
+    show: Box<dyn FnMut(u64, u64) -> String + 'd>,
+    at: Box<dyn Fn(&Trap) -> String + 'd>,
+}
+
+impl Calls<'_> {
+    fn code(&mut self) -> Code<'_> {
+        Code {
+            call: &mut *self.call,
+            show: &mut *self.show,
+            at: &*self.at,
+        }
+    }
+}
+
+/// The calls into `dev`'s code. The first call holds its slot table and points the context at
+/// it, so a run moved onto another session's code calls that code from then on.
+fn calls(dev: &Dev) -> Calls<'_> {
+    let mut session = None;
+    let call = move |ctx: &mut Context, id: usize, args: &[u64]| {
+        let at = (&raw mut *ctx).cast();
+        // SAFETY: `ctx` is a context that lives through the session.
+        let session = session.get_or_insert_with(|| unsafe { dev.slots.session(at) }.unwrap());
+        // SAFETY: `edit` installed every definition as M4-05 section 5 compiles it, and the loop
+        // passes each the argument words its signature takes.
+        unsafe { session.call(id, at, args) }.unwrap()
+    };
+    let (p, l) = (&dev.program, &dev.layouts);
+    Calls {
+        call: Box::new(call),
+        show: Box::new(move |t, at| show(p, l, t as usize, at, &read)),
+        at: Box::new(|trap| dev.at(trap)),
     }
 }
 
