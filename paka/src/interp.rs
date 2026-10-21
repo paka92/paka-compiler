@@ -6,7 +6,7 @@ use crate::core_form::{Fn as Func, Site};
 use crate::source::in_file;
 use effects::{End, Host, Queued, World, perform};
 pub use eval::Left;
-use eval::{Done, Kind, Machine, Stop, Trap};
+use eval::{Detector, Done, Kind, Machine, Stop, Trap};
 use paka_rt::route::Event;
 use paka_rt::tree::Node;
 use show::show;
@@ -65,13 +65,34 @@ pub fn run_in(
     world: &mut (impl World + Send),
     err: &mut impl Write,
 ) -> u8 {
+    start(core, args, world, err, false).0
+}
+
+/// The same with the run-time overlap detector on (M6-22a); also the site of each call it
+/// flagged, in run order.
+pub fn run_watched(
+    core: &Program,
+    args: &[OsString],
+    world: &mut (impl World + Send),
+    err: &mut impl Write,
+) -> (u8, Vec<Site>) {
+    start(core, args, world, err, true)
+}
+
+fn start(
+    core: &Program,
+    args: &[OsString],
+    world: &mut (impl World + Send),
+    err: &mut impl Write,
+    watch: bool,
+) -> (u8, Vec<Site>) {
     let app = core.app.as_ref().expect("a program with an app");
-    let (status, line) = match start_message(core, app, headless(app), args) {
-        Ok(start) => serve(core, app, start, world),
-        Err(stop) => stop,
+    let ((status, line), flagged) = match start_message(core, app, headless(app), args) {
+        Ok(start) => serve(core, app, start, world, watch),
+        Err(stop) => (stop, vec![]),
     };
     let _ = err.write_all(line.as_bytes());
-    status
+    (status, flagged)
 }
 
 /// Variant `start` with its fields filled from the arguments, or the usage line.
@@ -86,8 +107,14 @@ fn start_message(core: &Program, app: &App, start: usize, args: &[OsString]) -> 
 
 /// The message loop: the handler answers each message in turn and its effects are performed.
 /// The whole loop runs on one big-stack thread.
-fn serve(core: &Program, app: &App, start: Value, world: &mut (impl World + Send)) -> End {
-    let run = guest(core, app, |machine| {
+fn serve(
+    core: &Program,
+    app: &App,
+    start: Value,
+    world: &mut (impl World + Send),
+    watch: bool,
+) -> (End, Vec<Site>) {
+    let (run, flagged) = guest(core, app, watch, |machine| {
         let mut state = machine.state(app)?;
         let mut queue = VecDeque::from([Queued::Message(start)]);
         while let Some(next) = queue.pop_front() {
@@ -104,19 +131,30 @@ fn serve(core: &Program, app: &App, start: Value, world: &mut (impl World + Send
         }
         Ok((3, format!("{}: ended without Exit\n", app.name)))
     });
-    run.unwrap_or_else(|end| end)
+    (run.unwrap_or_else(|end| end), flagged)
 }
 
-/// Runs `f` on a machine with room for the deepest call chain; a trap or fault ends the run.
+/// Runs `f` on a machine with room for the deepest call chain, with the detector on when
+/// `watch`; a trap or fault ends the run. Also the calls the detector flagged.
 fn guest<T: Send>(
     core: &Program,
     app: &App,
+    watch: bool,
     f: impl FnOnce(&mut Machine) -> Done<T> + Send,
-) -> Result<T, End> {
-    match on_big_stack(|| f(&mut Machine::new(core))) {
-        Ok(Ok(done)) => Ok(done),
-        Ok(Err(stop)) => Err(ended(core, app, stop)),
-        Err(reason) => Err(ended(core, app, Stop::Internal(reason))),
+) -> (Result<T, End>, Vec<Site>) {
+    let run = on_big_stack(|| {
+        let mut machine = Machine::new(core);
+        machine.detector = watch.then(Detector::default);
+        let done = f(&mut machine);
+        (
+            done,
+            machine.detector.map(|d| d.flagged).unwrap_or_default(),
+        )
+    });
+    match run {
+        Ok((Ok(done), flagged)) => (Ok(done), flagged),
+        Ok((Err(stop), flagged)) => (Err(ended(core, app, stop)), flagged),
+        Err(reason) => (Err(ended(core, app, Stop::Internal(reason))), vec![]),
     }
 }
 

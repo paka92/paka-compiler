@@ -9,6 +9,8 @@ use crate::core_form::{
     App, Arg, Arith, Arm, Bin, Block, Callee, Child, Cmp, Compound, Expr, ExprKind, FloatArith,
     FnId, FnRef, Local, Place, Program, Root, Site, Step, Stmt, Ty, Un, Walk,
 };
+pub use overlap::Detector;
+use overlap::{held_in_register, spans};
 use paka_rt::ops::{self, Float, Int, Text};
 use paka_rt::route::Event;
 use paka_rt::tree::{self, Edit, Node};
@@ -17,6 +19,7 @@ use std::fmt::Write;
 use std::{mem, panic, thread};
 pub use ui::{Left, Ui};
 
+mod overlap;
 mod ui;
 
 /// The call depth no call may pass; the handler is at depth 1.
@@ -222,6 +225,8 @@ pub struct Machine<'a> {
     pub broken: Option<(Site, String)>,
     /// Of a UI example, when kept: each action's events from its start and what it left.
     pub ui_log: Option<Vec<(Vec<Event>, Left)>>,
+    /// The run-time overlap detector, when the run asks for it.
+    pub detector: Option<Detector>,
 }
 
 impl<'a> Machine<'a> {
@@ -233,6 +238,7 @@ impl<'a> Machine<'a> {
             kids: vec![],
             broken: None,
             ui_log: None,
+            detector: None,
         }
     }
 
@@ -817,6 +823,7 @@ impl<'a> Machine<'a> {
         };
         let path = self.path(fr, &place.steps)?;
         let value = self.eval(fr, e)?;
+        let written = self.detector.is_some().then(|| spans(&path));
         let root = &mut fr.locals[*l];
         match op {
             None => store(root, path, value, CAP)?,
@@ -824,6 +831,9 @@ impl<'a> Machine<'a> {
                 let slot = walk_mut(root, &path).map_err(|t| name_idiom(t, op, path.last()))?;
                 compound(slot, op, value)?
             }
+        }
+        if let (Some(d), Some(written)) = (&mut self.detector, written) {
+            d.wrote(self.depth, *l, &written);
         }
         Ok(())
     }
@@ -846,12 +856,15 @@ impl<'a> Machine<'a> {
             Target::Builtin(row) => !generic::keeps(row, i),
             Target::User(_) | Target::Ui(_) => true,
         };
-        let mut given: Vec<Given> = Vec::with_capacity(args.len());
-        for (i, arg) in args.iter().enumerate() {
-            let g = self.given(fr, arg, lend(i), &given)?;
-            given.push(g);
+        let base = self.detector.as_ref().map_or(0, Detector::marks);
+        let given = self.operands(fr, args, lend, site);
+        if let Some(d) = &mut self.detector {
+            let seen = given.as_ref().map_or(&[][..], Vec::as_slice);
+            if d.start(self.depth, site, args, seen, base) {
+                return Err(Stop::Internal("a call takes overlapping places".into()));
+            }
         }
-        let (mut params, loans) = take_args(fr, given)?;
+        let (mut params, loans) = take_args(fr, given?)?;
         // A trap skips `give_back`; the loaned slots stay `Unit`, which nothing can see once the run ends.
         let value = match target {
             Target::Ctor(v) => return Ok(Value::Variant(v, Items(params))),
@@ -887,7 +900,30 @@ impl<'a> Machine<'a> {
         Ok(Value::Unit)
     }
 
-    fn given(&mut self, fr: &mut Frame, arg: &Arg, lend: bool, earlier: &[Given]) -> Done<Given> {
+    /// The arguments in written order.
+    fn operands(
+        &mut self,
+        fr: &mut Frame,
+        args: &[Arg],
+        lend: impl Fn(usize) -> bool,
+        site: Site,
+    ) -> Done<Vec<Given>> {
+        let mut given: Vec<Given> = Vec::with_capacity(args.len());
+        for (i, arg) in args.iter().enumerate() {
+            let g = self.given(fr, arg, lend(i), &given, site)?;
+            given.push(g);
+        }
+        Ok(given)
+    }
+
+    fn given(
+        &mut self,
+        fr: &mut Frame,
+        arg: &Arg,
+        lend: bool,
+        earlier: &[Given],
+        site: Site,
+    ) -> Done<Given> {
         match arg {
             Arg::Inout(p) => {
                 let Root::Local(l) = &p.root else {
@@ -902,17 +938,31 @@ impl<'a> Machine<'a> {
                 }) = &e.kind
                 {
                     let taken = |g: &Given| matches!(g, Given::Borrow(m, _) if m == l);
-                    let heavy = !matches!(
-                        fr.locals[*l],
-                        Value::Int(_) | Value::Float(_) | Value::Bool(_) | Value::Fn(_)
-                    );
+                    let heavy = !held_in_register(&fr.locals[*l]);
                     if lend && steps.is_empty() && heavy && !earlier.iter().any(taken) {
+                        if let Some(d) = &mut self.detector {
+                            d.read(self.depth, *l, &[], &fr.locals[*l], site);
+                        }
                         return Ok(Given::Borrow(*l, vec![]));
+                    }
+                    if self.detector.is_some() {
+                        return self.watched(fr, *l, steps, site);
                     }
                 }
                 Ok(Given::Own(self.eval(fr, e)?))
             }
         }
+    }
+
+    /// A read-only place argument read as `read` reads it, noted for the detector.
+    fn watched(&mut self, fr: &mut Frame, l: Local, steps: &[Step], site: Site) -> Done<Given> {
+        let path = self.path(fr, steps)?;
+        let copy = walk(&fr.locals[l], &path, fr.site, |seen| seen.copy())?;
+        let value = copy.ok_or_else(|| Trap::bare(Kind::Stack, fr.site))?;
+        if let Some(d) = &mut self.detector {
+            d.read(self.depth, l, &path, &value, site);
+        }
+        Ok(Given::Own(value))
     }
 }
 

@@ -2034,10 +2034,12 @@ or merged during review. Ids with a letter were added during review.
 
 ### M6-22a · L4 · Add a run-time inout overlap detector to the interpreter
 
+- status: done
 - needs: nothing
 - flags: none
 - done when: Hand-built core programs with overlapping inout arguments are flagged at the call; non-overlapping ones are not; normal runs are unchanged.
 - why this level: A missed path silently weakens the evidence for the irreversible no-overlap promise.
+- note: Done: the detector is paka/src/interp/eval/overlap.rs; `interp::run_watched` runs an app with it on and returns the site of each flagged call; `run` keeps it off. It flags a call whose inout argument shares storage with another argument at call start, and one whose read-only place argument is written (by an assignment or an inout) before the call starts; during the call only its own inouts can write the caller, which the first check covers. Index values are compared, slices fold into ranges, Int, Float, Bool and function values are exempt. Two overlapping places a call takes end the run with an internal error, since the interpreter cannot take both. Covers calls only, not the other operand forms of Rule C.
 
 ### M6-23 · L5 · Decide whether release IR may promise no overlap for inout
 
