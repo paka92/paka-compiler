@@ -799,6 +799,7 @@ Not in the table, since a program cannot reach them in a file:
 |---|---|
 | `file-unreadable` | needs a file that cannot be read; a case folder always holds `main.paka` (spec/m1.md §13) |
 | `clang-missing` | needs a machine without `clang`; tested out of the folder (spec/m1.md §13) |
+| `clang-version` | needs a `clang` of another version (spec/m1.md §13) |
 | `clang-failed` | needs a failing `clang` run (spec/m1.md §13) |
 | `runtime-missing` | needs `libpaka_rt.a` removed from the executable's folder (spec/m1.md §13) |
 | `bad-migrate-signature` | a migrate is not a program file; tested in paka/tests/migrate.rs (M5-07 §2) |

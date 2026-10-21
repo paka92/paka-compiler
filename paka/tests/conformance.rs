@@ -37,6 +37,7 @@ const KNOWN: &[&str] = &[
 const ENVIRONMENT: &[&str] = &[
     "file-unreadable",
     "clang-missing",
+    "clang-version",
     "clang-failed",
     "runtime-missing",
 ];

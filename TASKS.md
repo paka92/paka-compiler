@@ -1893,6 +1893,8 @@ or merged during review. Ids with a letter were added during review.
 - flags: native-only
 - done when: A test with a fake clang reporting another version makes `paka build` fail, naming the pinned version.
 - why this level: One version check and one error message; the test is obvious.
+- status: done
+- note: Done: the pinned version lives in paka/clang-version (21.1.8); paka build reads the first line of `clang --version` before writing any file and refuses any other version with the new tool code `clang-version` (spec/m1.md sections 10 and 13), naming the pinned and the found version. paka/tests/build.rs drives a fake clang that reports the pinned version (accepted, command checked) and other or unreadable versions (refused, clang never compiles).
 
 ### M6-04 · L3 · Extend paka build to the whole language: direct calls, no slots, holes refused
 

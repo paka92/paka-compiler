@@ -17,6 +17,7 @@ const NO_APP: &str = concat!(
 
 const LIGHT_IR: &str = concat!(env!("CARGO_MANIFEST_DIR"), "/../docs/abi/light.ll");
 const FAKE_CLANG_DIR: &str = concat!(env!("CARGO_MANIFEST_DIR"), "/tests/fake_clang");
+const CLANG_VERSION: &str = include_str!("../clang-version");
 const SYSTEM_LIBS: [&str; 7] = [
     "-lgcc_s",
     "-lutil",
@@ -42,12 +43,19 @@ fn assert_tool_error(out: &Output, path: &str, code: &str) {
     assert_eq!(out.status.code(), Some(1));
 }
 
-/// Runs `paka_exe build source -o output` with `PATH` set to `path`.
-fn build_with(paka_exe: &Path, source: &str, output: &Path, path: &str) -> Output {
-    Command::new(paka_exe)
+/// `paka build source -o output` with `PATH` set to `path`; a fake clang reports the pinned version.
+fn build_command(paka_exe: &Path, source: &str, output: &Path, path: &str) -> Command {
+    let mut command = Command::new(paka_exe);
+    command
         .args(["build", source, "-o"])
         .arg(output)
         .env("PATH", path)
+        .env("FAKE_CLANG_VERSION", CLANG_VERSION.trim());
+    command
+}
+
+fn build_with(paka_exe: &Path, source: &str, output: &Path, path: &str) -> Output {
+    build_command(paka_exe, source, output, path)
         .output()
         .unwrap()
 }
@@ -107,15 +115,39 @@ fn failing_clang_is_one_diagnostic_and_leaks_nothing() {
     assert!(dir.entries().is_empty(), "left behind: {:?}", dir.entries());
 }
 
+/// Any clang but the pinned one is refused before it compiles anything, naming both versions.
+#[test]
+fn other_clang_version_is_refused() {
+    build_runtime();
+    let pinned = CLANG_VERSION.trim();
+    for (version, found) in [
+        ("20.1.2", "20.1.2"),
+        ("21.1.80", "21.1.80"),
+        ("", "unknown"),
+    ] {
+        let (log, dir) = (Scratch::new("version-log"), Scratch::new("version"));
+        let out = build_command(Path::new(PAKA), LIGHT, &dir.path("out"), FAKE_CLANG_DIR)
+            .env("FAKE_CLANG_VERSION", version)
+            .env("FAKE_CLANG_LOG", log.path("args"))
+            .output()
+            .unwrap();
+        assert_tool_error(&out, LIGHT, "clang-version");
+        let stderr = String::from_utf8_lossy(&out.stderr);
+        assert!(stderr.contains(&format!("clang {pinned} ")), "{stderr:?}");
+        assert!(stderr.contains(&format!("version {found}\n")), "{stderr:?}");
+        assert!(
+            dir.entries().is_empty() && log.entries().is_empty(),
+            "clang ran"
+        );
+    }
+}
+
 #[test]
 fn clang_gets_the_documents_command() {
     let archive = common::runtime_archive();
     let (log, dir) = (Scratch::new("log"), Scratch::new("args"));
     let (output, log_file) = (dir.path("out"), log.path("args"));
-    let out = Command::new(PAKA)
-        .args(["build", LIGHT, "-o"])
-        .arg(&output)
-        .env("PATH", FAKE_CLANG_DIR)
+    let out = build_command(Path::new(PAKA), LIGHT, &output, FAKE_CLANG_DIR)
         .env("FAKE_CLANG_LOG", &log_file)
         .output()
         .unwrap();

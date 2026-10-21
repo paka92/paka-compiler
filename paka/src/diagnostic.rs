@@ -6,6 +6,7 @@ use std::fmt;
 const KINDS: &[(&str, bool, bool)] = &[
     ("file-unreadable", false, false),
     ("clang-missing", false, false),
+    ("clang-version", false, false),
     ("clang-failed", false, false),
     ("runtime-missing", false, false),
     ("invalid-byte", false, false),
