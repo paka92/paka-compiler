@@ -1,7 +1,8 @@
 //! Edits while a visual app runs (M5-28, docs/decisions/M5-07.md): a change to a stored type,
 //! reached by field, list item, map value or enum payload, is refused unless a state choice is
 //! carried or waiting, and the app keeps answering clicks on the version it runs. An installed
-//! version swaps into the app, keeping its state, or with a reset launching it again (M5-29).
+//! version swaps into the app, keeping its state, with a reset launching it again (M5-29), or
+//! with a migrate converting it (M5-30).
 
 #[allow(dead_code)]
 mod common;
@@ -205,22 +206,83 @@ fn defaults_comments_and_other_types_keep_the_state() {
 
 const MIGRATE: &str = "migrate(old: Board) -> Board {\n  Board { count: old.count }\n}";
 
+fn with_step() -> String {
+    BOARD_TYPE.replace("count: Int = 0,", "count: Int = 0,\n  step: Int = 10,")
+}
+
+const UPDATE: &str = "\
+fn update(s: inout Board, m: Msg) {
+  match m {
+    Inc => s.count += s.step
+  }
+}";
+
 #[test]
-fn a_carried_migrate_holds_the_change_back_and_waits() {
-    let scratch = Scratch::new("state-waiting");
+fn the_refused_edit_resent_with_a_migrate_installs_and_keeps_the_count() {
+    let scratch = Scratch::new("state-migrated");
     let mut s = session(&scratch);
     launch(&mut s);
-    let state = BOARD_TYPE.replace("count: Int = 0,", "count: Int = 0,\n  step: Int = 1,");
-    let reply = edit(&mut s, "Board", &state, Some(MIGRATE));
+    assert_eq!((click(&mut s), click(&mut s)), ("1".into(), "2".into()));
+    let reply = edit(&mut s, "Board", &with_step(), None);
+    assert_eq!(str_of(reply.get("error").unwrap(), "kind"), "state_changed");
+    let reply = edit(&mut s, "Board", &with_step(), Some(MIGRATE));
+    assert_eq!(reply.get("installed"), Some(&true.into()), "{reply}");
+    assert_eq!(str_of(&reply, "state"), "migrated");
+    assert_eq!(click(&mut s), "3");
+    let reply = edit(&mut s, "update", UPDATE, None);
+    assert_eq!(
+        str_of(&reply, "state"),
+        "kept",
+        "the migrate is used up: {reply}"
+    );
+    assert_eq!(click(&mut s), "13", "the new field holds its default");
+}
+
+#[test]
+fn a_trapping_migrate_leaves_the_old_version_running() {
+    let scratch = Scratch::new("state-migrate-trapped");
+    let mut s = session(&scratch);
+    launch(&mut s);
+    click(&mut s);
+    let trapping = "migrate(old: Board) -> Board {\n  Board { count: 1 / (old.count - 1) }\n}";
+    let reply = edit(&mut s, "Board", &with_step(), Some(trapping));
+    assert_eq!(reply.get("installed"), Some(&false.into()), "{reply}");
+    assert_eq!(str_of(&reply, "state"), "migrate_trapped");
+    let trap = str_of(&reply, "trap");
+    assert!(
+        trap.starts_with("board: trap divide_by_zero at migrate:2:"),
+        "{trap}"
+    );
+    assert_eq!(click(&mut s), "2", "the old code counts on");
+    assert_eq!(click(&mut s), "3", "the migrate is not run again by itself");
+    let reply = edit(&mut s, "Board", &with_step(), Some(MIGRATE));
+    assert_eq!(str_of(&reply, "state"), "migrated", "{reply}");
+    assert_eq!(click(&mut s), "4");
+}
+
+#[test]
+fn a_migrate_that_fails_its_check_blocks_the_install() {
+    let scratch = Scratch::new("state-migrate-wrong");
+    let mut s = session(&scratch);
+    launch(&mut s);
+    click(&mut s);
+    let wrong = "migrate(old: Todo) -> Board {\n  Board {}\n}";
+    let reply = edit(&mut s, "Board", &with_step(), Some(wrong));
     assert_eq!(reply.get("installed"), Some(&false.into()), "{reply}");
     assert_eq!(str_of(&reply, "state"), "waiting");
-    assert_eq!(click(&mut s), "1");
-    let note = "type Note { text: String = \"\", at: Int = 0 }";
-    let reply = edit(&mut s, "Note", note, None);
-    assert_eq!(str_of(&reply, "state"), "waiting", "{reply}");
+    assert_eq!(reply.get("broke").unwrap().to_string(), r#"["migrate"]"#);
+    let errors = reply.get("errors").unwrap().to_string();
+    assert!(errors.contains("bad-migrate-signature"), "{errors}");
     assert_eq!(click(&mut s), "2");
-    let reply = edit(&mut s, "Note", note, Some("cleanup"));
+    let reply = edit(&mut s, "update", UPDATE, None);
+    assert_eq!(str_of(&reply, "state"), "waiting", "{reply}");
+    assert_eq!(reply.get("broke").unwrap().to_string(), r#"["migrate"]"#);
+    assert_eq!(click(&mut s), "3");
+    let reply = edit(&mut s, "Board", &with_step(), Some("cleanup"));
     assert_eq!(str_of(reply.get("error").unwrap(), "kind"), "bad_request");
+    let reply = edit(&mut s, "Board", &with_step(), Some(MIGRATE));
+    assert_eq!(str_of(&reply, "state"), "migrated", "{reply}");
+    assert_eq!(click(&mut s), "13");
 }
 
 #[test]

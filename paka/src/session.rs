@@ -6,6 +6,7 @@
 
 use crate::core_form::Program;
 use crate::diagnostic::Diagnostic;
+use crate::migrate::check_migrate;
 use crate::parser::split;
 use crate::print;
 use crate::serve::{Call, Failure, Reply};
@@ -53,6 +54,16 @@ pub struct Session {
     /// The visual app running on the runnable version, and the state choice waiting for its swap.
     visual: Option<Visual>,
     choice: Option<String>,
+}
+
+/// What an install did: took the program, telling what became of the running app's state; held
+/// it back; or held it back for a waiting migrate whose check failed, with the error, or that
+/// trapped, with the report.
+enum Outcome {
+    Installed(&'static str),
+    Held,
+    Wrong(Value),
+    Trapped(String),
 }
 
 struct Runnable {
@@ -157,11 +168,14 @@ impl Session {
         if let Some(c) = carried.filter(|_| self.visual.is_some()) {
             self.choice = Some(c.into());
         }
-        let reset = self.visual.is_some() && self.choice.as_deref() == Some("reset");
-        let installed = self.installed();
-        let mut reply = self.edited(name, &failing, installed);
-        if let Some(state) = self.state_kept(carried.is_some(), installed, reset) {
+        let outcome = self.installed();
+        let installed = matches!(outcome, Outcome::Installed(_));
+        let mut reply = self.edited(name, &failing, &outcome);
+        if let Some(state) = self.state_kept(carried.is_some(), &outcome) {
             reply.push(("state", state.into()));
+        }
+        if let Outcome::Trapped(report) = outcome {
+            reply.push(("trap", report.into()));
         }
         if installed && let Some(order) = order {
             reply.push(("run", self.run(&order).unwrap_or(Value::Null)));
@@ -214,15 +228,15 @@ impl Session {
         Err(refused)
     }
 
-    /// What became of the running app's state, given whether a choice was `carried` and the edit
-    /// `installed` with a `reset`; with no app running, only that a carried choice was ignored.
-    fn state_kept(&self, carried: bool, installed: bool, reset: bool) -> Option<&'static str> {
+    /// What became of the running app's state, given whether a choice was `carried` and the
+    /// install's `outcome`; with no app running, only that a carried choice was ignored.
+    fn state_kept(&self, carried: bool, outcome: &Outcome) -> Option<&'static str> {
         let Some(_) = self.visual else {
             return carried.then_some("ignored");
         };
-        Some(match () {
-            _ if installed && reset => "reset",
-            _ if installed => "kept",
+        Some(match outcome {
+            Outcome::Installed(took) => took,
+            Outcome::Trapped(_) => "migrate_trapped",
             _ if self.choice.is_some() => "waiting",
             _ if !self.failing().is_empty() => "kept",
             _ => "missing",
@@ -230,37 +244,62 @@ impl Session {
     }
 
     /// Takes the program as the runnable version when every definition checks, and swaps it into
-    /// the running visual app. There a waiting reset is applied and used up; a version with other
-    /// stored types and no reset is held back, as is one with a migrate waiting (M5-30).
-    fn installed(&mut self) -> bool {
+    /// the running visual app. There a waiting choice is applied and used up: a reset, or a
+    /// migrate, checked against the running and the new version and run on the state; a version
+    /// with other stored types and no choice is held back, as is one whose migrate fails its check
+    /// or traps (docs/decisions/M5-07.md section 1.6).
+    fn installed(&mut self) -> Outcome {
         if !self.failing().is_empty() {
-            return false;
+            return Outcome::Held;
         }
         let stored = Stored::of(&self.workspace);
-        let reset = self.choice.as_deref() == Some("reset");
         let changed = self.runnable.as_ref().is_some_and(|r| r.stored != stored);
-        if self.visual.is_some() && !reset && (self.choice.is_some() || changed) {
-            return false;
-        }
         let files = (self.files.iter())
             .map(|f| (f.path.to_string_lossy().into_owned(), f.text.clone()))
             .collect();
-        let generation = self.runnable.as_ref().map_or(0, |r| r.generation + 1);
-        let apps = self.apps();
-        self.runnable = Some(Runnable {
-            generation,
+        let runnable = Runnable {
+            generation: self.runnable.as_ref().map_or(0, |r| r.generation + 1),
             files,
-            apps,
+            apps: self.apps(),
             stored,
-        });
-        if let Some(visual) = &self.visual {
-            let core = core(self.runnable.as_ref().unwrap());
+        };
+        let mut took = "kept";
+        if let (Some(visual), Some(running)) = (&self.visual, &self.runnable) {
+            let (core, function) = match self.choice.as_deref() {
+                None if changed => return Outcome::Held,
+                Some(text) if text != "reset" => {
+                    let new = source(&runnable.files);
+                    match check_migrate(&source(&running.files), &new, text) {
+                        Ok(m) => (m.program, Some(m.function)),
+                        Err(d) => {
+                            let error = d.value(text.as_bytes(), Some("migrate"));
+                            return Outcome::Wrong(error);
+                        }
+                    }
+                }
+                _ => (core(&runnable), None),
+            };
+            let reset = self.choice.is_some() && function.is_none();
+            let ((_, ended), trap) = match function {
+                _ if !visual_app(&core) => ((String::new(), true), None),
+                Some(f) => visual.migrate(core, f),
+                None => (visual.swap(core, reset), None),
+            };
+            if let Some(trap) = trap {
+                return Outcome::Trapped(trap);
+            }
+            took = match (reset, function) {
+                (true, _) => "reset",
+                (_, Some(_)) => "migrated",
+                _ => "kept",
+            };
             self.choice = None;
-            if !visual_app(&core) || visual.swap(core, reset).1 {
+            if ended {
                 self.visual = None;
             }
         }
-        true
+        self.runnable = Some(runnable);
+        Outcome::Installed(took)
     }
 
     /// The names of the program's apps.
@@ -306,25 +345,31 @@ impl Session {
         }
     }
 
-    /// The reply to an edit of `name`, given the definitions `failing` before it.
+    /// The reply to an edit of `name`, given the definitions `failing` before it and the
+    /// install's `outcome`. A waiting migrate that fails its check is among what the edit broke.
     fn edited(
         &self,
         name: &str,
         failing: &BTreeSet<String>,
-        installed: bool,
+        outcome: &Outcome,
     ) -> Vec<(&'static str, Value)> {
         let now = self.failing();
-        let broke: Vec<_> = (now.difference(failing))
+        let mut broke: Vec<_> = (now.difference(failing))
             .filter(|n| *n != name)
             .cloned()
             .collect();
-        let (version, text, errors) = match self.workspace.def(name) {
+        let (version, text, mut errors) = match self.workspace.def(name) {
             Some((text, check)) => {
                 let error = check.error.map(|d| d.value(text.as_bytes(), None));
                 (Some(version(text)), Some(text), error.into_iter().collect())
             }
             None => (None, None, vec![]),
         };
+        if let Outcome::Wrong(error) = outcome {
+            broke.push("migrate".into());
+            errors.push(error.clone());
+        }
+        let installed = matches!(outcome, Outcome::Installed(_));
         vec![
             ("name", name.into()),
             ("version", version.into()),
@@ -529,13 +574,17 @@ fn joined(before: &str, after: &str) -> String {
 
 /// The checked program of version `r`.
 fn core(r: &Runnable) -> Program {
-    let mut source = Source::default();
-    for (path, text) in &r.files {
-        source.add(path.into(), text.as_bytes().to_vec());
-    }
-    crate::check(PATH, &source)
+    crate::check(PATH, &source(&r.files))
         .expect("the runnable version checks")
         .0
+}
+
+fn source(files: &[(String, String)]) -> Source {
+    let mut source = Source::default();
+    for (path, text) in files {
+        source.add(path.into(), text.as_bytes().to_vec());
+    }
+    source
 }
 
 fn visual_app(core: &Program) -> bool {

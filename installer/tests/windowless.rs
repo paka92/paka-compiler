@@ -1,12 +1,15 @@
 //! Visual apps with no window on dev code (M5-25): each script of paka/src/interp/
 //! windowless_tests.rs gives the interpreter's tree text, trap count, end and printed text, the
 //! reports compared by their first line, and frees all it made. So does a code swap between
-//! turns (M5-27), and a reset (M5-29).
+//! turns (M5-27), a reset (M5-29) and a migrate (M5-30).
 
 mod common;
 
 use common::{Dev, source};
+use paka::core_form::Program;
 use paka::interp::Windowless;
+use paka::migrate::check_migrate;
+use paka_installer::dev::Install;
 use paka_rt::effects::Host;
 use paka_rt::input::Key;
 use paka_rt::route::Event;
@@ -113,29 +116,37 @@ fn play(text: &str, events: Vec<Event>) -> Seen {
     want
 }
 
-/// Plays `events` on `text`, then queues `queued` and swaps to `next` with the same stored types,
-/// in the interpreter and on dev code; checks they agree and the dev run frees all, and gives
-/// what they saw.
-fn swap(text: &str, events: Vec<Event>, queued: Vec<Event>, next: &str) -> Seen {
-    swapped(text, events, queued, next, false)
+/// How the next version comes: keeping the state, as a launch again, or through a migrate.
+enum Next<'m> {
+    Swap,
+    Reset,
+    Migrate(&'m str),
 }
 
-/// As `swap`, launching `next` again on a reset.
-fn reset(text: &str, events: Vec<Event>, queued: Vec<Event>, next: &str) -> Seen {
-    swapped(text, events, queued, next, true)
-}
-
-fn swapped(text: &str, events: Vec<Event>, queued: Vec<Event>, next: &str, reset: bool) -> Seen {
+/// Plays `events` on `text`, then queues `queued` and installs `next` as `how` says, in the
+/// interpreter and on dev code; checks they agree and the dev run frees all, and gives what they
+/// saw.
+fn swapped(text: &str, events: Vec<Event>, queued: Vec<Event>, next: &str, how: Next) -> Seen {
     let checked = |text| paka::check("main.paka", &source(text)).unwrap_or_else(|d| panic!("{d}"));
-    let ((core, ..), (after, ..)) = (checked(text), checked(next));
+    let after = || -> (Program, Install) {
+        match how {
+            Next::Swap => (checked(next).0, Install::Swap),
+            Next::Reset => (checked(next).0, Install::Reset),
+            Next::Migrate(m) => {
+                let m = check_migrate(&source(text), &source(next), m)
+                    .unwrap_or_else(|d| panic!("{d}"));
+                (m.program, Install::Migrate(m.function))
+            }
+        }
+    };
     let mut out = vec![];
-    let mut ui = Windowless::start(core.into(), &[], Host(&mut out));
+    let mut ui = Windowless::start(checked(text).0.into(), &[], Host(&mut out));
     ui.send(events.clone());
     ui.queue(queued.clone());
-    if reset {
-        ui.reset(after.into(), &[]);
-    } else {
-        ui.swap(after.into());
+    match after() {
+        (core, Install::Swap) => ui.swap(core.into()),
+        (core, Install::Reset) => ui.reset(core.into(), &[]),
+        (core, Install::Migrate(f)) => _ = ui.migrate(core.into(), f),
     }
     let end = ui.end.map(|(code, report)| (code, first_line(&report)));
     let (tree, traps) = (ui.tree.to_string(), ui.traps.iter().map(|r| first_line(r)));
@@ -143,7 +154,8 @@ fn swapped(text: &str, events: Vec<Event>, queued: Vec<Event>, next: &str, reset
 
     let (mut dev, mut next_dev) = (Dev::default(), Dev::default());
     dev.edit(&source(text)).unwrap();
-    next_dev.edit(&source(next)).unwrap();
+    let (core, install) = after();
+    next_dev.build(core).unwrap();
     let mut out = vec![];
     let world = &mut Host(&mut out);
     let played = dev.play_swap(
@@ -154,7 +166,7 @@ fn swapped(text: &str, events: Vec<Event>, queued: Vec<Event>, next: &str, reset
         events,
         queued,
         &next_dev,
-        reset,
+        install,
     );
     let end = played.end.map(|end| {
         let (code, report) = end.expect("no interrupt");
@@ -165,6 +177,14 @@ fn swapped(text: &str, events: Vec<Event>, queued: Vec<Event>, next: &str, reset
     assert_eq!((played.tree, traps, end, printed), want);
     assert_eq!(played.ledger, (0, 0));
     want
+}
+
+fn swap(text: &str, events: Vec<Event>, queued: Vec<Event>, next: &str) -> Seen {
+    swapped(text, events, queued, next, Next::Swap)
+}
+
+fn reset(text: &str, events: Vec<Event>, queued: Vec<Event>, next: &str) -> Seen {
+    swapped(text, events, queued, next, Next::Reset)
 }
 
 /// The counter with `??reset` made a button, and its message first, so an old message's tag
@@ -428,4 +448,114 @@ fn a_reset_drops_focus_and_element_state() {
     let launched = play(FORM, vec![]).0;
     assert!(launched.contains("Input 'new' \"\" cursor=0 on_change=Draft\n"));
     assert_eq!(reset(FORM, events, queued, FORM).0, launched);
+}
+
+/// The counter with a `step` field of default `step`, which `+` adds.
+fn with_step(step: &str) -> String {
+    COUNTER
+        .replace(
+            "{ count: Int = 0 }",
+            &format!("{{ count: Int = 0, step: Int = {step} }}"),
+        )
+        .replace("Inc => s.count += 1", "Inc => s.count += s.step")
+}
+
+const KEEP_COUNT: &str = "migrate(old: Counter) -> Counter {\n  Counter { count: old.count }\n}";
+
+#[test]
+fn a_migrate_keeps_the_count_and_the_new_field_takes_its_default() {
+    let plus = || click(&PLUS, "Button");
+    let next = with_step("10");
+    let seen = swapped(
+        COUNTER,
+        vec![plus(), plus()],
+        vec![plus()],
+        &next,
+        Next::Migrate(KEEP_COUNT),
+    );
+    assert_eq!((seen.0, seen.1.len()), (counter("12"), 0));
+}
+
+#[test]
+fn a_trapping_migrate_leaves_the_old_version_running() {
+    let plus = || click(&PLUS, "Button");
+    let next = with_step("10");
+    let migrates = [
+        (
+            "migrate(old: Counter) -> Counter {\n  Counter { count: 1 / (old.count - 2) }\n}",
+            "counter: trap divide_by_zero at migrate:2:22",
+        ),
+        (
+            "migrate(old: Counter) -> Counter {\n  Counter { count: ??later }\n}",
+            "counter: trap hole at migrate:2:20",
+        ),
+    ];
+    for (migrate, report) in migrates {
+        let events = vec![plus(), plus()];
+        let seen = swapped(COUNTER, events, vec![plus()], &next, Next::Migrate(migrate));
+        assert_eq!((seen.0, seen.1), (counter("3"), vec![report.to_string()]));
+    }
+}
+
+const TODOS: &str = "\
+type Todo { id: Int, title: String, done: Bool = false }
+
+type Todos { draft: String = \"\", items: List<Todo> = [] }
+
+enum Msg { Add }
+
+fn update(s: inout Todos, m: Msg) {
+  match m {
+    Add => append(&s.items, Todo { id: len(s.items), title: \"t{len(s.items)}\" })
+  }
+}
+
+fn shown(s: Todos) -> String {
+  var out: String = \"\"
+  for t in s.items {
+    out = \"{out}{t.id}:{t.title} \"
+  }
+  out
+}
+
+view todos_view(s: Todos) -> View<Msg> {
+  Col() {
+    Text(shown(s))
+    Button(\"+\", on: Add)
+  }
+}
+
+app todos {
+  state:  Todos
+  update: update
+  view:   todos_view
+  grants: []
+}
+";
+
+#[test]
+fn a_migrate_rebuilds_a_list_of_records() {
+    let next = TODOS
+        .replace(
+            "done: Bool = false }",
+            "done: Bool = false, note: String = \"\" }",
+        )
+        .replace("{t.id}:{t.title} ", "{t.id}:{t.title}:{t.note} ");
+    let migrate = "\
+migrate(old: Todos) -> Todos {
+  var items: List<Todo> = []
+  for t in old.items {
+    append(&items, Todo { id: t.id, title: t.title, done: t.done, note: \"n\" })
+  }
+  Todos { draft: old.draft, items: items }
+}";
+    let add = || click(&[Step::Place(1)], "Button");
+    let seen = swapped(
+        TODOS,
+        vec![add(), add()],
+        vec![add()],
+        &next,
+        Next::Migrate(migrate),
+    );
+    assert!(seen.0.contains("\"0:t0:n 1:t1:n 2:t2: \""), "{}", seen.0);
 }

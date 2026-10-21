@@ -97,8 +97,9 @@ pub struct Session<'a> {
 }
 
 impl Session<'_> {
-    /// Calls slot `id` as `fn(ctx, args...) -> i32` and returns its status; up to four argument
-    /// words.
+    /// Calls slot `id` as `fn(ctx, args...) -> i32` and returns its status, after pointing the
+    /// first word of `ctx` at this table, so a context that ran other code runs this; up to four
+    /// argument words.
     ///
     /// # Safety
     ///
@@ -109,8 +110,10 @@ impl Session<'_> {
         type C = *mut c_void;
         let entry = self.words.get(id).ok_or(Refused::NoSlot(id))?;
         let entry = entry.load(Ordering::Relaxed);
-        // SAFETY: the caller vouches `entry` is code taking `ctx` and these argument words.
+        // SAFETY: the caller vouches `ctx` is the session's context and `entry` code taking it
+        // and these argument words.
         unsafe {
+            ctx.cast::<*const AtomicUsize>().write(self.words.as_ptr());
             Ok(match *args {
                 [a] => {
                     std::mem::transmute::<usize, extern "sysv64" fn(C, u64) -> i32>(entry)(ctx, a)

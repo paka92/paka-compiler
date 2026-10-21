@@ -5,11 +5,12 @@ use super::effects::{End, Queued, World, perform};
 use super::eval::{Done, Kind, Machine, Stop, Trap};
 use super::value::{Message, Value};
 use super::{ended, on_big_stack, place, report, start_message};
-use crate::core_form::{App, Program};
+use crate::core_form::{App, FnId, Program};
 use paka_rt::route::{Event, Sent, focused, route};
 use paka_rt::tree::{self, Node};
 use std::collections::VecDeque;
 use std::ffi::OsString;
+use std::mem;
 use std::sync::Arc;
 
 pub struct Windowless<W> {
@@ -83,6 +84,40 @@ impl<W: World + Send> Windowless<W> {
             self.tree = Node::Error(String::new());
             self.on_stack(|ui, m| ui.launch(m, args));
         }
+    }
+
+    /// Installs `core`, the next version of the app with a migrate as its function `function`,
+    /// between turns (M5-07 section 1.6): the migrate runs on a copy of the state, and its result
+    /// is the state as `swap` goes on. If it traps, the trap is recorded and the old version runs
+    /// on, its state and tree as they were, and handles the queue; false then.
+    pub fn migrate(&mut self, core: Arc<Program>, function: FnId) -> bool {
+        if self.end.is_some() {
+            return false;
+        }
+        let old = mem::replace(&mut self.core, core);
+        let mut migrated = false;
+        self.on_stack(|ui, m| {
+            let state = ui.state.as_ref().and_then(Value::copy);
+            let state = state.ok_or_else(|| too_deep(&ui.core));
+            match state.and_then(|state| m.run(function, vec![state])) {
+                Ok(state) => {
+                    (ui.state, migrated) = (Some(state), true);
+                    ui.redraw(m, true)?;
+                    ui.drain(m)
+                }
+                Err(Stop::Trap(trap)) => {
+                    let name = &app(&ui.core).name;
+                    ui.traps.push(report(&ui.core, name, &trap));
+                    Ok(())
+                }
+                Err(stop) => Err(ui.ended(stop)),
+            }
+        });
+        if !migrated && self.end.is_none() {
+            self.core = old;
+            self.on_stack(Self::drain);
+        }
+        migrated
     }
 
     fn on_stack(&mut self, f: impl FnOnce(&mut Self, &mut Machine) -> Result<(), End> + Send) {

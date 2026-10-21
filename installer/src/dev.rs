@@ -55,6 +55,14 @@ impl Default for Dev {
     }
 }
 
+/// How `Dev::play_swap` installs the next version: keeping the state (M5-27), as a launch again
+/// (M5-29), or through its definition that migrates the state (M5-30).
+pub enum Install {
+    Swap,
+    Reset,
+    Migrate(FnId),
+}
+
 /// A run's end, or why it stopped; the context's trap record and the ledger's leaks and faults.
 pub struct Ran {
     pub end: Result<End, Stopped>,
@@ -80,20 +88,27 @@ impl Dev {
         if self.edit_one(source).is_some() {
             return Ok(());
         }
-        let (mut p, ..) = paka::check("main.paka", source).map_err(|d| d.to_string())?;
+        let (p, ..) = paka::check("main.paka", source).map_err(|d| d.to_string())?;
+        self.build(p)?;
+        self.files = files(source);
+        for (_, text) in &self.files {
+            for (_, def) in split("main.paka", text).expect("a checked file splits") {
+                self.names.add(&String::from_utf8_lossy(def));
+            }
+        }
+        Ok(())
+    }
+
+    /// Compiles and installs the checked program `p` in one swap, as `edit` does with no source
+    /// to edit one function of later; on an error the last program stays.
+    pub fn build(&mut self, mut p: Program) -> Result<(), String> {
         let layouts = Layouts::new(&mut p);
         let keys = self.cache.build(&mut self.emitter, &p, &layouts)?;
         let records = Box::leak(Box::new(Records::new(&layouts.specs())));
         let addresses: Vec<u64> = (0..p.types.len()).map(|t| records.address(t)).collect();
         self.install(&keys, &addresses)?;
         (self.program, self.layouts, self.records, self.keys) = (p, layouts, addresses, keys);
-        self.files = files(source);
-        self.names = Names::default();
-        for (_, text) in &self.files {
-            for (_, def) in split("main.paka", text).expect("a checked file splits") {
-                self.names.add(&String::from_utf8_lossy(def));
-            }
-        }
+        (self.files, self.names) = (vec![], Names::default());
         Ok(())
     }
 
@@ -215,10 +230,8 @@ impl Dev {
         self.played(args, world, cap, limit, events, None)
     }
 
-    /// `play`, then `queued` waits while the run moves onto `next`'s code between turns, as
-    /// `paka::interp::Windowless::swap` does (M5-27), and is handled after; on a `reset` the
-    /// queue is dropped and the app launches again on `next`, as `reset` does (M5-29). `next`
-    /// holds the next version of the app, with the same stored types unless on a reset,
+    /// `play`, then `queued` waits while the run moves onto `next`'s code between turns as `how`
+    /// says, and is handled after, unless on a reset. `next` holds the next version of the app,
     /// installed on its own slot table.
     #[allow(clippy::too_many_arguments)]
     pub fn play_swap(
@@ -230,9 +243,9 @@ impl Dev {
         events: Vec<Event>,
         queued: Vec<Event>,
         next: &Dev,
-        reset: bool,
+        how: Install,
     ) -> Played {
-        self.played(args, world, cap, limit, events, Some((queued, next, reset)))
+        self.played(args, world, cap, limit, events, Some((queued, next, how)))
     }
 
     fn played(
@@ -242,7 +255,7 @@ impl Dev {
         cap: u64,
         limit: Duration,
         events: Vec<Event>,
-        swap: Option<(Vec<Event>, &Dev, bool)>,
+        swap: Option<(Vec<Event>, &Dev, Install)>,
     ) -> Played {
         let (app, start) = match self.app(args) {
             Ok(started) => started,
@@ -255,8 +268,8 @@ impl Dev {
                 };
             }
         };
-        let swap = swap
-            .map(|(queued, next, reset)| (queued, next, reset, next.app(args).expect("the app")));
+        let swap =
+            swap.map(|(queued, next, how)| (queued, next, how, next.app(args).expect("the app")));
         on_runner(cap, |ctx| {
             let (tree, traps, end, last) = until(ctx, limit, |ctx| {
                 let mut first = calls(self);
@@ -265,17 +278,22 @@ impl Dev {
                 ui.send(events);
                 let mut traps: Vec<_> = ui.traps.drain(..).map(|t| self.report(&t)).collect();
                 let mut last = self;
-                if let (Some((queued, next, reset, (app, start))), Some(calls)) =
-                    (&swap, &mut second)
+                if let (Some((queued, next, how, (app, start))), Some(calls)) = (&swap, &mut second)
                     && ui.end.is_none()
                 {
                     ui.queue(queued.clone());
-                    if *reset {
-                        ui.reset(calls.code(), app, start);
-                    } else {
-                        ui.swap(calls.code(), app);
-                    }
                     last = next;
+                    match *how {
+                        Install::Swap => ui.swap(calls.code(), app),
+                        Install::Reset => ui.reset(calls.code(), app, start),
+                        Install::Migrate(f) => {
+                            if !ui.migrate(calls.code(), app, f) {
+                                let trap = (!ui.traps.is_empty()).then(|| ui.traps.remove(0));
+                                traps.extend(trap.map(|t| next.report(&t)));
+                                last = self;
+                            }
+                        }
+                    }
                 }
                 traps.extend(ui.traps.iter().map(|t| last.report(t)));
                 (ui.drawing.root.to_string(), traps, ui.end.take(), last)

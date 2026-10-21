@@ -246,6 +246,12 @@ impl<'a> Machine<'a> {
         }
     }
 
+    /// What function `id` gives for `args`, called at depth 1 like the handler.
+    pub fn run(&mut self, id: FnId, args: Vec<Value>) -> Done {
+        let site = self.core.fns[id].site;
+        Ok(self.invoke(id, args, site)?.0)
+    }
+
     /// The state, built once from the defaults the core form writes in; `None` without a `state:`.
     pub fn state(&mut self, app: &App) -> Done<Option<Value>> {
         let Some(state) = &app.state else {
@@ -281,10 +287,7 @@ impl<'a> Machine<'a> {
     pub fn answer(&mut self, f: FnKey, arg: Value) -> Done {
         match f {
             FnKey::Ctor(_, variant) => Ok(Value::Variant(variant, Items(vec![arg]))),
-            FnKey::Fn(id) => {
-                let site = self.core.fns[id].site;
-                Ok(self.invoke(id, vec![arg], site)?.0)
-            }
+            FnKey::Fn(id) => self.run(id, vec![arg]),
         }
     }
 

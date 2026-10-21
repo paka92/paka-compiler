@@ -280,7 +280,7 @@ pub(super) fn release(ctx: &mut Context, record: u64, words: &mut [u64]) {
 }
 
 /// Room for a value of `bytes`, zeroed; one word at least.
-fn words(bytes: u64) -> Words {
+pub(super) fn words(bytes: u64) -> Words {
     vec![0; (bytes as usize).div_ceil(8).max(1)]
 }
 

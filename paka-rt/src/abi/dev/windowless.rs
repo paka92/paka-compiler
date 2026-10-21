@@ -7,7 +7,7 @@
 
 use super::app::{
     App, Call, Queued, Stopped, Words, addr, answer, close, copy, effects, release, start_message,
-    state, update,
+    state, status, update, words,
 };
 use super::view::{self, Drawing};
 use super::{Context, Trap};
@@ -108,6 +108,42 @@ impl<'a, W: World> Windowless<'a, W> {
             (self.code, self.app) = (code, app);
             let launched = self.launch(start);
             self.ended(launched);
+        }
+    }
+
+    /// Moves the run onto `code` and `app`, the next version with a migrate as its definition
+    /// `function`, between turns, as `paka::interp::Windowless::migrate` does: the migrate borrows
+    /// the state words and writes the new state, which replaces them once the old version frees
+    /// them, as `swap` goes on. If it traps, all it made is freed, the trap is recorded and the old
+    /// version runs on, its state and drawing as they were, and handles the queue; false then.
+    pub fn migrate(&mut self, code: Code<'a>, app: &'a App<'a>, function: usize) -> bool {
+        if self.end.is_some() {
+            return false;
+        }
+        let (_, _, size) = app.state.expect("a migrate gives a state");
+        let made = self.ctx.heap.made();
+        let mut state = words(size);
+        let args = [addr(&mut self.state), addr(&mut state)];
+        match status((code.call)(self.ctx, function, &args)) {
+            Ok(()) => {
+                self.release_state();
+                (self.state, self.code, self.app) = (state, code, app);
+                let drawn = self.redraw(true).and_then(|()| self.drain());
+                self.ended(drawn);
+                true
+            }
+            Err(stopped) => {
+                self.ctx.heap.sweep(made);
+                let drained = match stopped {
+                    Stopped::Trap => {
+                        self.traps.push(mem::take(&mut self.ctx.trap));
+                        self.drain()
+                    }
+                    stopped => Err(Err(stopped)),
+                };
+                self.ended(drained);
+                false
+            }
         }
     }
 
