@@ -1877,6 +1877,7 @@ or merged during review. Ids with a letter were added during review.
 - flags: decision, owner, native-only
 - done when: Owner approves a table: each allowed LLVM flag or attribute, its required proof, and the tail-call rule; what a trap shows and which trap wins are taken from M2-06 as given.
 - why this level: One wrong promise silently brings undefined behaviour back; no test can prove the table right.
+- note: Drafted: docs/decisions/M6-01.md, awaiting owner approval.
 
 ### M6-02 · L4 · Propose the benchmark set, fairness rules and cost-measurement method
 
@@ -1884,6 +1885,7 @@ or merged during review. Ids with a letter were added during review.
 - flags: decision, owner, native-only
 - done when: Owner approves the written program list, compiler flags per language, run protocol, and how each section 8 cost is isolated, before any measurement. The owner also rules whether measurement-only builds that omit a check family are accepted, and how the published table states the LLVM 22 versus 21 difference.
 - why this level: Fair comparison across three compilers must be fixed before numbers exist; bias is invisible afterwards.
+- note: Drafted: docs/decisions/M6-02.md, awaiting owner approval.
 
 ### M6-03 · L2 · Pin clang and refuse release builds with any other version
 
@@ -2138,6 +2140,7 @@ or merged during review. Ids with a letter were added during review.
 - flags: decision, owner
 - done when: Owner approves a written workflow: where labels and approvals live, what makes an approval unforgeable by an agent, what a refused agent sees, and exactly what the owner is shown for an example change and for a grant change.
 - why this level: The evidence pillar rests on it; an agent able to approve itself breaks it silently.
+- note: Drafted: docs/decisions/M7-01.md, awaiting owner approval.
 
 ### M7-02 · L5 · Decide the foreign-code model: declaration, named grant, process boundary, trusted list
 
@@ -2145,6 +2148,7 @@ or merged during review. Ids with a letter were added during review.
 - flags: decision, owner
 - done when: Owner approves a written model with alternatives: how a C library is declared and called, what crosses the process boundary, how failures surface; that a foreign call is an effect answered by a message; which crate (or generated C built by the pinned clang) holds the host's unchecked code; and where the trusted list is kept.
 - why this level: Security model for code outside every Paka guarantee; tests cannot repair a wrong boundary.
+- note: Drafted: docs/decisions/M7-02.md, awaiting owner approval.
 
 ### M7-03 · L4 · Propose how human-owned examples run against the shipped release binary
 
