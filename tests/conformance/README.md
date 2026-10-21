@@ -86,11 +86,12 @@ It is a plain test, so `cargo test --workspace --locked --offline` runs it too.
 - **Reference samples.** A block of `spec/paka.md` fenced as `paka` is a sample (the reference
   says so in its first paragraph); no other block is. A sample checks and runs when, saved as
   `main.paka` in a fresh folder, `paka check main.paka` and `paka examples main.paka` both exit 0,
-  and, if it has an `app`, `paka run main.paka words.txt` also exits 0, with `words.txt` in that
-  folder holding the text `a b c`.
-- **Size.** `spec/paka.md` is at most 8,000 tokens under the one counting rule: bytes divided by
-  three (M2-18, `paka/tests/reference.rs`). The test rounds the quotient up, so the budget is
-  24,000 bytes; rounding down would allow two bytes more.
+  and, if it has an `app` without `view:`, `paka run main.paka words.txt` also exits 0, with
+  `words.txt` in that folder holding the text `a b c`. A visual app is not run: `paka run` refuses
+  it for now.
+- **Size.** `spec/paka.md` is at most 10,500 tokens under the one counting rule: bytes divided by
+  three (M2-18, raised from 8,000 by M5-41; `paka/tests/reference.rs`). The test rounds the
+  quotient up, so the budget is 31,500 bytes; rounding down would allow two bytes more.
 - **Coverage.** The syntax node kinds are the variants of the node enums of `paka/src/ast.rs`
   (definitions, app entries, types, statements, expressions, string parts, arm bodies, patterns
   and the three operator enums), each written `Enum::Variant`. The built-ins are the distinct

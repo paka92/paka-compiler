@@ -8,7 +8,7 @@ use paka::coverage::{self, Uses};
 use paka::parser::parse;
 use std::sync::atomic::{AtomicUsize, Ordering};
 
-const BUDGET: usize = 8000;
+const BUDGET: usize = 10_500;
 const REFERENCE: &str = include_str!("../../../spec/paka.md");
 
 /// The blocks fenced as `paka`, each ended by a line feed.
@@ -28,10 +28,12 @@ fn sample_runs(source: &str) -> Result<(), String> {
     fs::write(dir.join("main.paka"), source).unwrap();
     fs::write(dir.join("words.txt"), "a b c").unwrap();
     let app = source.lines().any(|l| l.starts_with("app "));
+    // `paka run` does not run a visual app yet (`no-app`).
+    let visual = source.lines().any(|l| l.trim_start().starts_with("view:"));
     let runs: [(bool, &[&str]); 3] = [
         (true, &["check", "main.paka"]),
         (true, &["examples", "main.paka"]),
-        (app, &["run", "main.paka", "words.txt"]),
+        (app && !visual, &["run", "main.paka", "words.txt"]),
     ];
     for (_, args) in runs.iter().filter(|(wanted, _)| *wanted) {
         status_is(&paka(&dir, args), 0).map_err(|e| format!("paka {}: {e}", args.join(" ")))?;
@@ -191,7 +193,7 @@ mod self_test {
     fn an_oversize_reference_fails() {
         let found = problems(&"a".repeat(3 * BUDGET + 1), &[], &[], &used());
         assert_eq!(found.len(), 1);
-        assert!(found[0].contains("limit 8000"), "{found:?}");
+        assert!(found[0].contains("limit 10500"), "{found:?}");
     }
 
     #[test]

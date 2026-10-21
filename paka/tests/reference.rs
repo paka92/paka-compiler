@@ -1,4 +1,4 @@
-//! The language reference stays within its size limit (TASKS.md M2-18).
+//! The language reference stays within its size limit (TASKS.md M2-18; raised by M5-41).
 
 #[allow(dead_code)]
 mod common;
@@ -6,10 +6,13 @@ mod common;
 use common::tokens;
 
 #[test]
-fn reference_fits_in_8000_tokens() {
+fn reference_fits_in_10500_tokens() {
     let reference = include_str!("../../spec/paka.md");
     let count = tokens(reference);
-    assert!(count <= 8000, "spec/paka.md is {count} tokens, limit 8000");
+    assert!(
+        count <= 10_500,
+        "spec/paka.md is {count} tokens, limit 10500"
+    );
 }
 
 #[test]

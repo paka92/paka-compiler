@@ -175,3 +175,107 @@ so the fallback order of its section 1.17 was not used.
 | M2-14 | the signature list, the count idiom, the sort in one sentence, the six white-space characters | 325, 381, 383, 387 |
 | M2-15 | the app form, the handler shapes, the effect table, the loop in prose, the four stop lines, the usage line | 395, 406, 410, 425, 428, 439 |
 | M2-15 | the range 0 or 5 to 255; no standard input; answers carry no path and arrive in order; an answer queued at Exit is dropped | 416, 432, 435, 437 |
+
+## M5 views, elements, keys, UI examples, migrate
+
+Every point of docs/decisions/M5-01.md to M5-07.md, mapped the same way (M5-41). Sections 13 to 15
+were appended after section 12, so the M2 line numbers above still hold. The reference budget was
+raised from 8,000 to 10,500 tokens for these sections; no M2 text was cut. All five rows of the
+M5-04 element table and all six `ui_` functions appear in the sample at line 518, which checks and
+whose example passes.
+
+## M5-01 what a view is
+
+| Point | Decision | Line of spec/paka.md |
+|---|---|---|
+| M5-01.1 | children in a block after the element | 586, 541 |
+| M5-01.2 | child blocks hold `let`, `if`, `for`, `match`; no `var`, assignment, loops or jumps | 587, 588, 589 |
+| M5-01.3 | elements only in views, only in place | 591, 592 |
+| M5-01.4 | one root | 584 |
+| M5-01.5 | view calls: plain call, same messages | 592, 553 |
+| M5-01.6 | launch: defaults, then optional start, then the view | 575, 576 |
+| M5-01.7 | closing the window ends the app | not for the model yet: no window is built; `paka run` refuses a visual app, line 578 |
+| M5-01 rules | full signature; read-only parameters; the app's view takes the state | 581, 582, 583 |
+| M5-01 rules | a placeholder in element place; a hole elsewhere traps | 593 |
+| M5-01 rules | a trap in a view keeps the last frame; a first trap shows one error node | 594 |
+| M5-01 rules | `update` may give no result; the view runs after every handler that did not trap | 575, 577 |
+
+## M5-02 keys
+
+| Point | Decision | Line of spec/paka.md |
+|---|---|---|
+| M5-02.1 | an element holding state needs `key:`, written last | 604, 613 |
+| M5-02.2 | every child a `for` adds is keyed, through `if` and `match`; a hole is exempt | 613, 614 |
+| M5-02.3 | keys differ among siblings; the id is the path | 617, 619 |
+| M5-02.4 | an unkeyed step is the line number in the child block | 619, 620 |
+| M5-02.5 | a key on a view call names its root; the root carries none and needs none | 615, 616 |
+| M5-02.6 | keys are Int or String; `3` and `"3"` differ | 612 |
+| M5-02.7 | duplicates draw one error node | 618 |
+| M5-02.8 | element state kept only while matched | 620, 621 |
+| M5-02 rules | the same literal key twice in one block is a check-time error | 617, 618 |
+| M5-02 rules | focus, swap matching, reset dropping element state, shared cursors, nested loops | not for the model: runtime rules a program cannot read; reset is line 661 |
+
+## M5-03 text input
+
+| Point | Decision | Line of spec/paka.md |
+|---|---|---|
+| M5-03.1 | the app holds the text | 606, 607 |
+| M5-03.2 | an edit sends the whole new text through a one-String variant | 605, 606 |
+| M5-03.3 | the app wins; the cursor follows | 607; the cursor rule is not for the model: the app cannot read the cursor |
+| M5-03.4 | preedit stays in the element | not for the model: composing text sends nothing a program sees |
+| M5-03.5 | cursor, selection and focus belong to the runtime | 600, 608 |
+| M5-03.6 | one cursor step is one code point | 628 |
+| M5-03 rules | one line; arrows and Enter send nothing; nothing focused at launch | not for the model: key handling a program does not see; no `ui_` function sends those keys |
+
+## M5-04 elements
+
+| Point | Decision | Line of spec/paka.md |
+|---|---|---|
+| M5-04.1 | five elements | 596 to 602 |
+| M5-04.2 | only table defaults may be left out; table order, `key:` last | 604, 605 |
+| M5-04.3 | no look arguments; `gap:` is the only layout argument | 601, 602; the looks are not for the model: no program reads them |
+| M5-04.4 | only an Input takes focus, only by a click | 608 |
+| M5-04.5 | other elements open | not for the model: a planning note |
+| M5-04 rules | `Text` takes a String; `on_change:` a variant with one String field | 598, 605 |
+| M5-04 rules | a negative literal gap is an error; a computed one traps | 607, 608 |
+| M5-04 rules | placeholder and error node looks, click rules, drawn line breaks | not for the model: looks and pointer details; the click result is line 639 |
+
+## M5-05 layout
+
+| Point | Decision | Line of spec/paka.md |
+|---|---|---|
+| M5-05.1 | whole units, scaled | not for the model: no program or UI example sees a size (M5-05 section 2, last rule) |
+| M5-05.2 | width down, height up; Button hugs, the rest fill | 598, 599, 600 |
+| M5-05.3 | left in a Col, centred in a Row | 601, 602; the alignment is not for the model |
+| M5-05.4 | text wraps to its width | 598 |
+| M5-05.5 | content that does not fit sticks out | not for the model: drawing only |
+
+## M5-06 UI examples
+
+| Point | Decision | Line of spec/paka.md |
+|---|---|---|
+| M5-06.1 | a `Ui` changed in place; actions take `&` | 626, 627, 628, 566 |
+| M5-06.2 | a path is a String of steps; a bad literal path is an error | 636, 637 |
+| M5-06.3 | tree text, one line per node | 644, 645, 647 |
+| M5-06.4 | the tree shows what the view passed; defaults not printed | 648; the field list in full is not for the model: the sample shows it |
+| M5-06.5 | three readers; state not readable | 629, 630, 631 |
+| M5-06.6 | a hole counts only if touched | 641 |
+| M5-06.7 | a trap ends the example; an error node is fail | 641, 642 |
+| M5-06.8 | typing goes to the focused input; none is a trap | 628, 640 |
+| M5-06 rules | only in example bodies; `ui_start` takes a visual app's name; `Ui` not stored or compared | 634, 635 |
+| M5-06 rules | click and read traps; effects not performed; after `Exit` an action traps | 638, 639, 640 |
+| M5-06 rules | loop placeholder steps `#n.r`; escapes in keys and texts | 620; escapes are not for the model: the path printer gives them |
+
+## M5-07 migrate and reset
+
+| Point | Decision | Line of spec/paka.md |
+|---|---|---|
+| M5-07.1 | carried by the edit, never written to the source | 661, 662 |
+| M5-07.2 | any change but defaults counts | 659, 660 |
+| M5-07.3 | one migrate for the whole state; a type holding itself takes a reset | 666, 673, 674 |
+| M5-07.4 | parameter old, result new | 671, 672 |
+| M5-07.5 | refused at the edit unless a choice is carried or waiting | 660, 661 |
+| M5-07.6 | a failed migrate keeps the old version | 674, 675 |
+| M5-07.7 | reset is a launch again | 661 |
+| M5-07 rules | an old value of a changed type is only taken apart; no effects | 672, 673 |
+| M5-07 rules | edit replies, queue handling, release mode | not for the model: tool results and runtime rules; the reference lists no tool calls |

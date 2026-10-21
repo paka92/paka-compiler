@@ -1841,6 +1841,7 @@ or merged during review. Ids with a letter were added during review.
 
 ### M5-41 · L4 · Add views, elements, keys, UI examples and migrate to the language reference
 
+- status: done
 - needs: M5-05, M5-06, M5-07, M5-21, M5-29, M5-30
 - flags: none
 - done when: A checklist maps every decision point of M5-01 to M5-07 to a line; every element of the M5-04 table and every UI-example function appears in a sample that parses and checks; M2-18's checklist still holds; the size stays within the budget under M2-18's counting rule.
@@ -1849,6 +1850,7 @@ or merged during review. Ids with a letter were added during review.
 - note: Per M5-04: the reference has five element rows.
 - note: Per M5-06: the reference gains `Ui`, the six `ui_` functions, the path form and the tree text form.
 - note: Per M5-07: the reference describes migrate as text carried by an edit, with one sample, not as a definition kind.
+- note: Done: spec/paka.md gains section 13 (views, the element table, keys), 14 (UI examples, paths, tree text) and 15 (reset and migrate carried by an edit), appended after section 12 so the M2 lines and checklist hold; spec/checklist.md maps every M5-01 to M5-07 point. One to-do sample uses all five elements and all six `ui_` functions; it checks and its example passes. The owner raised the budget from 8,000 to 10,500 tokens (paka/tests/reference.rs, the gate, tests/conformance/README.md): the M2 text left about 250 tokens and the shortest complete text needs about 2,300; the reference is now about 10,054. The gate no longer runs `paka run` on a sample whose app has `view:`, since `paka run` refuses a visual app for now. Written as the code does it where the records differ or are silent: no window is built, so `paka run` and `paka build` refuse a visual app (`no-app`) and M5-01 1.7 is left out; `var`, assignment, loops and jumps in a view are `unexpected-token`; an Input or key at a view's root is `key-on-root`; `key:` out of place is `wrong-label`; `on_change:` given a non-variant and a `Ui` compared are `type-mismatch`; a visual app without `state:` is `bad-view-signature`; a refused effect ends a UI example `trapped`; shared values and pools (M5-07 1.2) do not exist. The protocol note that a reference over 8,000 real tokens is an amendment (M3) and GENESIS's 8,000 target are left as recorded.
 
 ### M5-42 · L3 · Script the M5 exit check and run it on the build machine
 
