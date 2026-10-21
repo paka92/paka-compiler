@@ -21,6 +21,7 @@ pub mod owners;
 pub mod parser;
 pub mod print;
 mod resolve;
+pub mod results;
 pub mod serve;
 pub mod session;
 pub mod sha256;
@@ -61,10 +62,15 @@ pub struct DefCheck {
 /// Parses and checks a program, then lowers it to the core form. Positions count lines across
 /// the files until `Source::locate` places them.
 pub fn check(path: &str, source: &Source) -> Checked {
+    check_defs(path, source).map(|(lowered, _)| lowered)
+}
+
+/// As `check`, with each definition's check, which keys the example cache (M7-09).
+pub fn check_defs(path: &str, source: &Source) -> Result<(Lowered, Vec<DefCheck>), Diagnostic> {
     let (defs, lowered) = check_all(path, source)?;
-    match defs.into_iter().find_map(|d| d.error) {
+    match defs.iter().find_map(|d| d.error.clone()) {
         Some(d) => Err(d),
-        None => Ok(lowered.expect("a program without errors is lowered")),
+        None => Ok((lowered.expect("a program without errors is lowered"), defs)),
     }
 }
 

@@ -5,7 +5,7 @@
 #[allow(dead_code)]
 mod common;
 
-use common::Scratch;
+use common::{EXAMPLE_CACHE, Scratch};
 use std::fs;
 use std::path::{Path, PathBuf};
 use std::process::{Command, Output};
@@ -24,6 +24,7 @@ fn cases() -> Vec<PathBuf> {
 fn paka(dir: &Path, args: &[&str]) -> Output {
     Command::new(env!("CARGO_BIN_EXE_paka"))
         .args(args)
+        .env("XDG_CACHE_HOME", EXAMPLE_CACHE)
         .current_dir(dir)
         .output()
         .unwrap()

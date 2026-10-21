@@ -8,6 +8,10 @@ use std::sync::Once;
 
 pub const PAKA: &str = env!("CARGO_BIN_EXE_paka");
 
+/// The example cache every test that runs `paka examples` points `XDG_CACHE_HOME` at, so no
+/// test writes into the home directory (M7-09).
+pub const EXAMPLE_CACHE: &str = concat!(env!("CARGO_TARGET_TMPDIR"), "/example-cache");
+
 /// The one counting rule for the size of a text: a token is three bytes, rounded up.
 pub fn tokens(text: &str) -> usize {
     text.len().div_ceil(3)

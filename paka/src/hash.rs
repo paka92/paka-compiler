@@ -17,6 +17,18 @@ pub(crate) fn hashes(program: &Program, reads: &[BTreeSet<String>]) -> Vec<(Hash
         .collect()
 }
 
+/// The closure hash of a definition (M7-09) from `names`, it and every definition it reaches
+/// (`Index::reached`): each one's name and body hash. An edit to any of them changes it.
+pub fn closure(names: &BTreeSet<String>, bodies: &BTreeMap<String, Hash>) -> Hash {
+    let none = BTreeMap::new();
+    let mut key = Key::new(&none);
+    for name in names {
+        key.word(name);
+        key.word(&hex(&bodies[name]));
+    }
+    sha256(key.out.as_bytes())
+}
+
 fn body(def: &Def, reads: &BTreeSet<String>, defs: &BTreeMap<&str, &Def>) -> Hash {
     let none = BTreeMap::new();
     let mut key = Key::new(&none);
@@ -499,6 +511,6 @@ impl<'t> Key<'t> {
     }
 }
 
-fn hex(hash: &Hash) -> String {
+pub fn hex(hash: &Hash) -> String {
     hash.iter().map(|b| format!("{b:02x}")).collect()
 }

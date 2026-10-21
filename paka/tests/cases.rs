@@ -7,7 +7,7 @@
 #[allow(dead_code)]
 mod common;
 
-use common::case_args;
+use common::{EXAMPLE_CACHE, case_args};
 use std::fs;
 use std::path::{Path, PathBuf};
 use std::process::Command;
@@ -105,6 +105,7 @@ fn all_cases() {
             command
                 .args(args(&stage))
                 .args(case_args(&case))
+                .env("XDG_CACHE_HOME", EXAMPLE_CACHE)
                 .env_remove("DISPLAY")
                 .env_remove("WAYLAND_DISPLAY");
             if let Err(e) = check(&case, command) {

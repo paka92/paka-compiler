@@ -4,7 +4,7 @@
 #[allow(dead_code)]
 mod common;
 
-use common::{PAKA, Scratch};
+use common::{EXAMPLE_CACHE, PAKA, Scratch};
 use std::fs;
 use std::process::Command;
 
@@ -14,6 +14,7 @@ fn examples(name: &str, source: &str) -> (String, String, Option<i32>) {
     fs::write(dir.path("main.paka"), source).unwrap();
     let out = Command::new(PAKA)
         .args(["examples", "main.paka"])
+        .env("XDG_CACHE_HOME", EXAMPLE_CACHE)
         .env_remove("DISPLAY")
         .env_remove("WAYLAND_DISPLAY")
         .current_dir(dir.path(""))

@@ -3,6 +3,7 @@
 
 use crate::core_form::{App, Field, FnId, Program, Type};
 use crate::core_form::{Fn as Func, Site};
+use crate::results::Cache;
 use crate::source::in_file;
 use effects::{End, Host, Queued, World, perform};
 pub use eval::Left;
@@ -271,15 +272,19 @@ pub fn ui_log(core: &Program, f: &Func) -> Result<Vec<(Vec<Event>, Left)>, Strin
     })?
 }
 
-/// Runs every example in name order and prints its status (M2-06 section 1.6); the status is 0
-/// when all pass, else 3.
-pub fn examples(core: &Program, out: &mut impl Write, err: &mut impl Write) -> u8 {
+/// Runs every example in name order, or takes its result from `cache`, and prints its status
+/// (M2-06 section 1.6); the status is 0 when all pass, else 3.
+pub fn examples(
+    core: &Program,
+    cache: &mut Cache,
+    out: &mut impl Write,
+    err: &mut impl Write,
+) -> u8 {
     let mut order: Vec<_> = core.examples.iter().chain(&core.ui_examples).collect();
     order.sort_by(|a, b| a.name.cmp(&b.name));
     let entries = on_big_stack(|| {
-        order
-            .iter()
-            .map(|f| entry(core, f))
+        (order.iter())
+            .map(|f| cache.result(&f.name, || entry(core, f)))
             .collect::<Result<Vec<_>, _>>()
     });
     match entries {

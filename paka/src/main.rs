@@ -7,9 +7,10 @@ mod vectors;
 
 use core_form::Program;
 use paka::diagnostic::Diagnostic;
+use paka::results::Cache;
 use paka::serve::serve;
 use paka::session::{self, Runner, Session};
-use paka::{Checked, Hole, check, core_form, diagnostic, interp, source};
+use paka::{Checked, Hole, check, check_defs, core_form, diagnostic, interp, source};
 use paka_rt::{Fd1, abi};
 use source::{Source, read};
 use std::ffi::OsStr;
@@ -80,13 +81,16 @@ fn load(path: &str, found: Checked) -> Result<(Program, Vec<Hole>), Diagnostic> 
 }
 
 /// `paka examples`: the program needs no app, since each example starts with a fresh world.
+/// Results come from the user's example cache when it holds them (M7-09).
 fn examples_file(file: &OsStr) -> ExitCode {
-    match read_and_check(file) {
-        (_, Ok((core, ..))) => {
+    let (source, read) = read(file);
+    match read.and_then(|()| check_defs(&file.to_string_lossy(), &source)) {
+        Ok(((core, ..), defs)) => {
+            let mut cache = Cache::user(&defs, &source);
             let (mut out, mut err) = (io::stdout().lock(), io::stderr());
-            ExitCode::from(interp::examples(&core, &mut out, &mut err))
+            ExitCode::from(interp::examples(&core, &mut cache, &mut out, &mut err))
         }
-        (source, Err(d)) => reject(&source, d),
+        Err(d) => reject(&source, d),
     }
 }
 
