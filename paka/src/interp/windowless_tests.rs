@@ -81,7 +81,7 @@ fn play_in(
     let core = crate::check("main.paka", &source)
         .unwrap_or_else(|d| panic!("{d}"))
         .0;
-    let mut ui = Windowless::start(&core, &[], Host(out));
+    let mut ui = Windowless::start(core.into(), &[], Host(out));
     ui.send(events);
     (ui.tree.to_string(), ui.traps, ui.end)
 }

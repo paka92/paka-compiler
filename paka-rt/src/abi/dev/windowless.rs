@@ -97,6 +97,20 @@ impl<'a, W: World> Windowless<'a, W> {
         }
     }
 
+    /// Moves the run onto `code` and `app`, any next version, as a launch again with start fields
+    /// `start`, as `paka::interp::Windowless::reset` does: the drawing, the state and the queue,
+    /// answers to old effects included, are freed by the old version, then the app launches.
+    pub fn reset(&mut self, code: Code<'a>, app: &'a App<'a>, start: &[String]) {
+        if self.end.is_none() {
+            mem::take(&mut self.drawing).release(self.ctx);
+            let queue = mem::take(&mut self.queue);
+            close(self.ctx, self.app, &mut mem::take(&mut self.state), queue);
+            (self.code, self.app) = (code, app);
+            let launched = self.launch(start);
+            self.ended(launched);
+        }
+    }
+
     fn ended(&mut self, done: Result<(), Ended>) {
         if let Err(end) = done {
             self.end = Some(end);

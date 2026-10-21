@@ -4,6 +4,7 @@
 //! The workspace holds each definition in canonical text, and its version is the first 12 hex
 //! digits of the SHA-256 of that text. The files keep their layout except where an edit writes.
 
+use crate::core_form::Program;
 use crate::diagnostic::Diagnostic;
 use crate::parser::split;
 use crate::print;
@@ -156,9 +157,10 @@ impl Session {
         if let Some(c) = carried.filter(|_| self.visual.is_some()) {
             self.choice = Some(c.into());
         }
+        let reset = self.visual.is_some() && self.choice.as_deref() == Some("reset");
         let installed = self.installed();
         let mut reply = self.edited(name, &failing, installed);
-        if let Some(state) = self.state_kept(carried.is_some(), installed) {
+        if let Some(state) = self.state_kept(carried.is_some(), installed, reset) {
             reply.push(("state", state.into()));
         }
         if installed && let Some(order) = order {
@@ -172,15 +174,8 @@ impl Session {
     /// Launches the runnable version's visual app with no window and gives its first tree. While
     /// it runs, edits to its stored types need a state choice (docs/decisions/M5-07.md).
     pub fn launch(&mut self, args: Vec<OsString>) -> Result<String, Failure> {
-        let r = self.runnable.as_ref().ok_or_else(not_runnable)?;
-        let mut source = Source::default();
-        for (path, text) in &r.files {
-            source.add(path.into(), text.as_bytes().to_vec());
-        }
-        let core = crate::check(PATH, &source)
-            .expect("the runnable version checks")
-            .0;
-        if core.app.as_ref().is_none_or(|a| a.view.is_none()) {
+        let core = core(self.runnable.as_ref().ok_or_else(not_runnable)?);
+        if !visual_app(&core) {
             return Err(Failure::new("no_app", "the program has no visual app"));
         }
         let (visual, (tree, ended)) = Visual::start(core, args);
@@ -220,29 +215,31 @@ impl Session {
     }
 
     /// What became of the running app's state, given whether a choice was `carried` and the edit
-    /// `installed`; with no app running, only that a carried choice was ignored.
-    fn state_kept(&self, carried: bool, installed: bool) -> Option<&'static str> {
+    /// `installed` with a `reset`; with no app running, only that a carried choice was ignored.
+    fn state_kept(&self, carried: bool, installed: bool, reset: bool) -> Option<&'static str> {
         let Some(_) = self.visual else {
             return carried.then_some("ignored");
         };
         Some(match () {
-            _ if installed || !self.failing().is_empty() => "kept",
+            _ if installed && reset => "reset",
+            _ if installed => "kept",
             _ if self.choice.is_some() => "waiting",
+            _ if !self.failing().is_empty() => "kept",
             _ => "missing",
         })
     }
 
-    /// Takes the program as the runnable version when every definition checks. While a visual app
-    /// runs, a version with other stored types, or with a state choice waiting, is held back:
-    /// nothing applies a choice yet.
+    /// Takes the program as the runnable version when every definition checks, and swaps it into
+    /// the running visual app. There a waiting reset is applied and used up; a version with other
+    /// stored types and no reset is held back, as is one with a migrate waiting (M5-30).
     fn installed(&mut self) -> bool {
         if !self.failing().is_empty() {
             return false;
         }
         let stored = Stored::of(&self.workspace);
-        let held =
-            self.choice.is_some() || self.runnable.as_ref().is_some_and(|r| r.stored != stored);
-        if self.visual.is_some() && held {
+        let reset = self.choice.as_deref() == Some("reset");
+        let changed = self.runnable.as_ref().is_some_and(|r| r.stored != stored);
+        if self.visual.is_some() && !reset && (self.choice.is_some() || changed) {
             return false;
         }
         let files = (self.files.iter())
@@ -256,6 +253,13 @@ impl Session {
             apps,
             stored,
         });
+        if let Some(visual) = &self.visual {
+            let core = core(self.runnable.as_ref().unwrap());
+            self.choice = None;
+            if !visual_app(&core) || visual.swap(core, reset).1 {
+                self.visual = None;
+            }
+        }
         true
     }
 
@@ -521,4 +525,19 @@ fn joined(before: &str, after: &str) -> String {
         (false, true) => format!("{before}\n"),
         (false, false) => format!("{before}\n\n{after}"),
     }
+}
+
+/// The checked program of version `r`.
+fn core(r: &Runnable) -> Program {
+    let mut source = Source::default();
+    for (path, text) in &r.files {
+        source.add(path.into(), text.as_bytes().to_vec());
+    }
+    crate::check(PATH, &source)
+        .expect("the runnable version checks")
+        .0
+}
+
+fn visual_app(core: &Program) -> bool {
+    core.app.as_ref().is_some_and(|a| a.view.is_some())
 }

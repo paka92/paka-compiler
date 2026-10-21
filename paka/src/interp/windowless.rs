@@ -10,10 +10,10 @@ use paka_rt::route::{Event, Sent, focused, route};
 use paka_rt::tree::{self, Node};
 use std::collections::VecDeque;
 use std::ffi::OsString;
+use std::sync::Arc;
 
-pub struct Windowless<'a, W> {
-    core: &'a Program,
-    app: &'a App,
+pub struct Windowless<W> {
+    core: Arc<Program>,
     state: Option<Value>,
     queue: VecDeque<Queued>,
     world: W,
@@ -25,14 +25,12 @@ pub struct Windowless<'a, W> {
     pub end: Option<End>,
 }
 
-impl<'a, W: World + Send> Windowless<'a, W> {
+impl<W: World + Send> Windowless<W> {
     /// Launches the visual app of `core` (M5-01 section 1.6): state from its defaults, the start
     /// message filled from `args` if the app has one, then the first tree.
-    pub fn start(core: &'a Program, args: &[OsString], world: W) -> Self {
-        let app = core.app.as_ref().expect("a visual app");
+    pub fn start(core: Arc<Program>, args: &[OsString], world: W) -> Self {
         let mut ui = Windowless {
             core,
-            app,
             state: None,
             queue: VecDeque::new(),
             world,
@@ -64,10 +62,9 @@ impl<'a, W: World + Send> Windowless<'a, W> {
     /// then the queue is handled. Only events wait here, since a turn's answers are handled in
     /// the same `send`; each is worked out against the new tree. A view that traps here shows one
     /// error node, since the old tree's messages are the old code's.
-    pub fn swap(&mut self, core: &'a Program) {
+    pub fn swap(&mut self, core: Arc<Program>) {
         if self.end.is_none() {
             self.core = core;
-            self.app = core.app.as_ref().expect("a visual app");
             self.on_stack(|ui, m| {
                 ui.redraw(m, true)?;
                 ui.drain(m)
@@ -75,11 +72,24 @@ impl<'a, W: World + Send> Windowless<'a, W> {
         }
     }
 
+    /// Installs `core`, any next version of the app, as a launch again with `args` (M5-07
+    /// section 1.7): the queue is emptied, so later answers to old effects are dropped; state
+    /// comes from the defaults, the start message is handled again, and the view runs with no
+    /// element state or focus kept.
+    pub fn reset(&mut self, core: Arc<Program>, args: &[OsString]) {
+        if self.end.is_none() {
+            self.core = core;
+            self.queue.clear();
+            self.tree = Node::Error(String::new());
+            self.on_stack(|ui, m| ui.launch(m, args));
+        }
+    }
+
     fn on_stack(&mut self, f: impl FnOnce(&mut Self, &mut Machine) -> Result<(), End> + Send) {
-        let (core, app) = (self.core, self.app);
-        let end = match on_big_stack(|| f(self, &mut Machine::new(core))) {
+        let core = Arc::clone(&self.core);
+        let end = match on_big_stack(|| f(self, &mut Machine::new(&core))) {
             Ok(done) => done.err(),
-            Err(reason) => Some(ended(core, app, Stop::Internal(reason))),
+            Err(reason) => Some(ended(&core, app(&core), Stop::Internal(reason))),
         };
         if end.is_some() {
             self.end = end;
@@ -88,9 +98,9 @@ impl<'a, W: World + Send> Windowless<'a, W> {
     }
 
     fn launch(&mut self, m: &mut Machine, args: &[OsString]) -> Result<(), End> {
-        self.state = m.state(self.app).map_err(|stop| self.ended(stop))?;
-        if let Some(start) = self.app.start {
-            let message = start_message(self.core, self.app, start, args)?;
+        self.state = m.state(app(&self.core)).map_err(|stop| self.ended(stop))?;
+        if let Some(start) = app(&self.core).start {
+            let message = start_message(&self.core, app(&self.core), start, args)?;
             self.handle(m, Ok(message))?;
         }
         self.redraw(m, true)?;
@@ -112,9 +122,7 @@ impl<'a, W: World + Send> Windowless<'a, W> {
             Queued::Answer(f, arg) => m.answer(f, arg),
             Queued::Event(event) => match route(&mut self.tree, &event) {
                 None => return Ok(()),
-                Some(Sent::Click(on)) => {
-                    on.value.copy().ok_or_else(|| too_deep(self.core, self.app))
-                }
+                Some(Sent::Click(on)) => on.value.copy().ok_or_else(|| too_deep(&self.core)),
                 Some(Sent::Change(on, change)) => {
                     let Value::Fn(f) = on.value else {
                         unreachable!("on_change takes a variant");
@@ -142,10 +150,10 @@ impl<'a, W: World + Send> Windowless<'a, W> {
     fn handle(&mut self, m: &mut Machine, message: Done) -> Result<bool, End> {
         let handled = message.and_then(|message| {
             let state = match &self.state {
-                Some(state) => Some(state.copy().ok_or_else(|| too_deep(self.core, self.app))?),
+                Some(state) => Some(state.copy().ok_or_else(|| too_deep(&self.core))?),
                 None => None,
             };
-            m.update(self.app, state, message)
+            m.update(app(&self.core), state, message)
         });
         match handled {
             Ok((effects, state)) => {
@@ -154,7 +162,8 @@ impl<'a, W: World + Send> Windowless<'a, W> {
                 Ok(true)
             }
             Err(Stop::Trap(trap)) => {
-                self.traps.push(report(self.core, &self.app.name, &trap));
+                let name = &app(&self.core).name;
+                self.traps.push(report(&self.core, name, &trap));
                 Ok(false)
             }
             Err(stop) => Err(self.ended(stop)),
@@ -165,7 +174,8 @@ impl<'a, W: World + Send> Windowless<'a, W> {
         if !matches!(effects, Value::List(_)) {
             return Ok(());
         }
-        match perform(self.app, &mut effects, &mut self.world, &mut self.queue) {
+        let app = app(&self.core);
+        match perform(app, &mut effects, &mut self.world, &mut self.queue) {
             Some(end) => Err(end),
             None => Ok(()),
         }
@@ -174,11 +184,11 @@ impl<'a, W: World + Send> Windowless<'a, W> {
     /// Runs the view on a copy of the state, since a trap there keeps both state and tree; one
     /// error node when the tree is `fresh`: the first, or the first after a swap.
     fn redraw(&mut self, m: &mut Machine, fresh: bool) -> Result<(), End> {
-        let view = self.app.view.expect("a visual app");
+        let view = app(&self.core).view.expect("a visual app");
         let state = self.state.as_ref().and_then(Value::copy);
         let drawn = match state {
             Some(state) => m.draw(view, vec![state]),
-            None => Err(too_deep(self.core, self.app)),
+            None => Err(too_deep(&self.core)),
         };
         match drawn {
             Ok(mut tree) => {
@@ -187,10 +197,11 @@ impl<'a, W: World + Send> Windowless<'a, W> {
             }
             Err(Stop::Trap(trap)) => {
                 if fresh {
-                    let at = place(self.core, trap.site);
+                    let at = place(&self.core, trap.site);
                     self.tree = Node::Error(format!("trap {} at {at}", trap.kind.name()));
                 }
-                self.traps.push(report(self.core, &self.app.name, &trap));
+                self.traps
+                    .push(report(&self.core, &app(&self.core).name, &trap));
             }
             Err(stop) => return Err(self.ended(stop)),
         }
@@ -206,11 +217,15 @@ impl<'a, W: World + Send> Windowless<'a, W> {
     }
 
     fn ended(&self, stop: Stop) -> End {
-        ended(self.core, self.app, stop)
+        ended(&self.core, app(&self.core), stop)
     }
 }
 
+fn app(core: &Program) -> &App {
+    core.app.as_ref().expect("a visual app")
+}
+
 /// A copy that nests too deep, a `stack` trap reported at the handler.
-fn too_deep(core: &Program, app: &App) -> Stop {
-    Trap::bare(Kind::Stack, core.fns[app.update].site).into()
+fn too_deep(core: &Program) -> Stop {
+    Trap::bare(Kind::Stack, core.fns[app(core).update].site).into()
 }

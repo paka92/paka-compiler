@@ -216,8 +216,10 @@ impl Dev {
     }
 
     /// `play`, then `queued` waits while the run moves onto `next`'s code between turns, as
-    /// `paka::interp::Windowless::swap` does (M5-27), and is handled after. `next` holds the
-    /// next version of the app with the same stored types, installed on its own slot table.
+    /// `paka::interp::Windowless::swap` does (M5-27), and is handled after; on a `reset` the
+    /// queue is dropped and the app launches again on `next`, as `reset` does (M5-29). `next`
+    /// holds the next version of the app, with the same stored types unless on a reset,
+    /// installed on its own slot table.
     #[allow(clippy::too_many_arguments)]
     pub fn play_swap(
         &self,
@@ -228,8 +230,9 @@ impl Dev {
         events: Vec<Event>,
         queued: Vec<Event>,
         next: &Dev,
+        reset: bool,
     ) -> Played {
-        self.played(args, world, cap, limit, events, Some((queued, next)))
+        self.played(args, world, cap, limit, events, Some((queued, next, reset)))
     }
 
     fn played(
@@ -239,7 +242,7 @@ impl Dev {
         cap: u64,
         limit: Duration,
         events: Vec<Event>,
-        swap: Option<(Vec<Event>, &Dev)>,
+        swap: Option<(Vec<Event>, &Dev, bool)>,
     ) -> Played {
         let (app, start) = match self.app(args) {
             Ok(started) => started,
@@ -252,20 +255,26 @@ impl Dev {
                 };
             }
         };
-        let swap = swap.map(|(queued, next)| (queued, next, next.app(args).expect("the app")));
+        let swap = swap
+            .map(|(queued, next, reset)| (queued, next, reset, next.app(args).expect("the app")));
         on_runner(cap, |ctx| {
             let (tree, traps, end, last) = until(ctx, limit, |ctx| {
                 let mut first = calls(self);
-                let mut second = swap.as_ref().map(|(_, next, _)| calls(next));
+                let mut second = swap.as_ref().map(|(_, next, ..)| calls(next));
                 let mut ui = Windowless::start(ctx, first.code(), &app, &start, world);
                 ui.send(events);
                 let mut traps: Vec<_> = ui.traps.drain(..).map(|t| self.report(&t)).collect();
                 let mut last = self;
-                if let (Some((queued, next, (app, _))), Some(calls)) = (&swap, &mut second)
+                if let (Some((queued, next, reset, (app, start))), Some(calls)) =
+                    (&swap, &mut second)
                     && ui.end.is_none()
                 {
                     ui.queue(queued.clone());
-                    ui.swap(calls.code(), app);
+                    if *reset {
+                        ui.reset(calls.code(), app, start);
+                    } else {
+                        ui.swap(calls.code(), app);
+                    }
                     last = next;
                 }
                 traps.extend(ui.traps.iter().map(|t| last.report(t)));

@@ -1,6 +1,7 @@
 //! Edits while a visual app runs (M5-28, docs/decisions/M5-07.md): a change to a stored type,
 //! reached by field, list item, map value or enum payload, is refused unless a state choice is
-//! carried or waiting, and the app keeps answering clicks on the version it runs.
+//! carried or waiting, and the app keeps answering clicks on the version it runs. An installed
+//! version swaps into the app, keeping its state, or with a reset launching it again (M5-29).
 
 #[allow(dead_code)]
 mod common;
@@ -202,13 +203,15 @@ fn defaults_comments_and_other_types_keep_the_state() {
     assert_eq!(click(&mut s), "1");
 }
 
+const MIGRATE: &str = "migrate(old: Board) -> Board {\n  Board { count: old.count }\n}";
+
 #[test]
-fn a_carried_choice_holds_the_change_back_and_waits() {
+fn a_carried_migrate_holds_the_change_back_and_waits() {
     let scratch = Scratch::new("state-waiting");
     let mut s = session(&scratch);
     launch(&mut s);
     let state = BOARD_TYPE.replace("count: Int = 0,", "count: Int = 0,\n  step: Int = 1,");
-    let reply = edit(&mut s, "Board", &state, Some("reset"));
+    let reply = edit(&mut s, "Board", &state, Some(MIGRATE));
     assert_eq!(reply.get("installed"), Some(&false.into()), "{reply}");
     assert_eq!(str_of(&reply, "state"), "waiting");
     assert_eq!(click(&mut s), "1");
@@ -231,4 +234,77 @@ fn with_nothing_running_a_choice_is_ignored() {
     let reply = edit(&mut s, "Board", BOARD_TYPE, None);
     assert_eq!(reply.get("state"), None, "{reply}");
     assert!(s.send(vec![]).is_none());
+}
+
+/// Adds definition `text` named `name`.
+fn add(s: &mut Session, name: &str, text: &str) -> Value {
+    let fields = vec![
+        ("name", name.into()),
+        ("base", Value::Null),
+        ("text", text.into()),
+    ];
+    call(s, "edit", fields)
+}
+
+#[test]
+fn an_installed_edit_swaps_into_the_running_app_keeping_its_state() {
+    let scratch = Scratch::new("state-swapped");
+    let mut s = session(&scratch);
+    launch(&mut s);
+    click(&mut s);
+    let view = BOARD
+        .split("view board_view")
+        .nth(1)
+        .unwrap()
+        .split("app board")
+        .next();
+    let view = format!("view board_view{}", view.unwrap()).replace("{s.count}", "n {s.count}");
+    let reply = edit(&mut s, "board_view", view.trim_end(), None);
+    assert_eq!(str_of(&reply, "state"), "kept", "{reply}");
+    let tree = s.send(vec![]).unwrap();
+    assert!(tree.contains("\"n 1\""), "{tree}");
+}
+
+#[test]
+fn the_refused_edit_resent_with_a_reset_installs_and_launches_again() {
+    let scratch = Scratch::new("state-reset");
+    let mut s = session(&scratch);
+    let launched = launch(&mut s);
+    assert_eq!((click(&mut s), click(&mut s)), ("1".into(), "2".into()));
+    let state = BOARD_TYPE.replace("count: Int = 0,", "count: Int = 0,\n  step: Int = 1,");
+    let reply = edit(&mut s, "Board", &state, None);
+    assert_eq!(str_of(reply.get("error").unwrap(), "kind"), "state_changed");
+    let reply = edit(&mut s, "Board", &state, Some("reset"));
+    assert_eq!(reply.get("installed"), Some(&true.into()), "{reply}");
+    assert_eq!(str_of(&reply, "state"), "reset");
+    assert_eq!(s.send(vec![]).unwrap(), launched);
+    assert_eq!(click(&mut s), "1");
+    let reply = edit(&mut s, "Board", &state, None);
+    assert_eq!(
+        str_of(&reply, "state"),
+        "kept",
+        "the reset is used up: {reply}"
+    );
+}
+
+#[test]
+fn a_reset_comes_alone_or_waits_until_the_program_checks() {
+    let scratch = Scratch::new("state-reset-waits");
+    let mut s = session(&scratch);
+    launch(&mut s);
+    click(&mut s);
+    let reply = edit(&mut s, "Board", BOARD_TYPE, Some("reset"));
+    assert_eq!(str_of(&reply, "state"), "reset", "{reply}");
+    assert_eq!(click(&mut s), "1");
+    let broken = BOARD_TYPE.replace(
+        "count: Int = 0,",
+        "count: Int = 0,\n  flag: Flag = Flag {},",
+    );
+    let reply = edit(&mut s, "Board", &broken, Some("reset"));
+    assert_eq!(str_of(&reply, "state"), "waiting", "{reply}");
+    assert_eq!(click(&mut s), "2");
+    let reply = add(&mut s, "Flag", "type Flag { on: Bool = false }");
+    assert_eq!(reply.get("installed"), Some(&true.into()), "{reply}");
+    assert_eq!(str_of(&reply, "state"), "reset");
+    assert_eq!(click(&mut s), "1");
 }

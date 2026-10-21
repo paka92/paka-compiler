@@ -1,7 +1,7 @@
 //! Visual apps with no window on dev code (M5-25): each script of paka/src/interp/
 //! windowless_tests.rs gives the interpreter's tree text, trap count, end and printed text, the
 //! reports compared by their first line, and frees all it made. So does a code swap between
-//! turns (M5-27).
+//! turns (M5-27), and a reset (M5-29).
 
 mod common;
 
@@ -92,7 +92,7 @@ type Seen = (String, Vec<String>, Option<(u8, String)>, String);
 fn play(text: &str, events: Vec<Event>) -> Seen {
     let (core, ..) = paka::check("main.paka", &source(text)).unwrap_or_else(|d| panic!("{d}"));
     let mut out = vec![];
-    let mut ui = Windowless::start(&core, &[], Host(&mut out));
+    let mut ui = Windowless::start(core.into(), &[], Host(&mut out));
     ui.send(events.clone());
     let end = ui.end.map(|(code, report)| (code, first_line(&report)));
     let (tree, traps) = (ui.tree.to_string(), ui.traps.iter().map(|r| first_line(r)));
@@ -117,23 +117,45 @@ fn play(text: &str, events: Vec<Event>) -> Seen {
 /// in the interpreter and on dev code; checks they agree and the dev run frees all, and gives
 /// what they saw.
 fn swap(text: &str, events: Vec<Event>, queued: Vec<Event>, next: &str) -> Seen {
+    swapped(text, events, queued, next, false)
+}
+
+/// As `swap`, launching `next` again on a reset.
+fn reset(text: &str, events: Vec<Event>, queued: Vec<Event>, next: &str) -> Seen {
+    swapped(text, events, queued, next, true)
+}
+
+fn swapped(text: &str, events: Vec<Event>, queued: Vec<Event>, next: &str, reset: bool) -> Seen {
     let checked = |text| paka::check("main.paka", &source(text)).unwrap_or_else(|d| panic!("{d}"));
     let ((core, ..), (after, ..)) = (checked(text), checked(next));
     let mut out = vec![];
-    let mut ui = Windowless::start(&core, &[], Host(&mut out));
+    let mut ui = Windowless::start(core.into(), &[], Host(&mut out));
     ui.send(events.clone());
     ui.queue(queued.clone());
-    ui.swap(&after);
+    if reset {
+        ui.reset(after.into(), &[]);
+    } else {
+        ui.swap(after.into());
+    }
     let end = ui.end.map(|(code, report)| (code, first_line(&report)));
     let (tree, traps) = (ui.tree.to_string(), ui.traps.iter().map(|r| first_line(r)));
     let want = (tree, traps.collect(), end, String::from_utf8(out).unwrap());
 
-    let (mut dev, mut swapped) = (Dev::default(), Dev::default());
+    let (mut dev, mut next_dev) = (Dev::default(), Dev::default());
     dev.edit(&source(text)).unwrap();
-    swapped.edit(&source(next)).unwrap();
+    next_dev.edit(&source(next)).unwrap();
     let mut out = vec![];
     let world = &mut Host(&mut out);
-    let played = dev.play_swap(&[], world, HEAP, Duration::MAX, events, queued, &swapped);
+    let played = dev.play_swap(
+        &[],
+        world,
+        HEAP,
+        Duration::MAX,
+        events,
+        queued,
+        &next_dev,
+        reset,
+    );
     let end = played.end.map(|end| {
         let (code, report) = end.expect("no interrupt");
         (code, first_line(&report))
@@ -385,4 +407,25 @@ Col
   Text #1 \"draft: mli\"
 ";
     assert_eq!(swap(FORM, events, queued, &next).0, want);
+}
+
+#[test]
+fn a_reset_installs_a_state_change_and_launches_again_dropping_the_queue() {
+    let next = COUNTER
+        .replace("{ count: Int = 0 }", "{ count: Int = 0, step: Int = 1 }")
+        .replace("Inc => s.count += 1", "Inc => s.count += s.step")
+        .replace("  update: update\n", "  update: update\n  start:  Inc\n");
+    let plus = || click(&PLUS, "Button");
+    let (tree, traps, end, _) = reset(COUNTER, vec![plus(), plus()], vec![plus(), plus()], &next);
+    assert_eq!((tree, traps.len(), end), (counter("1"), 0, None));
+}
+
+#[test]
+fn a_reset_drops_focus_and_element_state() {
+    let mut events = vec![click(&[Step::Str("new".into())], "Input")];
+    events.extend("mi".chars().map(|c| Event::Key(Key::Type(c))));
+    let queued = vec![Event::Key(Key::Type('l'))];
+    let launched = play(FORM, vec![]).0;
+    assert!(launched.contains("Input 'new' \"\" cursor=0 on_change=Draft\n"));
+    assert_eq!(reset(FORM, events, queued, FORM).0, launched);
 }
