@@ -6,12 +6,16 @@ use super::eval::{Done, Kind, Machine, Stop, Trap};
 use super::value::{Message, Value};
 use super::{ended, on_big_stack, place, report, start_message};
 use crate::core_form::{App, FnId, Program};
+use crate::migrate::late;
+use paka_rt::limit::until;
 use paka_rt::route::{Event, Sent, focused, route};
 use paka_rt::tree::{self, Node};
 use std::collections::VecDeque;
 use std::ffi::OsString;
 use std::mem;
 use std::sync::Arc;
+use std::sync::atomic::{AtomicBool, Ordering};
+use std::time::Duration;
 
 pub struct Windowless<W> {
     core: Arc<Program>,
@@ -88,9 +92,10 @@ impl<W: World + Send> Windowless<W> {
 
     /// Installs `core`, the next version of the app with a migrate as its function `function`,
     /// between turns (M5-07 section 1.6): the migrate runs on a copy of the state, and its result
-    /// is the state as `swap` goes on. If it traps, the trap is recorded and the old version runs
-    /// on, its state and tree as they were, and handles the queue; false then.
-    pub fn migrate(&mut self, core: Arc<Program>, function: FnId) -> bool {
+    /// is the state as `swap` goes on. If it traps, or the interrupt stops it past `limit`, its
+    /// report is recorded and the old version runs on, its state and tree as they were, and
+    /// handles the queue; false then.
+    pub fn migrate(&mut self, core: Arc<Program>, function: FnId, limit: Duration) -> bool {
         if self.end.is_some() {
             return false;
         }
@@ -99,15 +104,26 @@ impl<W: World + Send> Windowless<W> {
         self.on_stack(|ui, m| {
             let state = ui.state.as_ref().and_then(Value::copy);
             let state = state.ok_or_else(|| too_deep(&ui.core));
-            match state.and_then(|state| m.run(function, vec![state])) {
+            let flag = Arc::new(AtomicBool::new(false));
+            m.interrupt = Some(Arc::clone(&flag));
+            let interrupt = || flag.store(true, Ordering::Relaxed);
+            let (ran, _) = until(limit, interrupt, || {
+                state.and_then(|s| m.run(function, vec![s]))
+            });
+            m.interrupt = None;
+            let name = &app(&ui.core).name;
+            match ran {
                 Ok(state) => {
                     (ui.state, migrated) = (Some(state), true);
                     ui.redraw(m, true)?;
                     ui.drain(m)
                 }
                 Err(Stop::Trap(trap)) => {
-                    let name = &app(&ui.core).name;
                     ui.traps.push(report(&ui.core, name, &trap));
+                    Ok(())
+                }
+                Err(Stop::Time) => {
+                    ui.traps.push(late(name, limit));
                     Ok(())
                 }
                 Err(stop) => Err(ui.ended(stop)),

@@ -12,7 +12,8 @@ pub mod words;
 
 use std::alloc::{self, Layout};
 use std::collections::BTreeMap;
-use std::sync::atomic::AtomicU64;
+use std::sync::atomic::{AtomicU64, Ordering};
+use std::time::Duration;
 
 /// Trap kinds (M4-05 section 6).
 pub const OVERFLOW: u64 = 1;
@@ -160,6 +161,23 @@ pub struct Context {
     pub heap: Heap,
     /// The tree a view is drawing (`view`).
     pub tree: Vec<u64>,
+}
+
+/// Runs `f` on `ctx`, setting its interrupt once `limit` passes (docs/decisions/M4-04.md); and
+/// whether it was set.
+pub fn until<R>(
+    ctx: &mut Context,
+    limit: Duration,
+    f: impl FnOnce(&mut Context) -> R,
+) -> (R, bool) {
+    let flag = (&raw const ctx.interrupt).expose_provenance();
+    let interrupt = move || {
+        // SAFETY: the context outlives `until`, and its interrupt is an atomic that the run only
+        // ever loads.
+        let interrupt = unsafe { &*std::ptr::with_exposed_provenance::<AtomicU64>(flag) };
+        interrupt.store(1, Ordering::Relaxed);
+    };
+    crate::limit::until(limit, interrupt, || f(ctx))
 }
 
 impl Context {

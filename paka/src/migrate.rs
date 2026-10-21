@@ -14,6 +14,7 @@ use crate::sig::{Node, Ty, Types};
 use crate::source::Source;
 use crate::{body, lower, resolve, sig};
 use std::collections::{BTreeMap, BTreeSet};
+use std::time::Duration;
 
 const PATH: &str = "main.paka";
 
@@ -57,6 +58,14 @@ pub fn check_migrate(old: &Source, new: &Source, text: &str) -> Result<Migrate, 
     let states = (old.state, new_version.state);
     let checked = check(&source, &aliases, &changed, states, &old);
     checked.map_err(|d| source.locate(d).0.in_definition("migrate"))
+}
+
+/// The report of `app`'s migrate stopped past `limit`, which counts as a trap (M5-07 section 2).
+pub fn late(app: &str, limit: Duration) -> String {
+    format!(
+        "{app}: stopped time in migrate, past {} ms\n",
+        limit.as_millis()
+    )
 }
 
 /// The migrate in the last file of `source`, after the new program and the old types.

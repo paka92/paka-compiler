@@ -16,6 +16,8 @@ use paka_rt::route::Event;
 use paka_rt::tree::{self, Edit, Node};
 use std::cmp::Ordering;
 use std::fmt::Write;
+use std::sync::Arc;
+use std::sync::atomic::{self, AtomicBool};
 use std::{mem, panic, thread};
 pub use ui::{Left, Ui};
 
@@ -113,6 +115,8 @@ pub enum Stop {
     /// A UI example's app stopped with this line: an effect it does not grant, or start fields
     /// with no arguments to fill them.
     Ended(String),
+    /// The interrupt was set: the run is past its time limit (docs/decisions/M4-04.md).
+    Time,
 }
 
 impl From<Trap> for Stop {
@@ -227,6 +231,8 @@ pub struct Machine<'a> {
     pub ui_log: Option<Vec<(Vec<Event>, Left)>>,
     /// The run-time overlap detector, when the run asks for it.
     pub detector: Option<Detector>,
+    /// Polled at each call and loop turn, when the run has a time limit.
+    pub interrupt: Option<Arc<AtomicBool>>,
 }
 
 impl<'a> Machine<'a> {
@@ -239,6 +245,7 @@ impl<'a> Machine<'a> {
             broken: None,
             ui_log: None,
             detector: None,
+            interrupt: None,
         }
     }
 
@@ -364,6 +371,7 @@ impl<'a> Machine<'a> {
         if self.depth >= DEPTH {
             return Err(Trap::bare(Kind::Stack, site).into());
         }
+        self.poll()?;
         let f = &self.core.fns[id];
         locals.resize_with(f.locals.len(), Value::default);
         let mut fr = Frame {
@@ -380,7 +388,7 @@ impl<'a> Machine<'a> {
                 trap.leave(&f.name);
                 Err(Stop::Trap(trap))
             }
-            Err(internal @ Stop::Internal(_)) => Err(internal),
+            Err(stop @ (Stop::Internal(_) | Stop::Time)) => Err(stop),
             Err(_) => unreachable!("a loop holds its break"),
         }
     }
@@ -494,10 +502,18 @@ impl<'a> Machine<'a> {
 
     /// Runs a loop body once; whether the loop is over.
     fn run_body(&mut self, fr: &mut Frame, body: &Block) -> Done<bool> {
+        self.poll()?;
         match self.block(fr, body) {
             Ok(_) | Err(Stop::Continue) => Ok(false),
             Err(Stop::Break) => Ok(true),
             Err(stop) => Err(stop),
+        }
+    }
+
+    fn poll(&self) -> Done<()> {
+        match &self.interrupt {
+            Some(flag) if flag.load(atomic::Ordering::Relaxed) => Err(Stop::Time),
+            _ => Ok(()),
         }
     }
 

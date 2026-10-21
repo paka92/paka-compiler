@@ -13,14 +13,11 @@ use paka_rt::abi::dev::app::{App, Call, Stopped, serve};
 use paka_rt::abi::dev::records::Records;
 use paka_rt::abi::dev::view::{self, Drawing};
 use paka_rt::abi::dev::windowless::{Code, Windowless};
-use paka_rt::abi::dev::{Context, HOLE, Trap, on_runner};
+use paka_rt::abi::dev::{Context, HOLE, Trap, on_runner, until};
 use paka_rt::effects::{End, World};
 use paka_rt::route::Event;
 use std::ffi::OsString;
 use std::ptr;
-use std::sync::atomic::{AtomicU64, Ordering};
-use std::sync::mpsc::{self, RecvTimeoutError};
-use std::thread;
 use std::time::Duration;
 
 pub struct Dev {
@@ -56,11 +53,12 @@ impl Default for Dev {
 }
 
 /// How `Dev::play_swap` installs the next version: keeping the state (M5-27), as a launch again
-/// (M5-29), or through its definition that migrates the state (M5-30).
+/// (M5-29), or through its definition that migrates the state (M5-30), stopped past its limit
+/// (M5-30b).
 pub enum Install {
     Swap,
     Reset,
-    Migrate(FnId),
+    Migrate(FnId, Duration),
 }
 
 /// A run's end, or why it stopped; the context's trap record and the ledger's leaks and faults.
@@ -200,7 +198,7 @@ impl Dev {
             }
         };
         on_runner(cap, |ctx| {
-            let end = until(ctx, limit, |ctx| {
+            let (end, _) = until(ctx, limit, |ctx| {
                 // SAFETY: `ctx` is a context that lives through the session.
                 let session = unsafe { self.slots.session((&raw mut *ctx).cast()) }.unwrap();
                 let mut call = |ctx: &mut Context, id: usize, args: &[u64]| {
@@ -271,7 +269,7 @@ impl Dev {
         let swap =
             swap.map(|(queued, next, how)| (queued, next, how, next.app(args).expect("the app")));
         on_runner(cap, |ctx| {
-            let (tree, traps, end, last) = until(ctx, limit, |ctx| {
+            let ((tree, traps, end, last), _) = until(ctx, limit, |ctx| {
                 let mut first = calls(self);
                 let mut second = swap.as_ref().map(|(_, next, ..)| calls(next));
                 let mut ui = Windowless::start(ctx, first.code(), &app, &start, world);
@@ -286,10 +284,18 @@ impl Dev {
                     match *how {
                         Install::Swap => ui.swap(calls.code(), app),
                         Install::Reset => ui.reset(calls.code(), app, start),
-                        Install::Migrate(f) => {
-                            if !ui.migrate(calls.code(), app, f) {
-                                let trap = (!ui.traps.is_empty()).then(|| ui.traps.remove(0));
-                                traps.extend(trap.map(|t| next.report(&t)));
+                        Install::Migrate(f, limit) => {
+                            let migrated = ui.migrate(calls.code(), app, f, limit);
+                            let run_late = matches!(ui.end, Some(Err(Stopped::Time)));
+                            match migrated {
+                                Ok(()) => {}
+                                Err(Stopped::Trap) if !ui.traps.is_empty() => {
+                                    traps.push(next.report(&ui.traps.remove(0)));
+                                }
+                                Err(Stopped::Time) if !run_late => traps.push(next.late(limit)),
+                                Err(_) => {}
+                            }
+                            if migrated.is_err() {
                                 last = self;
                             }
                         }
@@ -368,6 +374,12 @@ impl Dev {
             report += &format!("  ??{name}\n");
         }
         report
+    }
+
+    /// The report of a migrate the interrupt stopped past `limit`, as the interpreter gives it.
+    fn late(&self, limit: Duration) -> String {
+        let app = &self.program.app.as_ref().expect("an app").name;
+        paka::migrate::late(app, limit)
     }
 
     /// `trap KIND at FILE:LINE:COL`, as an error node shows a first view's trap.
@@ -449,22 +461,3 @@ const KINDS: [&str; 8] = [
     "stack",
     "memory",
 ];
-
-/// Runs `f` on `ctx`, setting its interrupt once `limit` passes (docs/decisions/M4-04.md).
-fn until<R>(ctx: &mut Context, limit: Duration, f: impl FnOnce(&mut Context) -> R) -> R {
-    let flag = (&raw const ctx.interrupt).expose_provenance();
-    let (done, wait) = mpsc::channel::<()>();
-    thread::scope(|s| {
-        s.spawn(move || {
-            if wait.recv_timeout(limit) == Err(RecvTimeoutError::Timeout) {
-                // SAFETY: the context outlives this scope, and its interrupt is an atomic that
-                // the run only ever loads.
-                let interrupt = unsafe { &*ptr::with_exposed_provenance::<AtomicU64>(flag) };
-                interrupt.store(1, Ordering::Relaxed);
-            }
-        });
-        let r = f(ctx);
-        drop(done);
-        r
-    })
-}

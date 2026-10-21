@@ -16,6 +16,8 @@ pub mod input;
 #[forbid(unsafe_code)]
 pub mod layout;
 #[forbid(unsafe_code)]
+pub mod limit;
+#[forbid(unsafe_code)]
 pub mod ops;
 #[forbid(unsafe_code)]
 pub mod route;

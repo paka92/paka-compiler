@@ -2,7 +2,7 @@
 //! reached by field, list item, map value or enum payload, is refused unless a state choice is
 //! carried or waiting, and the app keeps answering clicks on the version it runs. An installed
 //! version swaps into the app, keeping its state, with a reset launching it again (M5-29), or
-//! with a migrate converting it (M5-30).
+//! with a migrate converting it (M5-30), and one that does not finish is stopped (M5-30b).
 
 #[allow(dead_code)]
 mod common;
@@ -258,6 +258,41 @@ fn a_trapping_migrate_leaves_the_old_version_running() {
     let reply = edit(&mut s, "Board", &with_step(), Some(MIGRATE));
     assert_eq!(str_of(&reply, "state"), "migrated", "{reply}");
     assert_eq!(click(&mut s), "4");
+}
+
+#[test]
+fn a_migrate_that_does_not_finish_is_stopped_at_the_run_limit_and_counts_as_trapped() {
+    let scratch = Scratch::new("state-migrate-endless");
+    let mut s = session(&scratch);
+    launch(&mut s);
+    click(&mut s);
+    let endless = "\
+migrate(old: Board) -> Board {
+  var n = old.count
+  while n >= 0 { n += 1 }
+  Board { count: n }
+}";
+    let viewed = call(&mut s, "view", vec![("name", "Board".into())]);
+    let run = Value::object([("app", "board".into()), ("limit_ms", 100usize.into())]);
+    let fields = vec![
+        ("name", "Board".into()),
+        ("base", viewed.get("version").unwrap().clone()),
+        ("text", with_step().into()),
+        ("state", endless.into()),
+        ("run", run),
+    ];
+    let reply = call(&mut s, "edit", fields);
+    assert_eq!(reply.get("installed"), Some(&false.into()), "{reply}");
+    assert_eq!(str_of(&reply, "state"), "migrate_trapped");
+    assert_eq!(
+        str_of(&reply, "trap"),
+        "board: stopped time in migrate, past 100 ms\n"
+    );
+    assert_eq!(reply.get("run"), Some(&Value::Null));
+    assert_eq!(click(&mut s), "2", "the old code counts on");
+    let reply = edit(&mut s, "Board", &with_step(), Some(MIGRATE));
+    assert_eq!(str_of(&reply, "state"), "migrated", "{reply}");
+    assert_eq!(click(&mut s), "3");
 }
 
 #[test]

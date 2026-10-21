@@ -1,7 +1,7 @@
 //! Visual apps with no window on dev code (M5-25): each script of paka/src/interp/
 //! windowless_tests.rs gives the interpreter's tree text, trap count, end and printed text, the
 //! reports compared by their first line, and frees all it made. So does a code swap between
-//! turns (M5-27), a reset (M5-29) and a migrate (M5-30).
+//! turns (M5-27), a reset (M5-29), a migrate (M5-30) and one stopped past its limit (M5-30b).
 
 mod common;
 
@@ -116,12 +116,16 @@ fn play(text: &str, events: Vec<Event>) -> Seen {
     want
 }
 
-/// How the next version comes: keeping the state, as a launch again, or through a migrate.
+/// How the next version comes: keeping the state, as a launch again, or through a migrate
+/// stopped past its limit.
 enum Next<'m> {
     Swap,
     Reset,
-    Migrate(&'m str),
+    Migrate(&'m str, Duration),
 }
+
+/// A limit no migrate here comes near.
+const LIMIT: Duration = Duration::from_secs(10);
 
 /// Plays `events` on `text`, then queues `queued` and installs `next` as `how` says, in the
 /// interpreter and on dev code; checks they agree and the dev run frees all, and gives what they
@@ -132,10 +136,10 @@ fn swapped(text: &str, events: Vec<Event>, queued: Vec<Event>, next: &str, how: 
         match how {
             Next::Swap => (checked(next).0, Install::Swap),
             Next::Reset => (checked(next).0, Install::Reset),
-            Next::Migrate(m) => {
+            Next::Migrate(m, limit) => {
                 let m = check_migrate(&source(text), &source(next), m)
                     .unwrap_or_else(|d| panic!("{d}"));
-                (m.program, Install::Migrate(m.function))
+                (m.program, Install::Migrate(m.function, limit))
             }
         }
     };
@@ -146,7 +150,7 @@ fn swapped(text: &str, events: Vec<Event>, queued: Vec<Event>, next: &str, how: 
     match after() {
         (core, Install::Swap) => ui.swap(core.into()),
         (core, Install::Reset) => ui.reset(core.into(), &[]),
-        (core, Install::Migrate(f)) => _ = ui.migrate(core.into(), f),
+        (core, Install::Migrate(f, limit)) => _ = ui.migrate(core.into(), f, limit),
     }
     let end = ui.end.map(|(code, report)| (code, first_line(&report)));
     let (tree, traps) = (ui.tree.to_string(), ui.traps.iter().map(|r| first_line(r)));
@@ -471,7 +475,7 @@ fn a_migrate_keeps_the_count_and_the_new_field_takes_its_default() {
         vec![plus(), plus()],
         vec![plus()],
         &next,
-        Next::Migrate(KEEP_COUNT),
+        Next::Migrate(KEEP_COUNT, LIMIT),
     );
     assert_eq!((seen.0, seen.1.len()), (counter("12"), 0));
 }
@@ -492,9 +496,36 @@ fn a_trapping_migrate_leaves_the_old_version_running() {
     ];
     for (migrate, report) in migrates {
         let events = vec![plus(), plus()];
-        let seen = swapped(COUNTER, events, vec![plus()], &next, Next::Migrate(migrate));
+        let seen = swapped(
+            COUNTER,
+            events,
+            vec![plus()],
+            &next,
+            Next::Migrate(migrate, LIMIT),
+        );
         assert_eq!((seen.0, seen.1), (counter("3"), vec![report.to_string()]));
     }
+}
+
+#[test]
+fn a_migrate_that_does_not_finish_is_stopped_and_counts_as_trapped() {
+    let plus = || click(&PLUS, "Button");
+    let endless = "\
+migrate(old: Counter) -> Counter {
+  var n = old.count
+  while n >= 0 { n += 1 }
+  Counter { count: n }
+}";
+    let next = Next::Migrate(endless, Duration::from_millis(100));
+    let seen = swapped(
+        COUNTER,
+        vec![plus(), plus()],
+        vec![plus()],
+        &with_step("10"),
+        next,
+    );
+    let report = "counter: stopped time in migrate, past 100 ms";
+    assert_eq!((seen.0, seen.1), (counter("3"), vec![report.to_string()]));
 }
 
 const TODOS: &str = "\
@@ -555,7 +586,7 @@ migrate(old: Todos) -> Todos {
         vec![add(), add()],
         vec![add()],
         &next,
-        Next::Migrate(migrate),
+        Next::Migrate(migrate, LIMIT),
     );
     assert!(seen.0.contains("\"0:t0:n 1:t1:n 2:t2: \""), "{}", seen.0);
 }

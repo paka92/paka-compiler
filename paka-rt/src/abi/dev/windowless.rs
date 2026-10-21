@@ -10,12 +10,14 @@ use super::app::{
     state, status, update, words,
 };
 use super::view::{self, Drawing};
-use super::{Context, Trap};
+use super::{Context, Trap, until};
 use crate::effects::{End, World};
 use crate::route::{Event, Sent, focused, route};
 use crate::tree::{self, Node};
 use std::collections::VecDeque;
 use std::mem;
+use std::sync::atomic::Ordering;
+use std::time::Duration;
 
 /// How the loop reaches compiled code: its calls, a message's text from its type and address,
 /// and a trap's first line without the app's name.
@@ -114,23 +116,34 @@ impl<'a, W: World> Windowless<'a, W> {
     /// Moves the run onto `code` and `app`, the next version with a migrate as its definition
     /// `function`, between turns, as `paka::interp::Windowless::migrate` does: the migrate borrows
     /// the state words and writes the new state, which replaces them once the old version frees
-    /// them, as `swap` goes on. If it traps, all it made is freed, the trap is recorded and the old
-    /// version runs on, its state and drawing as they were, and handles the queue; false then.
-    pub fn migrate(&mut self, code: Code<'a>, app: &'a App<'a>, function: usize) -> bool {
+    /// them, as `swap` goes on. If it traps, or the interrupt stops it past `limit`, all it made
+    /// is freed, a trap's record is kept and the old version runs on, its state and drawing as
+    /// they were, and handles the queue; why it stopped then.
+    pub fn migrate(
+        &mut self,
+        code: Code<'a>,
+        app: &'a App<'a>,
+        function: usize,
+        limit: Duration,
+    ) -> Result<(), Stopped> {
         if self.end.is_some() {
-            return false;
+            return Err(Stopped::Trap);
         }
         let (_, _, size) = app.state.expect("a migrate gives a state");
         let made = self.ctx.heap.made();
         let mut state = words(size);
         let args = [addr(&mut self.state), addr(&mut state)];
-        match status((code.call)(self.ctx, function, &args)) {
+        let (ran, late) = until(self.ctx, limit, |ctx| (code.call)(ctx, function, &args));
+        if late {
+            self.ctx.interrupt.store(0, Ordering::Relaxed);
+        }
+        let ran = status(ran);
+        match ran {
             Ok(()) => {
                 self.release_state();
                 (self.state, self.code, self.app) = (state, code, app);
                 let drawn = self.redraw(true).and_then(|()| self.drain());
                 self.ended(drawn);
-                true
             }
             Err(stopped) => {
                 self.ctx.heap.sweep(made);
@@ -139,12 +152,13 @@ impl<'a, W: World> Windowless<'a, W> {
                         self.traps.push(mem::take(&mut self.ctx.trap));
                         self.drain()
                     }
+                    Stopped::Time if late => self.drain(),
                     stopped => Err(Err(stopped)),
                 };
                 self.ended(drained);
-                false
             }
         }
+        ran
     }
 
     fn ended(&mut self, done: Result<(), Ended>) {

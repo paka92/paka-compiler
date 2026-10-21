@@ -11,6 +11,7 @@ use std::io;
 use std::sync::Arc;
 use std::sync::mpsc::{self, Receiver, Sender};
 use std::thread;
+use std::time::Duration;
 
 pub struct Visual {
     inbox: Sender<Input>,
@@ -24,8 +25,8 @@ enum Input {
     Events(Vec<Event>),
     /// The next version, and whether it comes as a reset.
     Swap(Arc<Program>, bool),
-    /// The next version, with a migrate as its function.
-    Migrate(Arc<Program>, FnId),
+    /// The next version, with a migrate as its function and its time limit.
+    Migrate(Arc<Program>, FnId, Duration),
 }
 
 impl Visual {
@@ -47,9 +48,9 @@ impl Visual {
                     Input::Events(events) => ui.send(events),
                     Input::Swap(core, false) => ui.swap(core),
                     Input::Swap(core, true) => ui.reset(core, &args),
-                    Input::Migrate(core, f) => {
+                    Input::Migrate(core, f, limit) => {
                         let before = ui.traps.len();
-                        if !ui.migrate(core, f) {
+                        if !ui.migrate(core, f, limit) {
                             trap = ui.traps.get(before).cloned();
                         }
                     }
@@ -75,10 +76,11 @@ impl Visual {
         self.put(Input::Swap(Arc::new(core), reset)).0
     }
 
-    /// Installs `core` between turns, its function `f` migrating the state; what the app shows
-    /// after, and the report of the trap that kept the old version running, if one did.
-    pub fn migrate(&self, core: Program, f: FnId) -> (Shown, Option<String>) {
-        self.put(Input::Migrate(Arc::new(core), f))
+    /// Installs `core` between turns, its function `f` migrating the state, stopped past `limit`;
+    /// what the app shows after, and the report of the trap or stop that kept the old version
+    /// running, if one did.
+    pub fn migrate(&self, core: Program, f: FnId, limit: Duration) -> (Shown, Option<String>) {
+        self.put(Input::Migrate(Arc::new(core), f, limit))
     }
 
     fn put(&self, input: Input) -> (Shown, Option<String>) {

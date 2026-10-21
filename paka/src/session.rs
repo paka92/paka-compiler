@@ -21,6 +21,7 @@ use std::fs;
 use std::io::{self, Write};
 use std::ops::Range;
 use std::path::{Path, PathBuf};
+use std::time::Duration;
 
 mod find;
 mod runner;
@@ -32,6 +33,9 @@ use stored::Stored;
 use visual::Visual;
 
 const PATH: &str = "main.paka";
+
+/// A run's time limit in milliseconds when the call gives none; a migrate's too.
+const LIMIT_MS: usize = 10_000;
 
 /// The definitions of the program `text` in canonical text; or its first error, placed in `text`.
 pub fn workspace(text: &[u8]) -> Result<Workspace, Diagnostic> {
@@ -109,7 +113,7 @@ impl Session {
         for f in &session.files {
             session.owners.extend(owned(f));
         }
-        session.installed();
+        session.installed(Duration::from_millis(LIMIT_MS as u64));
         session
     }
 
@@ -168,7 +172,9 @@ impl Session {
         if let Some(c) = carried.filter(|_| self.visual.is_some()) {
             self.choice = Some(c.into());
         }
-        let outcome = self.installed();
+        let limit =
+            (order.as_ref().and_then(|o| o.get("limit_ms")?.as_u64())).unwrap_or(LIMIT_MS as u64);
+        let outcome = self.installed(Duration::from_millis(limit));
         let installed = matches!(outcome, Outcome::Installed(_));
         let mut reply = self.edited(name, &failing, &outcome);
         if let Some(state) = self.state_kept(carried.is_some(), &outcome) {
@@ -247,8 +253,8 @@ impl Session {
     /// the running visual app. There a waiting choice is applied and used up: a reset, or a
     /// migrate, checked against the running and the new version and run on the state; a version
     /// with other stored types and no choice is held back, as is one whose migrate fails its check
-    /// or traps (docs/decisions/M5-07.md section 1.6).
-    fn installed(&mut self) -> Outcome {
+    /// or traps, or does not finish within `limit` (docs/decisions/M5-07.md section 1.6).
+    fn installed(&mut self, limit: Duration) -> Outcome {
         if !self.failing().is_empty() {
             return Outcome::Held;
         }
@@ -282,7 +288,7 @@ impl Session {
             let reset = self.choice.is_some() && function.is_none();
             let ((_, ended), trap) = match function {
                 _ if !visual_app(&core) => ((String::new(), true), None),
-                Some(f) => visual.migrate(core, f),
+                Some(f) => visual.migrate(core, f, limit),
                 None => (visual.swap(core, reset), None),
             };
             if let Some(trap) = trap {
@@ -478,7 +484,7 @@ fn order<'a>(get: impl Fn(&str) -> Option<&'a Value>) -> Value {
     Value::object([
         or("app", Value::Null),
         or("args", Value::Array(vec![])),
-        or("limit_ms", 10_000usize.into()),
+        or("limit_ms", LIMIT_MS.into()),
         or("max_bytes", 16_000usize.into()),
     ])
 }

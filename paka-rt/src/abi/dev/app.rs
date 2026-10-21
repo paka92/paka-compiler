@@ -38,7 +38,7 @@ pub struct App<'a> {
 }
 
 /// Why a run stopped before its end: a trap, recorded in the context, or the interrupt.
-#[derive(Debug, PartialEq)]
+#[derive(Clone, Copy, Debug, PartialEq)]
 pub enum Stopped {
     Trap,
     Time,
