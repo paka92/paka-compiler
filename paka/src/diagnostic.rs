@@ -67,6 +67,10 @@ const KINDS: &[(&str, bool, bool)] = &[
     ("ui-outside-example", false, false),
     ("bad-ui-start", false, false),
     ("bad-ui-path", false, false),
+    ("bad-migrate-signature", false, false),
+    ("migrate-needs-reset", false, false),
+    ("effect-in-migrate", false, false),
+    ("old-value-use", false, false),
 ];
 
 fn declared(code: &str) -> &'static (&'static str, bool, bool) {

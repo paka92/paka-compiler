@@ -83,6 +83,24 @@ pub fn parse_def<'a>(path: &'a str, src: &'a [u8]) -> Parse<Def<'a>> {
     }
 }
 
+/// The migrate `src` holds from byte `start`, on `line`, to its end (docs/decisions/M5-07.md
+/// section 2): `migrate(old: Old) -> New { body }`, read as a function named `migrate`.
+pub fn parse_migrate<'a>(
+    path: &'a str,
+    src: &'a [u8],
+    (start, line): (usize, usize),
+) -> Parse<Def<'a>> {
+    let mut parser = Parser::new(path, src, Lexer::at(path, src, start, line, start), 0);
+    parser.skip_newlines()?;
+    let name = parser.name(Kind::Migrate, "migrate")?;
+    let def = parser.fn_rest(name)?;
+    parser.skip_newlines()?;
+    match parser.cur.kind {
+        Kind::End => Ok(def),
+        _ => Err(parser.unexpected("the end of the migrate")),
+    }
+}
+
 /// Each definition of `src` as its id and its text, from its first token to its last; or the first
 /// error.
 pub fn split<'a>(path: &'a str, src: &'a [u8]) -> Parse<Vec<(&'a str, &'a [u8])>> {
@@ -534,6 +552,11 @@ impl<'a> Parser<'a> {
     fn fn_def(&mut self) -> Parse<Def<'a>> {
         self.advance()?;
         let name = self.name(Kind::Lower, "function")?;
+        self.fn_rest(name)
+    }
+
+    /// A function after its name.
+    fn fn_rest(&mut self, name: Name<'a>) -> Parse<Def<'a>> {
         self.type_params()?;
         let params = self.between(Kind::LParen, Kind::RParen, Self::params)?;
         let result = if self.accept(Kind::Arrow)? {

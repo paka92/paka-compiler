@@ -41,6 +41,14 @@ const ENVIRONMENT: &[&str] = &[
     "runtime-missing",
 ];
 
+/// Kinds of a migrate, which is no program file; paka/tests/migrate.rs tests them.
+const MIGRATE: &[&str] = &[
+    "bad-migrate-signature",
+    "migrate-needs-reset",
+    "effect-in-migrate",
+    "old-value-use",
+];
+
 fn read(dir: &Path, name: &str) -> Option<Vec<u8>> {
     fs::read(dir.join(name)).ok()
 }
@@ -414,7 +422,11 @@ fn every_error_kind_has_a_case() {
         .collect();
     let missing: Vec<_> = kinds
         .iter()
-        .filter(|k| !covered.contains(*k) && !ENVIRONMENT.contains(&k.as_str()))
+        .filter(|k| {
+            !covered.contains(*k)
+                && !ENVIRONMENT.contains(&k.as_str())
+                && !MIGRATE.contains(&k.as_str())
+        })
         .collect();
     let unknown: Vec<_> = covered.iter().filter(|k| !kinds.contains(k)).collect();
     assert!(missing.is_empty(), "kinds without a case: {missing:?}");

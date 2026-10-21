@@ -16,6 +16,7 @@ pub mod interp;
 pub mod layout;
 mod lexer;
 mod lower;
+pub mod migrate;
 pub mod owners;
 pub mod parser;
 pub mod print;

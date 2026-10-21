@@ -800,6 +800,10 @@ Not in the table, since a program cannot reach them in a file:
 | `clang-missing` | needs a machine without `clang`; tested out of the folder (spec/m1.md §13) |
 | `clang-failed` | needs a failing `clang` run (spec/m1.md §13) |
 | `runtime-missing` | needs `libpaka_rt.a` removed from the executable's folder (spec/m1.md §13) |
+| `bad-migrate-signature` | a migrate is not a program file; tested in paka/tests/migrate.rs (M5-07 §2) |
+| `migrate-needs-reset` | a migrate is not a program file; tested in paka/tests/migrate.rs (M5-07 §2) |
+| `effect-in-migrate` | a migrate is not a program file; tested in paka/tests/migrate.rs (M5-07 §2) |
+| `old-value-use` | a migrate is not a program file; tested in paka/tests/migrate.rs (M5-07 §2) |
 
 `unused-name` is a warning and has no kind; its cases are under "Warnings: `unused-name`" in
 the apps/ part. `unsupported-form` is temporary (spec/m1.md §10): drop its case when the back end
