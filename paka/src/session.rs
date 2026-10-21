@@ -12,8 +12,9 @@ use crate::sha256::sha256;
 use crate::source::Source;
 use crate::workspace::Workspace;
 use paka_json::Value;
+use paka_rt::route::Event;
 use std::collections::{BTreeMap, BTreeSet};
-use std::ffi::OsStr;
+use std::ffi::{OsStr, OsString};
 use std::fs;
 use std::io::{self, Write};
 use std::ops::Range;
@@ -21,8 +22,12 @@ use std::path::{Path, PathBuf};
 
 mod find;
 mod runner;
+mod stored;
+mod visual;
 
 pub use runner::Runner;
+use stored::Stored;
+use visual::Visual;
 
 const PATH: &str = "main.paka";
 
@@ -44,12 +49,16 @@ pub struct Session {
     runner: Runner,
     /// The last version in which every definition checks: its generation, files and apps.
     runnable: Option<Runnable>,
+    /// The visual app running on the runnable version, and the state choice waiting for its swap.
+    visual: Option<Visual>,
+    choice: Option<String>,
 }
 
 struct Runnable {
     generation: u64,
     files: Vec<(String, String)>,
     apps: Vec<String>,
+    stored: Stored,
 }
 
 struct File {
@@ -82,6 +91,8 @@ impl Session {
             lock,
             runner,
             runnable: None,
+            visual: None,
+            choice: None,
         };
         for f in &session.files {
             session.owners.extend(owned(f));
@@ -109,6 +120,11 @@ impl Session {
     fn edit(&mut self, call: &Call) -> Reply {
         let name = call.str("name").expect("an edit names its definition");
         let text = call.str("text");
+        let carried = call.str("state");
+        if carried.is_some_and(|c| c != "reset" && !c.starts_with("migrate")) {
+            let message = "`state` must be `reset` or a migrate";
+            return Err(Failure::new("bad_request", message));
+        }
         self.base_fits(name, call.str("base"), text.is_some())?;
         let order = (call.get("run")).map(|run| order(|key| run.get(key)));
         if let Some(app) = order.as_ref().and_then(|o| o.get("app")?.as_str()) {
@@ -126,16 +142,26 @@ impl Session {
             let message = format!("{}; nothing was stored", d.message);
             return Err(Failure::new("conflict", message));
         }
+        if let Err(refused) = self.state_fits(carried.is_some()) {
+            (self.workspace.edit(name, old.as_deref()))
+                .expect("the program before the edit checks");
+            return Err(refused);
+        }
         if let Err(e) = self.write(&path, content) {
             (self.workspace.edit(name, old.as_deref()))
                 .expect("the program before the edit checks");
             let message = format!("cannot write {}: {e}; nothing was stored", path.display());
             return Err(Failure::new("io", message));
         }
-        let mut reply = self.edited(name, &failing);
-        if self.installed()
-            && let Some(order) = order
-        {
+        if let Some(c) = carried.filter(|_| self.visual.is_some()) {
+            self.choice = Some(c.into());
+        }
+        let installed = self.installed();
+        let mut reply = self.edited(name, &failing, installed);
+        if let Some(state) = self.state_kept(carried.is_some(), installed) {
+            reply.push(("state", state.into()));
+        }
+        if installed && let Some(order) = order {
             reply.push(("run", self.run(&order).unwrap_or(Value::Null)));
         } else if order.is_some() {
             reply.push(("run", Value::Null));
@@ -143,9 +169,80 @@ impl Session {
         Ok(reply)
     }
 
-    /// Takes the program as the runnable version when every definition checks.
+    /// Launches the runnable version's visual app with no window and gives its first tree. While
+    /// it runs, edits to its stored types need a state choice (docs/decisions/M5-07.md).
+    pub fn launch(&mut self, args: Vec<OsString>) -> Result<String, Failure> {
+        let r = self.runnable.as_ref().ok_or_else(not_runnable)?;
+        let mut source = Source::default();
+        for (path, text) in &r.files {
+            source.add(path.into(), text.as_bytes().to_vec());
+        }
+        let core = crate::check(PATH, &source)
+            .expect("the runnable version checks")
+            .0;
+        if core.app.as_ref().is_none_or(|a| a.view.is_none()) {
+            return Err(Failure::new("no_app", "the program has no visual app"));
+        }
+        let (visual, (tree, ended)) = Visual::start(core, args);
+        self.visual = (!ended).then_some(visual);
+        self.choice = None;
+        Ok(tree)
+    }
+
+    /// Sends `events` to the running visual app and gives its tree after them; `None` when no app
+    /// runs. A waiting state choice ends with the app.
+    pub fn send(&mut self, events: Vec<Event>) -> Option<String> {
+        let (tree, ended) = self.visual.as_ref()?.send(events);
+        if ended {
+            (self.visual, self.choice) = (None, None);
+        }
+        Some(tree)
+    }
+
+    /// Refuses an edit that changes the running app's stored types with no state choice carried
+    /// or waiting.
+    fn state_fits(&self, carried: bool) -> Result<(), Failure> {
+        let (Some(_), Some(r), false) = (&self.visual, &self.runnable, carried) else {
+            return Ok(());
+        };
+        let changes = r.stored.changes(&Stored::of(&self.workspace));
+        if self.choice.is_some() || changes.is_empty() {
+            return Ok(());
+        }
+        let message = format!(
+            "the running app's stored types change: {}; send `state` with `reset` or a migrate; \
+             nothing was stored",
+            changes.join("; ")
+        );
+        let mut refused = Failure::new("state_changed", message);
+        refused.extra = vec![("changed", changes.into())];
+        Err(refused)
+    }
+
+    /// What became of the running app's state, given whether a choice was `carried` and the edit
+    /// `installed`; with no app running, only that a carried choice was ignored.
+    fn state_kept(&self, carried: bool, installed: bool) -> Option<&'static str> {
+        let Some(_) = self.visual else {
+            return carried.then_some("ignored");
+        };
+        Some(match () {
+            _ if installed || !self.failing().is_empty() => "kept",
+            _ if self.choice.is_some() => "waiting",
+            _ => "missing",
+        })
+    }
+
+    /// Takes the program as the runnable version when every definition checks. While a visual app
+    /// runs, a version with other stored types, or with a state choice waiting, is held back:
+    /// nothing applies a choice yet.
     fn installed(&mut self) -> bool {
         if !self.failing().is_empty() {
+            return false;
+        }
+        let stored = Stored::of(&self.workspace);
+        let held =
+            self.choice.is_some() || self.runnable.as_ref().is_some_and(|r| r.stored != stored);
+        if self.visual.is_some() && held {
             return false;
         }
         let files = (self.files.iter())
@@ -157,6 +254,7 @@ impl Session {
             generation,
             files,
             apps,
+            stored,
         });
         true
     }
@@ -171,10 +269,7 @@ impl Session {
 
     /// The runnable version's run that `order` asks for (M4-03 section 3.4).
     fn run(&mut self, order: &Value) -> Result<Value, Failure> {
-        let Some(r) = &self.runnable else {
-            let message = "no version of this program has checked yet";
-            return Err(Failure::new("not_runnable", message));
-        };
+        let r = self.runnable.as_ref().ok_or_else(not_runnable)?;
         let app = order.get("app").and_then(Value::as_str).unwrap();
         if !r.apps.iter().any(|a| a == app) {
             return Err(no_app(app, &r.apps));
@@ -208,7 +303,12 @@ impl Session {
     }
 
     /// The reply to an edit of `name`, given the definitions `failing` before it.
-    fn edited(&self, name: &str, failing: &BTreeSet<String>) -> Vec<(&'static str, Value)> {
+    fn edited(
+        &self,
+        name: &str,
+        failing: &BTreeSet<String>,
+        installed: bool,
+    ) -> Vec<(&'static str, Value)> {
         let now = self.failing();
         let broke: Vec<_> = (now.difference(failing))
             .filter(|n| *n != name)
@@ -227,7 +327,7 @@ impl Session {
             ("text", text.into()),
             ("errors", errors.into()),
             ("broke", broke.into()),
-            ("installed", now.is_empty().into()),
+            ("installed", installed.into()),
         ]
     }
 
@@ -332,6 +432,11 @@ fn order<'a>(get: impl Fn(&str) -> Option<&'a Value>) -> Value {
         or("limit_ms", 10_000usize.into()),
         or("max_bytes", 16_000usize.into()),
     ])
+}
+
+fn not_runnable() -> Failure {
+    let message = "no version of this program has checked yet";
+    Failure::new("not_runnable", message)
 }
 
 fn no_app(app: &str, apps: &[String]) -> Failure {

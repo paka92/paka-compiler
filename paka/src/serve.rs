@@ -137,6 +137,7 @@ const CALLS: [(&str, Fields); 4] = [
             ("base", Ty::Base, true),
             ("text", Ty::Base, true),
             ("run", Ty::Run, false),
+            ("state", Ty::Str, false),
         ],
     ),
     ("run", RUN),
