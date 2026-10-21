@@ -72,6 +72,10 @@ impl Gen<'_> {
                 self.check(bad, rt::ASSERT, site, &[]);
                 self.view_op(OPEN, &[]);
                 self.scoped(&[], lines.expect("a child block"))?;
+                let gap = match self.plant {
+                    8 => self.b.ins().iadd_imm_s(gap, 1),
+                    _ => gap,
+                };
                 self.view_op(if name == "Row" { ROW } else { COL }, &[gap]);
             }
         }

@@ -10,11 +10,12 @@ use crate::core_form::{
     FnId, FnRef, Local, Place, Program, Root, Site, Step, Stmt, Ty, Un, Walk,
 };
 use paka_rt::ops::{self, Float, Int, Text};
+use paka_rt::route::Event;
 use paka_rt::tree::{self, Edit, Node};
 use std::cmp::Ordering;
 use std::fmt::Write;
 use std::{mem, panic, thread};
-pub use ui::Ui;
+pub use ui::{Left, Ui};
 
 mod ui;
 
@@ -219,6 +220,8 @@ pub struct Machine<'a> {
     /// Of a UI example: the first frame that held an error node, as the call that drew it and
     /// the node's line.
     pub broken: Option<(Site, String)>,
+    /// Of a UI example, when kept: each action's events from its start and what it left.
+    pub ui_log: Option<Vec<(Vec<Event>, Left)>>,
 }
 
 impl<'a> Machine<'a> {
@@ -229,6 +232,7 @@ impl<'a> Machine<'a> {
             levels: 0,
             kids: vec![],
             broken: None,
+            ui_log: None,
         }
     }
 

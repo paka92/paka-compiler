@@ -1,6 +1,7 @@
 //! The differential harness (M4-40): planted differences in output, status, trap kind and trap
 //! position each differ, as does a run ended by a signal; and the command lists every run case of
-//! the conformance suite once.
+//! the conformance suite once. Every UI example agrees on both back ends, and a planted view fault
+//! differs in each (M5-26).
 
 use paka_installer::diff::{Outcome, cases, difference};
 use std::path::Path;
@@ -156,4 +157,43 @@ fn edit_sequences_find_each_planted_staleness() {
         }
     });
     let _ = std::fs::remove_dir_all(&keep);
+}
+
+#[test]
+fn ui_examples_agree_and_a_planted_view_fault_differs_in_each() {
+    let ui = |plant: &str| {
+        let out = Command::new(env!("CARGO_BIN_EXE_paka-diff"))
+            .args(["--ui", concat!(env!("CARGO_MANIFEST_DIR"), "/../tests")])
+            .env("PAKA_PLANT", plant)
+            .output()
+            .unwrap();
+        let text = String::from_utf8(out.stdout).unwrap();
+        let total = text.lines().last().unwrap_or_default().to_owned();
+        (text, total, out.status.code())
+    };
+    let (text, total, status) = ui("0");
+    for case in ["sample_counter", "sample_todo", "ui_ends"] {
+        assert!(
+            text.contains(&format!("agree cases/examples/{case} ")),
+            "{text}"
+        );
+    }
+    let agree: usize = total.split(' ').next().unwrap().parse().unwrap();
+    assert_eq!(
+        (total.as_str(), status),
+        (
+            format!("{agree} agree, 0 differ, 0 unsupported").as_str(),
+            Some(0)
+        ),
+        "{text}"
+    );
+    let (text, total, status) = ui("8");
+    assert_eq!(
+        (total.as_str(), status),
+        (
+            format!("0 agree, {agree} differ, 0 unsupported").as_str(),
+            Some(1)
+        ),
+        "{text}"
+    );
 }

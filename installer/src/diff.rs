@@ -1,13 +1,19 @@
 //! The differential harness in dev mode (M4-40): each run case of the conformance suite runs on
 //! the interpreter and on the dev back end, each in a child process, and the two runs are compared
-//! by M2-06 section 1.2's meaning fields.
+//! by M2-06 section 1.2's meaning fields. UI examples are compared action by action (M5-26).
 
+use crate::dev::{Dev, Played};
+use paka::core_form::{Fn, Program};
+use paka::interp::{Left, ui_log};
+use paka_rt::abi::dev::app::Stopped;
+use paka_rt::effects::Dropped;
 use std::fs;
 use std::io;
 use std::ops::Range;
 use std::os::unix::process::ExitStatusExt;
 use std::path::{Path, PathBuf};
 use std::process::Output;
+use std::time::Duration;
 
 /// What a run left: its output streams and its status, `None` when a signal ended it.
 #[derive(Debug, Default, Clone)]
@@ -252,4 +258,70 @@ pub fn no_core_dumps() {
     const PR_SET_DUMPABLE: i32 = 4;
     // SAFETY: `PR_SET_DUMPABLE` takes one integer, 0 or 1, and touches no memory of ours.
     unsafe { prctl(PR_SET_DUMPABLE, 0) };
+}
+
+/// Plays each UI example of `core`, installed in `dev`, on both back ends: the events of every
+/// action it takes, replayed on dev code from the start on a heap of `heap` bytes, must leave
+/// what the action left in the interpreter, and free all they made. Each example's name and the
+/// number of actions compared, or how they differ.
+pub fn ui_examples(
+    core: &Program,
+    dev: &Dev,
+    heap: u64,
+    limit: Duration,
+) -> Vec<(String, Result<usize, String>)> {
+    let compare = |f: &Fn| {
+        let log = ui_log(core, f).map_err(|why| format!("interpreter: {why}"))?;
+        for (k, (events, want)) in log.iter().enumerate() {
+            let played = dev.play(&[], &mut Dropped, heap, limit, events.clone());
+            let got = left(&played);
+            if got != *want {
+                return Err(format!("action {k}: {}", unlike(want, &got)));
+            }
+            let (leaks, faults) = played.ledger;
+            if leaks + faults > 0 {
+                return Err(format!(
+                    "action {k}: ledger {leaks} leaks, {faults} bad frees"
+                ));
+            }
+        }
+        Ok(log.len())
+    };
+    let mut all: Vec<_> = core
+        .ui_examples
+        .iter()
+        .map(|f| (f.name.clone(), compare(f)))
+        .collect();
+    all.sort_by(|a, b| a.0.cmp(&b.0));
+    all
+}
+
+/// What a dev run left, in the interpreter's terms.
+fn left(played: &Played) -> Left {
+    let first = |r: &String| r.lines().next().unwrap_or_default().to_owned();
+    match &played.end {
+        _ if !played.traps.is_empty() => Left::Trapped(
+            played
+                .traps
+                .iter()
+                .map(first)
+                .collect::<Vec<_>>()
+                .join("; "),
+        ),
+        None => Left::Tree(played.tree.clone()),
+        Some(Ok((_, line))) if line.is_empty() => Left::Exited(played.tree.clone()),
+        Some(Ok((_, line))) => Left::Ended(line.clone()),
+        Some(Err(Stopped::Time)) => Left::Ended("stopped: time".into()),
+        Some(Err(Stopped::Trap)) => unreachable!("`play` reports a trap that ends the app"),
+    }
+}
+
+/// How `got` differs from `want`; for two trees, by their first unequal lines.
+fn unlike(want: &Left, got: &Left) -> String {
+    if let (Left::Tree(a), Left::Tree(b)) = (want, got)
+        && let Some((x, y)) = a.lines().zip(b.lines()).find(|(x, y)| x != y)
+    {
+        return format!("tree line {x:?}, dev {y:?}");
+    }
+    format!("{want:?}, dev {got:?}")
 }

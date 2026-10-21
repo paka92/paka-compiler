@@ -13,6 +13,11 @@
 //! sequence that differs is kept as `KEEP/SEED`, the dev run's folder: `main.paka` and the versions
 //! before it in `edits/`. `PAKA_PLANT` 6 or 7 plants staleness in the compile cache.
 //!
+//! `paka-diff --ui [ROOT]` plays every UI example of the programs under ROOT, `tests` by default,
+//! on both back ends (M5-26): each action's events, replayed in dev mode, must leave the tree, trap
+//! or end the interpreter's action left. Each program is a child, `paka-diff --ui-one NAME` in its
+//! folder. `PAKA_PLANT` 8 plants a view fault.
+//!
 //! Each run is a child, `paka-diff --one interp|dev NOTE LIMIT_MS ARGS...` in the staged case
 //! folder: it runs `main.paka` as `paka run` does, stopped past the limit, and in dev mode writes
 //! its ledger, or why the dev back end refused the program, to NOTE.
@@ -20,7 +25,7 @@
 use paka::interp;
 use paka::source::{Source, read};
 use paka_installer::dev::Dev;
-use paka_installer::diff::{Outcome, cases, difference, no_core_dumps, shrink, stage};
+use paka_installer::diff::{Outcome, cases, difference, no_core_dumps, shrink, stage, ui_examples};
 use paka_rt::abi::dev::app::Stopped;
 use paka_rt::effects::Host;
 use paka_rt::{Fd1, abi};
@@ -46,6 +51,8 @@ fn main() -> ExitCode {
     let args: Vec<OsString> = env::args_os().skip(1).collect();
     let r = match args.first().and_then(|a| a.to_str()) {
         Some("--one") => return one(&args[1..]),
+        Some("--ui-one") => return ui_one(&args[1].to_string_lossy()),
+        Some("--ui") => ui(&args.get(1).map_or("tests".into(), PathBuf::from)),
         Some(mode @ ("--fuzz" | "--edits")) => {
             let number = |i: usize| args.get(i).and_then(|a| a.to_str()?.parse::<u64>().ok());
             let (Some(first), Some(count), Some(keep)) = (number(1), number(2), args.get(3)) else {
@@ -119,6 +126,79 @@ fn fuzz(seeds: Range<u64>, keep: &Path) -> io::Result<ExitCode> {
     }
     let _ = fs::remove_dir_all(&scratch);
     tally.end()
+}
+
+fn ui(root: &Path) -> io::Result<ExitCode> {
+    let mut tally = Tally::default();
+    for dir in programs(root)? {
+        let (source, found) = read(&dir.join("main.paka").into_os_string());
+        let checked = found.and_then(|()| paka::check("main.paka", &source));
+        if !checked.is_ok_and(|(p, ..)| !p.ui_examples.is_empty()) {
+            continue;
+        }
+        let name = match dir.strip_prefix(root) {
+            Ok(rel) if rel != Path::new("") => rel.display().to_string(),
+            _ => dir.display().to_string(),
+        };
+        let out = (Command::new(env::current_exe()?).current_dir(&dir))
+            .args(["--ui-one", &name])
+            .output()?;
+        for line in String::from_utf8_lossy(&out.stdout).lines() {
+            let verdict = ["agree", "differ"].iter().position(|v| line.starts_with(v));
+            tally.add((verdict.unwrap_or(2), line.into()))?;
+        }
+        if !matches!(out.status.code(), Some(0 | 1)) {
+            let err = String::from_utf8_lossy(&out.stderr);
+            tally.add((
+                1,
+                format!("differ {name}: ended with {:?}: {err}", out.status),
+            ))?;
+        }
+    }
+    tally.end()
+}
+
+/// The folders under `root` that hold a `main.paka`, in order.
+fn programs(root: &Path) -> io::Result<Vec<PathBuf>> {
+    let mut found = vec![];
+    if root.join("main.paka").is_file() {
+        found.push(root.into());
+    }
+    let mut dirs: Vec<_> =
+        (fs::read_dir(root)?.map(|e| e.map(|e| e.path()))).collect::<io::Result<_>>()?;
+    dirs.sort();
+    for dir in dirs.into_iter().filter(|d| d.is_dir()) {
+        found.extend(programs(&dir)?);
+    }
+    Ok(found)
+}
+
+/// Plays the UI examples of `main.paka` here on both back ends and lists each as agree or
+/// differ, or the program as unsupported; the status is 1 when one differs.
+fn ui_one(name: &str) -> ExitCode {
+    let (source, found) = read("main.paka".as_ref());
+    let Ok((core, ..)) = found.and_then(|()| paka::check("main.paka", &source)) else {
+        return ExitCode::from(2);
+    };
+    abi::ignore_signals();
+    no_core_dumps();
+    let mut dev = Dev::default();
+    dev.emitter.plant = env::var("PAKA_PLANT").map_or(0, |n| n.parse().unwrap_or(0));
+    if let Err(why) = dev.edit(&source) {
+        println!("unsupported {name}: {why}");
+        return ExitCode::SUCCESS;
+    }
+    let mut differ = false;
+    for (example, verdict) in ui_examples(&core, &dev, HEAP, LIMIT) {
+        match verdict {
+            Ok(actions) => println!("agree {name} {example}; {actions} actions"),
+            Err(why) => {
+                differ = true;
+                println!("differ {name} {example}: {why}");
+            }
+        }
+    }
+    ExitCode::from(u8::from(differ))
 }
 
 /// The edits after each generated program.

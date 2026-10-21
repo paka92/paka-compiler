@@ -37,8 +37,8 @@ pub struct Emitter {
     isa: OwnedTargetIsa,
     builder: FunctionBuilderContext,
     context: cranelift_codegen::Context,
-    /// A planted fault for a self-test: 1 to 5 in code (M4-41), 6 and 7 in the cache (M4-43); 0
-    /// in real use.
+    /// A planted fault for a self-test: 1 to 5 in code (M4-41), 6 and 7 in the cache (M4-43), 8
+    /// a gap one too wide in a view (M5-26); 0 in real use.
     pub plant: u8,
 }
 

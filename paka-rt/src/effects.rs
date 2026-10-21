@@ -185,6 +185,23 @@ impl<W: Write> World for Host<W> {
     }
 }
 
+/// The world of a UI example (M5-06), which drops every granted effect.
+pub struct Dropped;
+
+impl World for Dropped {
+    fn print(&mut self, _: &str) -> Result<(), Reason> {
+        Ok(())
+    }
+
+    fn read(&mut self, _: &str) -> Result<String, Reason> {
+        Err("dropped")
+    }
+
+    fn write(&mut self, _: &str, _: &str) -> Result<(), Reason> {
+        Ok(())
+    }
+}
+
 /// The reason a file operation's host error is given as.
 fn file_reason(e: &io::Error) -> Reason {
     match e.kind() {

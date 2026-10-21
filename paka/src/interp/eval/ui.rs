@@ -1,14 +1,15 @@
 //! The UI example functions (docs/decisions/M5-06.md): the program's visual app with no window,
 //! driven by an example. Each action is handled to the end, its view included. Effects are not
-//! performed: a granted one is dropped, so no answer arrives, and `Exit` ends the app.
+//! performed: a granted one is dropped, so no answer arrives, and `Exit` ends the app. Each
+//! action is logged with the events that led to it, for M5-26's comparison with dev mode.
 
 use super::{Done, Kind, Machine, Stop, Trap};
 use crate::builtins::{UI, name};
 use crate::core_form::{App, Site};
-use crate::interp::effects::{World, perform};
-use crate::interp::start_message;
+use crate::interp::effects::perform;
 use crate::interp::value::{Message, Value};
-use paka_rt::effects::Reason;
+use crate::interp::{report, start_message};
+use paka_rt::effects::Dropped;
 use paka_rt::input::Key;
 use paka_rt::route::{Event, Sent, focused, route};
 use paka_rt::tree::{self, Node, Step};
@@ -21,6 +22,19 @@ pub struct Ui {
     tree: Node<Message>,
     /// After `Exit`: reads see the last tree and an action is an assert trap.
     exited: bool,
+    /// The events sent since the start; `None` once an effect's answer was dropped, as dev mode
+    /// would handle it.
+    events: Option<Vec<Event>>,
+}
+
+/// What a UI example's action left: the tree, the tree after `Exit`, a trap report's first line,
+/// or the line of an end.
+#[derive(Debug, Clone, PartialEq)]
+pub enum Left {
+    Tree(String),
+    Exited(String),
+    Trapped(String),
+    Ended(String),
 }
 
 impl<'a> Machine<'a> {
@@ -80,20 +94,17 @@ impl<'a> Machine<'a> {
             state: self.state(app)?,
             tree: Node::Error(String::new()),
             exited: false,
+            events: Some(vec![]),
         };
-        match app.start {
-            Some(start) => {
-                let message = start_message(self.core, app, start, &[]);
-                self.turn(
-                    &mut ui,
-                    message.map_err(|(_, line)| Stop::Ended(line))?,
-                    None,
-                    site,
-                )?
-            }
-            None => self.redraw(&mut ui, None, site)?,
-        }
-        Ok(ui)
+        let done = match app.start {
+            Some(start) => match start_message(self.core, app, start, &[]) {
+                Ok(message) => self.turn(&mut ui, message, None, site),
+                Err((_, line)) => Err(Stop::Ended(line)),
+            },
+            None => self.redraw(&mut ui, None, site),
+        };
+        self.log(&ui, &done);
+        done.map(|()| ui)
     }
 
     /// A Button sends its message; an Input takes focus, its cursor at the end.
@@ -103,14 +114,17 @@ impl<'a> Machine<'a> {
             Some(node @ (Node::Button { .. } | Node::Input { .. })) => node.kind(),
             _ => return Err(Trap::bare(Kind::Assert, site).into()),
         };
-        let Some(Sent::Click(on)) = route(&mut ui.tree, &Event::Click(path, kind)) else {
-            return Ok(());
+        let event = Event::Click(path, kind);
+        let message = match route(&mut ui.tree, &event) {
+            Some(Sent::Click(on)) => Some(on.value.copy()),
+            _ => None,
         };
-        let message = on
-            .value
-            .copy()
-            .ok_or_else(|| Trap::bare(Kind::Stack, site))?;
-        self.turn(ui, message, None, site)
+        let done = match message {
+            Some(Some(message)) => self.turn(ui, message, None, site),
+            Some(None) => Err(Trap::bare(Kind::Stack, site).into()),
+            None => Ok(()),
+        };
+        self.sent(ui, event, done)
     }
 
     /// One code point to the focused Input; `\n` and tab do nothing.
@@ -119,14 +133,50 @@ impl<'a> Machine<'a> {
             return Err(Trap::bare(Kind::Assert, site).into());
         };
         let before = text.clone();
-        let Some(Sent::Change(on, change)) = route(&mut ui.tree, &Event::Key(Key::Type(c))) else {
-            return Ok(());
+        let event = Event::Key(Key::Type(c));
+        let changed = match route(&mut ui.tree, &event) {
+            Some(Sent::Change(on, change)) => {
+                let Value::Fn(f) = on.value else {
+                    unreachable!("on_change takes a variant");
+                };
+                Some((f, change))
+            }
+            _ => None,
         };
-        let Value::Fn(f) = on.value else {
-            unreachable!("on_change takes a variant");
+        let done = match changed {
+            Some((f, change)) => (self.answer(f, Value::Str(change.text.as_str().into())))
+                .and_then(|message| self.turn(ui, message, Some((before, change.cursor)), site)),
+            None => Ok(()),
         };
-        let message = self.answer(f, Value::Str(change.text.as_str().into()))?;
-        self.turn(ui, message, Some((before, change.cursor)), site)
+        self.sent(ui, event, done)
+    }
+
+    /// Notes `event` as sent to `ui` and logs what it left.
+    fn sent(&mut self, ui: &mut Ui, event: Event, done: Done<()>) -> Done<()> {
+        if let Some(events) = &mut ui.events {
+            events.push(event);
+        }
+        self.log(ui, &done);
+        done
+    }
+
+    /// Logs what an action left, when the machine keeps a log.
+    fn log(&mut self, ui: &Ui, done: &Done<()>) {
+        let (core, app) = (self.core, self.app());
+        let (Some(log), Some(events)) = (&mut self.ui_log, &ui.events) else {
+            return;
+        };
+        let left = match done {
+            Ok(()) if ui.exited => Left::Exited(ui.tree.to_string()),
+            Ok(()) => Left::Tree(ui.tree.to_string()),
+            Err(Stop::Trap(trap)) => {
+                let report = report(core, &app.name, trap);
+                Left::Trapped(report.lines().next().unwrap_or_default().into())
+            }
+            Err(Stop::Ended(line)) => Left::Ended(line.clone()),
+            Err(_) => return,
+        };
+        log.push((events.clone(), left));
     }
 
     /// `update`, its effects, then the view; a typed key's cursor follows last.
@@ -135,7 +185,12 @@ impl<'a> Machine<'a> {
         let (mut effects, state) = self.update(app, ui.state.take(), message)?;
         ui.state = state;
         if matches!(effects, Value::List(_)) {
-            match perform(app, &mut effects, &mut Dropped, &mut VecDeque::new()) {
+            let mut answers = VecDeque::new();
+            let end = perform(app, &mut effects, &mut Dropped, &mut answers);
+            if !answers.is_empty() {
+                ui.events = None;
+            }
+            match end {
                 Some((_, line)) if !line.is_empty() => return Err(Stop::Ended(line)),
                 Some(_) => ui.exited = true,
                 None => {}
@@ -194,6 +249,7 @@ impl Ui {
             state,
             tree,
             exited: self.exited,
+            events: self.events.clone(),
         }))
     }
 }
@@ -269,21 +325,4 @@ fn first<'t>(
         };
         Some((path, found))
     })
-}
-
-/// The world of a UI example, which drops every granted effect.
-struct Dropped;
-
-impl World for Dropped {
-    fn print(&mut self, _: &str) -> Result<(), Reason> {
-        Ok(())
-    }
-
-    fn read(&mut self, _: &str) -> Result<String, Reason> {
-        Err("dropped")
-    }
-
-    fn write(&mut self, _: &str, _: &str) -> Result<(), Reason> {
-        Ok(())
-    }
 }
