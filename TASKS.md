@@ -2368,11 +2368,13 @@ or merged during review. Ids with a letter were added during review.
 
 ### M7-14 · L4 · Build the foreign host process with generated glue and a pipe protocol
 
+- status: done
 - needs: M7-02
-- flags: unsafe
+- flags: none
 - done when: A test C library is called through the host in a separate process; malformed requests and a crashing library never take down the caller.
 - why this level: Marshalling into C and crash containment; a mistake corrupts data without any trap.
 - note: Per M7-02: the unchecked code is one fixed C file plus generated C per declaration, built by the pinned clang with warnings as errors and one exact-type line per function, from copies in an empty directory. The Rust side only starts a process and moves bytes, so its `unsafe` flag likely drops; the level stays.
+- note: Done: paka/src/foreign.rs builds a declaration's host: in a new directory, copies of its `source:` and `header:` files (regular files only) under `lib/`, the fixed paka/src/foreign/host.c, and generated `glue.c`, which includes both and holds per function one exact-type line and a decoder; the pinned clang (now checked by paka/src/clang.rs for `paka build` too) builds them with `-Wall -Wextra -Werror`, a `library:` linked as `-l<name>`. paka/src/foreign/pipe.rs starts the host and moves frames, with no `unsafe`, so the flag drops: frames are an 8-byte length and bytes, little-endian; a request is a 4-byte function number and the arguments as M7-02 lays them out with 8-byte string lengths; a reply is 0 and the result, or 1 alone for a malformed request, which the host refuses and then goes on. `Host::call` answers the result or `Died` or `BadReply`; dropping a host kills it. Tests: paka/tests/foreign.rs calls the library in paka/tests/foreign through a host, sends malformed requests, crashes the library, and builds against a wrong header type, an unnamed nearby header and `libm`. The build cache and the time limit are left to M7-15.
 
 ### M7-15 · L3 · Perform foreign calls as effects: start host, exchange messages, report failures
 
