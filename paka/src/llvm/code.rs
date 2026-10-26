@@ -1,53 +1,106 @@
-//! Lowers functions over `Int`, `Bool`, `Float` and the records and variants that own nothing to
-//! IR text (M6-07 to M6-09). A function is `i32 @p_<name>(args..., ptr %out)`, `%out` only when
+//! Lowers functions over `Int`, `Bool`, `Float`, `String`, records and variants to IR text (M6-07
+//! to M6-11). A function is `i32 @p_<name>(args..., ptr %out)`, `%out` only when
 //! it has a result; the status is 0 when it finished and 1 when it trapped, after `paka_rt1_trap`
 //! recorded the trap's text (M4-05 section 5).
 //! Checked `+ - *` go through the overflow intrinsics; `/`, `%` and shifts through the helpers
 //! that check first (M6-01 section 3). Locals live in stack slots that LLVM turns into registers.
 //! A record or variant lies in memory as M4-22's layout table gives it and is passed by address;
-//! so is an `inout` argument. A value is copied whole when it is stored.
+//! so is an `inout` argument. A value is copied whole when it is stored. Who owns what, and so
+//! what is dropped where, follows the dev back end (`owned`); Strings go through the runtime
+//! (`text`).
 
 use super::constant;
 use crate::core_form::{
-    Arg, Arith, Arm, Bin, Block, Callee, Cmp, Compound, Expr, ExprKind, FloatArith, Fn, Place,
+    Arg, Arith, Arm, Bin, Callee, Cmp, Compound, Expr, ExprKind, FloatArith, Fn, Local, Place,
     Program, Root, Site, Step, Stmt, Tag, Ty, Type, Un, Walk,
 };
 use paka::builtins::ROWS;
-use paka::layout::Layouts;
+use paka::layout::{self, Layouts};
+use paka::owners::Owners;
 use paka::source::in_file;
-use paka_rt::abi::table::{STACK_LIMIT, TRAP};
+use paka_rt::abi::dev::records::Spec;
+use paka_rt::abi::dev::words::{INDEX, JOIN, SLICE};
+use paka_rt::abi::table::{ALLOC, STACK_LIMIT, TRAP};
 use paka_rt::ops::Int;
 use std::collections::{BTreeMap, BTreeSet};
 use std::fmt::Write;
+
+mod items;
+mod owned;
+mod text;
 
 /// The largest frame inlined, and the largest built: the runtime keeps 1 MiB under its limit.
 const INLINE_FRAME: usize = 4 << 10;
 const MAX_FRAME: usize = 256 << 10;
 
-/// The IR of `update`'s statements, which leave an open block, and of every other function with
-/// the constants and declarations they need; `None` when any of it is beyond this lowering.
-pub fn lower(core: &mut Program, update: usize) -> Option<(String, String)> {
+/// The IR of `update`'s body, and of every other function with the constants and declarations
+/// they need; `None` when any of it is beyond this lowering. With `computed`, the body builds the
+/// effect list `update` ends in and returns; otherwise it leaves an open block for the constant
+/// list to be stored.
+pub fn lower(core: &mut Program, update: usize, computed: bool) -> Option<(String, String)> {
     let layouts = Layouts::new(core);
     let core = &*core;
+    let mut held: Vec<bool> = (core.types.iter())
+        .map(|t| {
+            matches!(
+                t,
+                Type::Int
+                    | Type::Bool
+                    | Type::Float
+                    | Type::String
+                    | Type::List(_)
+                    | Type::Record(_)
+                    | Type::Enum(_)
+                    | Type::Option(_)
+                    | Type::Result(..)
+            )
+        })
+        .collect();
+    // A type is held when every field or item it has is; a cycle holds unless something on it is
+    // not.
+    while let Some(t) = (0..held.len()).find(|&t| {
+        let fields = layouts.get(t).alternatives.iter().flatten();
+        let item = match core.types[t] {
+            Type::List(item) => held[item],
+            _ => true,
+        };
+        held[t] && !(item && fields.clone().all(|p| held[p.ty]))
+    }) {
+        held[t] = false;
+    }
     let mut module = Module {
         core,
+        specs: layouts.specs(),
         layouts,
-        traps: BTreeMap::new(),
+        held,
+        texts: BTreeMap::new(),
+        records: BTreeMap::new(),
         intrinsics: BTreeMap::new(),
         wanted: vec![],
         seen: BTreeSet::from([update]),
+        equalities: vec![],
+        compared: BTreeSet::new(),
     };
-    let body = module.function(&core.fns[update], true)?;
+    let body = module.function(&core.fns[update], Some(computed))?;
     let mut defines = String::new();
-    while let Some(id) = module.wanted.pop() {
-        defines += &module.function(&core.fns[id], false)?;
+    loop {
+        if let Some(id) = module.wanted.pop() {
+            defines += &module.function(&core.fns[id], None)?;
+        } else if let Some(t) = module.equalities.pop() {
+            defines += &module.body(core.fns[update].site, None).equality(t);
+        } else {
+            break;
+        }
     }
     let mut code = String::new();
-    for (text, n) in &module.traps {
+    for (text, n) in &module.texts {
         code += &constant(&format!("t{n}"), text);
     }
-    if !module.traps.is_empty() {
-        code += &format!("\n{TRAP}\n");
+    for record in module.records.values() {
+        code += record;
+    }
+    if !code.is_empty() {
+        code += "\n";
     }
     if !defines.is_empty() {
         code += &format!("{STACK_LIMIT}\n");
@@ -61,39 +114,56 @@ pub fn lower(core: &mut Program, update: usize) -> Option<(String, String)> {
 struct Module<'a> {
     core: &'a Program,
     layouts: Layouts,
-    /// Each trap text and the number of its constant `@t<n>`.
-    traps: BTreeMap<String, usize>,
-    /// Each intrinsic used, and its declaration.
+    /// Each type's record contents for the runtime; `None` for one that owns nothing.
+    specs: Vec<Option<Spec>>,
+    /// Whether this lowering holds values of each type.
+    held: Vec<bool>,
+    /// Each byte constant, a String literal or the text of a trap, and the number of its `@t<n>`.
+    texts: BTreeMap<String, usize>,
+    /// The type records used, as constants `@r<t>`.
+    records: BTreeMap<Ty, String>,
+    /// Each intrinsic and runtime entry used, and its declaration.
     intrinsics: BTreeMap<String, String>,
     /// The functions called and not yet lowered.
     wanted: Vec<usize>,
     seen: BTreeSet<usize>,
+    /// The types compared whole, and those whose equality is not yet lowered.
+    equalities: Vec<Ty>,
+    compared: BTreeSet<Ty>,
 }
 
-impl Module<'_> {
-    /// A whole `define`, or for `update` the lines that start its body.
-    fn function(&mut self, f: &Fn, update: bool) -> Option<String> {
-        let result = match f.result {
-            Some(t) if !update => Some(self.ir(t).map(|_| t)?),
-            _ => None,
-        };
-        // `update`'s message is beyond this lowering.
-        let held = |n: usize| update && n < f.params.len();
-        let locals = (f.locals.iter().enumerate())
-            .map(|(n, &t)| self.ir(t).filter(|_| !held(n)).map(|_| t))
-            .collect();
-        let mut b = Body {
+impl<'a> Module<'a> {
+    fn body(&mut self, site: Site, update: Option<bool>) -> Body<'_, 'a> {
+        Body {
             module: self,
             slots: String::new(),
             frame: 0,
             lines: String::new(),
             names: 0,
             loops: vec![],
-            locals,
+            locals: vec![],
             at: vec![],
-            result,
+            result: None,
             update,
+            site,
+            owners: Owners::default(),
+            temps: vec![],
+        }
+    }
+
+    /// A whole `define`, or `update`'s body; `update` is `Some(computed)` for it.
+    fn function(&mut self, f: &Fn, update: Option<bool>) -> Option<String> {
+        let result = match f.result {
+            Some(t) if update.is_none() => Some(self.ir(t).map(|_| t)?),
+            _ => None,
         };
+        // `update`'s message is beyond this lowering.
+        let held = |n: usize| update.is_some() && n < f.params.len();
+        let locals = (f.locals.iter().enumerate())
+            .map(|(n, &t)| self.ir(t).filter(|_| !held(n)).map(|_| t))
+            .collect();
+        let mut b = self.body(f.site, update);
+        (b.locals, b.result) = (locals, result);
         for n in 0..f.locals.len() {
             let ty = b.locals[n].map(|t| b.ty(t));
             let by_address = f
@@ -107,8 +177,13 @@ impl Module<'_> {
             }
             b.at.push(at);
         }
-        if update {
+        b.owners.enter(false);
+        if let Some(computed) = update {
             b.statements(&f.body.stmts)?;
+            match computed {
+                true => b.effects(f.body.value.as_deref()?)?,
+                false => b.leave_fn(None),
+            }
             let empty = b.slots.is_empty() && b.lines.is_empty();
             return Some(match empty {
                 true => String::new(),
@@ -128,9 +203,14 @@ impl Module<'_> {
         if f.result.is_some() {
             params.push("ptr %out".into());
         }
-        let value = b.block(&f.body)?;
-        b.finish(value)?;
-        // Drops the label of the block nothing reaches that `finish` opened.
+        b.statements(&f.body.stmts)?;
+        let e = f.body.value.as_deref();
+        let v = match e {
+            Some(e) => b.expr(e)?,
+            None => None,
+        };
+        b.give(e, v);
+        // Drops the label of the block nothing reaches that `give` opened.
         let end = b.lines.trim_end().rfind('\n').map_or(0, |i| i + 1);
         b.lines.truncate(end);
         let (name, params) = (&f.name, params.join(", "));
@@ -141,28 +221,47 @@ impl Module<'_> {
         ))
     }
 
-    /// The IR type of an `Int`, a `Bool`, a `Float`, or `ptr` for a record or variant that owns
-    /// nothing.
+    /// The IR type of an `Int`, a `Bool`, a `Float`, or `ptr` for a value held in memory: a
+    /// String, or a record or variant of what this lowering holds.
     fn ir(&self, t: Ty) -> Option<&'static str> {
         match self.core.types[t] {
+            _ if !self.held[t] => None,
             Type::Int => Some("i64"),
             Type::Bool => Some("i1"),
             Type::Float => Some("double"),
-            Type::Record(_) | Type::Enum(_) | Type::Option(_) | Type::Result(..) => {
-                (!self.layouts.owns(t)).then_some("ptr")
-            }
-            _ => None,
+            _ => Some("ptr"),
         }
+    }
+
+    /// The byte constant holding `text`, and its length.
+    fn text(&mut self, text: String) -> (String, usize) {
+        let (next, len) = (self.texts.len(), text.len());
+        let n = *self.texts.entry(text).or_insert(next);
+        (format!("@t{n}"), len)
+    }
+
+    /// The constant `at <file>:<line>:<col>` of `site`, and its length.
+    fn place(&mut self, site: Site) -> (String, usize) {
+        self.text(self.at(site))
+    }
+
+    fn at(&self, site: Site) -> String {
+        let at = &self.core.sites[site];
+        let ((file, _), line) = in_file(&self.core.files, |f| f.1, at.line);
+        format!("at {file}:{line}:{}", at.col)
     }
 
     /// The constant naming a trap of `kind` at `site`, and its length.
     fn trap(&mut self, kind: &str, site: Site) -> (String, usize) {
-        let at = &self.core.sites[site];
-        let ((file, _), line) = in_file(&self.core.files, |f| f.1, at.line);
-        let text = format!("{kind} at {file}:{line}:{}", at.col);
-        let next = self.traps.len();
-        let n = *self.traps.entry(text.clone()).or_insert(next);
-        (format!("@t{n}"), text.len())
+        self.declare(TRAP);
+        self.text(format!("{kind} {}", self.at(site)))
+    }
+
+    /// Declares the intrinsic or runtime entry `line` names.
+    fn declare(&mut self, line: &str) {
+        let name = line.split(['@', '(']).nth(1).expect("a declared name");
+        let text = format!("{line}\n");
+        self.intrinsics.entry(name.into()).or_insert(text);
     }
 }
 
@@ -181,15 +280,27 @@ struct Body<'m, 'a> {
     /// Each local's address: its slot, or the parameter that points to it.
     at: Vec<String>,
     result: Option<Ty>,
-    update: bool,
+    /// `Some(computed)` for `update`.
+    update: Option<bool>,
+    /// The function's site, where a `memory` trap of its own is reported.
+    site: Site,
+    /// The owners in scope, a temporary by its number in `temps`.
+    owners: Owners<usize>,
+    temps: Vec<String>,
 }
 
 /// An expression's operand; an expression with no value gives an empty one.
 type Value = Option<String>;
 
-/// The fields a match arm binds: each one's type, the value's address, the field's offset in it
-/// and the local it goes to.
-type Binds = Vec<(Ty, String, usize, usize)>;
+/// The fields a match arm binds: each one's place, the value's address and the local it goes to.
+type Binds = Vec<(layout::Place, String, Local)>;
+
+/// A place step, its operands already evaluated.
+enum Op {
+    Field(usize),
+    Item(String, Site),
+    Slice(String, String, Site),
+}
 
 impl Body<'_, '_> {
     fn line(&mut self, text: String) {
@@ -213,13 +324,15 @@ impl Body<'_, '_> {
     /// A slot named `name` for a value of type `t`.
     fn hold(&mut self, name: &str, t: Ty) {
         match self.ty(t) {
-            "ptr" => {
-                let size = self.size(t);
-                self.frame += size;
-                let _ = writeln!(self.slots, "  {name} = alloca [{size} x i8], align 8");
-            }
+            "ptr" => self.bytes(name, self.size(t)),
             ty => self.slot(name, ty),
         }
+    }
+
+    /// A slot of `size` bytes.
+    fn bytes(&mut self, name: &str, size: usize) {
+        self.frame += size;
+        let _ = writeln!(self.slots, "  {name} = alloca [{size} x i8], align 8");
     }
 
     /// The value of type `t` at `at`: loaded, or the address itself for one held in memory.
@@ -236,7 +349,7 @@ impl Body<'_, '_> {
             "ptr" => {
                 let size = self.size(t);
                 let name = "@llvm.memmove.p0.p0.i64";
-                self.declare(name, format!("declare void {name}(ptr, ptr, i64, i1)\n"));
+                self.declare(&format!("declare void {name}(ptr, ptr, i64, i1)"));
                 self.line(format!(
                     "call void {name}(ptr {at}, ptr {v}, i64 {size}, i1 false)"
                 ));
@@ -253,23 +366,82 @@ impl Body<'_, '_> {
         }
     }
 
-    /// The address of `place` and its type.
+    /// The address of `place` and its type: its root and its steps' operands in written order,
+    /// then the walk. A String item or slice is a new String.
     fn address(&mut self, place: &Place) -> Option<(String, Ty)> {
-        let (mut at, mut t) = match &place.root {
+        let (root, t, ops) = self.operands(place)?;
+        self.walk(root, t, ops)
+    }
+
+    /// The root of `place`, its type and the steps with their operands evaluated.
+    fn operands(&mut self, place: &Place) -> Option<(String, Ty, Vec<Op>)> {
+        let (root, t) = match &place.root {
             Root::Local(l) => (self.at[*l].clone(), self.locals[*l]?),
             Root::Value(e) => (self.expr(e)??, e.ty?),
         };
+        let mut ops = vec![];
         for step in &place.steps {
-            let Step::Field(i) = step else { return None };
-            let field = self.module.layouts.get(t).alternatives[0][*i];
-            if field.boxed {
-                return None;
-            }
-            at = self.offset(&at, field.offset);
-            t = field.ty;
+            ops.push(match step {
+                Step::Field(i) => Op::Field(*i),
+                Step::Item(i, site) => Op::Item(self.expr(i)??, *site),
+                Step::Slice(a, b, site) => Op::Slice(self.expr(a)??, self.expr(b)??, *site),
+                Step::Key(..) => return None,
+            });
+        }
+        Some((root, t, ops))
+    }
+
+    /// Follows `ops` from the value at `root` of type `t`: the address and type reached.
+    fn walk(&mut self, root: String, mut t: Ty, ops: Vec<Op>) -> Option<(String, Ty)> {
+        let first = !ops.is_empty();
+        let mut at = root.clone();
+        for op in ops {
+            let list = match self.module.core.types[t] {
+                Type::List(item) => Some(item),
+                _ => None,
+            };
+            at = match (op, list) {
+                (Op::Field(i), _) => {
+                    let field = self.module.layouts.get(t).alternatives[0][i];
+                    t = field.ty;
+                    self.field_at(&field, &at)
+                }
+                (Op::Item(i, site), Some(item)) => {
+                    let at = self.item(&at, t, &i, site);
+                    t = item;
+                    at
+                }
+                (Op::Slice(a, b, site), Some(_)) => self.slice(&at, t, &a, &b, site),
+                (Op::Item(i, site), None) => {
+                    self.text(INDEX, Some(site), &[("ptr", &at), ("i64", &i)])
+                }
+                (Op::Slice(a, b, site), None) => {
+                    let operands = [("ptr", at.as_str()), ("i64", &a), ("i64", &b)];
+                    self.text(SLICE, Some(site), &operands)
+                }
+            };
         }
         self.module.ir(t)?;
+        // A first field lies where its value does; its own name keeps it from passing for the
+        // value's owner.
+        if at == root && first {
+            at = self.op(format!("getelementptr i8, ptr {at}, i64 0"));
+        }
         Some((at, t))
+    }
+
+    /// The address of the field at `place` of the value at `at`, followed through its box.
+    fn field_at(&mut self, place: &layout::Place, at: &str) -> String {
+        let at = self.offset(at, place.offset);
+        match place.boxed {
+            true => self.load("ptr", &at),
+            false => at,
+        }
+    }
+
+    fn field(&mut self, place: &layout::Place, at: &str) -> String {
+        let at = self.field_at(place, at);
+        self.get(place.ty, &at)
     }
 
     fn name(&mut self, stem: &str) -> String {
@@ -305,18 +477,27 @@ impl Body<'_, '_> {
         self.line(format!("store {ty} {v}, ptr {at}, align {align}"));
     }
 
-    fn declare(&mut self, name: &str, text: String) {
-        self.module.intrinsics.entry(name.into()).or_insert(text);
+    fn declare(&mut self, line: &str) {
+        self.module.declare(line);
     }
 
-    /// Writes the result and returns status 0.
-    fn finish(&mut self, value: Value) -> Option<()> {
-        // No value only where a `return` came before, so nothing reaches here.
-        if let (Some(t), Some(v)) = (self.result, value) {
-            self.put(t, &v, "%out");
-        }
-        self.ended("ret i32 0".into());
-        Some(())
+    /// A new block of `bytes`; a `memory` trap when the heap refuses.
+    fn alloc(&mut self, bytes: usize) -> String {
+        self.declare(ALLOC);
+        let block = self.op(format!("call ptr @paka_rt1_alloc(i64 {bytes})"));
+        let refused = self.op(format!("icmp eq ptr {block}, null"));
+        self.check(&refused, "memory", self.site);
+        block
+    }
+
+    /// Returns a callee's nonzero status, its trap already recorded.
+    fn pass(&mut self, status: &str) {
+        let failed = self.op(format!("icmp ne i32 {status}, 0"));
+        let (pass, ok) = (self.name("b"), self.name("b"));
+        self.line(format!("br i1 {failed}, label %{pass}, label %{ok}"));
+        self.start(&pass);
+        self.line(format!("ret i32 {status}"));
+        self.start(&ok);
     }
 
     /// The first lines of a function: a `stack` trap at `site` when its frame would reach below the
@@ -363,55 +544,50 @@ impl Body<'_, '_> {
         self.line("ret i32 1".into());
     }
 
-    fn block(&mut self, block: &Block) -> Option<Value> {
-        self.statements(&block.stmts)?;
-        match &block.value {
-            Some(e) => self.expr(e),
-            None => Some(None),
-        }
-    }
-
-    fn statements(&mut self, stmts: &[Stmt]) -> Option<()> {
-        stmts.iter().try_for_each(|s| self.stmt(s))
-    }
-
     fn stmt(&mut self, s: &Stmt) -> Option<()> {
         match s {
             Stmt::Let(l, e) => {
                 let v = self.expr(e)??;
-                let at = self.at[*l].clone();
-                self.put(self.locals[*l]?, &v, &at);
+                self.bind_owned(*l, &v)?;
             }
             Stmt::Assign(place, op, e) => {
-                let (at, t) = self.address(place)?;
-                let mut v = self.expr(e)?;
+                let (root, t, ops) = self.operands(place)?;
+                let mut v = self.expr(e)??;
+                let (at, t) = self.walk(root, t, ops)?;
                 if let Some(op) = op {
                     let old = self.get(t, &at);
-                    v = Some(match op {
-                        Compound::Int(a, site) => self.int(a, *site, &old, &v?),
-                        Compound::Float(a) => self.float(a, &old, &v?),
-                        Compound::Join(_) => return None,
-                    });
+                    v = match op {
+                        Compound::Int(a, site) => self.int(a, *site, &old, &v),
+                        Compound::Float(a) => self.float(a, &old, &v),
+                        Compound::Join(site) => {
+                            self.text(JOIN, Some(*site), &[("ptr", &old), ("ptr", &v)])
+                        }
+                    };
                 }
-                self.put(t, &v?, &at);
+                let v = self.owned(t, &v);
+                self.drop_at(t, &at);
+                self.put(t, &v, &at);
             }
-            Stmt::Return(e) if !self.update => {
+            Stmt::Return(e) if self.update.is_none() => {
                 let v = match e {
                     Some(e) => self.expr(e)?,
                     None => None,
                 };
-                self.finish(v)?;
+                self.give(e.as_ref(), v);
             }
             Stmt::Break | Stmt::Continue => {
                 let (next, exit) = self.loops.last()?.clone();
                 let to = if matches!(s, Stmt::Break) { exit } else { next };
+                self.leave_loop();
                 self.ended(format!("br label %{to}"));
             }
             Stmt::While(cond, body) => {
                 let [head, inner, exit] = ["b"; 3].map(|s| self.name(s));
                 self.line(format!("br label %{head}"));
                 self.start(&head);
+                let mark = self.owners.mark();
                 let c = self.expr(cond)??;
+                self.drop_temps(mark);
                 self.line(format!("br i1 {c}, label %{inner}, label %{exit}"));
                 self.start(&inner);
                 self.looped(&head, &exit, body)?;
@@ -442,15 +618,16 @@ impl Body<'_, '_> {
                 self.line(format!("br label %{head}"));
                 self.start(&exit);
             }
+            Stmt::For(l, Walk::List(xs), body) => self.each(*l, xs, body)?,
             Stmt::Expr(e) => drop(self.expr(e)?),
-            Stmt::Return(_) | Stmt::For(..) => return None,
+            Stmt::Return(_) => return None,
         }
         Some(())
     }
 
-    fn looped(&mut self, next: &str, exit: &str, body: &Block) -> Option<()> {
+    fn looped(&mut self, next: &str, exit: &str, body: &crate::core_form::Block) -> Option<()> {
         self.loops.push((next.into(), exit.into()));
-        self.block(body)?;
+        self.loop_body(body)?;
         self.loops.pop();
         Some(())
     }
@@ -464,6 +641,9 @@ impl Body<'_, '_> {
             ExprKind::Int(n) => raw(*n).to_string(),
             ExprKind::Bool(v) => v.to_string(),
             ExprKind::Float(f) => format!("0x{:016X}", f.bits()),
+            ExprKind::Str(s) => self.literal(s),
+            ExprKind::List(items) => self.list(e.ty?, items)?,
+            ExprKind::Interp(parts, site) => self.interpolate(parts, *site)?,
             ExprKind::Place(place) => {
                 let (at, t) = self.address(place)?;
                 self.get(t, &at)
@@ -491,7 +671,7 @@ impl Body<'_, '_> {
             ExprKind::Binary(op, x, y) => {
                 let ty = self.module.ir(x.ty?)?;
                 if ty == "ptr" {
-                    return None;
+                    return self.held_binary(op, x, y).map(Some);
                 }
                 let (x, y) = (self.expr(x)??, self.expr(y)??);
                 let float = ty == "double";
@@ -522,7 +702,20 @@ impl Body<'_, '_> {
                 }
                 return match callee {
                     Callee::Fn(id) => self.call(*id, &args),
-                    Callee::Builtin(row) => self.builtin(ROWS.get(*row)?.1, &args, *site),
+                    Callee::Builtin(row) => match ROWS.get(*row)?.1 {
+                        row @ ("contains(xs: List<T>, item: T) -> Bool"
+                        | "find(xs: List<T>, item: T) -> Option<Int>") => {
+                            let Arg::Value(xs) = &given[0] else {
+                                return None;
+                            };
+                            let i = self.position(xs.ty?, &args[0].1, &args[1].1);
+                            Some(Some(match row.starts_with("find") {
+                                true => self.found(e.ty?, &i),
+                                false => self.op(format!("icmp sge i64 {i}, 0")),
+                            }))
+                        }
+                        row => self.builtin(row, &args, *site),
+                    },
                     Callee::Value(_) => None,
                 };
             }
@@ -540,7 +733,9 @@ impl Body<'_, '_> {
         let (yes, no) = if and { (&rhs, &merge) } else { (&merge, &rhs) };
         self.line(format!("br i1 {x}, label %{yes}, label %{no}"));
         self.start(&rhs);
+        let mark = self.owners.mark();
         let y = self.expr(y)??;
+        self.drop_temps(mark);
         let end = self.current();
         self.line(format!("br label %{merge}"));
         self.start(&merge);
@@ -557,8 +752,8 @@ impl Body<'_, '_> {
         &mut self,
         e: &Expr,
         cond: &Expr,
-        then: &Block,
-        otherwise: &Option<Block>,
+        then: &crate::core_form::Block,
+        otherwise: &Option<crate::core_form::Block>,
     ) -> Option<Value> {
         let c = self.expr(cond)??;
         let [yes, no] = ["b"; 2].map(|s| self.name(s));
@@ -572,7 +767,7 @@ impl Body<'_, '_> {
     fn join<'e>(
         &mut self,
         e: &Expr,
-        branches: impl IntoIterator<Item = (String, Option<&'e Block>, Binds)>,
+        branches: impl IntoIterator<Item = (String, Option<&'e crate::core_form::Block>, Binds)>,
     ) -> Option<Value> {
         let ty = match e.ty {
             Some(t) => Some(self.module.ir(t)?),
@@ -582,14 +777,11 @@ impl Body<'_, '_> {
         let mut incoming = vec![];
         for (label, block, binds) in branches {
             self.start(&label);
-            for (t, base, offset, l) in binds {
-                let from = self.offset(&base, offset);
-                let v = self.get(t, &from);
-                let at = self.at[l].clone();
-                self.put(self.locals[l]?, &v, &at);
-            }
+            let binds: Vec<_> = (binds.into_iter())
+                .map(|(place, base, l)| (l, self.field(&place, &base)))
+                .collect();
             let v = match block {
-                Some(block) => self.block(block)?,
+                Some(block) => self.scoped(&binds, block)?,
                 None => None,
             };
             let v = v.unwrap_or_else(|| stand_in(ty.unwrap_or("i64")));
@@ -597,21 +789,42 @@ impl Body<'_, '_> {
             self.line(format!("br label %{merge}"));
         }
         self.start(&merge);
-        Some(ty.map(|ty| self.op(format!("phi {ty} {}", incoming.join(", ")))))
+        Some(ty.map(|ty| {
+            let v = self.op(format!("phi {ty} {}", incoming.join(", ")));
+            self.temp(e.ty.expect("a value has a type"), v)
+        }))
     }
 
-    /// A new record, or variant `alt`, of type `t` in a slot of its own.
+    /// A new record, or variant `alt`, of type `t` in a slot of its own; each field is stored as
+    /// it is evaluated. One that owns is zeroed and owned first, so an exit while building drops
+    /// what it holds so far.
     fn construct(&mut self, t: Ty, alt: Option<usize>, fields: &[Expr]) -> Option<String> {
         let value = self.name("%h");
         self.hold(&value, t);
+        if self.module.layouts.owns(t) {
+            let name = "@llvm.memset.p0.i64";
+            self.declare(&format!("declare void {name}(ptr, i8, i64, i1)"));
+            let size = self.size(t);
+            self.line(format!(
+                "call void {name}(ptr {value}, i8 0, i64 {size}, i1 false)"
+            ));
+            self.temp(t, value.clone());
+        }
         if let Some(alt) = alt {
             self.store("i64", &alt.to_string(), &value);
         }
         let places = self.module.layouts.get(t).alternatives[alt.unwrap_or(0)].clone();
         for (field, place) in fields.iter().zip(places) {
             let v = self.expr(field)??;
+            let v = self.owned(place.ty, &v);
             let at = self.offset(&value, place.offset);
-            self.put(place.ty, &v, &at);
+            if place.boxed {
+                let block = self.alloc(self.size(place.ty));
+                self.put(place.ty, &v, &block);
+                self.store("ptr", &block, &at);
+            } else {
+                self.put(place.ty, &v, &at);
+            }
         }
         Some(value)
     }
@@ -642,7 +855,7 @@ impl Body<'_, '_> {
                 let places = self.module.layouts.get(t).alternatives[alt].clone();
                 for (bind, place) in arm.binds.iter().zip(places) {
                     if let Some(l) = bind {
-                        binds.push((place.ty, at.clone(), place.offset, *l));
+                        binds.push((place, at.clone(), *l));
                     }
                 }
             }
@@ -670,13 +883,11 @@ impl Body<'_, '_> {
             None => None,
         };
         let status = self.op(format!("call i32 @p_{}({})", f.name, list.join(", ")));
-        let failed = self.op(format!("icmp ne i32 {status}, 0"));
-        let (pass, ok) = (self.name("b"), self.name("b"));
-        self.line(format!("br i1 {failed}, label %{pass}, label %{ok}"));
-        self.start(&pass);
-        self.line(format!("ret i32 {status}"));
-        self.start(&ok);
-        Some(out.map(|(t, r)| self.get(t, &r)))
+        self.pass(&status);
+        Some(out.map(|(t, r)| {
+            let v = self.get(t, &r);
+            self.temp(t, v)
+        }))
     }
 
     fn builtin(&mut self, row: &str, args: &[(&str, String)], site: Site) -> Option<Value> {
@@ -714,7 +925,16 @@ impl Body<'_, '_> {
             "round(x: Float) -> Float" => self.exact("@llvm.round.f64", x[0]),
             "to_float(n: Int) -> Float" => self.op(format!("sitofp i64 {} to double", x[0])),
             "to_int(x: Float) -> Int" => self.integer(x[0], site),
-            _ => return None,
+            "len(x: String) -> Int" => self.chars(x[0]),
+            "len(x: List<T>) -> Int" => self.length(x[0]),
+            "is_empty(x: String) -> Bool" | "is_empty(x: List<T>) -> Bool" => {
+                let n = match row.contains("String") {
+                    true => self.chars(x[0]),
+                    false => self.length(x[0]),
+                };
+                self.op(format!("icmp eq i64 {n}, 0"))
+            }
+            _ => return self.text_builtin(row, args, site).map(Some),
         };
         Some(Some(v))
     }
@@ -737,8 +957,7 @@ impl Body<'_, '_> {
     /// One of the six float intrinsics, each exact for every input (M6-01 section 3); `round` is
     /// ties away from zero, as Paka's.
     fn exact(&mut self, name: &str, x: &str) -> String {
-        let declare = format!("declare double {name}(double)\n");
-        self.declare(name, declare);
+        self.declare(&format!("declare double {name}(double)"));
         self.op(format!("call double {name}(double {x})"))
     }
 
@@ -787,8 +1006,7 @@ impl Body<'_, '_> {
     /// `x op y` through `@llvm.<op>.with.overflow.i64`, trapping `overflow`.
     fn overflowing(&mut self, op: &str, site: Site, x: &str, y: &str) -> String {
         let name = format!("@llvm.{op}.with.overflow.i64");
-        let declare = format!("declare {{ i64, i1 }} {name}(i64, i64)\n");
-        self.declare(&name, declare);
+        self.declare(&format!("declare {{ i64, i1 }} {name}(i64, i64)"));
         let pair = self.op(format!("call {{ i64, i1 }} {name}(i64 {x}, i64 {y})"));
         let over = self.op(format!("extractvalue {{ i64, i1 }} {pair}, 1"));
         self.check(&over, "overflow", site);

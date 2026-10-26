@@ -2024,6 +2024,8 @@ or merged during review. Ids with a letter were added during review.
 - why this level: A wrong drop or bounds check is a silent leak, double free or bad read.
 - note: Per M6-01: item access through one helper; `memmove` unless the destination is fresh; constant bytes copied before the first write, with a test; runtime declarations carry `nounwind` only.
 - note: Per M6-10: a `CONSTANT` (cap 0) String or List holds a pointer, so abi/dev/words.rs's "ptr is null when cap is 0" and M4-05 no longer hold, and items.rs `room()` copies old items only when cap is not 0: a constant List that grows would lose its items. Fix both here.
+- status: done
+- note: Done: release lowers String and List values as their words in a slot, owned as in dev mode (M4-05 section 9): a fresh value moves, any other is copied through `paka_rt1_copy`, and each owner is dropped through `paka_rt1_drop` when its scope ends. Item and slice bounds are inline compares that trap `out_of_bounds`; every item goes through one helper. The String builtins, interpolation, joins and comparisons are the dev runtime's String rows behind `paka_rt1_text`; a computed `update` builds its effect list in a heap block, which the runtime frees with its texts once performed before it checks the ledger (docs/abi/m1.md sections 2 and 3). A refused block traps `memory`: paka/tests/release_memory.rs builds a program whose every allocation is refused and gets the trap, exit 3. `strings` and `lists` leave the skip file; all three paka-diff modes agree. Both M6-10 points are fixed, with a test for a constant List that grows.
 
 ### M6-11b · L4 · Lower the built-in map for release
 

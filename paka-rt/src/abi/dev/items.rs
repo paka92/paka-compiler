@@ -2,6 +2,7 @@
 //! type, told the item's record and size. An item handed in is moved: the caller gave up its
 //! blocks. An item handed out is moved too, and its blocks are the caller's.
 
+use super::super::table::CONSTANT;
 use super::records::{rt_copy, rt_drop};
 use super::words::{ListWords, as_str};
 use super::{Context, MEMORY, OUT_OF_BOUNDS, Trap};
@@ -181,9 +182,12 @@ impl Item {
         }
         let cap = len.max(xs.cap * 2).max(4).min(CAP as u64);
         let block = ctx.heap.alloc(cap * self.size).ok_or(NO_ROOM)?;
-        if xs.cap != 0 {
-            // SAFETY: the old block holds `len` items; the new one is apart and larger.
+        if xs.len != 0 {
+            // SAFETY: the old items, in a block or a constant, are apart from the new block,
+            // which is larger.
             unsafe { ptr::copy_nonoverlapping(xs.ptr, block, (xs.len * self.size) as usize) };
+        }
+        if xs.cap != CONSTANT {
             ctx.heap.release(xs.ptr, xs.cap * self.size);
         }
         (xs.ptr, xs.cap) = (block, cap);

@@ -7,8 +7,8 @@ use paka_rt::abi::table::RUN;
 mod code;
 pub mod lint;
 
-/// What the back end builds: the effects of an `update` whose body ends in a constant list, after
-/// statements over `Int` and `Bool` that may call such functions.
+/// What the back end builds: an `update` whose body ends in a list of effects, after statements
+/// that may call other functions.
 #[derive(Debug, PartialEq)]
 pub struct M1 {
     pub app: String,
@@ -17,9 +17,11 @@ pub struct M1 {
     pub console: bool,
     /// The Paka name of the update function.
     pub update_name: String,
-    /// The effects `update` returns, in order.
-    pub update: Vec<Effect>,
-    /// The start of `update`'s body, which leaves its block open; empty when it has no statements.
+    /// The effects `update` returns, in order, when they are constants; `None` when the body
+    /// builds them.
+    pub update: Option<Vec<Effect>>,
+    /// The start of `update`'s body, which leaves its block open, or all of it when it builds its
+    /// effects; empty when it has no statements.
     pub body: String,
     /// The other functions with their constants and declarations.
     pub code: String,
@@ -45,17 +47,18 @@ pub fn view(core: &mut Program) -> Option<M1> {
     if !core.enums[msg].variants[start].fields.is_empty() {
         return None;
     }
-    let (body, code) = code::lower(core, id)?;
-    let (app, update) = (core.app.as_ref()?, &core.fns[id]);
     let ExprKind::List(items) = &update.body.value.as_ref()?.kind else {
         return None;
     };
+    let literal = items.iter().map(effect).collect::<Option<Vec<_>>>();
+    let (body, code) = code::lower(core, id, literal.is_none())?;
+    let (app, update) = (core.app.as_ref()?, &core.fns[id]);
     Some(M1 {
         app: app.name.clone(),
         start,
         console: app.grants.contains(&Grant::Console),
         update_name: update.name.clone(),
-        update: items.iter().map(effect).collect::<Option<_>>()?,
+        update: literal,
         body,
         code,
     })
@@ -79,22 +82,26 @@ fn effect(e: &Expr) -> Option<Effect> {
 
 /// The IR text of the program; layout and wording follow docs/abi/m1.md section 11.
 pub fn emit(core: &M1) -> String {
-    let texts: Vec<&str> = core
-        .update
-        .iter()
-        .filter_map(|e| match e {
-            Effect::Print(text) if !text.is_empty() => Some(text.as_str()),
-            _ => None,
-        })
-        .collect();
+    let effects = core.update.as_deref().unwrap_or_default();
+    let texts = effects.iter().filter_map(|e| match e {
+        Effect::Print(text) if !text.is_empty() => Some(text.as_str()),
+        _ => None,
+    });
     let mut constants = constant("name", &core.app);
-    for (i, text) in texts.iter().enumerate() {
+    for (i, text) in texts.enumerate() {
         constants += &constant(&format!("s{i}"), text);
     }
-    constants += &effect_list(&core.update);
-    let (list, count) = match core.update.is_empty() {
+    constants += &effect_list(effects);
+    let (list, count) = match effects.is_empty() {
         true => ("null", 0),
-        false => ("@fx", core.update.len()),
+        false => ("@fx", effects.len()),
+    };
+    let body = match core.update {
+        Some(_) => format!(
+            "{}  store {{ ptr, i64 }} {{ ptr {list}, i64 {count} }}, ptr %out\n  ret i32 0\n",
+            core.body
+        ),
+        None => core.body.clone(),
     };
     let grants = u64::from(core.console); // bit 0: Console
     let update = format!("p_{}", core.update_name);
@@ -105,16 +112,13 @@ pub fn emit(core: &M1) -> String {
 {RUN}
 
 define internal i32 @{update}(i64 %m, ptr %out) {{
-{}  store {{ ptr, i64 }} {{ ptr {list}, i64 {count} }}, ptr %out
-  ret i32 0
-}}
+{body}}}
 
 define i32 @main() {{
   %st = call i32 @paka_rt1_run(ptr @name, i64 {}, ptr @{update}, i64 {}, i64 {grants})
   ret i32 %st
 }}
 {}",
-        core.body,
         core.app.len(),
         core.start,
         core.code
@@ -217,7 +221,7 @@ mod tests {
             start: 1,
             console: true,
             update_name: "go".into(),
-            update,
+            update: Some(update),
             body: String::new(),
             code: String::new(),
         }
@@ -260,7 +264,7 @@ app light {
             start: 0,
             console: true,
             update_name: "update".into(),
-            update: vec![Effect::Print("let there be light".into()), Effect::Exit],
+            update: Some(vec![print("let there be light"), Effect::Exit]),
             body: String::new(),
             code: String::new(),
         };
@@ -277,7 +281,7 @@ app light {
         let ty = state.ty(Type::Record(0));
         state.app.as_mut().unwrap().state = Some(typed(ty, ExprKind::Record(0, vec![])));
         let mut statement = lowered(LIGHT);
-        let unused = typed(1, ExprKind::Str("unused".into()));
+        let unused = typed(1, ExprKind::Hole(0));
         statement.fns[0]
             .body
             .stmts
@@ -333,8 +337,8 @@ app light {
         }
     }
 
-    /// Release IR has no slot table: every call names its callee, and a load reads only a stack
-    /// slot of its own function or the runtime's stack limit.
+    /// Release IR has no slot table: every call names its callee, and the only global a load
+    /// reads is the runtime's stack limit.
     #[test]
     fn every_call_in_any_run_case_is_direct() {
         let cases = run_cases();
@@ -346,22 +350,17 @@ app light {
             for (_, callee) in calls {
                 assert!(callee.starts_with('@'), "{}: {callee}", folder.display());
             }
-            for define in ir.split("\ndefine ") {
-                let slots: Vec<_> = define
-                    .lines()
-                    .filter_map(|l| Some(l.split_once(" = alloca ")?.0.trim()))
-                    .collect();
-                for line in define.lines().filter(|l| l.contains(" = load ")) {
-                    let at = line
-                        .rsplit_once("ptr ")
-                        .unwrap()
-                        .1
-                        .split(',')
-                        .next()
-                        .unwrap();
-                    let limit = at == "@paka_rt1_stack_limit";
-                    assert!(slots.contains(&at) || limit, "{}: {line}", folder.display());
-                }
+            for line in ir.lines().filter(|l| l.contains(" = load ")) {
+                let at = line
+                    .rsplit_once("ptr ")
+                    .unwrap()
+                    .1
+                    .split(',')
+                    .next()
+                    .unwrap();
+                let global = at.starts_with('@');
+                let limit = at == "@paka_rt1_stack_limit";
+                assert!(!global || limit, "{}: {line}", folder.display());
             }
         }
     }

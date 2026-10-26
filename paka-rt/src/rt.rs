@@ -1,6 +1,7 @@
 //! The run loop of ABI section 5 and the safe decoding around it.
 
 use crate::abi::dev::{MARGIN, RUNNER_STACK};
+use crate::abi::heap::call;
 use crate::abi::{List, Str, Update, paka_rt1_stack_limit, take_trap};
 use std::fs::File;
 use std::io::{self, ErrorKind, Write};
@@ -70,8 +71,8 @@ enum Stop {
     Ended,
     Missing,
     Failed(&'static str),
-    /// A trap's kind and position.
-    Trapped(&'static [u8]),
+    /// A trap's kind, when the runtime found it, and its text.
+    Trapped(&'static [u8], &'static [u8]),
     Internal(&'static str),
 }
 
@@ -90,15 +91,15 @@ impl Stop {
         }
     }
 
-    /// The line's text after `<app>: `, in two pieces.
-    fn pieces(&self) -> [&'static [u8]; 2] {
+    /// The line's text after `<app>: `, in three pieces.
+    fn pieces(&self) -> [&'static [u8]; 3] {
         match self {
-            Stop::Usage(_) => [b"expected 0 arguments, got ", b""],
-            Stop::Ended => [b"ended without Exit", b""],
-            Stop::Missing => [b"effect Print refused: grant Console is missing", b""],
-            Stop::Failed(reason) => [b"effect Print failed: ", reason.as_bytes()],
-            Stop::Trapped(text) => [b"trap ", text],
-            Stop::Internal(reason) => [b"internal error: ", reason.as_bytes()],
+            Stop::Usage(_) => [b"expected 0 arguments, got ", b"", b""],
+            Stop::Ended => [b"ended without Exit", b"", b""],
+            Stop::Missing => [b"effect Print refused: grant Console is missing", b"", b""],
+            Stop::Failed(reason) => [b"effect Print failed: ", reason.as_bytes(), b""],
+            Stop::Trapped(kind, text) => [b"trap ", kind, text],
+            Stop::Internal(reason) => [b"internal error: ", reason.as_bytes(), b""],
         }
     }
 }
@@ -178,12 +179,28 @@ fn perform(
         return Err(Stop::Usage(args));
     }
     let mut slot = List::UNWRITTEN;
-    match on_runner(|| (update(start, &mut slot), take_trap())) {
-        (0, _) => {}
-        (1, Some(text)) => return Err(Stop::Trapped(text)),
+    let (called, trap) = on_runner(|| (call(update, start, &mut slot), take_trap()));
+    let mut heap = called.heap;
+    match (called.broken, called.status, trap) {
+        (true, ..) => return Err(Stop::Internal("runtime panicked")),
+        (_, 0, _) => {}
+        (_, 1, Some((kind, text))) => return Err(Stop::Trapped(kind, text)),
         _ => return Err(Stop::Internal("update returned a non-zero status")),
     }
-    for effect in slot.effects()? {
+    let done = performed(out, &slot, grants);
+    if let Err(Stop::Internal(_)) = done {
+        return done;
+    }
+    slot.release(&mut heap);
+    match heap.leaks().is_empty() && heap.faults().is_empty() {
+        true => done,
+        false => Err(Stop::Internal("memory ledger not clean")),
+    }
+}
+
+/// Performs the effects in `list`; `Ok` after `Exit`.
+fn performed(out: &mut dyn Write, list: &List, grants: Grants) -> Result<(), Stop> {
+    for effect in list.effects()? {
         match effect.decode()? {
             Decoded::Exit => return Ok(()),
             Decoded::Print(_) if !grants.console => return Err(Stop::Missing),
@@ -236,8 +253,8 @@ fn reason(e: &io::Error) -> &'static str {
 
 /// Writes the stop's line piece by piece, without allocating; a failure to write is ignored.
 fn stop(err: &mut dyn Write, app: &[u8], why: Stop) -> i32 {
-    let [text, reason] = why.pieces();
-    let line = [app, b": ", text, reason];
+    let [text, a, b] = why.pieces();
+    let line = [app, b": ", text, a, b];
     let _ = line.iter().try_for_each(|piece| err.write_all(piece));
     if let Stop::Usage(count) = why {
         let _ = write!(err, "{count}");

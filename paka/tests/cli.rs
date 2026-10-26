@@ -263,7 +263,10 @@ fn run_of_an_interpolated_program_prints_it() {
 
 #[test]
 fn build_of_a_program_beyond_the_m1_subset_is_unsupported_form() {
-    let file = interpolated_light("interpolated-build");
+    let source = std::fs::read_to_string(LIGHT).unwrap();
+    let file = std::env::temp_dir().join(format!("paka-map-build-{}.paka", std::process::id()));
+    let map = "let ages = [\"ana\": 3]\n  [Print";
+    std::fs::write(&file, source.replace("[Print", map)).unwrap();
     let output = file.with_extension("out");
     let out = paka(&[
         "build",

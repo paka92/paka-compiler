@@ -8,7 +8,8 @@ use crate::ops::{self, CAP, Float, Int, Text, white};
 use std::str;
 use std::{ptr, slice};
 
-/// A String: UTF-8 bytes, no NUL; `ptr` is null when `cap` is 0.
+/// A String: UTF-8 bytes, no NUL. With `cap` 0 it owns no block: `ptr` is null or points at a
+/// constant.
 #[repr(C)]
 pub struct TextWords {
     pub ptr: *mut u8,
@@ -17,7 +18,8 @@ pub struct TextWords {
     pub cap: u64,
 }
 
-/// A List: `len` items of one size; `ptr` is null when `cap` is 0.
+/// A List: `len` items of one size. With `cap` 0 it owns no block: `ptr` is null or points at a
+/// constant.
 #[repr(C)]
 pub struct ListWords {
     pub ptr: *mut u8,

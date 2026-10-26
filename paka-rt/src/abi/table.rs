@@ -43,12 +43,18 @@ pub const RUN: &str = "declare i32 @paka_rt1_run(ptr, i64, ptr, i64, i64)";
 pub const TRAP: &str = "declare void @paka_rt1_trap(ptr, i64) cold nounwind";
 /// Compiled code only loads it (M6-16).
 pub const STACK_LIMIT: &str = "@paka_rt1_stack_limit = external global i64";
-pub const ENTRIES: &[&str] = &[RUN, TRAP, STACK_LIMIT];
+pub const ALLOC: &str = "declare ptr @paka_rt1_alloc(i64) nounwind";
+pub const TEXT: &str = "declare i32 @paka_rt1_text(i64, i64, i64, i64, ptr, ptr, i64) nounwind";
+pub const COPY: &str = "declare i32 @paka_rt1_copy(ptr, ptr, ptr) nounwind";
+pub const DROP: &str = "declare void @paka_rt1_drop(ptr, ptr) nounwind";
+pub const ENTRIES: &[&str] = &[RUN, TRAP, STACK_LIMIT, ALLOC, TEXT, COPY, DROP];
 
 #[cfg(test)]
 mod tests {
+    use super::super::dev::items::{APPEND, rt_items};
     use super::super::dev::records::{Part, Records, Spec, rt_copy, rt_drop};
     use super::super::dev::{Context, Heap};
+    use super::super::heap::{paka_rt1_alloc, paka_rt1_copy, paka_rt1_drop, paka_rt1_text};
     use super::super::{Update, paka_rt1_run, paka_rt1_stack_limit, paka_rt1_trap};
     use super::*;
     use std::slice;
@@ -70,17 +76,50 @@ mod tests {
     impl<T> Ir for *const T {
         const IR: &str = "ptr";
     }
+    impl<T> Ir for *mut T {
+        const IR: &str = "ptr";
+    }
     impl Ir for Option<Update> {
         const IR: &str = "ptr";
     }
 
-    fn declared<A: Ir, B: Ir, R: Ir>(name: &str, _: unsafe extern "C" fn(A, B) -> R) -> String {
-        format!("declare {} @{name}({}, {})", R::IR, A::IR, B::IR)
+    /// An entry's declaration, from its Rust signature.
+    trait Declared {
+        fn declared(self, name: &str) -> String;
     }
+
+    macro_rules! declared {
+        ($($a:ident),*) => {
+            impl<R: Ir, $($a: Ir),*> Declared for unsafe extern "C" fn($($a),*) -> R {
+                fn declared(self, name: &str) -> String {
+                    format!("declare {} @{name}({})", R::IR, [$($a::IR),*].join(", "))
+                }
+            }
+        };
+    }
+    declared!(A);
+    declared!(A, B);
+    declared!(A, B, C);
+    declared!(A, B, C, D, E, F, G);
 
     #[test]
     fn entries_are_declared_as_the_runtime_defines_them() {
-        assert!(TRAP.starts_with(&declared("paka_rt1_trap", paka_rt1_trap)));
+        let trap = paka_rt1_trap as unsafe extern "C" fn(_, _);
+        assert!(TRAP.starts_with(&trap.declared("paka_rt1_trap")));
+        let alloc = paka_rt1_alloc as unsafe extern "C" fn(_) -> _;
+        let text = paka_rt1_text as unsafe extern "C" fn(_, _, _, _, _, _, _) -> _;
+        let copy = paka_rt1_copy as unsafe extern "C" fn(_, _, _) -> _;
+        let drop = paka_rt1_drop as unsafe extern "C" fn(_, _);
+        let made = [
+            alloc.declared("paka_rt1_alloc"),
+            text.declared("paka_rt1_text"),
+            copy.declared("paka_rt1_copy"),
+            drop.declared("paka_rt1_drop"),
+        ];
+        let lines = [ALLOC, TEXT, COPY, DROP];
+        for (line, made) in lines.iter().zip(made) {
+            assert_eq!(*line, format!("{made} nounwind"));
+        }
         let _: &AtomicU64 = &paka_rt1_stack_limit;
         let limit = format!("@paka_rt1_stack_limit = external global {}", u64::IR);
         assert_eq!((STACK_LIMIT, size_of::<AtomicU64>()), (limit.as_str(), 8));
@@ -162,5 +201,30 @@ mod tests {
         // SAFETY: `ITEMS` is 24 bytes.
         let bytes = unsafe { slice::from_raw_parts(ITEMS.as_ptr().cast(), 24) };
         constant_is_left_and_copied(1, [items, 3, CONSTANT], bytes);
+    }
+
+    #[test]
+    fn a_constant_list_keeps_its_items_when_it_grows() {
+        static ITEMS: [u64; 3] = [7, 8, 9];
+        let mut ctx = Context::new(1 << 20);
+        let ptr = ITEMS.as_ptr().cast_mut().cast();
+        let mut xs = ListWords {
+            ptr,
+            len: 3,
+            cap: CONSTANT,
+        };
+        let item = 10u64;
+        let at = (&raw const item).expose_provenance() as u64;
+        // SAFETY: `xs` is a List of 3 Ints and `item` an Int; nothing is written to the constant.
+        unsafe {
+            assert_eq!(rt_items(&mut ctx, APPEND, 0, 0, 8, &mut xs, at, 0, ptr), 0);
+            assert_eq!(
+                slice::from_raw_parts(xs.ptr.cast::<u64>(), 4),
+                [7, 8, 9, 10]
+            );
+            ctx.heap.release(xs.ptr, xs.cap * 8);
+        }
+        assert!(ctx.heap.leaks().is_empty() && ctx.heap.faults().is_empty());
+        assert_eq!(ITEMS, [7, 8, 9]);
     }
 }

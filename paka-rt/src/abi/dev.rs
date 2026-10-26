@@ -97,6 +97,13 @@ impl Heap {
         unsafe { free(address, allocated) };
     }
 
+    /// Frees the block at `address` with its own size when it is live; anything else is left.
+    pub fn release_live(&mut self, address: usize) {
+        if let Some(&(bytes, _)) = self.blocks.get(&address) {
+            self.release(std::ptr::without_provenance_mut(address), bytes);
+        }
+    }
+
     /// The blocks still live, as (address, bytes) in address order.
     pub fn leaks(&self) -> Vec<(usize, u64)> {
         self.blocks.iter().map(|(&a, &(b, _))| (a, b)).collect()

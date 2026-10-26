@@ -3,8 +3,9 @@
 //! code.
 //!
 //! One invariant carries the safe decoders: a `Str`, `Effect` or `List` holds either a value its
-//! decoder refuses or a pointer to memory that is readable for the stated size, never written
-//! and never freed (ABI section 2, "Memory"). The fields are private, so such a value is made
+//! decoder refuses or a pointer to memory that is readable for the stated size and never written
+//! (ABI section 2, "Memory"). It is freed only once its effects are performed, if it is a block
+//! of the run's heap. The fields are private, so such a value is made
 //! only by a constructor here that takes a `'static` reference, by `Str::from_raw` under its
 //! contract, or by compiled code under the contract of `paka_rt1_run`.
 
@@ -14,6 +15,7 @@ use std::sync::atomic::AtomicU64;
 use std::{ptr, slice};
 
 pub mod dev;
+pub mod heap;
 pub mod table;
 
 /// The longest string: 2^63 - 1 bytes.
@@ -167,6 +169,16 @@ impl List {
         self.slice().ok_or(Refused::EffectList)
     }
 
+    /// Frees the list's block and its texts that are blocks of `heap`, once performed.
+    pub(crate) fn release(&self, heap: &mut dev::Heap) {
+        for effect in self.slice().unwrap_or_default() {
+            if effect.tag == PRINT && effect.len != 0 {
+                heap.release_live(effect.ptr.addr());
+            }
+        }
+        heap.release_live(self.ptr.addr());
+    }
+
     fn slice(&self) -> Option<&'static [Effect]> {
         if !self.ptr.is_aligned() {
             return None;
@@ -242,9 +254,12 @@ pub unsafe extern "C" fn paka_rt1_run(
 #[allow(non_upper_case_globals)]
 pub static paka_rt1_stack_limit: AtomicU64 = AtomicU64::new(0);
 
+/// A trap's kind, when the runtime found it, and its text.
+pub(crate) type Trapped = (&'static [u8], &'static [u8]);
+
 thread_local! {
-    /// The text of the trap compiled code reported last; a refused text is `None`.
-    static TRAP: Cell<Option<&'static [u8]>> = const { Cell::new(None) };
+    /// The trap reported last; a refused text is `None`.
+    static TRAP: Cell<Option<Trapped>> = const { Cell::new(None) };
 }
 
 /// The entry compiled code calls on a trap, before it returns status 1 (ABI section 3).
@@ -260,11 +275,16 @@ pub unsafe extern "C" fn paka_rt1_trap(text: *const u8, len: u64) {
 }
 
 pub(crate) fn record_trap(text: Option<&'static [u8]>) {
-    let _ = TRAP.try_with(|t| t.set(text));
+    record_kind(b"", text);
 }
 
-/// The trap's text recorded since the last call, if any.
-pub(crate) fn take_trap() -> Option<&'static [u8]> {
+/// Records a trap whose text starts after its kind's words, `kind`.
+pub(crate) fn record_kind(kind: &'static [u8], text: Option<&'static [u8]>) {
+    let _ = TRAP.try_with(|t| t.set(text.map(|text| (kind, text))));
+}
+
+/// The trap recorded since the last call, if any.
+pub(crate) fn take_trap() -> Option<Trapped> {
     TRAP.try_with(Cell::take).ok().flatten()
 }
 
