@@ -11,8 +11,8 @@
 
 use super::constant;
 use crate::core_form::{
-    Arg, Arith, Arm, Bin, Callee, Cmp, Compound, Expr, ExprKind, FloatArith, Fn, Local, Place,
-    Program, Root, Site, Step, Stmt, Tag, Ty, Type, Un, Walk,
+    Arg, Arith, Arm, Bin, Callee, Cmp, Compound, Effect, Expr, ExprKind, FloatArith, Fn, FnRef,
+    Local, Place, Program, Root, Site, Step, Stmt, Tag, Ty, Type, Un, Walk,
 };
 use paka::builtins::ROWS;
 use paka::layout::{self, Layouts};
@@ -53,6 +53,8 @@ pub fn lower(core: &mut Program, update: usize, computed: bool) -> Option<(Strin
                     | Type::Enum(_)
                     | Type::Option(_)
                     | Type::Result(..)
+                    | Type::Effect(_)
+                    | Type::Fn(..)
             )
         })
         .collect();
@@ -60,8 +62,9 @@ pub fn lower(core: &mut Program, update: usize, computed: bool) -> Option<(Strin
     // not.
     while let Some(t) = (0..held.len()).find(|&t| {
         let fields = layouts.get(t).alternatives.iter().flatten();
-        let item = match core.types[t] {
-            Type::List(item) => held[item],
+        let item = match &core.types[t] {
+            Type::List(item) => held[*item],
+            Type::Fn(params, result) => params.iter().chain(result).all(|&p| held[p]),
             _ => true,
         };
         held[t] && !(item && fields.clone().all(|p| held[p.ty]))
@@ -80,6 +83,8 @@ pub fn lower(core: &mut Program, update: usize, computed: bool) -> Option<(Strin
         seen: BTreeSet::from([update]),
         equalities: vec![],
         compared: BTreeSet::new(),
+        fn_values: vec![],
+        dispatched: BTreeSet::new(),
     };
     let body = module.function(&core.fns[update], Some(computed))?;
     let mut defines = String::new();
@@ -91,6 +96,9 @@ pub fn lower(core: &mut Program, update: usize, computed: bool) -> Option<(Strin
         } else {
             break;
         }
+    }
+    for t in std::mem::take(&mut module.dispatched) {
+        defines += &module.dispatcher(t, core.fns[update].site)?;
     }
     let mut code = String::new();
     for (text, n) in &module.texts {
@@ -130,6 +138,10 @@ struct Module<'a> {
     /// The types compared whole, and those whose equality is not yet lowered.
     equalities: Vec<Ty>,
     compared: BTreeSet<Ty>,
+    /// Each function value made, its id its position, and its type.
+    fn_values: Vec<(FnRef, Ty)>,
+    /// The function types called through a value.
+    dispatched: BTreeSet<Ty>,
 }
 
 impl<'a> Module<'a> {
@@ -157,14 +169,14 @@ impl<'a> Module<'a> {
             Some(t) if update.is_none() => Some(self.ir(t).map(|_| t)?),
             _ => None,
         };
-        // `update`'s message is beyond this lowering.
-        let held = |n: usize| update.is_some() && n < f.params.len();
-        let locals = (f.locals.iter().enumerate())
-            .map(|(n, &t)| self.ir(t).filter(|_| !held(n)).map(|_| t))
-            .collect();
+        let locals = (f.locals.iter()).map(|&t| self.ir(t).map(|_| t)).collect();
         let mut b = self.body(f.site, update);
         (b.locals, b.result) = (locals, result);
         for n in 0..f.locals.len() {
+            if update.is_some() && n < f.params.len() {
+                b.at.push("%msg".into());
+                continue;
+            }
             let ty = b.locals[n].map(|t| b.ty(t));
             let by_address = f
                 .params
@@ -183,6 +195,12 @@ impl<'a> Module<'a> {
             match computed {
                 true => b.effects(f.body.value.as_deref()?)?,
                 false => b.leave_fn(None),
+            }
+            // `update`'s message is its start variant, the tag `%m`, held once it is read.
+            let msg = f.params.len().checked_sub(1).and_then(|n| b.locals[n]);
+            if let Some(t) = msg.filter(|_| b.lines.contains("%msg")) {
+                b.hold("%msg", t);
+                b.lines.insert_str(0, "  store i64 %m, ptr %msg, align 8\n");
             }
             let empty = b.slots.is_empty() && b.lines.is_empty();
             return Some(match empty {
@@ -221,12 +239,13 @@ impl<'a> Module<'a> {
         ))
     }
 
-    /// The IR type of an `Int`, a `Bool`, a `Float`, or `ptr` for a value held in memory: a
+    /// The IR type of an `Int`, a function value, a `Bool`, a `Float`, or `ptr` for a value held in memory: a
     /// String, or a record or variant of what this lowering holds.
     fn ir(&self, t: Ty) -> Option<&'static str> {
         match self.core.types[t] {
             _ if !self.held[t] => None,
-            Type::Int => Some("i64"),
+            // A function value is its id.
+            Type::Int | Type::Fn(..) => Some("i64"),
             Type::Bool => Some("i1"),
             Type::Float => Some("double"),
             _ => Some("ptr"),
@@ -255,6 +274,78 @@ impl<'a> Module<'a> {
     fn trap(&mut self, kind: &str, site: Site) -> (String, usize) {
         self.declare(TRAP);
         self.text(format!("{kind} {}", self.at(site)))
+    }
+
+    /// Lowers function `id` once.
+    fn want(&mut self, id: usize) {
+        if self.seen.insert(id) {
+            self.wanted.push(id);
+        }
+    }
+
+    /// The id of function value `f` of type `t`: its position among those made.
+    fn fn_value(&mut self, f: &FnRef, t: Ty) -> usize {
+        if let FnRef::Fn(id) = f {
+            self.want(*id);
+        }
+        let known = self.fn_values.iter().position(|(g, _)| g == f);
+        known.unwrap_or_else(|| {
+            self.fn_values.push((f.clone(), t));
+            self.fn_values.len() - 1
+        })
+    }
+
+    /// `i32 @v<t>(i64 %id, args..., ptr %out)`: calls the function value `%id` of type `t`, a
+    /// switch over every value of that type made, each a direct call or a variant built in place.
+    fn dispatcher(&mut self, t: Ty, site: Site) -> Option<String> {
+        let core = self.core;
+        let Type::Fn(params, result) = &core.types[t] else {
+            return None;
+        };
+        let cases: Vec<(usize, FnRef)> = (self.fn_values.iter().enumerate())
+            .filter(|(_, (_, u))| *u == t)
+            .map(|(id, (f, _))| (id, f.clone()))
+            .collect();
+        let mut b = self.body(site, None);
+        let mut args: Vec<String> = (params.iter().enumerate())
+            .map(|(n, &p)| format!("{} %a{n}", b.ty(p)))
+            .collect();
+        args.extend(result.map(|_| "ptr %out".to_string()));
+        let labels: Vec<String> = cases.iter().map(|_| b.name("b")).collect();
+        let arms: Vec<String> = (cases.iter().zip(&labels))
+            .map(|((id, _), label)| format!("i64 {id}, label %{label}"))
+            .collect();
+        match labels.first() {
+            // Every value of the type is among the cases, so the default is never taken.
+            Some(first) => b.line(format!(
+                "switch i64 %id, label %{first} [ {} ]",
+                arms.join(" ")
+            )),
+            None => b.line("ret i32 0".into()),
+        }
+        for ((_, f), label) in cases.iter().zip(&labels) {
+            b.start(label);
+            match f {
+                FnRef::Fn(id) => {
+                    let name = &core.fns[*id].name;
+                    let status = b.op(format!("call i32 @p_{name}({})", args.join(", ")));
+                    b.line(format!("ret i32 {status}"));
+                }
+                FnRef::Variant(_, alt) => {
+                    b.store("i64", &alt.to_string(), "%out");
+                    let places = b.module.layouts.get((*result)?).alternatives[*alt].clone();
+                    for (n, place) in places.iter().enumerate() {
+                        b.fill("%out", place, &format!("%a{n}"));
+                    }
+                    b.line("ret i32 0".into());
+                }
+            }
+        }
+        let sig = [vec!["i64 %id".to_string()], args].concat().join(", ");
+        Some(format!(
+            "\ndefine internal i32 @v{t}({sig}) {{\nentry:\n{}{}}}\n",
+            b.slots, b.lines
+        ))
     }
 
     /// Declares the intrinsic or runtime entry `line` names.
@@ -482,7 +573,7 @@ impl Body<'_, '_> {
     }
 
     /// A new block of `bytes`; a `memory` trap when the heap refuses.
-    fn alloc(&mut self, bytes: usize) -> String {
+    fn alloc(&mut self, bytes: impl std::fmt::Display) -> String {
         self.declare(ALLOC);
         let block = self.op(format!("call ptr @paka_rt1_alloc(i64 {bytes})"));
         let refused = self.op(format!("icmp eq ptr {block}, null"));
@@ -653,6 +744,7 @@ impl Body<'_, '_> {
                 self.construct(e.ty?, Some(alternative(tag)?), fields)?
             }
             ExprKind::Match(subject, arms) => return self.matched(e, subject, arms),
+            ExprKind::FnValue(f) => self.module.fn_value(f, e.ty?).to_string(),
             ExprKind::Unary(Un::Neg(site), x) => {
                 let x = self.expr(x)??;
                 self.overflowing("ssub", *site, "0", &x)
@@ -693,7 +785,11 @@ impl Body<'_, '_> {
                 self.op(format!("{cc} {ty} {x}, {y}"))
             }
             ExprKind::Call(callee, given, site) => {
-                let mut args = vec![];
+                // A function value is read before the arguments.
+                let mut args = match callee {
+                    Callee::Value(f) => vec![("i64", self.expr(f)??)],
+                    _ => vec![],
+                };
                 for arg in given {
                     args.push(match arg {
                         Arg::Value(a) => (self.module.ir(a.ty?)?, self.expr(a)??),
@@ -716,7 +812,14 @@ impl Body<'_, '_> {
                         }
                         row => self.builtin(row, &args, *site),
                     },
-                    Callee::Value(_) => None,
+                    Callee::Value(f) => {
+                        let t = f.ty?;
+                        let Type::Fn(_, result) = &self.module.core.types[t] else {
+                            return None;
+                        };
+                        self.module.dispatched.insert(t);
+                        self.invoke(&format!("@v{t}"), *result, &args)
+                    }
                 };
             }
             ExprKind::If(cond, then, otherwise) => return self.choose(e, cond, then, otherwise),
@@ -816,17 +919,22 @@ impl Body<'_, '_> {
         let places = self.module.layouts.get(t).alternatives[alt.unwrap_or(0)].clone();
         for (field, place) in fields.iter().zip(places) {
             let v = self.expr(field)??;
-            let v = self.owned(place.ty, &v);
-            let at = self.offset(&value, place.offset);
-            if place.boxed {
-                let block = self.alloc(self.size(place.ty));
-                self.put(place.ty, &v, &block);
-                self.store("ptr", &block, &at);
-            } else {
-                self.put(place.ty, &v, &at);
-            }
+            self.fill(&value, &place, &v);
         }
         Some(value)
+    }
+
+    /// Stores `v`, owned, as the field at `place` of the value at `value`.
+    fn fill(&mut self, value: &str, place: &layout::Place, v: &str) {
+        let v = self.owned(place.ty, v);
+        let at = self.offset(value, place.offset);
+        if place.boxed {
+            let block = self.alloc(self.size(place.ty));
+            self.put(place.ty, &v, &block);
+            self.store("ptr", &block, &at);
+        } else {
+            self.put(place.ty, &v, &at);
+        }
     }
 
     /// A `match` on a variant: a switch on its tag word.
@@ -866,13 +974,20 @@ impl Body<'_, '_> {
 
     /// Calls a Paka function and passes a trap on.
     fn call(&mut self, id: usize, args: &[(&str, String)]) -> Option<Value> {
-        let core = self.module.core;
-        let f = &core.fns[id];
-        if self.module.seen.insert(id) {
-            self.module.wanted.push(id);
-        }
+        let f = &self.module.core.fns[id];
+        self.module.want(id);
+        self.invoke(&format!("@p_{}", f.name), f.result, args)
+    }
+
+    /// Calls `callee`, whose result is of type `result`, and passes a trap on.
+    fn invoke(
+        &mut self,
+        callee: &str,
+        result: Option<Ty>,
+        args: &[(&str, String)],
+    ) -> Option<Value> {
         let mut list: Vec<String> = args.iter().map(|(ty, v)| format!("{ty} {v}")).collect();
-        let out = match f.result {
+        let out = match result {
             Some(t) => {
                 self.module.ir(t)?;
                 let r = self.name("%r");
@@ -882,7 +997,7 @@ impl Body<'_, '_> {
             }
             None => None,
         };
-        let status = self.op(format!("call i32 @p_{}({})", f.name, list.join(", ")));
+        let status = self.op(format!("call i32 {callee}({})", list.join(", ")));
         self.pass(&status);
         Some(out.map(|(t, r)| {
             let v = self.get(t, &r);
@@ -1067,6 +1182,8 @@ fn alternative(tag: &Tag) -> Option<usize> {
         Tag::User(_, i) => Some(*i),
         Tag::Some | Tag::Ok => Some(0),
         Tag::None | Tag::Err => Some(1),
+        // The M1 run loop performs these two only.
+        Tag::Effect(e @ (Effect::Print | Effect::Exit)) => Some(*e as usize),
         Tag::Effect(_) => None,
     }
 }

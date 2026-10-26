@@ -2040,6 +2040,7 @@ or merged during review. Ids with a letter were added during review.
 - flags: native-only
 - done when: Generics conformance group matches the interpreter; optimized IR for a generic loop over List<Float> contains no indirect call and no boxing.
 - why this level: Whole-program pass tied to the generics design; a wrong instance choice miscompiles silently.
+- note: Open: the release back end lowers no generic built-in row yet, so `generics` stays in tests/conformance/release-skip. Remaining: per-type lowering of the list rows (`append`, `extend`, `pop`, `insert`, `remove_at`, `swap`, `reverse`, `slice`, `sort`, `sort_by` with the interpreter's order of `before` calls, `list_of`), of `unwrap_or`, `ok_or` and `unreachable`, and of the `parse_int`/`parse_float` callers; then the List<Float> loop IR test.
 
 ### M6-15 · L3 · Lower the remaining constructs: function values, error handling, effect values
 
@@ -2048,6 +2049,8 @@ or merged during review. Ids with a letter were added during review.
 - done when: Their conformance groups leave the skip file and match the interpreter.
 - why this level: Several small lowerings with known techniques; their forms were fixed in milestone 2.
 - note: Becomes level 4 if M2-09 allows a function value to capture (as M4-37b).
+- status: done
+- note: Done: a function value is an i64 id, one per function or variant used as a value; a call through it goes to one `@v<type>` switch per function type, which calls the function or builds the variant (docs/abi/m1.md section 3). `update` may give any computed `List<Effect<Msg>>`; it is turned into the M1 effect list at the end. `function values`, `error handling` and `effect values` left tests/conformance/release-skip.
 
 ### M6-16 · L4 · Emit explicit stack-limit checks that hold under inlining and large frames
 

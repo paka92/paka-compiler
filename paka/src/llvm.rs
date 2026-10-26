@@ -7,7 +7,7 @@ use paka_rt::abi::table::RUN;
 mod code;
 pub mod lint;
 
-/// What the back end builds: an `update` whose body ends in a list of effects, after statements
+/// What the back end builds: an `update` whose body gives a list of effects, after statements
 /// that may call other functions.
 #[derive(Debug, PartialEq)]
 pub struct M1 {
@@ -47,10 +47,10 @@ pub fn view(core: &mut Program) -> Option<M1> {
     if !core.enums[msg].variants[start].fields.is_empty() {
         return None;
     }
-    let ExprKind::List(items) = &update.body.value.as_ref()?.kind else {
-        return None;
+    let literal = match &update.body.value.as_ref()?.kind {
+        ExprKind::List(items) => items.iter().map(effect).collect::<Option<Vec<_>>>(),
+        _ => None,
     };
-    let literal = items.iter().map(effect).collect::<Option<Vec<_>>>();
     let (body, code) = code::lower(core, id, literal.is_none())?;
     let (app, update) = (core.app.as_ref()?, &core.fns[id]);
     Some(M1 {

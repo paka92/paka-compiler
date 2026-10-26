@@ -13,14 +13,14 @@ impl Body<'_, '_> {
         }
     }
 
-    fn words(&mut self, at: &str) -> (String, String) {
+    pub(super) fn words(&mut self, at: &str) -> (String, String) {
         let ptr = self.offset(at, LIST.ptr);
         let len = self.offset(at, LIST.len);
         (self.load("ptr", &ptr), self.load("i64", &len))
     }
 
     /// The address of item `i` of `ptr`'s items, each of type `item`.
-    fn nth(&mut self, ptr: &str, item: Ty, i: &str) -> String {
+    pub(super) fn nth(&mut self, ptr: &str, item: Ty, i: &str) -> String {
         let size = self.size(item);
         self.op(format!("getelementptr [{size} x i8], ptr {ptr}, i64 {i}"))
     }

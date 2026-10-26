@@ -264,7 +264,7 @@ impl Body<'_, '_> {
     /// bytes, which are freed once performed.
     pub(super) fn effects(&mut self, value: &Expr) -> Option<()> {
         let ExprKind::List(items) = &value.kind else {
-            return None;
+            return self.effect_values(value);
         };
         let fx = match items.len() {
             0 => "null".into(),
@@ -283,11 +283,7 @@ impl Body<'_, '_> {
                 ExprKind::Variant(Tag::Effect(Effect::Exit), _) => (1, "null".into(), "0".into()),
                 _ => return None,
             };
-            self.store("i64", &tag.to_string(), &at);
-            let to = self.offset(&at, 8);
-            self.store("ptr", &ptr, &to);
-            let to = self.offset(&at, 16);
-            self.store("i64", &len, &to);
+            self.effect(&at, tag, &ptr, &len);
         }
         self.leave_fn(None);
         self.store("ptr", &fx, "%out");
@@ -295,5 +291,64 @@ impl Body<'_, '_> {
         self.store("i64", &items.len().to_string(), &count);
         self.line("ret i32 0".into());
         Some(())
+    }
+
+    /// The effect list from `value`, a computed `List<Effect<Msg>>` of `Print` and `Exit` only
+    /// (`alternative`): each `Print` takes a copy of its String.
+    fn effect_values(&mut self, value: &Expr) -> Option<()> {
+        let Type::List(effect) = self.module.core.types[value.ty?] else {
+            return None;
+        };
+        let at = self.expr(value)??;
+        let (ptr, len) = self.words(&at);
+        let bytes = self.op(format!("mul i64 {len}, 24"));
+        let fx = self.alloc(&bytes);
+        let i = self.name("%i");
+        self.slot(&i, "i64");
+        self.store("i64", "0", &i);
+        let [head, inner, print, exit, next, done] = ["b"; 6].map(|s| self.name(s));
+        self.line(format!("br label %{head}"));
+        self.start(&head);
+        let n = self.load("i64", &i);
+        let more = self.op(format!("icmp ult i64 {n}, {len}"));
+        self.line(format!("br i1 {more}, label %{inner}, label %{done}"));
+        self.start(&inner);
+        let item = self.nth(&ptr, effect, &n);
+        let to = self.op(format!("getelementptr [24 x i8], ptr {fx}, i64 {n}"));
+        let tag = self.load("i64", &item);
+        let printed = self.op(format!("icmp eq i64 {tag}, {}", Effect::Print as usize));
+        self.line(format!("br i1 {printed}, label %{print}, label %{exit}"));
+        self.start(&print);
+        let text = self.module.layouts.get(effect).alternatives[0][0].offset;
+        let text = self.offset(&item, text);
+        let text = self.owned(self.string(), &text);
+        let bytes = self.load("ptr", &text);
+        let count = self.offset(&text, table::STRING.len);
+        let count = self.load("i64", &count);
+        self.effect(&to, 0, &bytes, &count);
+        self.line(format!("br label %{next}"));
+        self.start(&exit);
+        self.effect(&to, 1, "null", "0");
+        self.line(format!("br label %{next}"));
+        self.start(&next);
+        let step = self.op(format!("add i64 {n}, 1"));
+        self.store("i64", &step, &i);
+        self.line(format!("br label %{head}"));
+        self.start(&done);
+        self.leave_fn(None);
+        self.store("ptr", &fx, "%out");
+        let count = self.offset("%out", 8);
+        self.store("i64", &len, &count);
+        self.line("ret i32 0".into());
+        Some(())
+    }
+
+    /// Writes the M1 effect `tag` with text `ptr` and `len` at `at` (docs/abi/m1.md section 3).
+    fn effect(&mut self, at: &str, tag: u64, ptr: &str, len: &str) {
+        self.store("i64", &tag.to_string(), at);
+        let to = self.offset(at, 8);
+        self.store("ptr", ptr, &to);
+        let to = self.offset(at, 16);
+        self.store("i64", len, &to);
     }
 }
