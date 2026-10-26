@@ -167,7 +167,7 @@ fn clang_gets_the_documents_command() {
     );
     let archive = fs::canonicalize(archive).unwrap();
     assert_eq!(fs::canonicalize(args[2]).unwrap(), archive);
-    assert_eq!(args[0], "-O2");
+    assert_eq!(args[0], "-O3");
     assert_eq!(args[3..10], SYSTEM_LIBS);
     assert_eq!(args[10..], ["-o", output]);
 }
@@ -208,7 +208,7 @@ fn abi_document_ir_links_and_runs() {
     let archive = common::runtime_archive();
     let dir = Scratch::new("abi-ir");
     let status = Command::new("clang")
-        .args(["-O2", LIGHT_IR])
+        .args(["-O3", LIGHT_IR])
         .arg(archive)
         .args(SYSTEM_LIBS)
         .arg("-o")

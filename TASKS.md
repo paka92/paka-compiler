@@ -1920,6 +1920,8 @@ or merged during review. Ids with a letter were added during review.
 - note: Per M6-01 and M6-02: the one constant replaces M1's `-O2`; it is `-O3` with no CPU flag.
 
 ### M6-05 · L2 · Make the IR linter enforce the approved promise table
+- status: done
+- note: Done: paka build passes clang the one constant `OPTIMIZE` in paka/src/build.rs, `-O3` and no CPU flag; docs/abi/m1.md section 9 shows the new command, and paka/tests/build.rs checks clang gets exactly it. A test over every run case's IR checks each call names its callee and nothing is loaded, so no call goes through a slot. Holes stay refused by name with `hole-in-build` before the back end runs (the conformance `hole_build_*` cases); a program the back end does not lower yet stays refused with `unsupported-form` until M6-07 to M6-15. The benchmark runner (M6-27) is not built yet and must add no flag.
 
 - needs: M6-01, M6-04
 - flags: native-only

@@ -14,6 +14,9 @@ use std::process::{Command, Stdio};
 const RUNTIME: &str = "libpaka_rt.a";
 /// The one clang release builds accept; tests read the same file.
 const CLANG_VERSION: &str = include_str!("../clang-version");
+/// The optimization flags and target CPU for every release build (M6-02 section 1.1): `-O3` and
+/// no CPU flag, which keeps clang's baseline x86-64.
+const OPTIMIZE: [&str; 1] = ["-O3"];
 const SYSTEM_LIBS: [&str; 7] = [
     "-lgcc_s",
     "-lutil",
@@ -66,7 +69,7 @@ pub fn build(path: &str, core: &Program, output: &OsStr) -> Result<(), Diagnosti
 
 fn link(path: &str, ir: &Path, runtime: &Path, output: &OsStr) -> Result<(), Diagnostic> {
     let status = Command::new("clang")
-        .arg("-O2")
+        .args(OPTIMIZE)
         .args([ir, runtime])
         .args(SYSTEM_LIBS)
         .arg("-o")

@@ -328,6 +328,22 @@ app light {
         }
     }
 
+    /// Release IR has no slot table: every call names its callee, so none goes through a load.
+    #[test]
+    fn every_call_in_any_run_case_is_direct() {
+        let cases = run_cases();
+        assert!(!cases.is_empty(), "no runnable case found");
+        for (folder, ir) in cases {
+            let calls = ir
+                .lines()
+                .filter_map(|line| line.split_once(" call ")?.1.split_once(' '));
+            for (_, callee) in calls {
+                assert!(callee.starts_with('@'), "{}: {callee}", folder.display());
+            }
+            assert!(!ir.contains(" load "), "{}", folder.display());
+        }
+    }
+
     #[test]
     fn banned_word_scan_sees_words_and_skips_constants() {
         assert_eq!(banned_in("add nsw i64 %a, %b"), ["nsw"]);
