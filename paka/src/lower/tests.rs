@@ -33,15 +33,8 @@ fn lowered(lines: &[&str]) -> Program {
         bodies.defs.iter().all(Option::is_none),
         "the program checks"
     );
-    lower(
-        vec![("main.paka".into(), 1)],
-        source.as_bytes(),
-        &program,
-        &resolved,
-        &table,
-        &bodies,
-    )
-    .0
+    let source = Source::file("main.paka", source.as_bytes().to_vec());
+    lower(&source, &program, &resolved, &table, &bodies).0
 }
 
 /// A program of the function `f` and the definitions after it.
@@ -172,6 +165,7 @@ fn light_paka_lowers() {
         examples: vec![],
         ui_examples: vec![],
         foreign: vec![],
+        libraries: vec![],
         app: Some(App {
             name: "light".into(),
             state: None,
@@ -1043,6 +1037,7 @@ fn an_app_with_state_an_inout_handler_and_an_example() {
         examples: vec![one],
         ui_examples: vec![],
         foreign: vec![],
+        libraries: vec![],
         app: Some(app),
         sites: vec![
             site(4, 4),

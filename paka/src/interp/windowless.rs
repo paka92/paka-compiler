@@ -6,6 +6,7 @@ use super::eval::{Done, Kind, Machine, Stop, Trap};
 use super::value::{Message, Value};
 use super::{ended, on_big_stack, place, report, start_message};
 use crate::core_form::{App, FnId, Program};
+use crate::foreign::Hosts;
 use crate::migrate::late;
 use paka_rt::limit::until;
 use paka_rt::route::{Event, Sent, focused, route};
@@ -22,6 +23,7 @@ pub struct Windowless<W> {
     state: Option<Value>,
     queue: VecDeque<Queued>,
     world: W,
+    hosts: Hosts,
     /// The tree last drawn: one error node if the first view run trapped.
     pub tree: Node<Message>,
     /// The reports of traps that leave the app running: in a handler or a view.
@@ -39,6 +41,7 @@ impl<W: World + Send> Windowless<W> {
             state: None,
             queue: VecDeque::new(),
             world,
+            hosts: Hosts::default(),
             tree: Node::Error(String::new()),
             traps: vec![],
             end: None,
@@ -225,8 +228,8 @@ impl<W: World + Send> Windowless<W> {
         if !matches!(effects, Value::List(_)) {
             return Ok(());
         }
-        let (app, foreign) = (app(&self.core), &self.core.foreign);
-        match perform(app, foreign, &mut effects, &mut self.world, &mut self.queue) {
+        let (core, hosts, world) = (&self.core, Some(&mut self.hosts), &mut self.world);
+        match perform(core, app(core), hosts, &mut effects, world, &mut self.queue) {
             Some(end) => Err(end),
             None => Ok(()),
         }

@@ -189,13 +189,22 @@ fn a_foreign_effect_runs_only_under_its_grant() {
         let out = Command::new(PAKA)
             .args(["run", "main.paka"])
             .current_dir(dir.path(""))
+            .env("XDG_CACHE_HOME", dir.path("cache"))
             .output()
             .unwrap();
         let text = [out.stdout, out.stderr].concat();
         (String::from_utf8(text).unwrap(), out.status.code())
     };
-    // No host runs C code yet, so the granted call answers `or`.
+    // Without its files the declaration has no host, so the granted call answers `or`.
     assert_eq!(run(SUM), ("no host\n".into(), Some(0)));
+    fs::write(
+        dir.path("sum.h"),
+        "#include <stdint.h>\nint64_t sum_add(int64_t a);\n",
+    )
+    .unwrap();
+    let add = "#include \"sum.h\"\nint64_t sum_add(int64_t a) { return a + 1; }\n";
+    fs::write(dir.path("sum.c"), add).unwrap();
+    assert_eq!(run(SUM), ("got 2\n".into(), Some(0)));
     let refused = "sum: effect Add refused: grant Sum is missing\n";
     let ungranted = SUM.replace("[Console, Sum]", "[Console]");
     assert_eq!(run(&ungranted), (refused.into(), Some(3)));

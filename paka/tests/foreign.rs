@@ -1,16 +1,18 @@
-//! The foreign host (M7-14): the test library in tests/foreign is called through a host in its
-//! own process; malformed requests and a crash in the library leave the caller running.
+//! The foreign host (M7-14, M7-15): the test library in tests/foreign is called through a host in
+//! its own process; malformed requests, a crash or a stall in the library leave the caller running.
 
 #[allow(dead_code)]
 mod common;
 
 use common::Scratch;
 use paka::ast::Def;
-use paka::foreign::{Failure, Host, Kind, Value, build};
+use paka::core_form::Library;
+use paka::foreign::{Failure, Host, Kind, LIMIT, Value, build, cached, library};
 use paka::parser;
 use paka_rt::ops::Float;
 use std::fs;
 use std::path::{Path, PathBuf};
+use std::time::{Duration, Instant};
 
 const LIBRARY: &str = concat!(env!("CARGO_MANIFEST_DIR"), "/tests/foreign");
 
@@ -23,16 +25,21 @@ foreign Probe {
   Odd(n: Int) -> Bool = "probe_odd"
   Count() -> Int = "probe_count"
   Crash() = "probe_crash"
+  Stall() = "probe_stall"
 }
 "#;
 
-/// Builds the host of the one declaration in `source`, whose files are in `dir`.
-fn host_of(source: &str, dir: &Path, out: &Path) -> Result<PathBuf, String> {
+/// The one declaration in `source`, whose files are in `dir`.
+fn declared(source: &str, dir: &Path) -> Library {
     let program = parser::parse("main.paka", source.as_bytes()).unwrap();
-    let [Def::Foreign { lines, .. }] = &program.defs[..] else {
+    let [Def::Foreign { name, lines }] = &program.defs[..] else {
         panic!("one foreign declaration expected");
     };
-    build(dir, lines, out)
+    library(name.text, dir, lines)
+}
+
+fn host_of(source: &str, dir: &Path, out: &Path) -> Result<PathBuf, String> {
+    build(&declared(source, dir), out)
 }
 
 fn float(x: f64) -> Value<'static> {
@@ -41,7 +48,7 @@ fn float(x: f64) -> Value<'static> {
 
 fn probe(scratch: &Scratch) -> Host {
     let exe = host_of(PROBE, Path::new(LIBRARY), &scratch.path("host")).unwrap();
-    Host::start(&exe).unwrap()
+    Host::start(&exe, LIMIT).unwrap()
 }
 
 #[test]
@@ -119,8 +126,38 @@ fn a_crashing_library_takes_down_only_its_host() {
     assert_eq!(host.call(4, &[], None), Err(Failure::Died));
     assert_eq!(host.call(3, &[], Some(Kind::Int)), Err(Failure::Died));
     // A new host starts afresh, its state lost.
-    let mut host = Host::start(&scratch.path("host/host")).unwrap();
+    let mut host = Host::start(&scratch.path("host/host"), LIMIT).unwrap();
     assert_eq!(host.call(3, &[], Some(Kind::Int)), Ok(Some(Value::Int(1))));
+}
+
+#[test]
+fn a_stalled_call_times_out() {
+    let scratch = Scratch::new("foreign-stall");
+    let exe = host_of(PROBE, Path::new(LIBRARY), &scratch.path("host")).unwrap();
+    let mut host = Host::start(&exe, Duration::from_millis(200)).unwrap();
+    let started = Instant::now();
+    assert_eq!(host.call(5, &[], None), Err(Failure::TimedOut));
+    assert!(started.elapsed() < LIMIT);
+}
+
+#[test]
+fn a_host_is_built_once_per_declaration_and_files() {
+    let scratch = Scratch::new("foreign-cache");
+    for file in ["probe.c", "probe.h"] {
+        fs::copy(Path::new(LIBRARY).join(file), scratch.path(file)).unwrap();
+    }
+    let probe = declared(PROBE, &scratch.path(""));
+    let cache = scratch.path("cache");
+    let exe = cached(&probe, &cache).unwrap();
+    assert_eq!(cached(&probe, &cache), Ok(exe.clone()));
+    let fewer = declared(
+        &PROBE.replace("  Stall() = \"probe_stall\"\n", ""),
+        &scratch.path(""),
+    );
+    assert_ne!(cached(&fewer, &cache).unwrap(), exe);
+    fs::write(scratch.path("probe.c"), "#include \"probe.h\"\n").unwrap();
+    assert!(cached(&probe, &cache).is_err());
+    assert_eq!(fs::read_dir(&cache).unwrap().count(), 2);
 }
 
 #[test]
@@ -158,7 +195,7 @@ foreign M {
 }
 "#;
     let exe = host_of(source, &scratch.path(""), &scratch.path("host")).unwrap();
-    let mut host = Host::start(&exe).unwrap();
+    let mut host = Host::start(&exe, LIMIT).unwrap();
     let floor = host.call(0, &[float(-2.5)], Some(Kind::Float));
     assert_eq!(floor, Ok(Some(float(-3.0))));
 }

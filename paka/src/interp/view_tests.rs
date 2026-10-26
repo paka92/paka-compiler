@@ -3,6 +3,7 @@
 use super::draw;
 use super::value::{Items, Value};
 use crate::sig::Table;
+use crate::source::Source;
 use crate::{body, lower::lower, parser::parse, resolve::resolve};
 use paka_rt::ops::Int;
 
@@ -33,16 +34,8 @@ fn drawn(source: &str, name: &str, args: Vec<Value>) -> Result<String, String> {
         bodies.defs.iter().all(Option::is_none),
         "the program checks"
     );
-    let files = vec![("main.paka".into(), 1)];
-    let core = lower(
-        files,
-        source.as_bytes(),
-        &program,
-        &resolved,
-        &table,
-        &bodies,
-    )
-    .0;
+    let source = Source::file("main.paka", source.as_bytes().to_vec());
+    let core = lower(&source, &program, &resolved, &table, &bodies).0;
     let id = core.fns.iter().position(|f| f.name == name).unwrap();
     draw(&core, id, args).map(|tree| tree.to_string())
 }

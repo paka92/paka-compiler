@@ -42,7 +42,7 @@ struct Store {
 impl Cache {
     /// The cache under the user's cache directory, for this executable; none without either.
     pub fn user(defs: &[DefCheck], source: &Source) -> Cache {
-        match (user_dir(), stamp()) {
+        match (cache_dir("examples"), stamp()) {
             (Some(dir), Some(stamp)) => Cache::open(dir, &stamp, defs, source),
             _ => Cache::default(),
         }
@@ -173,12 +173,12 @@ fn prune(dir: &Path, keep: &str) {
     }
 }
 
-/// `$XDG_CACHE_HOME/paka/examples`, else `$HOME/.cache/paka/examples`.
-fn user_dir() -> Option<PathBuf> {
+/// `$XDG_CACHE_HOME/paka/<name>`, else `$HOME/.cache/paka/<name>`.
+pub(crate) fn cache_dir(name: &str) -> Option<PathBuf> {
     let absolute = |v: Option<_>| v.map(PathBuf::from).filter(|p: &PathBuf| p.is_absolute());
     let base = absolute(env::var_os("XDG_CACHE_HOME"))
         .or_else(|| absolute(env::var_os("HOME")).map(|h| h.join(".cache")))?;
-    Some(base.join(Path::new("paka/examples")))
+    Some(base.join("paka").join(name))
 }
 
 /// The compiler version: the package version and this executable's size and change time, so a

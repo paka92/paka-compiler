@@ -100,10 +100,7 @@ fn check_all(path: &str, source: &Source) -> Result<(Vec<DefCheck>, Option<Lower
     let mut lowered = None;
     let mut reads = std::mem::take(&mut bodies.reads);
     if bodies.defs.iter().all(Option::is_none) {
-        let files = (source.files.iter())
-            .map(|f| (f.name.clone(), f.line))
-            .collect();
-        let (core, more) = lower::lower(files, &source.text, &program, &resolved, &table, &bodies);
+        let (core, more) = lower::lower(source, &program, &resolved, &table, &bodies);
         reads.iter_mut().zip(more).for_each(|(r, m)| r.extend(m));
         let holes = holes(path, &program, &table, &bodies, &core);
         lowered = Some((core, holes, resolved.unused));

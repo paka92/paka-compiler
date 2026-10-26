@@ -3,6 +3,7 @@
 
 use crate::core_form::{App, Field, FnId, Program, Type};
 use crate::core_form::{Fn as Func, Site};
+use crate::foreign::Hosts;
 use crate::results::{Cache, Entry};
 use crate::source::in_file;
 use effects::{End, Host, Queued, World, perform};
@@ -118,6 +119,7 @@ fn serve(
     let (run, flagged) = guest(core, app, watch, |machine| {
         let mut state = machine.state(app)?;
         let mut queue = VecDeque::from([Queued::Message(start)]);
+        let mut hosts = Hosts::default();
         while let Some(next) = queue.pop_front() {
             let message = match next {
                 Queued::Message(message) => message,
@@ -126,7 +128,8 @@ fn serve(
             };
             let (mut effects, next) = machine.update(app, state, message)?;
             state = next;
-            if let Some(end) = perform(app, &core.foreign, &mut effects, world, &mut queue) {
+            let end = perform(core, app, Some(&mut hosts), &mut effects, world, &mut queue);
+            if let Some(end) = end {
                 return Ok(end);
             }
         }

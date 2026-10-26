@@ -124,10 +124,7 @@ fn check(
     if let Some(d) = misuse(&table.types, types, &walk.uses, &olds) {
         return Err(d);
     }
-    let files = (source.files.iter())
-        .map(|f| (f.name.clone(), f.line))
-        .collect();
-    let (program, _) = lower::lower(files, &source.text, &program, &resolved, &table, &bodies);
+    let (program, _) = lower::lower(source, &program, &resolved, &table, &bodies);
     let function = program.fns.len() - 1;
     Ok(Migrate { program, function })
 }

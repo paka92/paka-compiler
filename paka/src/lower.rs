@@ -9,8 +9,10 @@ use crate::core_form::{
 };
 use crate::resolve::{Binding, Resolved};
 use crate::sig::{self, Item, Node, Table};
-use crate::{builtins, coverage};
+use crate::source::{Source, in_file};
+use crate::{builtins, coverage, foreign};
 use std::collections::{BTreeMap, BTreeSet};
+use std::path::Path;
 
 mod arms;
 mod expr;
@@ -25,7 +27,7 @@ struct Cx<'t, 'a> {
     resolved: &'t Resolved,
     table: &'t Table<'a>,
     bodies: &'t Bodies,
-    source: &'t [u8],
+    source: &'t Source,
     /// The offset of each line's start in `source`.
     starts: Vec<usize>,
     /// Each definition's place in the list of its kind: records, enums, functions, examples, UI
@@ -44,17 +46,18 @@ struct Cx<'t, 'a> {
 /// Runs on a program that `body::check` accepted: every lookup succeeds. Gives the signatures
 /// each definition read, by name, with the core form (M4-09).
 pub fn lower<'a>(
-    files: Vec<(String, usize)>,
-    source: &[u8],
+    source: &Source,
     program: &ast::Program<'a>,
     resolved: &Resolved,
     table: &Table<'a>,
     bodies: &Bodies,
 ) -> (Program, Vec<BTreeSet<String>>) {
-    let newlines = source.iter().enumerate().filter(|&(_, &b)| b == b'\n');
+    let newlines = source.text.iter().enumerate().filter(|&(_, &b)| b == b'\n');
     let mut cx = Cx {
         core: Program {
-            files,
+            files: (source.files.iter())
+                .map(|f| (f.name.clone(), f.line))
+                .collect(),
             types: vec![],
             records: vec![],
             enums: vec![],
@@ -64,6 +67,7 @@ pub fn lower<'a>(
             app: None,
             sites: vec![],
             foreign: vec![],
+            libraries: vec![],
         },
         program,
         resolved,
@@ -164,12 +168,19 @@ impl<'a> Cx<'_, 'a> {
                 let app = self.app(name, entries);
                 self.core.app = Some(app);
             }
-            (Def::Foreign { name, .. }, _) => {
-                let effects = def.names().into_iter().skip(1).map(|effect| Foreign {
+            (Def::Foreign { name, lines }, _) => {
+                let library = self.core.libraries.len();
+                let effects = def.names().into_iter().skip(1).enumerate();
+                let effects = effects.map(|(number, effect)| Foreign {
                     name: effect.into(),
-                    grant: name.text.into(),
+                    library,
+                    number,
                 });
                 self.core.foreign.extend(effects);
+                let (file, _) = in_file(&self.source.files, |f| f.line, name.at.0);
+                let dir = Path::new(&file.path).parent().unwrap_or(Path::new(""));
+                let library = foreign::library(name.text, dir, lines);
+                self.core.libraries.push(library);
             }
             _ => unreachable!("a definition and its table row agree"),
         }
@@ -404,7 +415,7 @@ impl<'a> Cx<'_, 'a> {
     fn after(&self, e: &ast::Expr) -> Pos {
         let mut at = self.offset(e.at) + e.len;
         loop {
-            match self.source.get(at..) {
+            match self.source.text.get(at..) {
                 Some([b' ' | b'\n', ..]) => at += 1,
                 Some(rest @ [b'/', b'/', ..]) => {
                     at += rest.iter().position(|&b| b == b'\n').unwrap_or(rest.len());

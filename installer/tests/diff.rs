@@ -69,10 +69,14 @@ fn death_by_signal_differs() {
 
 #[test]
 fn every_run_case_is_listed_once() {
+    // The foreign cases build their hosts in this cache.
+    let cache = std::env::temp_dir().join(format!("paka-diff-cache-{}", std::process::id()));
     let out = Command::new(env!("CARGO_BIN_EXE_paka-diff"))
         .arg(ROOT)
+        .env("XDG_CACHE_HOME", &cache)
         .output()
         .unwrap();
+    let _ = std::fs::remove_dir_all(&cache);
     let text = String::from_utf8(out.stdout).unwrap();
     let (total, listed) = text
         .trim_end()

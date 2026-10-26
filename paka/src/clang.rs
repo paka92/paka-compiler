@@ -6,7 +6,7 @@ use std::io;
 use std::process::{Command, Stdio};
 
 /// The pinned version; tests read the same file.
-const VERSION: &str = include_str!("../clang-version");
+pub const VERSION: &str = include_str!("../clang-version");
 
 /// Refuses any clang but the pinned one, read off the first line of `clang --version`.
 pub fn check(path: &str) -> Result<(), Diagnostic> {

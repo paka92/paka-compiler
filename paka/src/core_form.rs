@@ -4,6 +4,7 @@
 pub use paka_rt::effects::Grant;
 use paka_rt::ops::{Float, Int};
 use std::collections::BTreeSet;
+use std::path::PathBuf;
 
 /// Positions in the program's lists.
 pub type Ty = usize;
@@ -30,13 +31,44 @@ pub struct Program {
     /// Each foreign effect, in declared order; an `Effect::Foreign` value's first field is its
     /// index here.
     pub foreign: Vec<Foreign>,
+    pub libraries: Vec<Library>,
 }
 
-/// A function of a foreign declaration: its effect's name and the declaration's, its grant.
+/// A function of a foreign declaration: its effect's name, the declaration's index in
+/// `Program::libraries` and its own among the declaration's functions.
 #[derive(Debug, PartialEq)]
 pub struct Foreign {
     pub name: String,
-    pub grant: String,
+    pub library: usize,
+    pub number: usize,
+}
+
+/// A foreign declaration (docs/decisions/M7-02.md): its name, which is its grant, the directory
+/// of the file that holds it, its file lines in order and its functions.
+#[derive(Clone, Debug, PartialEq)]
+pub struct Library {
+    pub name: String,
+    pub dir: PathBuf,
+    /// `library`, `source` or `header`, and a file name.
+    pub files: Vec<(String, String)>,
+    pub functions: Vec<CFunction>,
+}
+
+/// A C function: its symbol and the types that cross.
+#[derive(Clone, Debug, PartialEq)]
+pub struct CFunction {
+    pub symbol: String,
+    pub params: Vec<Plain>,
+    pub result: Option<Plain>,
+}
+
+/// A type that crosses to C (M7-02 section 1.3).
+#[derive(Clone, Copy, Debug, PartialEq)]
+pub enum Plain {
+    Int,
+    Float,
+    Bool,
+    String,
 }
 
 impl Program {
@@ -372,6 +404,7 @@ mod tests {
             examples: vec![],
             ui_examples: vec![],
             foreign: vec![],
+            libraries: vec![],
             app: None,
             sites: vec![],
         };

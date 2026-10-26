@@ -1,0 +1,24 @@
+foreign Crash {
+  source: "crash.c"
+  header: "crash.h"
+  Count() -> Int = "crash_count"
+  Now() = "crash_now"
+}
+
+enum Msg { Start, First(n: Int), Crashed, Died(why: String), Again(n: Int) }
+
+fn update(m: Msg) -> List<Effect<Msg>> {
+  match m {
+    Start => [Count(then: First, or: Died)]
+    First(n) => [Print("count {n}"), Now(then: Crashed, or: Died)]
+    Crashed => [Print("still running"), Exit]
+    Died(why) => [Print(why), Count(then: Again, or: Died)]
+    Again(n) => [Print("count {n}"), Exit]
+  }
+}
+
+app crash {
+  start: Start
+  update: update
+  grants: [Console, Crash]
+}

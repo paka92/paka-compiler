@@ -282,6 +282,7 @@ fn program(mut fns: Vec<Func>, mut update: Func) -> Program {
         examples: vec![],
         ui_examples: vec![],
         foreign: vec![],
+        libraries: vec![],
         sites,
     }
 }

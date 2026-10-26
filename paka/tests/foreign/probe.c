@@ -1,5 +1,6 @@
 #include "probe.h"
 #include <stdio.h>
+#include <unistd.h>
 
 /* The byte sum of `text`, or -1 when the zero after its end is missing. */
 int64_t probe_sum(const char *text, int64_t text_len) {
@@ -22,3 +23,5 @@ int64_t probe_count(void) {
 }
 
 void probe_crash(void) { *(volatile int *)0 = 1; }
+
+void probe_stall(void) { pause(); }

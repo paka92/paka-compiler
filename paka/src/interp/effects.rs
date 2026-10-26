@@ -2,8 +2,10 @@
 //! shared performer (`paka_rt::effects`, M4-05 section 3).
 
 use super::value::{FnKey, Value, position};
-use crate::core_form::{App, Effect as Number, Foreign};
+use crate::core_form::{App, Effect as Number, Program};
+use crate::foreign::{self, Hosts};
 use paka_rt::effects::{self, Effect, Next};
+use paka_rt::ops::Int;
 use paka_rt::route::Event;
 use std::collections::VecDeque;
 use std::mem;
@@ -28,10 +30,11 @@ pub enum Queued {
 }
 
 /// Performs the effects in order, queueing the answers; `Some` when one ends the run, `None`
-/// after the last.
+/// after the last. Without `hosts`, as in a UI example, an allowed foreign effect is dropped.
 pub fn perform(
+    core: &Program,
     app: &App,
-    foreign: &[Foreign],
+    hosts: Option<&mut Hosts>,
     answer: &mut Value,
     world: &mut impl World,
     queue: &mut VecDeque<Queued>,
@@ -39,13 +42,14 @@ pub fn perform(
     let Value::List(effects) = answer else {
         unreachable!("a checked List");
     };
+    let mut hosts = hosts;
     for effect in &mut effects.0 {
         let Value::Variant(number, fields) = effect else {
             unreachable!("a checked Effect");
         };
         if *number == FOREIGN {
-            match call(app, foreign, &fields.0) {
-                Ok(answer) => queue.push_back(answer),
+            match call(core, app, hosts.as_deref_mut(), &mut fields.0) {
+                Ok(answer) => queue.extend(answer),
                 Err(end) => return Some(end),
             }
             continue;
@@ -63,18 +67,63 @@ pub fn perform(
     None
 }
 
-/// A foreign effect: refused without its grant, and failed with `no host` until a host runs it.
-fn call(app: &App, foreign: &[Foreign], fields: &[Value]) -> Result<Queued, End> {
-    let (Some(Value::Int(id)), Some(Value::Fn(or))) = (fields.first(), fields.last()) else {
+/// A foreign effect: refused without its grant, else run by its declaration's host. The answer
+/// is `then` with the result, or `or` with the reason the call failed.
+fn call(
+    core: &Program,
+    app: &App,
+    hosts: Option<&mut Hosts>,
+    fields: &mut [Value],
+) -> Result<Option<Queued>, End> {
+    let [Value::Int(id), args @ .., then, Value::Fn(or)] = fields else {
         unreachable!("a checked foreign effect");
     };
-    let effect = &foreign[position(*id).expect("an effect index")];
-    if !app.foreign.contains(&effect.grant) {
-        let (name, grant) = (&effect.name, &effect.grant);
+    let effect = &core.foreign[position(*id).expect("an effect index")];
+    let library = &core.libraries[effect.library];
+    if !app.foreign.contains(&library.name) {
+        let (name, grant) = (&effect.name, &library.name);
         let why = format!("effect {name} refused: grant {grant} is missing");
         return Err((3, format!("{}: {why}\n", app.name)));
     }
-    Ok(Queued::Answer(*or, Value::Str("no host".into())))
+    let Some(hosts) = hosts else {
+        return Ok(None);
+    };
+    let args: Vec<_> = args.iter().map(plain).collect();
+    Ok(Some(
+        match hosts.call(effect.library, library, effect.number, &args) {
+            Ok(Some(result)) => Queued::Answer(answer_fn(then), value(result)),
+            Ok(None) => Queued::Message(mem::take(then)),
+            Err(reason) => Queued::Answer(*or, Value::Str(reason.into())),
+        },
+    ))
+}
+
+fn answer_fn(then: &Value) -> FnKey {
+    let Value::Fn(f) = then else {
+        unreachable!("a function with a result answers through a function");
+    };
+    *f
+}
+
+/// An argument as it crosses to C.
+#[allow(clippy::disallowed_methods)] // the value leaves Paka for the host
+fn plain(v: &Value) -> foreign::Value<'_> {
+    match v {
+        Value::Int(n) => foreign::Value::Int(n.get()),
+        Value::Float(x) => foreign::Value::Float(*x),
+        Value::Bool(b) => foreign::Value::Bool(*b),
+        Value::Str(t) => foreign::Value::String(t.as_str()),
+        _ => unreachable!("a checked plain type"),
+    }
+}
+
+fn value(result: foreign::Value) -> Value {
+    match result {
+        foreign::Value::Int(n) => Value::Int(Int::new(n)),
+        foreign::Value::Float(x) => Value::Float(x),
+        foreign::Value::Bool(b) => Value::Bool(b),
+        foreign::Value::String(_) => unreachable!("a result is never a String"),
+    }
 }
 
 /// Effect `number` with its fields.
