@@ -1,6 +1,7 @@
 //! Every outside crate in a lock file is listed in .cargo/approved-crates.txt and vendored (M4-06).
 //! Crates a lock names only for other systems are listed in .cargo/stubbed-crates.txt and vendored
 //! as a manifest with no code, so cargo can resolve offline without them ever being built.
+//! The shipped font is the pinned Noto Sans file (M5-10).
 
 use std::collections::BTreeSet;
 use std::fs;
@@ -120,4 +121,16 @@ fn an_unlisted_crate_fails() {
                 [[package]]\nname = \"left-pad\"\nversion = \"1.0.0\"\n\
                 source = \"registry+https://github.com/rust-lang/crates.io-index\"\n";
     assert_eq!(unlisted(&outside(lock), &approved()), ["left-pad 1.0.0"]);
+}
+
+#[test]
+fn the_font_is_the_pinned_noto_sans() {
+    // NotoSans/unhinted/ttf/NotoSans-Regular.ttf of the notofonts NotoSans-v2.015 release.
+    const PINNED: &str = "f3961a9cde016d41a4879aecda1474d3a36d6bf54fa0e4643de029cc2248b0e8";
+    let font = fs::read(root().join("gui/fonts/NotoSans-Regular.ttf")).unwrap();
+    let hex: String = paka::sha256::sha256(&font)
+        .iter()
+        .map(|b| format!("{b:02x}"))
+        .collect();
+    assert_eq!(hex, PINNED);
 }

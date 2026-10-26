@@ -234,7 +234,7 @@ checks and whose example passes.
 | M5-04.1 | five elements | 87 to 93 |
 | M5-04.2 | only table defaults may be left out; table order, `key:` last | 95, 96 |
 | M5-04.3 | no look arguments; `gap:` is the only layout argument | 92, 93; the looks are not for the model: no program reads them |
-| M5-04.4 | only an Input takes focus, only by a click | 99 |
+| M5-04.4 | as M5-08 rewrites it: a click moves focus only to an Input; Tab also reaches Buttons | 99; Tab and a focused Button are not for the model: no `ui_` function sends Tab |
 | M5-04.5 | other elements open | not for the model: a planning note |
 | M5-04 rules | `Text` takes a String; `on_change:` a variant with one String field | 89, 96 |
 | M5-04 rules | a negative literal gap is an error; a computed one traps | 98, 99 |

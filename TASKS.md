@@ -1405,7 +1405,7 @@ or merged during review. Ids with a letter were added during review.
 
 ## M5 — Live GUI on Linux
 
-**Exit check.** One script in the repository, run in the owner's GNOME Wayland session on the build machine, exits 0 after all seven parts. (1) The counter sample and the to-do sample each open a window and log a first presented frame. (2) Through Look, a click raises the count and typing plus Add adds a row; replacing ??reset through Edit turns the placeholder into a button while the count in the tree stays the same. (3) An edit that changes the state type with no migrate and no reset is refused and the old version still answers a click; the same edit with a reset is accepted; the same edit with a migrate is accepted and the count is kept. (4) A view that traps leaves the tree text and the screenshot unchanged; a handler that traps leaves the tree unchanged and performs none of its effects. (5) With WAYLAND_DISPLAY and DISPLAY unset, the to-do UI example (start, type, click, read the tree) runs and the toolchain reports the status that was written by hand beforehand. (6) Look on the windowed app returns the tree text and a PNG screenshot and accepts a click and a keystroke. (7) M5-26's two-back-end command reports no tree difference and the reference with views passes its size test. The owner watches parts 1 to 3 on screen once. If the owner's M5-08 ruling requires a screen reader or IME, one clause is added for each.
+**Exit check.** One script in the repository, run in the owner's GNOME Wayland session on the build machine, exits 0 after all eight parts. (1) The counter sample and the to-do sample each open a window and log a first presented frame. (2) Through Look, a click raises the count and typing plus Add adds a row; replacing ??reset through Edit turns the placeholder into a button while the count in the tree stays the same. (3) An edit that changes the state type with no migrate and no reset is refused and the old version still answers a click; the same edit with a reset is accepted; the same edit with a migrate is accepted and the count is kept. (4) A view that traps leaves the tree text and the screenshot unchanged; a handler that traps leaves the tree unchanged and performs none of its effects. (5) With WAYLAND_DISPLAY and DISPLAY unset, the to-do UI example (start, type, click, read the tree) runs and the toolchain reports the status that was written by hand beforehand. (6) Look on the windowed app returns the tree text and a PNG screenshot and accepts a click and a keystroke. (7) M5-26's two-back-end command reports no tree difference and the reference with views passes its size test. (8) The M5-40 script passes on both samples. The owner watches parts 1 to 3 on screen once, and types one composed word through the input method into the to-do sample's Input, which arrives as one commit (M5-37).
 
 - M5-08 gates everything that draws and needs downloads (winit, vello_cpu, Parley, AccessKit). Ask for the permission on day one.
 - UI examples act on the element tree, not on pixels, so they need no window, font or outside crate.
@@ -1497,20 +1497,24 @@ or merged during review. Ids with a letter were added during review.
 
 ### M5-09 · L4 · Decide the preview route on Wayland and the Look protocol
 
+- status: done
 - needs: M5-06, M5-08
 - flags: decision, owner
 - done when: Owner approves one route and the four Look calls: tree, screenshot, click, keystroke, with their inputs and outputs.
 - why this level: Wayland allows no embedding, screen grab or injected input; the route must work without them.
 - note: Per M4-03: the Look calls are added to its envelope and error shape as new `call` values, with no new version.
 - note: Per M5-06: Look's tree call returns the same tree text form, and its click can take the same path form.
+- note: Done: approved by the owner on 2026-10-26; see docs/decisions/M5-09.md. The app opens its own window in the process that runs it, with no preview pane; Look acts on the element tree, never on the screen. The calls `look_tree`, `look_screenshot` (base64 PNG, scale 1 or 2), `look_click` (by path) and `look_key` (text or one named key) join M4-03's envelope with the error kinds `not_running`, `no_element` and `no_focus`, and a `run` naming a visual app launches it.
 
 ### M5-10 · L2 · Vendor the approved GUI crates, pinned and built offline
 
+- status: done
 - needs: M5-08
 - flags: download, owner
 - done when: cargo build --locked --offline passes; a check fails on any crate off the approved list; README names needed system packages.
 - why this level: Routine vendoring; the care is in matching the approved list exactly, licences included.
 - note: Per M7-02: adds its crates and licences to `TRUSTED` (M7-16).
+- note: Done: M5-08 had vendored the crates and listed them in `.cargo/approved-crates.txt` and `.cargo/stubbed-crates.txt`, which M7-16 turns into `TRUSTED`; their licences are tabled in docs/results/M5-08.md. The new workspace member `gui/` (`paka-gui`) takes M5-08's six crates with its exact pins and features, so `cargo build --locked --offline` builds them; the workspace lock gains exactly the trial's outside packages. `paka/tests/vendored.rs` already fails on a locked crate off the list. The font is `gui/fonts/NotoSans-Regular.ttf`, the unhinted file of the notofonts NotoSans-v2.015 release, with its `OFL.txt` beside it; `paka_gui::FONT` embeds it and a test in `paka/tests/vendored.rs` pins its SHA-256. The README names the run-time libraries a window loads (`libwayland-client`, `libwayland-cursor`, `libxkbcommon`); building needs no system package, since winit and softbuffer load Wayland at run time.
 
 ### M5-11 · L3 · Parse and print view definitions and the app's view field
 
@@ -1617,6 +1621,7 @@ or merged during review. Ids with a letter were added during review.
 - note: Standard library only. If M5-03 makes grapheme clusters the cursor unit, the table comes from a crate already on M5-08's approved list; otherwise the task gains download and owner.
 - note: Per M5-03: the element stores no text, only cursor, selection and preedit. It sends the whole new text and moves the cursor only when the view hands back a text other than the one from before the key. The cursor steps by code point, so no crate table and no download.
 - note: Per M5-04: no Enter message and no hint text.
+- note: Per M5-08: no change here. Tab and Shift+Tab move focus and Space clicks a focused Button (M5-36); in an Input, Tab and Enter still type nothing.
 - note: Done: `paka-rt/src/input.rs` adds keys for typing, back, delete, left, right, home and end, each with or without extending the selection, over `Edit`. Moves change cursor and selection and send nothing; edits leave the element as is and return the whole new text and the cursor to send; a key that changes nothing sends nothing. `Edit::follow` keeps everything when the view hands back the old text and otherwise moves the cursor where the key put it, or keeps it for a text the app set, pulled back to the end, selection cleared. Positions count code points and are clipped to the text first. Line break and tab type nothing. Word moves are not in the records and are not built.
 
 ### M5-20 · L3 · Run a visual app with no window in the interpreter
@@ -1781,6 +1786,7 @@ or merged during review. Ids with a letter were added during review.
 - done when: Tests: a string measures the same twice, wraps into more lines at half width, and a missing glyph falls back.
 - why this level: Unfamiliar library; font loading, fallback and line breaking must give the same sizes to layout and drawing.
 - note: Per M5-05: text is measured at scale factor 1, widths are rounded up to whole units, the line height is fixed at 20 units and the font size at 14.
+- note: Per M5-10: the font is `paka_gui::FONT`, registered with no system font lookup as `trial/gui/src/ui.rs` does; its OFL notice is `gui/fonts/OFL.txt`.
 
 ### M5-33 · L3 · Draw the laid-out tree to an image through vello_cpu
 
@@ -1790,6 +1796,7 @@ or merged during review. Ids with a letter were added during review.
 - why this level: Several element kinds, text runs, placeholder and error boxes; checked by chosen pixels, since golden images are banned.
 - note: Per M5-04: it draws the fixed look M5-04 gives, with no hover or pressed form; pixel tests use those colours.
 - note: Per M5-05: the only clip is an Input's own text; units are multiplied by the scale factor when drawing.
+- note: Per M5-08: a focused Button draws M5-04's focused border, 2 units in #0060DF.
 
 ### M5-34 · L3 · Add the Look tool on the windowless app: tree, screenshot, click, keystroke
 
@@ -1798,6 +1805,7 @@ or merged during review. Ids with a letter were added during review.
 - done when: A script calls Look on windowless apps: the tree matches hand-written text, a PNG returns, click and keystroke change the tree.
 - why this level: Wires four calls through the tool channel into a running app without racing its handlers or frames.
 - note: Per M5-06: a Look click on an Input by path puts the cursor at the end, as `ui_click` does.
+- note: Per M5-09: the four calls, their fields, replies and error kinds are those of docs/decisions/M5-09.md section 2. A `run` naming a visual app launches it with no window here and replies at once with its first tree; Look then acts on it. The PNG is drawn from the tree with the M5-08 standard-library encoder and sent as base64; the base64 encoder uses the standard library only.
 
 ### M5-35 · L3 · Open a window and present frames with winit and softbuffer
 
@@ -1808,15 +1816,17 @@ or merged during review. Ids with a letter were added during review.
 - note: The windowed test skips, and says so, when WAYLAND_DISPLAY is unset; the caller runs it once on the build machine inside the session.
 - note: Per M5-01: closing the window ends the program with status 0 and sends no message.
 - note: Per M5-05: the window opens at 480 by 360 units; a resize lays the tree out again without running the view.
+- note: Per M5-09: the window opens in the process that runs the app, M4-04's runner in dev mode, never in the server. winit builds one event loop per process, so it is built once on its own thread (Wayland's `with_any_thread`) and kept; each launch opens a window in it and an ending app closes only its window. A `run` naming a visual app opens the window when the server has a Wayland display.
 
 ### M5-36 · L3 · Turn window pointer and key events into element input
 
 - needs: M5-18, M5-31, M5-35
 - flags: owner
-- done when: Translation tests pass; a person confirms by hand that clicks and typing work in the counter and a text input.
+- done when: Translation tests pass, Tab and Shift+Tab order and Enter or Space on a focused Button included; a person confirms by hand that clicks, typing, Tab and Space work in the counter and a text input.
 - why this level: Click, focus and key translation with scale factor; the winit side cannot be unit-tested here, only hand-checked.
 - note: Per M5-04: a click is a press and release on the same element; other buttons, double clicks and hover are ignored.
 - note: Per M5-05: pointer positions are divided by the scale factor, rounding down, before hit testing.
+- note: Per M5-08: M5-04 point 1.4 is replaced. Inputs and Buttons take focus; a click moves focus only to an Input; Tab and Shift+Tab move it through Inputs and Buttons in tree order and wrap around; Enter or Space on a focused Button clicks it; Enter in an Input still does nothing. `paka_rt::route` (M5-18) lets only an Input hold focus and drops Tab, so this task changes it. A click never moves focus to a Button, so UI examples are unchanged.
 
 ### M5-37 · L4 · Handle IME preedit and commit in the text input
 
@@ -1824,7 +1834,8 @@ or merged during review. Ids with a letter were added during review.
 - flags: owner, conditional
 - done when: Hand-written preedit and commit sequences pass as tests; a person confirms composing with ibus in the window, recorded in the pull request.
 - why this level: Preedit text must never leak into app state; end to end it can only be checked by hand.
-- note: Only if the owner's M5-08 ruling requires IME in M5.
+- note: Only if the owner's M5-08 ruling requires IME in M5. M5-08 rules IME into M5, so this task runs.
+- note: Per M5-08: keep the trial's two rules. The app sets the IME cursor area only when the cursor moves, and drops a preedit equal to the current one; otherwise each area change makes the input method resend its preedit and the window repaints without end.
 - note: Per M5-03: preedit stays in the element and is never in a message; a commit sends one `on_change`; a change of the app's text moves the preedit with the cursor and does not cancel it. Still dropped if M5-08 rules IME out.
 
 ### M5-38 · L3 · Serve Look from the windowed app
@@ -1833,17 +1844,19 @@ or merged during review. Ids with a letter were added during review.
 - flags: none
 - done when: The M5-34 script passes against windowed apps, and a new frame is presented after each change.
 - why this level: Calls cross into the window's event loop; the screenshot must be redrawn from the tree, not grabbed.
+- note: Per M5-09: a Look call reaches the loop through winit's event-loop proxy and its reply returns over a channel. Look clicks and keys enter the app's one input queue beside the window's own input, in arrival order. The screenshot is drawn at the requested scale, not the window's, at the window's current size in units. The frame for each new tree is requested before the reply is sent.
 - note: The windowed test skips, and says so, when WAYLAND_DISPLAY is unset; the caller runs it once on the build machine inside the session.
 
 ### M5-39 · L4 · Expose the element tree through AccessKit
 
 - needs: M5-08, M5-17, M5-36
 - flags: conditional
-- done when: Tests map hand-built trees to AccessKit nodes with tree-wide unique ids, and an AccessKit click action delivers the button's message.
+- done when: Tests map hand-built trees to AccessKit nodes with tree-wide unique ids; an AccessKit click action delivers the button's message without moving focus, and a Focus action moves focus as Tab would.
 - why this level: Tree-wide ids from sibling keys, incremental updates and focus; the Linux bridge fails silently.
-- note: Only if the owner's M5-08 ruling requires screen-reader support.
+- note: Only if the owner's M5-08 ruling requires screen-reader support. M5-08 rules it into M5, so this task runs.
 - note: Per M5-02: the runtime keeps a table from path ids to AccessKit numbers that stays stable while the id lives.
 - note: Per M5-04: a screen-reader ruling in M5-08 reopens the focus rule, since buttons must then be reachable from the keyboard.
+- note: Per M5-08: the focus rule is the one M5-36 builds. An AccessKit Focus action follows the same rule as Tab; an AccessKit Click on a Button sends its message without moving focus.
 
 ### M5-40 · L4 · Script an AT-SPI and Orca check
 
@@ -1851,7 +1864,8 @@ or merged during review. Ids with a letter were added during review.
 - flags: conditional
 - done when: One script finds both samples' buttons and input by role and name over AT-SPI and in Orca's debug log; it fails with the bridge disabled.
 - why this level: No upstream harness exists; the check must fail when the bridge breaks silently, without being flaky.
-- note: Only if the owner's M5-08 ruling requires screen-reader support. The windowed test skips, and says so, when WAYLAND_DISPLAY is unset; the caller runs it once on the build machine inside the session.
+- note: Only if the owner's M5-08 ruling requires screen-reader support; M5-08 rules it into M5, so this task runs. The windowed test skips, and says so, when WAYLAND_DISPLAY is unset; the caller runs it once on the build machine inside the session.
+- note: Per M5-08: the script runs on a private session bus (`dbus-run-session`) with accessibility switched on there, as the trial did; the desktop's setting is never changed. With the switch off the bridge stays silent, so the check must fail then, not pass. Passing on both samples is part 8 of the M5 exit check.
 
 ### M5-41 · L4 · Add views, elements, keys, UI examples and migrate to the language reference
 
@@ -1871,7 +1885,7 @@ or merged during review. Ids with a letter were added during review.
 
 - needs: M5-23, M5-25b, M5-26, M5-27, M5-29, M5-30, M5-37, M5-38, M5-40, M5-41
 - flags: owner
-- done when: On the build machine the script exits 0 for every exit-check part, including any clause the M5-08 ruling added; the owner watches the windowed parts once.
+- done when: On the build machine the script exits 0 for every exit-check part, the M5-40 script included; the owner watches the windowed parts and does the IME check once.
 - why this level: Drives windowed and windowless apps, edits and Look in one repeatable script; includes a view that traps on purpose.
 - note: Per M5-07: part 3 is met by the Counter edits in docs/decisions/M5-07.md; since the accepted reset installs the change, the script restores the old type or adds a second field before the migrate part.
 

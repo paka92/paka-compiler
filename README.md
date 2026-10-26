@@ -40,7 +40,13 @@ A program touches only what its `grants` allow; this one may write to the consol
 ## Build
 
 Needs Rust 1.96.1 (pinned in `rust-toolchain.toml`) and, for `paka build`, `clang` on the path.
-Standard library only; no third-party crates.
+Outside crates are vendored in `vendor/`, each listed in `.cargo/approved-crates.txt`, and build
+offline; building needs no system package beyond the toolchain.
+
+Visual apps, being built, run in a Wayland session. A window loads `libwayland-client`,
+`libwayland-cursor` and `libxkbcommon` at run time (Debian and Ubuntu: `libwayland-client0`,
+`libwayland-cursor0`, `libxkbcommon0`). The font is Noto Sans Regular, shipped in `gui/fonts/`
+under the SIL Open Font License 1.1.
 
 ```
 cargo build --release --locked
@@ -83,6 +89,7 @@ cargo run --release -p harness --bin metrics -- experiment/runs/counted <rulings
 paka/          the command: lexer, parser, checker, interpreter, IR emitter
 paka-rt/       runtime for built programs
 installer/     loads compiled dev-mode code into executable memory
+gui/           window, drawing and accessibility for visual apps, and the shipped font
 json/          the JSON reader and writer the command and the harness share
 harness/       experiment harness: sandboxed runner, trial loop, batch and metrics commands
 spec/          language reference and the milestone 1 subset
