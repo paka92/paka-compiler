@@ -327,7 +327,7 @@ pub(super) fn new_text(ctx: &mut Context, s: &str) -> Option<TextWords> {
 /// # Safety
 ///
 /// `at` is the address of a String's words, whose bytes stay live and unchanged while it is used.
-pub(super) unsafe fn as_str<'a>(at: u64) -> &'a str {
+pub(crate) unsafe fn as_str<'a>(at: u64) -> &'a str {
     // SAFETY: the caller vouches `at` holds a String's words.
     let words = unsafe { &*ptr::with_exposed_provenance::<TextWords>(at as usize) };
     if words.bytes == 0 {

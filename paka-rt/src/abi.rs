@@ -16,6 +16,7 @@ use std::{ptr, slice};
 
 pub mod dev;
 pub mod heap;
+pub(crate) mod shown;
 pub mod table;
 
 /// The longest string: 2^63 - 1 bytes.
@@ -246,12 +247,16 @@ pub unsafe extern "C" fn paka_rt1_run(
     run(name, update, start, grants)
 }
 
-/// What runs a headless app's compiled code (ABI section 13): the handler for `id` `HANDLER`,
-/// the state builder for `STATE`, otherwise answer function `id`, each on argument addresses.
+/// What runs an app's compiled code (ABI sections 13 and 14): the handler for `id` `HANDLER`,
+/// the state builder for `STATE`, the view for `VIEW`, otherwise answer function `id`, each on
+/// argument addresses.
 pub type Call = extern "C" fn(id: u64, a: *mut u8, b: *mut u8, c: *mut u8) -> i32;
 
 pub const HANDLER: u64 = u64::MAX;
 pub const STATE: u64 = u64::MAX - 1;
+pub const VIEW: u64 = u64::MAX - 2;
+/// The start word of an app with no start message.
+pub const NO_START: u64 = u64::MAX;
 
 /// A type's record, null when it owns nothing, and its size in bytes.
 #[repr(C)]
@@ -260,14 +265,14 @@ pub struct Typed {
     pub size: u64,
 }
 
-/// A headless app as compiled code gives it (ABI section 13).
+/// An app as compiled code gives it (ABI sections 13 and 14).
 #[repr(C)]
 pub struct App {
     pub name: Str,
     pub call: Option<Call>,
     /// Bit 0 is `Console`, bit 1 `ReadFiles`, bit 2 `WriteFiles`.
     pub grants: u64,
-    /// The start variant's tag.
+    /// The start variant's tag, or `NO_START`.
     pub start: u64,
     /// Its field names, joined by `, `.
     pub fields: Str,
@@ -275,13 +280,17 @@ pub struct App {
     /// 1 when the app has a state, of type `state`.
     pub stateful: u64,
     pub state: Typed,
-    /// The record of the handler's `List<Effect<Msg>>`.
+    /// The record of the handler's `List<Effect<Msg>>`; null when it returns none.
     pub effects: *const u64,
+    /// 1 when the app has a view.
+    pub visual: u64,
+    /// What a drawn message is shown by (section 14).
+    pub types: Str,
 }
 
-const _: () = assert!(size_of::<App>() == 13 * 8 && align_of::<App>() == 8);
+const _: () = assert!(size_of::<App>() == 16 * 8 && align_of::<App>() == 8);
 
-/// The entry of a headless app's `main` (ABI section 13).
+/// The entry of an app's `main` (ABI sections 13 and 14).
 ///
 /// # Safety
 ///

@@ -6,6 +6,8 @@ use paka_rt::abi::table::{APP, RUN};
 
 mod code;
 pub mod lint;
+#[cfg(test)]
+mod views;
 
 /// What the back end builds: an `update` whose body gives a list of effects, after statements
 /// that may call other functions.
@@ -125,12 +127,11 @@ define i32 @main() {{
     )
 }
 
-/// The IR text of a headless app the M1 view cannot hold, on the entry of docs/abi/m1.md
-/// section 13; `None` for a visual app, one granted foreign effects, or what the back end
-/// cannot build.
+/// The IR text of an app the M1 view cannot hold, on the entry of docs/abi/m1.md sections 13
+/// and 14; `None` for one granted foreign effects, or what the back end cannot build.
 pub fn app(core: &mut Program) -> Option<String> {
     let app = core.app.as_ref()?;
-    if app.view.is_some() || !app.foreign.is_empty() {
+    if !app.foreign.is_empty() {
         return None;
     }
     let code = code::lower_app(core)?;

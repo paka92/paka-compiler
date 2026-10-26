@@ -1,10 +1,12 @@
-//! The run loop of a headless app in release (ABI section 13): the dev run loop, its calls going
+//! The run loop of an app in release (ABI sections 13 and 14): the dev run loop, its calls going
 //! to compiled code through the app's `call`, on the release heap.
 
-use crate::abi::dev::app::{self, Stopped, serve};
+use crate::abi::dev::app::{self, Call, Stopped, serve};
+use crate::abi::dev::windowless::{Code, Windowless};
 use crate::abi::dev::{Context, MEMORY};
 use crate::abi::heap::lend;
-use crate::abi::{App, HANDLER, STATE, Trapped, Typed, take_trap};
+use crate::abi::shown::Shapes;
+use crate::abi::{App, HANDLER, NO_START, STATE, Trapped, Typed, VIEW, take_trap};
 use crate::effects::{End, Grant, Host, arguments};
 use crate::rt::{Fd1, INTERNAL_ERROR, STOPPED, on_runner};
 use std::collections::BTreeSet;
@@ -36,6 +38,9 @@ fn served(name: &str, app: &App, args: &[OsString]) -> End {
     let Some(Ok(fields)) = app.fields.bytes().map(str::from_utf8) else {
         return internal(name, "bad field names");
     };
+    let Some(Ok(types)) = app.types.bytes().map(str::from_utf8) else {
+        return internal(name, "bad types");
+    };
     let fields: Vec<&str> = fields.split(", ").filter(|f| !f.is_empty()).collect();
     let start = match arguments(name, &fields, args) {
         Ok(start) => start,
@@ -51,10 +56,10 @@ fn served(name: &str, app: &App, args: &[OsString]) -> End {
         grants: &grants,
         update: HANDLER as usize,
         state,
-        start: Some(app.start),
+        start: (app.start != NO_START).then_some(app.start),
         message: typed(&app.message),
-        effects: Some(app.effects.expose_provenance() as u64),
-        view: None,
+        effects: (!app.effects.is_null()).then(|| app.effects.expose_provenance() as u64),
+        view: (app.visual != 0).then_some(VIEW as usize),
     };
     on_runner(|| {
         let mut ctx = Context::new(u64::MAX);
@@ -66,13 +71,16 @@ fn served(name: &str, app: &App, args: &[OsString]) -> End {
             broken |= failed;
             status
         };
-        let served = serve(
-            &mut ctx,
-            &looped,
-            &start,
-            &mut call,
-            &mut Host(Fd1::default()),
-        );
+        let served = match looped.view {
+            Some(_) => drawn(&mut ctx, &looped, &start, &mut call, types),
+            None => serve(
+                &mut ctx,
+                &looped,
+                &start,
+                &mut call,
+                &mut Host(Fd1::default()),
+            ),
+        };
         let clean = ctx.heap.leaks().is_empty() && ctx.heap.faults().is_empty();
         match served {
             _ if broken => internal(name, "runtime panicked"),
@@ -82,6 +90,40 @@ fn served(name: &str, app: &App, args: &[OsString]) -> End {
             Err(Stopped::Time) => internal(name, "a call returned a non-zero status"),
         }
     })
+}
+
+/// Until a visual app has its window (M6-18): launches it as the dev loop does with no window and
+/// writes its first tree to standard output; a trap in its handler or view stops it.
+fn drawn(
+    ctx: &mut Context,
+    app: &app::App,
+    start: &[String],
+    call: &mut Call,
+    types: &str,
+) -> Result<End, Stopped> {
+    let shapes = Shapes::new(types);
+    let mut show = |t, at| shapes.show(t, at);
+    let code = Code {
+        call,
+        show: &mut show,
+        at: &|_| String::new(),
+    };
+    let mut world = Host(Fd1::default());
+    let ui = Windowless::start(ctx, code, app, start, &mut world);
+    let (end, trap) = (ui.end.clone(), ui.traps.last().map(|t| t.kind));
+    let tree = ui.drawing.root.to_string();
+    drop(ui);
+    match (end, trap) {
+        (Some(end), _) => end,
+        (None, Some(kind)) => {
+            ctx.trap.kind = kind;
+            Err(Stopped::Trap)
+        }
+        (None, None) => {
+            let _ = io::stdout().write_all(tree.as_bytes());
+            Ok((0, String::new()))
+        }
+    }
 }
 
 /// The grants of `word`'s bits, or `None` when an unknown bit is set.

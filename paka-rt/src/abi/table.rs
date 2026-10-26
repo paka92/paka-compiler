@@ -48,9 +48,22 @@ pub const TEXT: &str = "declare i32 @paka_rt1_text(i64, i64, i64, i64, ptr, ptr,
 pub const COPY: &str = "declare i32 @paka_rt1_copy(ptr, ptr, ptr) nounwind";
 pub const DROP: &str = "declare void @paka_rt1_drop(ptr, ptr) nounwind";
 pub const MAP: &str = "declare i32 @paka_rt1_map(i64, ptr, i64, ptr, i64, ptr, ptr, i64) nounwind";
-/// A headless app's entry (M6-17).
+/// An app's entry (M6-17).
 pub const APP: &str = "declare i32 @paka_rt1_app(ptr)";
-pub const ENTRIES: &[&str] = &[RUN, TRAP, STACK_LIMIT, ALLOC, TEXT, COPY, DROP, MAP, APP];
+/// A view's op (M6-18a).
+pub const VIEW: &str = "declare i32 @paka_rt1_view(i64, i64, i64, i64, i64, i64) nounwind";
+pub const ENTRIES: &[&str] = &[
+    RUN,
+    TRAP,
+    STACK_LIMIT,
+    ALLOC,
+    TEXT,
+    COPY,
+    DROP,
+    MAP,
+    APP,
+    VIEW,
+];
 
 #[cfg(test)]
 mod tests {
@@ -58,7 +71,7 @@ mod tests {
     use super::super::dev::records::{Part, Records, Spec, rt_copy, rt_drop};
     use super::super::dev::{Context, Heap};
     use super::super::heap::{
-        paka_rt1_alloc, paka_rt1_copy, paka_rt1_drop, paka_rt1_map, paka_rt1_text,
+        paka_rt1_alloc, paka_rt1_copy, paka_rt1_drop, paka_rt1_map, paka_rt1_text, paka_rt1_view,
     };
     use super::super::{
         App, Update, paka_rt1_app, paka_rt1_run, paka_rt1_stack_limit, paka_rt1_trap,
@@ -110,6 +123,7 @@ mod tests {
     declared!(A);
     declared!(A, B);
     declared!(A, B, C);
+    declared!(A, B, C, D, E, F);
     declared!(A, B, C, D, E, F, G);
     declared!(A, B, C, D, E, F, G, H);
 
@@ -122,14 +136,16 @@ mod tests {
         let copy = paka_rt1_copy as unsafe extern "C" fn(_, _, _) -> _;
         let drop = paka_rt1_drop as unsafe extern "C" fn(_, _);
         let map = paka_rt1_map as unsafe extern "C" fn(_, _, _, _, _, _, _, _) -> _;
+        let view = paka_rt1_view as unsafe extern "C" fn(_, _, _, _, _, _) -> _;
         let made = [
             alloc.declared("paka_rt1_alloc"),
             text.declared("paka_rt1_text"),
             copy.declared("paka_rt1_copy"),
             drop.declared("paka_rt1_drop"),
             map.declared("paka_rt1_map"),
+            view.declared("paka_rt1_view"),
         ];
-        let lines = [ALLOC, TEXT, COPY, DROP, MAP];
+        let lines = [ALLOC, TEXT, COPY, DROP, MAP, VIEW];
         let app = paka_rt1_app as unsafe extern "C" fn(&'static App) -> _;
         assert_eq!(APP, app.declared("paka_rt1_app"));
         for (line, made) in lines.iter().zip(made) {

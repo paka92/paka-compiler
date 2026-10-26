@@ -31,6 +31,7 @@ mod owned;
 mod rows;
 mod sort;
 mod text;
+mod view;
 
 /// The largest frame inlined, and the largest built: the runtime keeps 1 MiB under its limit.
 const INLINE_FRAME: usize = 4 << 10;
@@ -49,24 +50,23 @@ pub fn lower(core: &mut Program, update: usize, computed: bool) -> Option<(Strin
     Some((body, module.rest(core.fns[update].site)?))
 }
 
-/// The IR of a headless app beyond the M1 view (ABI section 13): every function its handler and
-/// state reach, `@app.call`, and the `@app` constant `paka_rt1_app` takes; `None` when any of it
-/// is beyond this lowering.
+/// The IR of an app beyond the M1 view (ABI sections 13 and 14): every function its handler,
+/// state and view reach, `@app.call`, and the `@app` constant `paka_rt1_app` takes; `None` when
+/// any of it is beyond this lowering.
 pub fn lower_app(core: &mut Program) -> Option<String> {
     let layouts = Layouts::new(core);
     let core = &*core;
     let (app, mut module) = (core.app.as_ref()?, Module::new(core, layouts, false));
     let update = &core.fns[app.update];
-    let (msg, effects) = (update.params.last()?.ty, update.result?);
-    let string = core.types.iter().position(|t| *t == Type::String)?;
-    let answer = core
-        .types
-        .iter()
-        .position(|t| *t == Type::Fn(vec![string], Some(msg)))?;
+    let msg = update.params.last()?.ty;
+    let string = core.types.iter().position(|t| *t == Type::String);
+    let answer = string.and_then(|s| {
+        let answer = Type::Fn(vec![s], Some(msg));
+        core.types.iter().position(|t| *t == answer)
+    });
     let Type::Enum(e) = core.types[msg] else {
         return None;
     };
-    let start = app.start?;
     module.seen.insert(app.update);
     let mut defines = module.function(update, None)?;
     let state = app.state.as_ref().map(|value| Fn {
@@ -84,10 +84,28 @@ pub fn lower_app(core: &mut Program) -> Option<String> {
     if let Some(f) = &state {
         defines += &module.function(f, None)?;
     }
-    module.dispatched.insert(answer);
-    let handler = ["ptr %a", "ptr %b", "ptr %c"][..=update.params.len()].join(", ");
-    let fields = core.enums[e].variants[start].fields.iter();
+    module.dispatched.extend(answer);
+    let args = ["ptr %a", "ptr %b", "ptr %c"];
+    let handler = args[..update.params.len() + usize::from(update.result.is_some())].join(", ");
+    let view = match app.view {
+        Some(id) => {
+            let view = &core.fns[id];
+            let by_address = view.params.iter().all(|p| module.ir(p.ty) == Some("ptr"));
+            let args = args.get(..=view.params.len()).filter(|_| by_address)?;
+            module.want(id);
+            format!(
+                "%w = call i32 @p_{}({})\n  ret i32 %w",
+                view.name,
+                args.join(", ")
+            )
+        }
+        None => "ret i32 1".into(),
+    };
+    let fields = app
+        .start
+        .map_or(&[][..], |s| &core.enums[e].variants[s].fields[..]);
     let fields = fields
+        .iter()
         .map(|f| f.name.as_str())
         .collect::<Vec<_>>()
         .join(", ");
@@ -102,11 +120,11 @@ pub fn lower_app(core: &mut Program) -> Option<String> {
         .first()
         .filter(|_| state.is_some())
         .map(|p| p.ty);
-    let words = [
+    let mut words = vec![
         format!("ptr @name, i64 {}", app.name.len()),
         "ptr @app.call".into(),
         format!("i64 {}", grants(&app.grants)),
-        format!("i64 {start}"),
+        format!("i64 {}", app.start.map_or(u64::MAX, |s| s as u64)),
         match fields.is_empty() {
             true => "ptr null, i64 0".into(),
             false => format!("ptr @fields, i64 {}", fields.len()),
@@ -117,26 +135,46 @@ pub fn lower_app(core: &mut Program) -> Option<String> {
             Some(t) => typed(&mut module, t),
             None => "ptr null, i64 0".into(),
         },
-        format!("ptr {}", record(&mut module, effects)),
+        format!(
+            "ptr {}",
+            update
+                .result
+                .map_or("null".into(), |t| record(&mut module, t))
+        ),
+        format!("i64 {}", u64::from(app.view.is_some())),
     ];
+    let rest = module.rest(update.site)?;
+    let shapes = app.view.map(|_| module.shapes());
+    words.push(match &shapes {
+        Some(text) => format!("ptr @types, i64 {}", text.len()),
+        None => "ptr null, i64 0".into(),
+    });
     let mut code = constant("name", &app.name);
     if !fields.is_empty() {
         code += &constant("fields", &fields);
     }
+    if let Some(text) = &shapes {
+        code += &constant("types", text);
+    }
+    let answer = match answer {
+        Some(t) => format!("%v = call i32 @v{t}(i64 %id, ptr %a, ptr %b)\n  ret i32 %v"),
+        None => "ret i32 1".into(),
+    };
     code += &format!(
-        "@app = private constant {{ ptr, i64, ptr, i64, i64, ptr, i64, ptr, i64, i64, ptr, i64, ptr }} {{ {} }}
+        "@app = private constant {{ ptr, i64, ptr, i64, i64, ptr, i64, ptr, i64, i64, ptr, i64, ptr, i64, ptr, i64 }} {{ {} }}
 
 define internal i32 @app.call(i64 %id, ptr %a, ptr %b, ptr %c) {{
 entry:
-  switch i64 %id, label %answer [ i64 -1, label %handler i64 -2, label %state ]
+  switch i64 %id, label %answer [ i64 -1, label %handler i64 -2, label %state i64 -3, label %view ]
 handler:
   %h = call i32 @p_{}({handler})
   ret i32 %h
 state:
   {}
+view:
+  {view}
 answer:
-  %v = call i32 @v{answer}(i64 %id, ptr %a, ptr %b)
-  ret i32 %v
+  {answer}
 }}
 ",
         words.join(", "),
@@ -146,7 +184,7 @@ answer:
             None => "ret i32 1",
         },
     );
-    Some(code + &defines + &module.rest(update.site)?)
+    Some(code + &defines + &rest)
 }
 
 /// The grants word of ABI section 13: bit 0 `Console`, bit 1 `ReadFiles`, bit 2 `WriteFiles`.
@@ -206,6 +244,7 @@ impl<'a> Module<'a> {
                         | Type::Result(..)
                         | Type::Effect(_)
                         | Type::Fn(..)
+                        | Type::View(_)
                 )
             })
             .collect();
@@ -394,8 +433,8 @@ impl<'a> Module<'a> {
     fn ir(&self, t: Ty) -> Option<&'static str> {
         match self.core.types[t] {
             _ if !self.held[t] => None,
-            // A function value is its id.
-            Type::Int | Type::Fn(..) => Some("i64"),
+            // A function value is its id; a view's value means nothing.
+            Type::Int | Type::Fn(..) | Type::View(_) => Some("i64"),
             Type::Bool => Some("i1"),
             Type::Float => Some("double"),
             _ => Some("ptr"),
@@ -998,6 +1037,7 @@ impl Body<'_, '_> {
                 };
             }
             ExprKind::If(cond, then, otherwise) => return self.choose(e, cond, then, otherwise),
+            ExprKind::Root(_) | ExprKind::Element(..) | ExprKind::Child(_) => return self.view(e),
             _ => return None,
         };
         Some(Some(v))

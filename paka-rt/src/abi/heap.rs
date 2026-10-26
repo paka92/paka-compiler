@@ -2,7 +2,7 @@
 //! copy and free blocks and to run the String rows. They work on one dev `Context` per call of
 //! `update`, on the thread that makes it, so every block is in its ledger.
 
-use super::dev::{BAD_CONVERSION, Context, Heap, MEMORY, OUT_OF_BOUNDS, map, records, words};
+use super::dev::{BAD_CONVERSION, Context, Heap, MEMORY, OUT_OF_BOUNDS, map, records, view, words};
 use super::{List, Str, Update, record_kind};
 use std::cell::{Cell, RefCell};
 use std::panic::{AssertUnwindSafe, catch_unwind};
@@ -169,6 +169,19 @@ pub unsafe extern "C" fn paka_rt1_drop(record: *const u64, at: *mut u8) {
     let [record, at] = [record.expose_provenance(), at.expose_provenance()].map(|a| a as u64);
     // SAFETY: the caller vouches for the record and the value.
     with((), |ctx| unsafe { records::rt_drop(ctx, record, at) })
+}
+
+/// Appends view op `op` and its operands to the tree being drawn (ABI section 14); 1 when the
+/// heap refuses a message's copy.
+///
+/// # Safety
+///
+/// The operands are as `rt_view` asks.
+// SAFETY: as for `paka_rt1_run`.
+#[unsafe(no_mangle)]
+pub unsafe extern "C" fn paka_rt1_view(op: u64, a: u64, b: u64, c: u64, d: u64, e: u64) -> i32 {
+    // SAFETY: the caller vouches for the operands.
+    with(1, |ctx| unsafe { view::rt_view(ctx, op, a, b, c, d, e) })
 }
 
 #[cfg(test)]

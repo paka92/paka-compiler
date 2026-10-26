@@ -2091,6 +2091,8 @@ or merged during review. Ids with a letter were added during review.
 - why this level: The runtime decodes trees with unsafe code; a layout mismatch is silent.
 - note: The paper's counter keeps ??reset and stays refused by `paka build` (M6-04). Release never lowers a placeholder.
 - note: Per M5-02: release trees carry the same place numbers as the interpreter's.
+- status: done
+- note: Done: a view lowers to calls of one new entry, `paka_rt1_view`, which writes each node as it is made in the dev back end's view ops, so the compiler and the runtime share one tree layout (docs/abi/m1.md section 14). The app constant grows to 16 words: a visual flag, the shapes the runtime shows a node's message by, and `@app.call` id -3 for the view; an app may now have no start message and no effects. Until M6-18 gives it a window, a visual release app runs the dev loop with no window, writes its first tree to standard output and exits 0, a trap ending it with status 3. paka/src/llvm/views.rs builds and links each case itself, as `paka build` still refuses visual apps: the hole-free counter matches its hand-written tree at counts 0 and 3 in both back ends, the to-do sample and a variant with one done row match the interpreter, a negative gap returns trap status, and a Col planted as a Row is caught. `views` stays in tests/conformance/release-skip until `paka build` takes visual apps (M6-18).
 
 ### M6-19 · L4 · Shape loop IR so bounds and overflow checks are proven away
 
