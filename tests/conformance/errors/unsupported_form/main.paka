@@ -1,11 +1,21 @@
-enum Msg { Start }
+foreign Sum {
+  source: "sum.c"
+  header: "sum.h"
+  Add(a: Int) -> Int = "sum_add"
+}
 
-fn update(msg: Msg) -> List<Effect<Msg>> {
-  [Print("done"), ExitWith(7)]
+enum Msg { Start, Got(n: Int), Failed(why: String) }
+
+fn update(m: Msg) -> List<Effect<Msg>> {
+  match m {
+    Start => [Add(1, then: Got, or: Failed)]
+    Got(n) => [Print("got {n}"), Exit]
+    Failed(why) => [Print(why), Exit]
+  }
 }
 
 app errors {
   start: Start
   update: update
-  grants: [Console]
+  grants: [Console, Sum]
 }

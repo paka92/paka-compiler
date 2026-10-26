@@ -149,8 +149,8 @@ const CASES: [Case; 17] = [
     case("unused_definitions", light, 1),
 ];
 
-/// The cases the milestone 1 back end cannot build (a state, a start message with fields,
-/// `ExitWith`); the interpreter alone runs them.
+/// The cases beyond the M1 entry (a state, a start message with fields, `ExitWith`), built on
+/// the headless one (ABI section 13).
 const BEYOND: [&str; 10] = [
     "exit_with_computed_four",
     "exit_with_computed_high",

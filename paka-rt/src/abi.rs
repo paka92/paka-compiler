@@ -9,7 +9,7 @@
 //! only by a constructor here that takes a `'static` reference, by `Str::from_raw` under its
 //! contract, or by compiled code under the contract of `paka_rt1_run`.
 
-use crate::{Decoded, Refused, run};
+use crate::{Decoded, Refused, run, run_app};
 use std::cell::Cell;
 use std::sync::atomic::AtomicU64;
 use std::{ptr, slice};
@@ -244,6 +244,54 @@ pub unsafe extern "C" fn paka_rt1_run(
     // `from_raw` asks for.
     let name = unsafe { Str::from_raw(name, name_len) };
     run(name, update, start, grants)
+}
+
+/// What runs a headless app's compiled code (ABI section 13): the handler for `id` `HANDLER`,
+/// the state builder for `STATE`, otherwise answer function `id`, each on argument addresses.
+pub type Call = extern "C" fn(id: u64, a: *mut u8, b: *mut u8, c: *mut u8) -> i32;
+
+pub const HANDLER: u64 = u64::MAX;
+pub const STATE: u64 = u64::MAX - 1;
+
+/// A type's record, null when it owns nothing, and its size in bytes.
+#[repr(C)]
+pub struct Typed {
+    pub record: *const u64,
+    pub size: u64,
+}
+
+/// A headless app as compiled code gives it (ABI section 13).
+#[repr(C)]
+pub struct App {
+    pub name: Str,
+    pub call: Option<Call>,
+    /// Bit 0 is `Console`, bit 1 `ReadFiles`, bit 2 `WriteFiles`.
+    pub grants: u64,
+    /// The start variant's tag.
+    pub start: u64,
+    /// Its field names, joined by `, `.
+    pub fields: Str,
+    pub message: Typed,
+    /// 1 when the app has a state, of type `state`.
+    pub stateful: u64,
+    pub state: Typed,
+    /// The record of the handler's `List<Effect<Msg>>`.
+    pub effects: *const u64,
+}
+
+const _: () = assert!(size_of::<App>() == 13 * 8 && align_of::<App>() == 8);
+
+/// The entry of a headless app's `main` (ABI section 13).
+///
+/// # Safety
+///
+/// `app`'s strings are as ABI section 2 defines them, its records are M4-05 section 10's for its
+/// types, and `call` keeps section 13 for every call the run loop makes.
+// SAFETY: as for `paka_rt1_run`.
+#[unsafe(no_mangle)]
+pub unsafe extern "C" fn paka_rt1_app(app: &App) -> i32 {
+    ignore_signals();
+    run_app(app)
 }
 
 /// The lowest stack address compiled code may reach before it traps `stack`; 0 turns the check

@@ -10,7 +10,7 @@ use std::panic::{AssertUnwindSafe, catch_unwind};
 use std::sync::atomic::Ordering;
 
 /// The status of a stop that is the program's doing (ABI section 7).
-const STOPPED: i32 = 3;
+pub(crate) const STOPPED: i32 = 3;
 
 /// The status of an internal error (ABI section 7).
 pub const INTERNAL_ERROR: i32 = 4;
@@ -212,7 +212,7 @@ fn performed(out: &mut dyn Write, list: &List, grants: Grants) -> Result<(), Sto
 
 /// Runs `f` on a new thread with a `RUNNER_STACK` stack, the stack limit `MARGIN` above its
 /// bottom; a local's address stands for the top.
-fn on_runner<R: Send>(f: impl FnOnce() -> R + Send) -> R {
+pub(crate) fn on_runner<R: Send>(f: impl FnOnce() -> R + Send) -> R {
     std::thread::scope(|s| {
         let runner = std::thread::Builder::new().stack_size(RUNNER_STACK);
         let run = runner.spawn_scoped(s, || {

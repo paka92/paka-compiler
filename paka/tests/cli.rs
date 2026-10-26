@@ -262,10 +262,14 @@ fn run_of_an_interpolated_program_prints_it() {
 }
 
 #[test]
-fn build_of_a_program_beyond_the_m1_subset_is_unsupported_form() {
-    let source = std::fs::read_to_string(LIGHT).unwrap();
-    let file = std::env::temp_dir().join(format!("paka-exit-build-{}.paka", std::process::id()));
-    std::fs::write(&file, source.replace(", Exit]", ", ExitWith(7)]")).unwrap();
+fn build_of_a_foreign_app_is_unsupported_form() {
+    let foreign = concat!(
+        env!("CARGO_MANIFEST_DIR"),
+        "/../tests/conformance/apps/foreign_without_host/main.paka"
+    );
+    let source = std::fs::read_to_string(foreign).unwrap();
+    let file = std::env::temp_dir().join(format!("paka-foreign-build-{}.paka", std::process::id()));
+    std::fs::write(&file, source).unwrap();
     let output = file.with_extension("out");
     let out = paka(&[
         "build",

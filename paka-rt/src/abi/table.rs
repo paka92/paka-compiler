@@ -48,7 +48,9 @@ pub const TEXT: &str = "declare i32 @paka_rt1_text(i64, i64, i64, i64, ptr, ptr,
 pub const COPY: &str = "declare i32 @paka_rt1_copy(ptr, ptr, ptr) nounwind";
 pub const DROP: &str = "declare void @paka_rt1_drop(ptr, ptr) nounwind";
 pub const MAP: &str = "declare i32 @paka_rt1_map(i64, ptr, i64, ptr, i64, ptr, ptr, i64) nounwind";
-pub const ENTRIES: &[&str] = &[RUN, TRAP, STACK_LIMIT, ALLOC, TEXT, COPY, DROP, MAP];
+/// A headless app's entry (M6-17).
+pub const APP: &str = "declare i32 @paka_rt1_app(ptr)";
+pub const ENTRIES: &[&str] = &[RUN, TRAP, STACK_LIMIT, ALLOC, TEXT, COPY, DROP, MAP, APP];
 
 #[cfg(test)]
 mod tests {
@@ -58,7 +60,9 @@ mod tests {
     use super::super::heap::{
         paka_rt1_alloc, paka_rt1_copy, paka_rt1_drop, paka_rt1_map, paka_rt1_text,
     };
-    use super::super::{Update, paka_rt1_run, paka_rt1_stack_limit, paka_rt1_trap};
+    use super::super::{
+        App, Update, paka_rt1_app, paka_rt1_run, paka_rt1_stack_limit, paka_rt1_trap,
+    };
     use super::*;
     use std::slice;
     use std::sync::atomic::AtomicU64;
@@ -81,6 +85,9 @@ mod tests {
     }
     impl<T> Ir for *mut T {
         const IR: &str = "ptr";
+    }
+    impl<T> Ir for &'static T {
+        const IR: &'static str = "ptr";
     }
     impl Ir for Option<Update> {
         const IR: &str = "ptr";
@@ -123,6 +130,8 @@ mod tests {
             map.declared("paka_rt1_map"),
         ];
         let lines = [ALLOC, TEXT, COPY, DROP, MAP];
+        let app = paka_rt1_app as unsafe extern "C" fn(&'static App) -> _;
+        assert_eq!(APP, app.declared("paka_rt1_app"));
         for (line, made) in lines.iter().zip(made) {
             assert_eq!(*line, format!("{made} nounwind"));
         }

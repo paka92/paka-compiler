@@ -11,8 +11,8 @@
 
 use super::constant;
 use crate::core_form::{
-    Arg, Arith, Arm, Bin, Callee, Cmp, Compound, Effect, Expr, ExprKind, FloatArith, Fn, FnRef,
-    Local, Place, Program, Root, Site, Step, Stmt, Tag, Ty, Type, Un, Walk,
+    Arg, Arith, Arm, Bin, Block, Callee, Cmp, Compound, Effect, Expr, ExprKind, FloatArith, Fn,
+    FnRef, Grant, Local, Place, Program, Root, Site, Step, Stmt, Tag, Ty, Type, Un, Walk,
 };
 use paka::builtins::ROWS;
 use paka::layout::{self, Layouts};
@@ -43,89 +43,120 @@ const MAX_FRAME: usize = 256 << 10;
 pub fn lower(core: &mut Program, update: usize, computed: bool) -> Option<(String, String)> {
     let layouts = Layouts::new(core);
     let core = &*core;
-    let mut held: Vec<bool> = (core.types.iter())
-        .map(|t| {
-            matches!(
-                t,
-                Type::Int
-                    | Type::Bool
-                    | Type::Float
-                    | Type::String
-                    | Type::List(_)
-                    | Type::Map(..)
-                    | Type::Record(_)
-                    | Type::Enum(_)
-                    | Type::Option(_)
-                    | Type::Result(..)
-                    | Type::Effect(_)
-                    | Type::Fn(..)
-            )
-        })
-        .collect();
-    // A type is held when every field or item it has is; a cycle holds unless something on it is
-    // not.
-    while let Some(t) = (0..held.len()).find(|&t| {
-        let fields = layouts.get(t).alternatives.iter().flatten();
-        let item = match &core.types[t] {
-            Type::List(item) => held[*item],
-            Type::Map(k, v) => held[*k] && held[*v],
-            Type::Fn(params, result) => params.iter().chain(result).all(|&p| held[p]),
-            _ => true,
-        };
-        held[t] && !(item && fields.clone().all(|p| held[p.ty]))
-    }) {
-        held[t] = false;
-    }
-    let mut module = Module {
-        core,
-        specs: layouts.specs(),
-        layouts,
-        held,
-        texts: BTreeMap::new(),
-        records: BTreeMap::new(),
-        intrinsics: BTreeMap::new(),
-        wanted: vec![],
-        seen: BTreeSet::from([update]),
-        equalities: vec![],
-        compared: BTreeSet::new(),
-        fn_values: vec![],
-        dispatched: BTreeSet::new(),
-        sorts: BTreeSet::new(),
-    };
+    let mut module = Module::new(core, layouts, true);
+    module.seen.insert(update);
     let body = module.function(&core.fns[update], Some(computed))?;
-    let mut defines = String::new();
-    loop {
-        if let Some(id) = module.wanted.pop() {
-            defines += &module.function(&core.fns[id], None)?;
-        } else if let Some(t) = module.equalities.pop() {
-            defines += &module.body(core.fns[update].site, None).equality(t);
-        } else {
-            break;
-        }
+    Some((body, module.rest(core.fns[update].site)?))
+}
+
+/// The IR of a headless app beyond the M1 view (ABI section 13): every function its handler and
+/// state reach, `@app.call`, and the `@app` constant `paka_rt1_app` takes; `None` when any of it
+/// is beyond this lowering.
+pub fn lower_app(core: &mut Program) -> Option<String> {
+    let layouts = Layouts::new(core);
+    let core = &*core;
+    let (app, mut module) = (core.app.as_ref()?, Module::new(core, layouts, false));
+    let update = &core.fns[app.update];
+    let (msg, effects) = (update.params.last()?.ty, update.result?);
+    let string = core.types.iter().position(|t| *t == Type::String)?;
+    let answer = core
+        .types
+        .iter()
+        .position(|t| *t == Type::Fn(vec![string], Some(msg)))?;
+    let Type::Enum(e) = core.types[msg] else {
+        return None;
+    };
+    let start = app.start?;
+    module.seen.insert(app.update);
+    let mut defines = module.function(update, None)?;
+    let state = app.state.as_ref().map(|value| Fn {
+        name: ".state".into(),
+        site: update.site,
+        params: vec![],
+        locals: vec![],
+        result: value.ty,
+        body: Block {
+            stmts: vec![],
+            value: Some(Box::new(value.clone())),
+        },
+        claims: vec![],
+    });
+    if let Some(f) = &state {
+        defines += &module.function(f, None)?;
     }
-    for (item, by) in std::mem::take(&mut module.sorts) {
-        defines += &module.body(core.fns[update].site, None).sorter(item, by)?;
+    module.dispatched.insert(answer);
+    let handler = ["ptr %a", "ptr %b", "ptr %c"][..=update.params.len()].join(", ");
+    let fields = core.enums[e].variants[start].fields.iter();
+    let fields = fields
+        .map(|f| f.name.as_str())
+        .collect::<Vec<_>>()
+        .join(", ");
+    let record = |m: &mut Module, t: Ty| match m.specs[t] {
+        Some(_) => m.record(t),
+        None => "null".into(),
+    };
+    let typed =
+        |m: &mut Module, t: Ty| format!("ptr {}, i64 {}", record(m, t), m.layouts.get(t).size);
+    let state_ty = update
+        .params
+        .first()
+        .filter(|_| state.is_some())
+        .map(|p| p.ty);
+    let words = [
+        format!("ptr @name, i64 {}", app.name.len()),
+        "ptr @app.call".into(),
+        format!("i64 {}", grants(&app.grants)),
+        format!("i64 {start}"),
+        match fields.is_empty() {
+            true => "ptr null, i64 0".into(),
+            false => format!("ptr @fields, i64 {}", fields.len()),
+        },
+        typed(&mut module, msg),
+        format!("i64 {}", u64::from(state_ty.is_some())),
+        match state_ty {
+            Some(t) => typed(&mut module, t),
+            None => "ptr null, i64 0".into(),
+        },
+        format!("ptr {}", record(&mut module, effects)),
+    ];
+    let mut code = constant("name", &app.name);
+    if !fields.is_empty() {
+        code += &constant("fields", &fields);
     }
-    for t in std::mem::take(&mut module.dispatched) {
-        defines += &module.dispatcher(t, core.fns[update].site)?;
-    }
-    let mut code = String::new();
-    for (text, n) in &module.texts {
-        code += &constant(&format!("t{n}"), text);
-    }
-    for record in module.records.values() {
-        code += record;
-    }
-    if !code.is_empty() {
-        code += "\n";
-    }
-    if !defines.is_empty() {
-        code += &format!("{STACK_LIMIT}\n");
-    }
-    for declare in module.intrinsics.values() {
-        code += declare;
-    }
-    Some((body, defines + &code))
+    code += &format!(
+        "@app = private constant {{ ptr, i64, ptr, i64, i64, ptr, i64, ptr, i64, i64, ptr, i64, ptr }} {{ {} }}
+
+define internal i32 @app.call(i64 %id, ptr %a, ptr %b, ptr %c) {{
+entry:
+  switch i64 %id, label %answer [ i64 -1, label %handler i64 -2, label %state ]
+handler:
+  %h = call i32 @p_{}({handler})
+  ret i32 %h
+state:
+  {}
+answer:
+  %v = call i32 @v{answer}(i64 %id, ptr %a, ptr %b)
+  ret i32 %v
+}}
+",
+        words.join(", "),
+        update.name,
+        match state {
+            Some(_) => "%s = call i32 @p_.state(ptr %a)\n  ret i32 %s",
+            None => "ret i32 1",
+        },
+    );
+    Some(code + &defines + &module.rest(update.site)?)
+}
+
+/// The grants word of ABI section 13: bit 0 `Console`, bit 1 `ReadFiles`, bit 2 `WriteFiles`.
+fn grants(grants: &BTreeSet<Grant>) -> u64 {
+    let bit = |g: &Grant| match g {
+        Grant::Console => 1,
+        Grant::ReadFiles => 2,
+        Grant::WriteFiles => 4,
+    };
+    grants.iter().map(bit).sum()
 }
 
 struct Module<'a> {
@@ -153,9 +184,115 @@ struct Module<'a> {
     dispatched: BTreeSet<Ty>,
     /// The sort functions called: by item type, and the type of `before` for `sort_by`.
     sorts: BTreeSet<(Ty, Option<Ty>)>,
+    /// For the M1 run loop, which performs `Print` and `Exit` only.
+    m1: bool,
 }
 
 impl<'a> Module<'a> {
+    fn new(core: &'a Program, layouts: Layouts, m1: bool) -> Module<'a> {
+        let mut held: Vec<bool> = (core.types.iter())
+            .map(|t| {
+                matches!(
+                    t,
+                    Type::Int
+                        | Type::Bool
+                        | Type::Float
+                        | Type::String
+                        | Type::List(_)
+                        | Type::Map(..)
+                        | Type::Record(_)
+                        | Type::Enum(_)
+                        | Type::Option(_)
+                        | Type::Result(..)
+                        | Type::Effect(_)
+                        | Type::Fn(..)
+                )
+            })
+            .collect();
+        // A type is held when every field or item it has is; a cycle holds unless something on
+        // it is not.
+        while let Some(t) = (0..held.len()).find(|&t| {
+            let fields = layouts.get(t).alternatives.iter().flatten();
+            let item = match &core.types[t] {
+                Type::List(item) => held[*item],
+                Type::Map(k, v) => held[*k] && held[*v],
+                Type::Fn(params, result) => params.iter().chain(result).all(|&p| held[p]),
+                _ => true,
+            };
+            held[t] && !(item && fields.clone().all(|p| held[p.ty]))
+        }) {
+            held[t] = false;
+        }
+        Module {
+            core,
+            specs: layouts.specs(),
+            layouts,
+            held,
+            texts: BTreeMap::new(),
+            records: BTreeMap::new(),
+            intrinsics: BTreeMap::new(),
+            wanted: vec![],
+            seen: BTreeSet::new(),
+            equalities: vec![],
+            compared: BTreeSet::new(),
+            fn_values: vec![],
+            dispatched: BTreeSet::new(),
+            sorts: BTreeSet::new(),
+            m1,
+        }
+    }
+
+    /// Every function, equality, sort and dispatcher still wanted, then the constants and
+    /// declarations; `site` is where their own traps are reported.
+    fn rest(&mut self, site: Site) -> Option<String> {
+        let mut defines = String::new();
+        loop {
+            if let Some(id) = self.wanted.pop() {
+                defines += &self.function(&self.core.fns[id], None)?;
+            } else if let Some(t) = self.equalities.pop() {
+                defines += &self.body(site, None).equality(t);
+            } else {
+                break;
+            }
+        }
+        for (item, by) in std::mem::take(&mut self.sorts) {
+            defines += &self.body(site, None).sorter(item, by)?;
+        }
+        for t in std::mem::take(&mut self.dispatched) {
+            defines += &self.dispatcher(t, site)?;
+        }
+        let mut code = String::new();
+        for (text, n) in &self.texts {
+            code += &constant(&format!("t{n}"), text);
+        }
+        for record in self.records.values() {
+            code += record;
+        }
+        if !code.is_empty() {
+            code += "\n";
+        }
+        if !defines.is_empty() {
+            code += &format!("{STACK_LIMIT}\n");
+        }
+        for declare in self.intrinsics.values() {
+            code += declare;
+        }
+        Some(defines + &code)
+    }
+
+    /// The tag of a variant: its position, `Some` and `Ok` first. No run loop performs a
+    /// foreign effect.
+    fn alternative(&self, tag: &Tag) -> Option<usize> {
+        match tag {
+            Tag::User(_, i) => Some(*i),
+            Tag::Some | Tag::Ok => Some(0),
+            Tag::None | Tag::Err => Some(1),
+            Tag::Effect(Effect::Foreign) => None,
+            Tag::Effect(e @ (Effect::Print | Effect::Exit)) => Some(*e as usize),
+            Tag::Effect(e) => (!self.m1).then_some(*e as usize),
+        }
+    }
+
     fn body(&mut self, site: Site, update: Option<bool>) -> Body<'_, 'a> {
         Body {
             module: self,
@@ -765,7 +902,7 @@ impl Body<'_, '_> {
             }
             ExprKind::Record(_, fields) => self.construct(e.ty?, None, fields)?,
             ExprKind::Variant(tag, fields) => {
-                self.construct(e.ty?, Some(alternative(tag)?), fields)?
+                self.construct(e.ty?, Some(self.module.alternative(tag)?), fields)?
             }
             ExprKind::Match(subject, arms) => return self.matched(e, subject, arms),
             ExprKind::FnValue(f) => self.module.fn_value(f, e.ty?).to_string(),
@@ -989,7 +1126,10 @@ impl Body<'_, '_> {
         let mut cases = vec![];
         for (arm, label) in arms.iter().zip(&labels) {
             for tag in &arm.tags {
-                cases.push(format!("i64 {}, label %{label}", alternative(tag)?));
+                cases.push(format!(
+                    "i64 {}, label %{label}",
+                    self.module.alternative(tag)?
+                ));
             }
         }
         // The arms cover every tag, so the default is never taken.
@@ -1002,7 +1142,7 @@ impl Body<'_, '_> {
         for (arm, label) in arms.iter().zip(labels) {
             let mut binds = vec![];
             if let [tag] = &arm.tags[..] {
-                let alt = alternative(tag)?;
+                let alt = self.module.alternative(tag)?;
                 let places = self.module.layouts.get(t).alternatives[alt].clone();
                 for (bind, place) in arm.binds.iter().zip(places) {
                     if let Some(l) = bind {
@@ -1229,18 +1369,6 @@ fn order(c: &Cmp, codes: [&'static str; 4]) -> &'static str {
         Cmp::Gt => 2,
         Cmp::Ge => 3,
     }]
-}
-
-/// The tag of a variant: its position, `Some` and `Ok` first.
-fn alternative(tag: &Tag) -> Option<usize> {
-    match tag {
-        Tag::User(_, i) => Some(*i),
-        Tag::Some | Tag::Ok => Some(0),
-        Tag::None | Tag::Err => Some(1),
-        // The M1 run loop performs these two only.
-        Tag::Effect(e @ (Effect::Print | Effect::Exit)) => Some(*e as usize),
-        Tag::Effect(_) => None,
-    }
 }
 
 /// A literal leaves Paka here, into the IR.

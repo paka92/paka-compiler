@@ -2,7 +2,7 @@
 //! sections 3, 4 and 11. The view is all the back end builds until it takes the whole core form.
 
 use crate::core_form::{self, Expr, ExprKind, Grant, Program, Tag, Type};
-use paka_rt::abi::table::RUN;
+use paka_rt::abi::table::{APP, RUN};
 
 mod code;
 pub mod lint;
@@ -123,6 +123,37 @@ define i32 @main() {{
         core.start,
         core.code
     )
+}
+
+/// The IR text of a headless app the M1 view cannot hold, on the entry of docs/abi/m1.md
+/// section 13; `None` for a visual app, one granted foreign effects, or what the back end
+/// cannot build.
+pub fn app(core: &mut Program) -> Option<String> {
+    let app = core.app.as_ref()?;
+    if app.view.is_some() || !app.foreign.is_empty() {
+        return None;
+    }
+    let code = code::lower_app(core)?;
+    Some(format!(
+        "target triple = \"x86_64-pc-linux-gnu\"
+
+{APP}
+
+define i32 @main() {{
+  %st = call i32 @paka_rt1_app(ptr @app)
+  ret i32 %st
+}}
+
+{code}"
+    ))
+}
+
+/// The IR text of `core`: the M1 view's when it holds the program, else the headless app's.
+pub fn ir(core: &mut Program) -> Option<String> {
+    match view(core) {
+        Some(view) => Some(emit(&view)),
+        None => app(core),
+    }
 }
 
 /// A byte-string constant, every byte hex-escaped.

@@ -6,7 +6,7 @@ use super::dev::{BAD_CONVERSION, Context, Heap, MEMORY, OUT_OF_BOUNDS, map, reco
 use super::{List, Str, Update, record_kind};
 use std::cell::{Cell, RefCell};
 use std::panic::{AssertUnwindSafe, catch_unwind};
-use std::ptr;
+use std::{mem, ptr};
 
 thread_local! {
     static CONTEXT: RefCell<Option<Context>> = const { RefCell::new(None) };
@@ -32,6 +32,16 @@ pub fn call(update: Update, msg: u64, out: &mut List) -> Called {
         heap: ctx.heap,
         broken: BROKEN.take(),
     }
+}
+
+/// Runs `f` with `ctx` as the call's context, as a headless app's loop does for each compiled
+/// call; whether an entry broke.
+pub fn lend<R>(ctx: &mut Context, f: impl FnOnce() -> R) -> (R, bool) {
+    CONTEXT.set(Some(mem::replace(ctx, Context::new(0))));
+    BROKEN.set(false);
+    let r = f();
+    *ctx = CONTEXT.take().expect("the lent context");
+    (r, BROKEN.take())
 }
 
 /// `f` on the call's context; `failed` when there is none or `f` panics.

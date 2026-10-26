@@ -12,6 +12,8 @@ pub mod abi;
 #[forbid(unsafe_code)]
 pub mod effects;
 #[forbid(unsafe_code)]
+mod headless;
+#[forbid(unsafe_code)]
 pub mod input;
 #[forbid(unsafe_code)]
 pub mod layout;
@@ -26,4 +28,5 @@ mod rt;
 #[forbid(unsafe_code)]
 pub mod tree;
 
+pub use headless::run_app;
 pub use rt::*;

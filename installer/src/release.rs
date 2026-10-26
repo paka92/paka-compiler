@@ -10,7 +10,8 @@ use paka_rt::effects::Grant;
 use std::collections::BTreeSet;
 
 /// The fixed list of tags. M2-10 has no shared data and no pools, so no case carries those two.
-pub const TAGS: [&str; 18] = [
+/// `views` and `foreign` split from `apps and grants` (M6-17): visual apps and foreign effects.
+pub const TAGS: [&str; 20] = [
     "integers",
     "control flow",
     "calls",
@@ -29,6 +30,8 @@ pub const TAGS: [&str; 18] = [
     "error handling",
     "effect values",
     "apps and grants",
+    "views",
+    "foreign",
 ];
 
 /// The tags of the features `core` uses beyond M1's light program, an app whose update returns a
@@ -46,10 +49,10 @@ pub fn tags(core: &Program) -> BTreeSet<&'static str> {
         }
         let start = app.start.map(|s| t.msg.map(|m| &core.enums[m].variants[s]));
         let fields = start.flatten().is_some_and(|v| !v.fields.is_empty());
-        let grants = app.grants.iter().any(|g| *g != Grant::Console) || !app.foreign.is_empty();
-        if app.state.is_some() || app.view.is_some() || fields || grants {
-            t.tags.insert("apps and grants");
-        }
+        let grants = app.grants.iter().any(|g| *g != Grant::Console);
+        t.mark(app.state.is_some() || fields || grants, "apps and grants");
+        t.mark(app.view.is_some(), "views");
+        t.mark(!app.foreign.is_empty(), "foreign");
         app.state.iter().for_each(|e| t.expr(e));
     }
     for (k, f) in core.fns.iter().enumerate() {
@@ -116,7 +119,7 @@ impl Tagger<'_> {
             Type::Record(_) => "types",
             Type::Enum(e) if Some(*e) == self.msg => return,
             Type::Enum(_) => "enums",
-            Type::View(_) | Type::Ui => "apps and grants",
+            Type::View(_) | Type::Ui => "views",
         };
         self.tags.insert(tag);
     }
@@ -187,6 +190,7 @@ impl Tagger<'_> {
             _ => false,
         };
         self.mark(app, "apps and grants");
+        self.mark(*tag == Tag::Effect(Effect::Foreign), "foreign");
         args.iter().for_each(|e| self.expr(e));
     }
 
@@ -221,7 +225,7 @@ impl Tagger<'_> {
                     Callee::Fn(_) => {}
                     Callee::Builtin(row) => match ROWS.get(*row) {
                         Some((_, row)) => self.mark(generic(row), "generics"),
-                        None => drop(self.tags.insert("apps and grants")),
+                        None => drop(self.tags.insert("views")),
                     },
                     Callee::Value(e) => {
                         self.tags.insert("function values");
@@ -251,7 +255,7 @@ impl Tagger<'_> {
             }
             ExprKind::Root(lines) => self.block(lines),
             ExprKind::Element(_, args, children, _) => {
-                self.tags.insert("apps and grants");
+                self.tags.insert("views");
                 args.iter().for_each(|e| self.expr(e));
                 children.iter().for_each(|b| self.block(b));
             }
@@ -336,6 +340,11 @@ mod tests {
         );
         let fields = LIGHT.replace("Start }", "Start(src: String) }");
         assert!(tagged(&fields).contains(&"apps and grants"));
+        let visual = "type S { n: Int = 0 }\nenum Msg { Inc }\n\
+            fn update(s: inout S, m: Msg) {\n  match m {\n    Inc => s.n += 1\n  }\n}\n\
+            view shown(s: S) -> View<Msg> {\n  Text(\"hi\")\n}\n\
+            app c {\n  state: S\n  update: update\n  view: shown\n  grants: []\n}\n";
+        assert!(tagged(visual).contains(&"views"));
     }
 
     #[test]
