@@ -133,12 +133,17 @@ impl Body<'_, '_> {
         Some(())
     }
 
-    /// Frees what the value of type `t` at `at` owns.
+    /// Frees what the value of type `t` at `at` owns. It drops a copy, so `at` does not escape
+    /// and the optimizer keeps its words as known values, such as a list's length in a loop.
     pub(super) fn drop_at(&mut self, t: Ty, at: &str) {
         if self.module.layouts.owns(t) {
             self.declare(DROP);
             let record = self.module.record(t);
-            self.line(format!("call void @paka_rt1_drop(ptr {record}, ptr {at})"));
+            let copy = self.fresh(t);
+            self.put(t, at, &copy);
+            self.line(format!(
+                "call void @paka_rt1_drop(ptr {record}, ptr {copy})"
+            ));
         }
     }
 

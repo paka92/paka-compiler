@@ -2103,6 +2103,8 @@ or merged during review. Ids with a letter were added during review.
 - done when: For a hand-written loop list, optimized IR has no trap branch inside the loop; each off-by-one twin still traps in release.
 - why this level: Removal must rest on a proof; a wrong fact removes a needed check with no symptom.
 - note: Per M6-01: shapes loops and removes no check.
+- status: done
+- note: Done: compiled code drops a copy of each owned value (paka/src/llvm/code/owned.rs), so a local List's slot no longer escapes into `paka_rt1_drop` and its length and pointer are known values before the loop passes run; docs/abi/m1.md says so. No promise was added: M6-01 bars `nsw` and `nuw`, so overflow checks fall only where clang proves them. The loop list is paka/tests/loops.paka (a sum over a List parameter, a fill, a `while` walk, a copy between two Lists, a filtered read and a read-modify-write); a unit test in paka/src/llvm.rs keeps each kernel external, runs `clang -O3`, and finds no block on a cycle that branches to a trap, and paka/tests/release_loops.rs builds each off-by-one twin and sees it trap `out_of_bounds` at its item. Not proven by clang 21 and left out of the list: a downward walk, `xs[i + 1]` under `1..<n - 1`, `xs[2 * i]` and `xs[i * n + j]`. Hot loops of bench/programs/list as `paka build` makes them, trap branch left: saxpy_dot no, matmul no, stencil yes (`sweep` writes through `dst: inout`, so lengths are reloaded; M6-24), nbody no, sieve yes (`prime[j]` stays: clang does not see `i * i` as non-negative), sieve_wrap no, collatz yes (its overflow checks are real), collatz_wrap no, mix no.
 
 ### M6-20 · L2 · Add release mode to the M4 fuzz loop
 

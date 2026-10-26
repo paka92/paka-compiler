@@ -488,16 +488,7 @@ app a {
 ";
         let ir = emit(&view(&mut lowered(source)).unwrap());
         assert_eq!(lint::lint(&ir), Vec::<String>::new());
-        let mut clang = Command::new("clang")
-            .args(["-O3", "-S", "-emit-llvm", "-x", "ir", "-", "-o", "-"])
-            .stdin(Stdio::piped())
-            .stdout(Stdio::piped())
-            .spawn()
-            .unwrap();
-        let _ = clang.stdin.take().unwrap().write_all(ir.as_bytes());
-        let out = clang.wait_with_output().unwrap();
-        assert!(out.status.success());
-        let optimized = String::from_utf8(out.stdout).unwrap();
+        let optimized = optimized(&ir);
         let calls = optimized
             .lines()
             .filter_map(|line| line.split_once(" call "));
@@ -507,5 +498,89 @@ app a {
         }
         assert!(!optimized.contains("@paka_rt1_copy"), "{optimized}");
         assert!(optimized.contains("store double"), "{optimized}");
+    }
+
+    /// `ir` at the optimization `paka build` uses.
+    fn optimized(ir: &str) -> String {
+        let mut clang = Command::new("clang")
+            .args(["-O3", "-S", "-emit-llvm", "-x", "ir", "-", "-o", "-"])
+            .stdin(Stdio::piped())
+            .stdout(Stdio::piped())
+            .spawn()
+            .unwrap();
+        let _ = clang.stdin.take().unwrap().write_all(ir.as_bytes());
+        let out = clang.wait_with_output().unwrap();
+        assert!(out.status.success());
+        String::from_utf8(out.stdout).unwrap()
+    }
+
+    /// The blocks of `function` on a cycle that branch to a trap.
+    fn trap_branches_in_loops(function: &str) -> Vec<String> {
+        let mut blocks: Vec<(&str, Vec<&str>, bool)> = Vec::new();
+        for line in function.lines().skip(1) {
+            match (line.strip_prefix("  "), line.split_once(':')) {
+                (Some(inst), _) => {
+                    let block = blocks.last_mut().unwrap();
+                    block.2 |= inst.contains("@paka_rt1_trap(");
+                    let labels = inst.split("label %").skip(1);
+                    block
+                        .1
+                        .extend(labels.map(|s| s.split([',', ' ', ']']).next().unwrap()));
+                }
+                (None, Some((name, _))) => blocks.push((name, Vec::new(), false)),
+                _ => {}
+            }
+        }
+        let at = |name: &str| blocks.iter().position(|b| b.0 == name).unwrap();
+        let reaches = |from: &str, to: usize| {
+            let mut seen = vec![false; blocks.len()];
+            let mut stack = vec![at(from)];
+            while let Some(b) = stack.pop() {
+                if b == to {
+                    return true;
+                }
+                if !std::mem::replace(&mut seen[b], true) {
+                    stack.extend(blocks[b].1.iter().map(|s| at(s)));
+                }
+            }
+            false
+        };
+        let blocks = &blocks;
+        (0..blocks.len())
+            .filter(|&i| blocks[i].1.iter().any(|s| blocks[at(s)].2))
+            .filter(|&i| blocks[i].1.iter().any(|s| reaches(s, i)))
+            .map(|i| blocks[i].0.to_string())
+            .collect()
+    }
+
+    #[test]
+    fn the_loop_list_has_no_trap_branch_inside_a_loop() {
+        let loops = include_str!("../tests/loops.paka");
+        let kernels: Vec<&str> = loops
+            .lines()
+            .filter_map(|line| line.strip_prefix("fn ")?.split('(').next())
+            .filter(|name| *name != "update")
+            .collect();
+        let mut ir = ir(&mut lowered(loops)).unwrap();
+        assert_eq!(lint::lint(&ir), Vec::<String>::new());
+        // Kept external, each kernel is optimized for any input, not folded into `update`.
+        for k in &kernels {
+            ir = ir.replace(
+                &format!("define internal i32 @p_{k}("),
+                &format!("define i32 @p_{k}("),
+            );
+        }
+        let optimized = optimized(&ir);
+        for k in kernels {
+            let head = format!("@p_{k}(");
+            let mut functions = optimized.split("\ndefine ");
+            let function = functions.find(|f| f.lines().next().unwrap().contains(&head));
+            let function = function.unwrap().split("\n}").next().unwrap();
+            assert_eq!(
+                trap_branches_in_loops(function),
+                Vec::<String>::new(),
+                "{k}: {function}"
+            );
+        }
     }
 }
