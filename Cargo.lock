@@ -1726,6 +1726,10 @@ dependencies = [
 ]
 
 [[package]]
+name = "paka-bench-runner"
+version = "0.0.0"
+
+[[package]]
 name = "paka-gen"
 version = "0.0.0"
 

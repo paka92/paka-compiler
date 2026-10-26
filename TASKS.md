@@ -2180,6 +2180,8 @@ or merged during review. Ids with a letter were added during review.
 - done when: One command builds a sample in Paka, Rust and C++, refuses mismatched checksums, and writes medians and spread to a results file.
 - why this level: The approved protocol fixes every step; one module that runs commands and records times.
 - note: Per M6-02: timing as in its section 3; also builds the checked-Rust binary for integer kernels and records the machine facts.
+- status: done
+- note: Done: `paka-bench run <programs> <results>` (bench/runner, plain Rust, std only) reads `<programs>/list`, one `<name> <kind>` line per program, and builds each `main.paka`, `main.rs` and `main.cpp` with `paka build` and M6-02's fixed Rust and C++ lines, adding no flag; an `integer` kernel also gets the checked-Rust binary with `-C overflow-checks=on`. It refuses a load average above 1, a clang or clang++ other than paka/clang-version, a rustc other than rust-toolchain.toml's channel, and a missing compiler or `taskset`, by name. Each binary runs once unrecorded and all must print the same Int line, or the program is refused and no results file is written; then 10 rounds run the binaries in turn, pinned with `taskset` to the last logical CPU and timed with the monotonic clock, rerun once when a spread passes 5% and marked noisy if it still does. The results file holds CPU model, kernel, governor, boost, pinned CPU, commit, compiler and LLVM versions, libstdc++, flags, checksums, every raw time, medians and spread. bench/sample is its test sample, one small integer kernel in three languages; its tests build it in a temporary directory, refuse a C++ copy off by one, and cover a missing compiler.
 
 ### M6-28 · L3 · Write the numeric benchmark kernels in Paka, Rust and C++
 

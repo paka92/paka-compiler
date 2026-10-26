@@ -1,0 +1,27 @@
+// Total Collatz steps for 1 to 9,999.
+
+enum Msg { Start }
+
+fn steps(start: Int) -> Int {
+  var x = start
+  var n = 0
+  while x != 1 {
+    if x % 2 == 0 { x = x / 2 } else { x = 3 * x + 1 }
+    n += 1
+  }
+  n
+}
+
+fn update(msg: Msg) -> List<Effect<Msg>> {
+  var total = 0
+  for i in 1..<10000 {
+    total += steps(i)
+  }
+  [Print("{total}"), Exit]
+}
+
+app sample {
+  start: Start
+  update: update
+  grants: [Console]
+}
