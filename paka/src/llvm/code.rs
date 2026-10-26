@@ -27,6 +27,8 @@ use std::fmt::Write;
 
 mod items;
 mod owned;
+mod rows;
+mod sort;
 mod text;
 
 /// The largest frame inlined, and the largest built: the runtime keeps 1 MiB under its limit.
@@ -85,6 +87,7 @@ pub fn lower(core: &mut Program, update: usize, computed: bool) -> Option<(Strin
         compared: BTreeSet::new(),
         fn_values: vec![],
         dispatched: BTreeSet::new(),
+        sorts: BTreeSet::new(),
     };
     let body = module.function(&core.fns[update], Some(computed))?;
     let mut defines = String::new();
@@ -96,6 +99,9 @@ pub fn lower(core: &mut Program, update: usize, computed: bool) -> Option<(Strin
         } else {
             break;
         }
+    }
+    for (item, by) in std::mem::take(&mut module.sorts) {
+        defines += &module.body(core.fns[update].site, None).sorter(item, by)?;
     }
     for t in std::mem::take(&mut module.dispatched) {
         defines += &module.dispatcher(t, core.fns[update].site)?;
@@ -142,6 +148,8 @@ struct Module<'a> {
     fn_values: Vec<(FnRef, Ty)>,
     /// The function types called through a value.
     dispatched: BTreeSet<Ty>,
+    /// The sort functions called: by item type, and the type of `before` for `sort_by`.
+    sorts: BTreeSet<(Ty, Option<Ty>)>,
 }
 
 impl<'a> Module<'a> {
@@ -208,6 +216,8 @@ impl<'a> Module<'a> {
                 false => format!("entry:\n{}{}", b.slots, b.lines),
             });
         }
+        // The block after the stack check.
+        b.lines.insert_str(0, "body:\n");
         let mut params = vec![];
         for (n, p) in f.params.iter().enumerate() {
             let ty = b.ty(b.locals[n]?);
@@ -437,16 +447,17 @@ impl Body<'_, '_> {
     /// Stores `v` of type `t` at `at`, copying a value held in memory.
     fn put(&mut self, t: Ty, v: &str, at: &str) {
         match self.ty(t) {
-            "ptr" => {
-                let size = self.size(t);
-                let name = "@llvm.memmove.p0.p0.i64";
-                self.declare(&format!("declare void {name}(ptr, ptr, i64, i1)"));
-                self.line(format!(
-                    "call void {name}(ptr {at}, ptr {v}, i64 {size}, i1 false)"
-                ));
-            }
+            "ptr" => self.memmove(at, v, self.size(t)),
             ty => self.store(ty, v, at),
         }
+    }
+
+    fn memmove(&mut self, to: &str, from: &str, bytes: impl std::fmt::Display) {
+        let name = "@llvm.memmove.p0.p0.i64";
+        self.declare(&format!("declare void {name}(ptr, ptr, i64, i1)"));
+        self.line(format!(
+            "call void {name}(ptr {to}, ptr {from}, i64 {bytes}, i1 false)"
+        ));
     }
 
     /// The address `offset` bytes into `base`; no `inbounds`, since it may be passed to a call.
@@ -613,8 +624,7 @@ impl Body<'_, '_> {
              br i1 %deep, label %stack, label %body\n\
              stack:\n  \
              call void @paka_rt1_trap(ptr {text}, i64 {len})\n  \
-             ret i32 1\n\
-             body:\n",
+             ret i32 1\n",
             self.frame
         );
         Some((check, inline))
@@ -790,11 +800,25 @@ impl Body<'_, '_> {
                     Callee::Value(f) => vec![("i64", self.expr(f)??)],
                     _ => vec![],
                 };
+                // An `inout` place is reached once every argument is evaluated.
+                let mut evaluated = vec![];
                 for arg in given {
-                    args.push(match arg {
-                        Arg::Value(a) => (self.module.ir(a.ty?)?, self.expr(a)??),
-                        Arg::Inout(place) => ("ptr", self.address(place)?.0),
+                    evaluated.push(match arg {
+                        Arg::Value(a) => Ok((self.module.ir(a.ty?)?, self.expr(a)??, a.ty?)),
+                        Arg::Inout(place) => Err(self.operands(place)?),
                     });
+                }
+                let mut tys = vec![];
+                for arg in evaluated {
+                    let (ty, v, t) = match arg {
+                        Ok(value) => value,
+                        Err((root, t, ops)) => {
+                            let (at, t) = self.walk(root, t, ops)?;
+                            ("ptr", at, t)
+                        }
+                    };
+                    args.push((ty, v));
+                    tys.push(t);
                 }
                 return match callee {
                     Callee::Fn(id) => self.call(*id, &args),
@@ -810,7 +834,7 @@ impl Body<'_, '_> {
                                 false => self.op(format!("icmp sge i64 {i}, 0")),
                             }))
                         }
-                        row => self.builtin(row, &args, *site),
+                        row => self.builtin(row, &args, &tys, e.ty, *site),
                     },
                     Callee::Value(f) => {
                         let t = f.ty?;
@@ -927,13 +951,18 @@ impl Body<'_, '_> {
     /// Stores `v`, owned, as the field at `place` of the value at `value`.
     fn fill(&mut self, value: &str, place: &layout::Place, v: &str) {
         let v = self.owned(place.ty, v);
+        self.place_into(value, place, &v);
+    }
+
+    /// Stores `v`, already owned, as the field at `place` of the value at `value`.
+    fn place_into(&mut self, value: &str, place: &layout::Place, v: &str) {
         let at = self.offset(value, place.offset);
         if place.boxed {
             let block = self.alloc(self.size(place.ty));
-            self.put(place.ty, &v, &block);
+            self.put(place.ty, v, &block);
             self.store("ptr", &block, &at);
         } else {
-            self.put(place.ty, &v, &at);
+            self.put(place.ty, v, &at);
         }
     }
 
@@ -1005,7 +1034,15 @@ impl Body<'_, '_> {
         }))
     }
 
-    fn builtin(&mut self, row: &str, args: &[(&str, String)], site: Site) -> Option<Value> {
+    /// Builtin row `row` on `args`, of types `tys`, its result of type `result`.
+    fn builtin(
+        &mut self,
+        row: &str,
+        args: &[(&str, String)],
+        tys: &[Ty],
+        result: Option<Ty>,
+        site: Site,
+    ) -> Option<Value> {
         let x: Vec<&str> = args.iter().map(|(_, v)| v.as_str()).collect();
         let v = match row {
             "assert(cond: Bool)" => {
@@ -1049,7 +1086,7 @@ impl Body<'_, '_> {
                 };
                 self.op(format!("icmp eq i64 {n}, 0"))
             }
-            _ => return self.text_builtin(row, args, site).map(Some),
+            _ => return self.generic(row, args, tys, result, site),
         };
         Some(Some(v))
     }

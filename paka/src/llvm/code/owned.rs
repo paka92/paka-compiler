@@ -77,15 +77,31 @@ impl Body<'_, '_> {
         if temp.is_some_and(|i| self.owners.disown(i)) {
             return v.into();
         }
+        self.copied(t, v)
+    }
+
+    /// A copy of `v` that owns blocks of its own; `v` itself for a type that owns nothing.
+    pub(super) fn copied(&mut self, t: Ty, v: &str) -> String {
+        if !self.module.layouts.owns(t) {
+            return v.into();
+        }
         let to = self.fresh(t);
+        self.copy_into(t, v, &to);
+        to
+    }
+
+    /// Writes a copy of `v` of type `t` at `at`.
+    pub(super) fn copy_into(&mut self, t: Ty, v: &str, at: &str) {
+        if !self.module.layouts.owns(t) {
+            return self.put(t, v, at);
+        }
         self.declare(COPY);
         let record = self.module.record(t);
         let status = self.op(format!(
-            "call i32 @paka_rt1_copy(ptr {record}, ptr {v}, ptr {to})"
+            "call i32 @paka_rt1_copy(ptr {record}, ptr {v}, ptr {at})"
         ));
         let refused = self.op(format!("icmp ne i32 {status}, 0"));
         self.check(&refused, "memory", self.site);
-        to
     }
 
     /// `v` owned where drops come before it is written: words held in memory that own nothing
@@ -99,7 +115,7 @@ impl Body<'_, '_> {
         to
     }
 
-    fn fresh(&mut self, t: Ty) -> String {
+    pub(super) fn fresh(&mut self, t: Ty) -> String {
         let to = self.name("%c");
         self.hold(&to, t);
         to

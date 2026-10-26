@@ -2040,7 +2040,8 @@ or merged during review. Ids with a letter were added during review.
 - flags: native-only
 - done when: Generics conformance group matches the interpreter; optimized IR for a generic loop over List<Float> contains no indirect call and no boxing.
 - why this level: Whole-program pass tied to the generics design; a wrong instance choice miscompiles silently.
-- note: Open: the release back end lowers no generic built-in row yet, so `generics` stays in tests/conformance/release-skip. Remaining: per-type lowering of the list rows (`append`, `extend`, `pop`, `insert`, `remove_at`, `swap`, `reverse`, `slice`, `sort`, `sort_by` with the interpreter's order of `before` calls, `list_of`), of `unwrap_or`, `ok_or` and `unreachable`, and of the `parse_int`/`parse_float` callers; then the List<Float> loop IR test.
+- status: done
+- note: Done: each generic row is lowered for its concrete types. The List rows are inline IR, and a List grows as the dev runtime's does. `sort` and `sort_by` call one merge sort function per item type (or per `before` type), and it calls `before` in the interpreter's order. An `inout` argument's place is reached after every argument is evaluated. `generics` left tests/conformance/release-skip. A test checks the optimized IR of a loop over a List<Float>: the items stay doubles, every call is direct, and no item is copied by the runtime.
 
 ### M6-15 · L3 · Lower the remaining constructs: function values, error handling, effect values
 

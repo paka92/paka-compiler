@@ -6,7 +6,7 @@ use crate::core_form::{Block, Expr, Local, Site, Ty, Type};
 use paka_rt::abi::table::{CONSTANT, LIST};
 
 impl Body<'_, '_> {
-    fn item_ty(&self, t: Ty) -> Ty {
+    pub(super) fn item_ty(&self, t: Ty) -> Ty {
         match self.module.core.types[t] {
             Type::List(item) => item,
             _ => unreachable!("a List"),
@@ -33,22 +33,13 @@ impl Body<'_, '_> {
             0 => "null".into(),
             bytes => self.alloc(bytes),
         };
-        let out = self.name("%h");
-        self.hold(&out, t);
         let count = items.len().to_string();
         let cap = if items.is_empty() {
             CONSTANT.to_string()
         } else {
             count.clone()
         };
-        for (offset, ty, v) in [
-            (LIST.ptr, "ptr", &ptr),
-            (LIST.len, "i64", &count),
-            (LIST.cap, "i64", &cap),
-        ] {
-            let at = self.offset(&out, offset);
-            self.store(ty, v, &at);
-        }
+        let out = self.list_words(t, &ptr, &count, &cap);
         let out = self.temp(t, out);
         for (i, e) in items.iter().enumerate() {
             let v = self.expr(e)??;
@@ -77,18 +68,22 @@ impl Body<'_, '_> {
         self.check(&outside, "out_of_bounds", site);
         let from = self.nth(&ptr, self.item_ty(t), a);
         let count = self.op(format!("sub i64 {b}, {a}"));
-        let view = self.name("%h");
-        self.hold(&view, t);
-        let cap = CONSTANT.to_string();
+        self.list_words(t, &from, &count, &CONSTANT.to_string())
+    }
+
+    /// A new slot holding the words of a List of type `t`.
+    pub(super) fn list_words(&mut self, t: Ty, ptr: &str, len: &str, cap: &str) -> String {
+        let out = self.name("%h");
+        self.hold(&out, t);
         for (offset, ty, v) in [
-            (LIST.ptr, "ptr", &from),
-            (LIST.len, "i64", &count),
-            (LIST.cap, "i64", &cap),
+            (LIST.ptr, "ptr", ptr),
+            (LIST.len, "i64", len),
+            (LIST.cap, "i64", cap),
         ] {
-            let at = self.offset(&view, offset);
+            let at = self.offset(&out, offset);
             self.store(ty, v, &at);
         }
-        view
+        out
     }
 
     pub(super) fn length(&mut self, at: &str) -> String {

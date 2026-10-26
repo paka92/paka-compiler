@@ -428,4 +428,48 @@ app light {
             );
         }
     }
+
+    /// A loop over a `List<Float>` through the generic rows keeps its items as doubles at full
+    /// optimization: no call through a pointer, no item copied by the runtime.
+    #[test]
+    fn a_generic_loop_over_floats_is_specialized() {
+        let source = "enum Msg { Start }
+fn scaled(xs: List<Float>, k: Float) -> List<Float> {
+  var out: List<Float> = []
+  for x in xs { append(&out, x * k) }
+  sort(&out)
+  out
+}
+fn update(m: Msg) -> List<Effect<Msg>> {
+  var ys = scaled(list_of(1.5, count: 1000), 2.0)
+  [Print(\"{unwrap_or(find(ys, 3.0), -1)} {to_int(pop(&ys))}\"), Exit]
+}
+app a {
+  start: Start
+  update: update
+  grants: [Console]
+}
+";
+        let ir = emit(&view(&mut lowered(source)).unwrap());
+        assert_eq!(lint::lint(&ir), Vec::<String>::new());
+        let mut clang = Command::new("clang")
+            .args(["-O3", "-S", "-emit-llvm", "-x", "ir", "-", "-o", "-"])
+            .stdin(Stdio::piped())
+            .stdout(Stdio::piped())
+            .spawn()
+            .unwrap();
+        let _ = clang.stdin.take().unwrap().write_all(ir.as_bytes());
+        let out = clang.wait_with_output().unwrap();
+        assert!(out.status.success());
+        let optimized = String::from_utf8(out.stdout).unwrap();
+        let calls = optimized
+            .lines()
+            .filter_map(|line| line.split_once(" call "));
+        for (_, call) in calls {
+            let callee = call.split('(').next().unwrap().rsplit(' ').next().unwrap();
+            assert!(callee.starts_with('@'), "{call}");
+        }
+        assert!(!optimized.contains("@paka_rt1_copy"), "{optimized}");
+        assert!(optimized.contains("store double"), "{optimized}");
+    }
 }
