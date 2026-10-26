@@ -112,7 +112,7 @@ enum Ty {
 type Fields = &'static [(&'static str, Ty, bool)];
 
 /// Each call's fields.
-const CALLS: [(&str, Fields); 4] = [
+const CALLS: [(&str, Fields); 8] = [
     (
         "find",
         &[
@@ -141,6 +141,13 @@ const CALLS: [(&str, Fields); 4] = [
         ],
     ),
     ("run", RUN),
+    ("look_tree", &[]),
+    ("look_screenshot", &[("scale", Ty::Int, false)]),
+    ("look_click", &[("path", Ty::Str, true)]),
+    (
+        "look_key",
+        &[("text", Ty::Str, false), ("key", Ty::Str, false)],
+    ),
 ];
 
 const RUN: Fields = &[
@@ -178,7 +185,9 @@ fn request(line: &[u8]) -> Result<Call, (Value, Failure)> {
         return refuse(bad("`call` must be a string".into()));
     };
     let Some((name, spec)) = CALLS.iter().find(|(n, _)| *n == name) else {
-        let message = format!("no call `{name}`; calls are find, view, edit, run");
+        let message = format!(
+            "no call `{name}`; calls are find, view, edit, run, look_tree, look_screenshot, look_click, look_key"
+        );
         return refuse(Failure::new("unknown_call", message));
     };
     match fields_fit(name, spec, &object, &ENVELOPE) {
@@ -235,4 +244,24 @@ fn ty_name(ty: Ty) -> &'static str {
         Ty::Strs => "a list of strings",
         Ty::Run => "an object",
     }
+}
+
+/// The M4-03 trap object of the report in `stderr` from `app`; null when it holds none.
+pub fn trap(app: &str, stderr: &str) -> Value {
+    let mut lines = stderr.lines();
+    let head = lines
+        .next()
+        .and_then(|l| l.strip_prefix(app)?.strip_prefix(": trap "));
+    let Some((kind, at)) = head.and_then(|h| h.split_once(" at ")) else {
+        return Value::Null;
+    };
+    let mut place = at.rsplitn(3, ':').map(|n| n.parse::<usize>().ok());
+    let (column, line) = (place.next().flatten(), place.next().flatten());
+    let hole = lines.next().and_then(|l| l.trim_start().strip_prefix("??"));
+    Value::object([
+        ("kind", kind.into()),
+        ("line", line.into()),
+        ("column", column.into()),
+        ("hole", hole.filter(|_| kind == "hole").into()),
+    ])
 }

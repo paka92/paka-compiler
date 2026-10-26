@@ -2,10 +2,13 @@
 //! standard input is one JSON request, answered by one line. `files` installs a program, which
 //! checks, and `change` the same program with some files replaced; a run request runs its app as M4-03 section 3.4 says, or answers null when the program
 //! has no app by that name. A program the dev back end does not compile yet runs on the
-//! interpreter, in this process all the same.
+//! interpreter, in this process all the same. A visual app runs on the interpreter in a window,
+//! answered at once with its first tree; the next run ends it (docs/decisions/M5-09.md).
 
 use paka::core_form::Program;
 use paka::interp;
+use paka::serve::trap;
+use paka::session::visual::Visual;
 use paka::source::Source;
 use paka_installer::dev::Dev;
 use paka_json::{Value, parse};
@@ -22,6 +25,7 @@ fn main() -> io::Result<()> {
     let mut dev = Dev::default();
     // The installed program's files, and its checked form when the dev back end refused it.
     let (mut files, mut interpreted) = (vec![], None);
+    let mut shown: Option<Visual> = None;
     let mut out = io::stdout().lock();
     for line in io::stdin().lock().lines() {
         let request = parse(&line?).expect("the server sends JSON");
@@ -39,12 +43,20 @@ fn main() -> io::Result<()> {
                 interpreted = install(&mut dev, &files);
                 Value::object([])
             }
-            _ => run(&dev, interpreted.as_ref(), &request),
+            _ => run(&dev, interpreted.as_ref(), &files, &request, &mut shown),
         };
         writeln!(out, "{reply}")?;
         out.flush()?;
     }
     Ok(())
+}
+
+fn source(files: &[(String, String)]) -> Source {
+    let mut source = Source::default();
+    for (path, text) in files {
+        source.add(path.into(), text.as_str().into());
+    }
+    source
 }
 
 fn file(v: &Value) -> (String, String) {
@@ -53,30 +65,38 @@ fn file(v: &Value) -> (String, String) {
 
 /// Installs the program in `files`; its checked form when the dev back end refuses it.
 fn install(dev: &mut Dev, files: &[(String, String)]) -> Option<Program> {
-    let mut source = Source::default();
-    for (path, text) in files {
-        source.add(path.into(), text.as_str().into());
-    }
-    let refused = dev.edit(&source).is_err();
-    refused.then(|| {
-        let checked = paka::check("main.paka", &source);
-        checked.expect("the server sends a program that checks").0
-    })
+    let refused = dev.edit(&source(files)).is_err();
+    refused.then(|| checked(files))
 }
 
-fn run(dev: &Dev, interpreted: Option<&Program>, request: &Value) -> Value {
+/// The checked form of the program in `files`.
+fn checked(files: &[(String, String)]) -> Program {
+    let checked = paka::check("main.paka", &source(files));
+    checked.expect("the server sends a program that checks").0
+}
+
+fn run(
+    dev: &Dev,
+    interpreted: Option<&Program>,
+    files: &[(String, String)],
+    request: &Value,
+    shown: &mut Option<Visual>,
+) -> Value {
+    *shown = None;
     let program = interpreted.unwrap_or(&dev.program);
     let app = text(request, "app");
-    if program
-        .app
-        .as_ref()
-        .is_none_or(|a| a.name != app || a.view.is_some())
-    {
+    let Some(found) = program.app.as_ref().filter(|a| a.name == app) else {
         return Value::Null;
-    }
+    };
     let args: Vec<OsString> = (items(request.get("args")).iter())
         .map(|a| a.as_str().expect("an argument is a string").into())
         .collect();
+    if found.view.is_some() {
+        let (visual, first) = Visual::start(checked(files), args, true);
+        let reply = first.run(app, visual.window);
+        *shown = first.end.is_none().then_some(visual);
+        return reply;
+    }
     let number = |key| request.get(key).and_then(Value::as_u64).expect("a limit");
     let max = number("max_bytes") as usize;
     // Standard error holds only the run's last line or report, so it is cut once the run ends.
@@ -109,26 +129,6 @@ fn run(dev: &Dev, interpreted: Option<&Program>, request: &Value) -> Value {
         ("status", status.map(usize::from).into()),
         ("trap", trap),
         ("stopped", stopped.into()),
-    ])
-}
-
-/// M4-03's trap object, read from a report's first lines; null when the run did not trap.
-fn trap(app: &str, stderr: &str) -> Value {
-    let mut lines = stderr.lines();
-    let head = lines
-        .next()
-        .and_then(|l| l.strip_prefix(app)?.strip_prefix(": trap "));
-    let Some((kind, at)) = head.and_then(|h| h.split_once(" at ")) else {
-        return Value::Null;
-    };
-    let mut place = at.rsplitn(3, ':').map(|n| n.parse::<usize>().ok());
-    let (column, line) = (place.next().flatten(), place.next().flatten());
-    let hole = lines.next().and_then(|l| l.trim_start().strip_prefix("??"));
-    Value::object([
-        ("kind", kind.into()),
-        ("line", line.into()),
-        ("column", column.into()),
-        ("hole", hole.filter(|_| kind == "hole").into()),
     ])
 }
 

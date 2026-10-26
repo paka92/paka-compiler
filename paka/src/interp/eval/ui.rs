@@ -69,7 +69,7 @@ impl<'a> Machine<'a> {
                 }
             }
             ("ui_text", [Value::Ui(ui), Value::Str(path)]) => {
-                match find(&ui.tree, &steps(path.as_str())?) {
+                match ui.tree.at(&steps(path.as_str())?) {
                     Some(
                         Node::Text(t) | Node::Button { label: t, .. } | Node::Input { text: t, .. },
                     ) => Value::Str(t.as_str().into()),
@@ -78,7 +78,7 @@ impl<'a> Machine<'a> {
                 }
             }
             ("ui_has", [Value::Ui(ui), Value::Str(path)]) => {
-                match find(&ui.tree, &steps(path.as_str())?) {
+                match ui.tree.at(&steps(path.as_str())?) {
                     Some(Node::Hole(name)) => return Err(placeholder(name, site)),
                     found => Value::Bool(found.is_some()),
                 }
@@ -109,7 +109,7 @@ impl<'a> Machine<'a> {
 
     /// A Button sends its message; an Input takes focus, its cursor at the end.
     fn click(&mut self, ui: &mut Ui, path: Vec<Step>, site: Site) -> Done<()> {
-        let kind = match find(&ui.tree, &path) {
+        let kind = match ui.tree.at(&path) {
             Some(Node::Hole(name)) => return Err(placeholder(name, site)),
             Some(node @ (Node::Button { .. } | Node::Input { .. })) => node.kind(),
             _ => return Err(Trap::bare(Kind::Assert, site).into()),
@@ -297,15 +297,6 @@ fn copy_tree(node: &Node<Message>) -> Option<Node<Message>> {
 /// A touched placeholder: the example is unfinished at the call that touched it.
 fn placeholder(name: &str, site: Site) -> Stop {
     Trap::new(Kind::Hole, site, format!("??{name}")).into()
-}
-
-/// The node at `path`, if any.
-fn find<'t>(node: &'t Node<Message>, path: &[Step]) -> Option<&'t Node<Message>> {
-    let Some((step, rest)) = path.split_first() else {
-        return Some(node);
-    };
-    let child = node.children().iter().find(|(s, _)| s == step)?;
-    find(&child.1, rest)
 }
 
 /// The first node in tree order that `is`, with its path.

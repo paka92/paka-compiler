@@ -1804,15 +1804,18 @@ or merged during review. Ids with a letter were added during review.
 
 ### M5-34 · L3 · Add the Look tool on the windowless app: tree, screenshot, click, keystroke
 
+- status: done
 - needs: M5-09, M5-25, M5-33
 - flags: none
 - done when: A script calls Look on windowless apps: the tree matches hand-written text, a PNG returns, click and keystroke change the tree.
 - why this level: Wires four calls through the tool channel into a running app without racing its handlers or frames.
 - note: Per M5-06: a Look click on an Input by path puts the cursor at the end, as `ui_click` does.
 - note: Per M5-09: the four calls, their fields, replies and error kinds are those of docs/decisions/M5-09.md section 2. A `run` naming a visual app launches it with no window here and replies at once with its first tree; Look then acts on it. The PNG is drawn from the tree with the M5-08 standard-library encoder and sent as base64; the base64 encoder uses the standard library only.
+- note: Done: paka/src/session/look.rs. The serve calls gain `look_tree`, `look_screenshot`, `look_click` and `look_key`, which act on the server's windowless app between turns, so they never race a handler. A `run` naming a visual app, with no Wayland display, ends any running one and launches it, replying with its first tree, `window` false and `status` null unless it ended at once. `paka_gui::screenshot` lays the tree out and draws it at 480 by 360 units times the scale. A click finds the node by path through the new `Node::at`, which also replaces the interpreter's own lookup, and sends it as `ui_click` does; `text` is refused with `no_focus` when no Input has focus. The M4-03 trap parser moved from the runner into `paka::serve::trap`, shared by both. paka now depends on paka-gui, which depends only on paka-rt. Read as: Tab, Shift+Tab and Enter do nothing, and Space types a space, until M5-36 gives a Button focus. Test: paka/tests/look.rs runs itself again with no display and drives a form through `serve`: Look before a run is `not_running`; the run's tree and `look_tree` match hand-written text; screenshots at scale 1 and 2 are PNGs of the right size and scale 3 is refused; a click on `+` counts up and one on a Text does nothing; typed text and Backspace and Shift+Home change the Input; each refusal kind; a handler hole gives its trap object and keeps the app running; Exit gives `running` false.
 
 ### M5-35 · L3 · Open a window and present frames with winit and softbuffer
 
+- status: done
 - needs: M5-10, M5-25, M5-33
 - flags: none
 - done when: The counter opens a window in the Wayland session, logs its first presented frame, and exits cleanly on a close request.
@@ -1821,6 +1824,7 @@ or merged during review. Ids with a letter were added during review.
 - note: Per M5-01: closing the window ends the program with status 0 and sends no message.
 - note: Per M5-05: the window opens at 480 by 360 units; a resize lays the tree out again without running the view.
 - note: Per M5-09: the window opens in the process that runs the app, M4-04's runner in dev mode, never in the server. winit builds one event loop per process, so it is built once on its own thread (Wayland's `with_any_thread`) and kept; each launch opens a window in it and an ending app closes only its window. A `run` naming a visual app opens the window when the server has a Wayland display.
+- note: Done: gui/src/window.rs. `Window::open` starts the kept event loop on first use and opens a window at 480 by 360 units; `show` hands it a tree, and dropping it closes only that window. A redraw lays the tree out at the window's width in units and draws it at the scale factor into a softbuffer surface; a resize or a new scale factor redraws without running the view. The first presented frame is logged to standard error with its size and scale. A close request closes the window and ends the app with status 0, sending no message. The runner runs a visual app on the interpreter with a window and replies at once with its first tree and `window` true; its next run ends it. The server sends a visual app's run to the runner when WAYLAND_DISPLAY is set. Read as: Look reaches only the windowless app until M5-38. Test: installer/tests/window.rs skips, and says so, with no Wayland display; otherwise it runs the counter twice in the runner, checks each reply and each first-frame log line, and checks the runner exits cleanly when its input ends.
 
 ### M5-36 · L3 · Turn window pointer and key events into element input
 

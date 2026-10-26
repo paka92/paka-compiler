@@ -31,6 +31,6 @@ The version: another number, then not a number; a version is judged before the f
 
 The call:
 > {"v":1,"id":22,"call":"delete","name":"update"}
-< {"v":1,"id":22,"ok":false,"error":{"kind":"unknown_call","message":"no call `delete`; calls are find, view, edit, run"}}
+< {"v":1,"id":22,"ok":false,"error":{"kind":"unknown_call","message":"no call `delete`; calls are find, view, edit, run, look_tree, look_screenshot, look_click, look_key"}}
 > {"v":1,"id":3}
 < {"v":1,"id":3,"ok":false,"error":{"kind":"bad_request","message":"`call` must be a string"}}

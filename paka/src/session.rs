@@ -4,10 +4,11 @@
 //! The workspace holds each definition in canonical text, and its version is the first 12 hex
 //! digits of the SHA-256 of that text. The files keep their layout except where an edit writes.
 
+use crate::ast::{Def, Entry};
 use crate::core_form::Program;
 use crate::diagnostic::Diagnostic;
 use crate::migrate::check_migrate;
-use crate::parser::split;
+use crate::parser::{parse_def, split};
 use crate::print;
 use crate::serve::{Call, Failure, Reply};
 use crate::sha256::sha256;
@@ -16,6 +17,7 @@ use crate::workspace::Workspace;
 use paka_json::Value;
 use paka_rt::route::Event;
 use std::collections::{BTreeMap, BTreeSet};
+use std::env;
 use std::ffi::{OsStr, OsString};
 use std::fs;
 use std::io::{self, Write};
@@ -24,13 +26,14 @@ use std::path::{Path, PathBuf};
 use std::time::Duration;
 
 mod find;
+mod look;
 mod runner;
 mod stored;
-mod visual;
+pub mod visual;
 
 pub use runner::Runner;
 use stored::Stored;
-use visual::Visual;
+use visual::{Shown, Visual};
 
 const PATH: &str = "main.paka";
 
@@ -75,6 +78,8 @@ struct Runnable {
     files: Vec<(String, String)>,
     apps: Vec<String>,
     stored: Stored,
+    /// Whether its app has a view.
+    visual: bool,
 }
 
 struct File {
@@ -126,6 +131,7 @@ impl Session {
                 let order = order(|key| call.get(key));
                 Ok(vec![("run", self.run(&order)?)])
             }
+            name if name.starts_with("look_") => self.look(call),
             name => Err(Failure::new(
                 "unknown_call",
                 format!("{name} is not served yet"),
@@ -194,24 +200,33 @@ impl Session {
     /// Launches the runnable version's visual app with no window and gives its first tree. While
     /// it runs, edits to its stored types need a state choice (docs/decisions/M5-07.md).
     pub fn launch(&mut self, args: Vec<OsString>) -> Result<String, Failure> {
+        Ok(self.started(args)?.tree)
+    }
+
+    fn started(&mut self, args: Vec<OsString>) -> Result<Shown, Failure> {
         let core = core(self.runnable.as_ref().ok_or_else(not_runnable)?);
         if !visual_app(&core) {
             return Err(Failure::new("no_app", "the program has no visual app"));
         }
-        let (visual, (tree, ended)) = Visual::start(core, args);
-        self.visual = (!ended).then_some(visual);
+        let (visual, first) = Visual::start(core, args, false);
+        self.visual = first.end.is_none().then_some(visual);
         self.choice = None;
-        Ok(tree)
+        Ok(first)
     }
 
     /// Sends `events` to the running visual app and gives its tree after them; `None` when no app
-    /// runs. A waiting state choice ends with the app.
+    /// runs.
     pub fn send(&mut self, events: Vec<Event>) -> Option<String> {
-        let (tree, ended) = self.visual.as_ref()?.send(events);
-        if ended {
+        let shown = self.visual.as_ref()?.send(events);
+        Some(self.after(shown).tree)
+    }
+
+    /// `shown`, the app dropped if it ended; a waiting state choice ends with it.
+    fn after(&mut self, shown: Shown) -> Shown {
+        if shown.end.is_some() {
             (self.visual, self.choice) = (None, None);
         }
-        Some(tree)
+        shown
     }
 
     /// Refuses an edit that changes the running app's stored types with no state choice carried
@@ -268,6 +283,7 @@ impl Session {
             files,
             apps: self.apps(),
             stored,
+            visual: has_view(&self.workspace),
         };
         let mut took = "kept";
         if let (Some(visual), Some(running)) = (&self.visual, &self.runnable) {
@@ -286,10 +302,13 @@ impl Session {
                 _ => (core(&runnable), None),
             };
             let reset = self.choice.is_some() && function.is_none();
-            let ((_, ended), trap) = match function {
-                _ if !visual_app(&core) => ((String::new(), true), None),
-                Some(f) => visual.migrate(core, f, limit),
-                None => (visual.swap(core, reset), None),
+            let (ended, trap) = match function {
+                _ if !visual_app(&core) => (true, None),
+                Some(f) => {
+                    let shown = visual.migrate(core, f, limit);
+                    (shown.end.is_some(), shown.trap)
+                }
+                None => (visual.swap(core, reset).end.is_some(), None),
             };
             if let Some(trap) = trap {
                 return Outcome::Trapped(trap);
@@ -322,6 +341,10 @@ impl Session {
         let app = order.get("app").and_then(Value::as_str).unwrap();
         if !r.apps.iter().any(|a| a == app) {
             return Err(no_app(app, &r.apps));
+        }
+        // With a display the runner opens the app's window (docs/decisions/M5-09.md).
+        if r.visual && env::var_os("WAYLAND_DISPLAY").is_none() {
+            return self.run_visual(app, order);
         }
         match self.runner.run((r.generation, &r.files), order)? {
             Value::Null => Err(no_app(app, &r.apps)),
@@ -595,4 +618,15 @@ fn source(files: &[(String, String)]) -> Source {
 
 fn visual_app(core: &Program) -> bool {
     core.app.as_ref().is_some_and(|a| a.view.is_some())
+}
+
+/// Whether the app of `workspace` has a view, read from its text.
+fn has_view(workspace: &Workspace) -> bool {
+    let mut apps = workspace
+        .defs()
+        .filter(|(_, text)| text.starts_with("app "));
+    apps.any(|(_, text)| match parse_def(PATH, text.as_bytes()) {
+        Ok(Def::App { entries, .. }) => entries.iter().any(|e| matches!(e, Entry::View(..))),
+        _ => false,
+    })
 }

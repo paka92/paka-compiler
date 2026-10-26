@@ -51,6 +51,15 @@ pub enum Node<M> {
 }
 
 impl<M> Node<M> {
+    /// The node at `path` below this one.
+    pub fn at(&self, path: &[Step]) -> Option<&Node<M>> {
+        let Some((step, rest)) = path.split_first() else {
+            return Some(self);
+        };
+        let child = self.children().iter().find(|(s, _)| s == step)?;
+        child.1.at(rest)
+    }
+
     pub fn kind(&self) -> &'static str {
         match self {
             Node::Text(_) => "Text",
