@@ -268,9 +268,10 @@ fn copy_tree(node: &Node<Message>) -> Option<Node<Message>> {
     };
     Some(match node {
         Node::Text(t) => Node::Text(t.clone()),
-        Node::Button { label, on } => Node::Button {
+        Node::Button { label, on, focus } => Node::Button {
             label: label.clone(),
             on: message(on)?,
+            focus: *focus,
         },
         Node::Input {
             text,

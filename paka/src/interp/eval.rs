@@ -594,6 +594,7 @@ impl<'a> Machine<'a> {
                     "Button" => Node::Button {
                         label: shown,
                         on: message,
+                        focus: false,
                     },
                     _ => Node::Input {
                         text: shown,

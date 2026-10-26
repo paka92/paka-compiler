@@ -63,8 +63,9 @@ impl Painter<'_> {
         let (x, y) = (r.x as f64, r.y as f64);
         match node {
             Node::Text(s) => self.wrapped(s, x, y, r.w),
-            Node::Button { label, .. } => {
-                self.boxed(r, 4.0, 1.0, GREY, BUTTON);
+            Node::Button { label, focus, .. } => {
+                let (border, edge) = edge(*focus);
+                self.boxed(r, 4.0, border, edge, BUTTON);
                 self.line(label, x + 12.0, y + 6.0);
             }
             Node::Input { text, edit, .. } => self.input(r, text, edit),
@@ -86,11 +87,7 @@ impl Painter<'_> {
     /// The Input's box, then its text with the preedit at the cursor, selection behind and
     /// cursor in front when focused, all clipped to the inside of the border.
     fn input(&mut self, r: Rect, text: &str, edit: &Edit) {
-        let (border, edge) = if edit.focus {
-            (2.0, FOCUS)
-        } else {
-            (1.0, GREY)
-        };
+        let (border, edge) = edge(edit.focus);
         self.boxed(r, 0.0, border, edge, WHITE);
         let at = text
             .char_indices()
@@ -207,4 +204,9 @@ fn inner(r: Rect, border: f64) -> kurbo::Rect {
 fn rgb(hex: u32) -> AlphaColor<Srgb> {
     let [_, r, g, b] = hex.to_be_bytes();
     AlphaColor::from_rgb8(r, g, b)
+}
+
+/// A border's width and colour: 2 units in blue when focused (M5-04, M5-08).
+fn edge(focus: bool) -> (f64, u32) {
+    if focus { (2.0, FOCUS) } else { (1.0, GREY) }
 }

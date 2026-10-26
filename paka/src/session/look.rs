@@ -8,7 +8,7 @@ use paka_gui::text::Text;
 use paka_json::Value;
 use paka_rt::input::Key;
 use paka_rt::route::{Event, focused};
-use paka_rt::tree;
+use paka_rt::tree::{self, Node};
 use std::ffi::OsString;
 
 impl Session {
@@ -53,11 +53,11 @@ impl Session {
                 let keys = keys(call.str("text"), call.str("key"))?;
                 let typed = call.str("text").is_some();
                 let pressed = visual.with(move |ui, _| {
-                    if typed && focused(&mut ui.tree).is_none() {
+                    if typed && !matches!(focused(&mut ui.tree), Some(Node::Input { .. })) {
                         return None;
                     }
                     let before = ui.traps.len();
-                    ui.send(keys.into_iter().map(Event::Key));
+                    ui.send(keys);
                     Some(super::visual::shown_since(ui, before))
                 });
                 let shown = pressed
@@ -100,11 +100,11 @@ fn screenshot(visual: &Visual, scale: u64) -> Reply {
     ])
 }
 
-/// The keys `look_key` sends: each code point of `text`, or the one named `key`.
-fn keys(text: Option<&str>, key: Option<&str>) -> Result<Vec<Key>, Failure> {
+/// The events `look_key` sends: each code point of `text`, or the one named `key`.
+fn keys(text: Option<&str>, key: Option<&str>) -> Result<Vec<Event>, Failure> {
     let bad = |message: String| Err(Failure::new("bad_request", message));
     let name = match (text, key) {
-        (Some(text), None) => return Ok(text.chars().map(Key::Type).collect()),
+        (Some(text), None) => return Ok(text.chars().map(|c| Event::Key(Key::Type(c))).collect()),
         (None, Some(name)) => name,
         _ => return bad("give exactly one of `text` and `key`".into()),
     };
@@ -112,19 +112,19 @@ fn keys(text: Option<&str>, key: Option<&str>) -> Result<Vec<Key>, Failure> {
         Some(base) => (true, base),
         None => (false, name),
     };
-    // Tab, Shift+Tab and Enter move focus or click a Button (M5-08), which M5-36 builds.
     let key = match (shift, base) {
-        (false, "Tab" | "Enter") | (true, "Tab") => None,
-        (false, "Space") => Some(Key::Type(' ')),
-        (false, "Backspace") => Some(Key::Back),
-        (false, "Delete") => Some(Key::Delete),
-        (_, "Left") => Some(Key::Left(shift)),
-        (_, "Right") => Some(Key::Right(shift)),
-        (_, "Home") => Some(Key::Home(shift)),
-        (_, "End") => Some(Key::End(shift)),
+        (_, "Tab") => return Ok(vec![Event::Tab(shift)]),
+        (false, "Enter") => Key::Type('\n'),
+        (false, "Space") => Key::Type(' '),
+        (false, "Backspace") => Key::Back,
+        (false, "Delete") => Key::Delete,
+        (_, "Left") => Key::Left(shift),
+        (_, "Right") => Key::Right(shift),
+        (_, "Home") => Key::Home(shift),
+        (_, "End") => Key::End(shift),
         _ => return bad(format!("no key `{name}`")),
     };
-    Ok(key.into_iter().collect())
+    Ok(vec![Event::Key(key)])
 }
 
 fn not_running() -> Failure {

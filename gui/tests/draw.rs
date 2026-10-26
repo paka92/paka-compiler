@@ -12,6 +12,7 @@ fn counter() -> Node<()> {
     let button = |label: &str| Node::Button {
         label: label.into(),
         on: (),
+        focus: false,
     };
     Node::Col {
         gap: 8,
@@ -104,4 +105,29 @@ fn the_counter_draws_to_a_png_with_no_display() {
             assert_eq!(at(right + 1, mid), [0xFF; 3], "right at scale {scale}");
         }
     }
+}
+
+#[test]
+fn a_focused_button_has_a_two_unit_blue_border() {
+    let mut tree = counter();
+    if let Node::Col { children, .. } = &mut tree
+        && let Node::Row { children, .. } = &mut children[1].1
+        && let Node::Button { focus, .. } = &mut children[1].1
+    {
+        *focus = true;
+    }
+    let text = Text::default();
+    let rects = layout(&tree, WIDTH, &text);
+    let pixmap = draw(&tree, &rects, &text, 1.0, WIDTH as u16, HEIGHT as u16);
+    let image = png::encode(WIDTH as u32, HEIGHT as u32, pixmap.data_as_u8_slice());
+    let blue = [0x00, 0x60, 0xDF];
+    let (minus, plus) = (rects[3], rects[4]);
+    let mid = plus.y + 16;
+    let right = plus.x + plus.w - 1;
+    for x in [plus.x, plus.x + 1, right - 1, right] {
+        assert_eq!(pixel(&image, x, mid), blue, "border at {x}");
+    }
+    assert_eq!(pixel(&image, plus.x + 2, mid), [0xE6; 3]);
+    assert_eq!(pixel(&image, minus.x, mid), [0x80; 3]);
+    assert_eq!(pixel(&image, minus.x + 1, mid), [0xE6; 3]);
 }

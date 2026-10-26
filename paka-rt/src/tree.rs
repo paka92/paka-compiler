@@ -32,6 +32,7 @@ pub enum Node<M> {
     Button {
         label: String,
         on: M,
+        focus: bool,
     },
     Input {
         text: String,
@@ -114,7 +115,7 @@ pub fn unique<M>(parent: &str, children: Vec<(Step, Node<M>)>) -> Vec<(Step, Nod
 /// Gives `new` the element state of `old` (M5-02 section 1.8). Nodes match by kind; a child
 /// matches the old child with the same step under a matched parent. Anything unmatched starts
 /// fresh, and so does a duplicate key, since `unique` left an error node in its place. A kept
-/// Input follows a text the app set (M5-03 section 1.3).
+/// Input follows a text the app set (M5-03 section 1.3); a kept Button keeps its focus.
 pub fn keep<M>(old: &Node<M>, new: &mut Node<M>) {
     match (old, new) {
         (
@@ -128,6 +129,7 @@ pub fn keep<M>(old: &Node<M>, new: &mut Node<M>) {
             *edit = was.clone();
             edit.follow(before, text, None);
         }
+        (Node::Button { focus: was, .. }, Node::Button { focus, .. }) => *focus = *was,
         (Node::Row { children: was, .. }, Node::Row { children, .. })
         | (Node::Col { children: was, .. }, Node::Col { children, .. }) => {
             let was: BTreeMap<_, _> = was.iter().map(|(step, node)| (step, node)).collect();
@@ -210,7 +212,12 @@ impl<M: Display> Node<M> {
         }
         match self {
             Node::Text(text) => write!(f, " {}", quoted(text))?,
-            Node::Button { label, on } => write!(f, " {} on={on}", quoted(label))?,
+            Node::Button { label, on, focus } => {
+                write!(f, " {} on={on}", quoted(label))?;
+                if *focus {
+                    write!(f, " focus")?;
+                }
+            }
             Node::Input {
                 text,
                 on_change,

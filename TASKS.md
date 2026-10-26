@@ -1828,6 +1828,7 @@ or merged during review. Ids with a letter were added during review.
 
 ### M5-36 · L3 · Turn window pointer and key events into element input
 
+- status: done
 - needs: M5-18, M5-31, M5-35
 - flags: owner
 - done when: Translation tests pass, Tab and Shift+Tab order and Enter or Space on a focused Button included; a person confirms by hand that clicks, typing, Tab and Space work in the counter and a text input.
@@ -1835,9 +1836,11 @@ or merged during review. Ids with a letter were added during review.
 - note: Per M5-04: a click is a press and release on the same element; other buttons, double clicks and hover are ignored.
 - note: Per M5-05: pointer positions are divided by the scale factor, rounding down, before hit testing.
 - note: Per M5-08: M5-04 point 1.4 is replaced. Inputs and Buttons take focus; a click moves focus only to an Input; Tab and Shift+Tab move it through Inputs and Buttons in tree order and wrap around; Enter or Space on a focused Button clicks it; Enter in an Input still does nothing. `paka_rt::route` (M5-18) lets only an Input hold focus and drops Tab, so this task changes it. A click never moves focus to a Button, so UI examples are unchanged.
+- note: Done: gui/src/events.rs turns winit input into `route::Event`s, and the window sends each to the app's queue as a job, so the interpreter and dev code route it through the same `paka_rt::route`. `Pointer` keeps the position in units and the element the main button went down on. Keys: Tab and Shift+Tab are the new `Event::Tab`; Enter and Space are typed `\n` and space, which a focused Button takes as a click and an Input as before; with Control, Alt or Super held a key types nothing. A Button now holds `focus`, prints it in the tree text, keeps it by key and step like an Input, and draws the 2-unit #0060DF border. Tab into an Input leaves its cursor where it was. Look's `key` takes Tab, Shift+Tab, Enter and Space the same way. Read as: the hand check of clicks, typing, Tab and Space in the window is the owner's. Test: gui/tests/events.rs checks clicks by press and release at scale 1, 1.5 and 2, other buttons, each key and Tab then Space; paka-rt's route tests check Tab order and wrap, Enter and Space on a Button and focus kept or lost; gui/tests/draw.rs checks the focused border's pixels; installer/tests/windowless.rs checks the interpreter and dev code agree on Tab, Shift+Tab, Space and Enter; paka/tests/look.rs drives the same keys through Look.
 
 ### M5-37 · L4 · Handle IME preedit and commit in the text input
 
+- status: done
 - needs: M5-19, M5-36
 - flags: owner, conditional
 - done when: Hand-written preedit and commit sequences pass as tests; a person confirms composing with ibus in the window, recorded in the pull request.
@@ -1845,6 +1848,7 @@ or merged during review. Ids with a letter were added during review.
 - note: Only if the owner's M5-08 ruling requires IME in M5. M5-08 rules IME into M5, so this task runs.
 - note: Per M5-08: keep the trial's two rules. The app sets the IME cursor area only when the cursor moves, and drops a preedit equal to the current one; otherwise each area change makes the input method resend its preedit and the window repaints without end.
 - note: Per M5-03: preedit stays in the element and is never in a message; a commit sends one `on_change`; a change of the app's text moves the preedit with the cursor and does not cancel it. Still dropped if M5-08 rules IME out.
+- note: Done: `Event` gains `Preedit` and `Commit`. A preedit is kept in the focused Input's `Edit` and sends nothing; a commit clears it and sends one change, typed over the selection or at the cursor, with line breaks and tabs dropped and an empty commit sending nothing; losing focus or leaving the tree ends it. The window turns on the input method only while an Input has focus, drops a preedit equal to the one shown, and sets the cursor area at the text cursor only when that moves. Read as: composing with ibus in the window is the owner's hand check. Test: paka-rt's route tests and gui/tests/events.rs play hand-written preedit and commit sequences; installer/tests/windowless.rs checks both back ends agree on a preedit, a commit and a commit the handler refuses.
 
 ### M5-38 · L3 · Serve Look from the windowed app
 

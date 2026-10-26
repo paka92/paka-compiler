@@ -590,3 +590,45 @@ migrate(old: Todos) -> Todos {
     );
     assert!(seen.0.contains("\"0:t0:n 1:t1:n 2:t2: \""), "{}", seen.0);
 }
+
+#[test]
+fn tab_moves_focus_and_space_or_enter_clicks_the_focused_button() {
+    let space = || Event::Key(Key::Type(' '));
+    let enter = || Event::Key(Key::Type('\n'));
+    let events = vec![Event::Tab(false), Event::Tab(false), space(), enter()];
+    let want = counter("2").replace("on=Inc", "on=Inc focus");
+    assert_eq!(play(COUNTER, events.clone()).0, want);
+    let mut back = events;
+    back.extend([Event::Tab(true), space()]);
+    let want = counter("1").replace("on=Dec", "on=Dec focus");
+    assert_eq!(play(COUNTER, back).0, want);
+}
+
+#[test]
+fn a_composed_word_is_one_change_and_the_preedit_never_reaches_the_app() {
+    let mut events = vec![click(&[Step::Str("new".into())], "Input")];
+    events.push(Event::Key(Key::Type('a')));
+    events.push(Event::Preedit("にほ".into()));
+    let want = "\
+Col
+  Input 'new' \"a\" cursor=1 preedit=\"にほ\" on_change=Draft focus
+  Text #1 \"a\"
+";
+    assert_eq!(play(FORM, events.clone()).0, want);
+    events.push(Event::Commit("日本".into()));
+    let want = "\
+Col
+  Input 'new' \"a日本\" cursor=3 on_change=Draft focus
+  Text #1 \"a日本\"
+";
+    assert_eq!(play(FORM, events.clone()).0, want);
+    events.push(Event::Key(Key::Left(false)));
+    events.push(Event::Preedit("x".into()));
+    events.push(Event::Commit("xy".into()));
+    let want = "\
+Col
+  Input 'new' \"a日本\" cursor=2 on_change=Draft focus
+  Text #1 \"a日本\"
+";
+    assert_eq!(play(FORM, events).0, want);
+}

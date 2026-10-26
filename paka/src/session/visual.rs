@@ -1,6 +1,7 @@
 //! A visual app run on the interpreter (M5-20), in a thread that owns its program and each version
 //! installed into it, with no window or with one (M5-35). Its effects are performed; what it
-//! prints is dropped. Work reaches it as jobs, each run between turns.
+//! prints is dropped. Work, the window's input included, reaches it as jobs, each run between
+//! turns.
 
 use crate::core_form::{FnId, Program};
 use crate::interp::Windowless;
@@ -43,11 +44,18 @@ impl Visual {
         let app = core.app.as_ref().map_or(String::new(), |a| a.name.clone());
         let (inbox, jobs) = mpsc::channel::<Job>();
         let (first, shown) = mpsc::channel();
-        let (title, closer) = (app.clone(), inbox.clone());
+        let (title, closer, input) = (app.clone(), inbox.clone(), inbox.clone());
         thread::spawn(move || {
             let mut ui = Windowless::start(Arc::new(core), &args, Host(io::sink()));
             let on_close = move || drop(closer.send(Box::new(close)));
-            let window = windowed.then(|| Window::open(&title, on_close)).flatten();
+            let on_input = move |event: Event| {
+                let _ = input.send(Box::new(move |ui: &mut Ui, _: &[OsString]| {
+                    ui.send([event])
+                }));
+            };
+            let window = windowed
+                .then(|| Window::open(&title, on_close, on_input))
+                .flatten();
             let _ = first.send((shown_since(&ui, 0), window.is_some()));
             while ui.end.is_none() {
                 window.iter().for_each(|w| w.show(&ui.tree));

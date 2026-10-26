@@ -1,5 +1,6 @@
-//! Windows that show an element tree (M5-35). winit allows one event loop per process, so it is
-//! built once, on its own thread, and kept; each window opens in it and closes alone (M5-09).
+//! Windows that show an element tree and pass on its input (M5-35, M5-36, M5-37). winit allows
+//! one event loop per process, so it is built once, on its own thread, and kept; each window
+//! opens in it and closes alone (M5-09).
 
 use std::collections::BTreeMap;
 use std::num::NonZeroU32;
@@ -8,22 +9,26 @@ use std::sync::mpsc::{self, Sender};
 use std::sync::{Mutex, OnceLock};
 use std::thread;
 
-use paka_rt::layout::layout;
+use paka_rt::layout::{Rect, layout};
+use paka_rt::route::Event;
 use paka_rt::tree::{Node, Step};
 use softbuffer::{Context, Surface};
 use winit::application::ApplicationHandler;
-use winit::dpi::LogicalSize;
-use winit::event::WindowEvent;
+use winit::dpi::{LogicalPosition, LogicalSize};
+use winit::event::{ElementState, KeyEvent, WindowEvent};
 use winit::event_loop::{ActiveEventLoop, EventLoop, EventLoopProxy};
+use winit::keyboard::ModifiersState;
 use winit::platform::wayland::EventLoopBuilderExtWayland;
 use winit::window::{self, WindowId};
 
+use crate::events::{self, Pointer, focused_input};
 use crate::text::Text;
 
 type OnClose = Box<dyn FnOnce() + Send>;
+type OnInput = Box<dyn Fn(Event) + Send>;
 
 enum Order {
-    Open(String, OnClose, Sender<WindowId>),
+    Open(String, OnClose, OnInput, Sender<WindowId>),
     Show(WindowId, Node<()>),
     Close(WindowId),
 }
@@ -35,12 +40,17 @@ pub struct Window {
 }
 
 impl Window {
-    /// Opens a window titled `title` at `crate::SIZE` units; `None` with no display. A close
-    /// request closes it and calls `on_close`.
-    pub fn open(title: &str, on_close: impl FnOnce() + Send + 'static) -> Option<Window> {
+    /// Opens a window titled `title` at `crate::SIZE` units; `None` with no display. Its clicks,
+    /// keys and input-method text go to `on_input`; a close request closes it and calls
+    /// `on_close`.
+    pub fn open(
+        title: &str,
+        on_close: impl FnOnce() + Send + 'static,
+        on_input: impl Fn(Event) + Send + 'static,
+    ) -> Option<Window> {
         let to_loop = event_loop()?.lock().ok()?.clone();
         let (reply, id) = mpsc::channel();
-        let order = Order::Open(title.into(), Box::new(on_close), reply);
+        let order = Order::Open(title.into(), Box::new(on_close), Box::new(on_input), reply);
         to_loop.send_event(order).ok()?;
         Some(Window {
             id: id.recv().ok()?,
@@ -91,9 +101,10 @@ fn plain<M>(node: &Node<M>) -> Node<()> {
     };
     match node {
         Node::Text(s) => Node::Text(s.clone()),
-        Node::Button { label, .. } => Node::Button {
+        Node::Button { label, focus, .. } => Node::Button {
             label: label.clone(),
             on: (),
+            focus: *focus,
         },
         Node::Input { text, edit, .. } => Node::Input {
             text: text.clone(),
@@ -123,7 +134,14 @@ struct Open {
     window: Rc<window::Window>,
     surface: Surface<Rc<window::Window>, Rc<window::Window>>,
     tree: Node<()>,
+    /// The tree laid out at the window's width, for hit testing and the IME area.
+    rects: Vec<Rect>,
     on_close: Option<OnClose>,
+    on_input: OnInput,
+    pointer: Pointer,
+    mods: ModifiersState,
+    /// The IME cursor area last set, in units; `None` while no Input has focus.
+    ime_area: Option<(f64, f64)>,
     presented: bool,
 }
 
@@ -132,8 +150,8 @@ impl ApplicationHandler<Order> for Shown {
 
     fn user_event(&mut self, event_loop: &ActiveEventLoop, order: Order) {
         match order {
-            Order::Open(title, on_close, reply) => {
-                let Some(open) = open(event_loop, &title, on_close) else {
+            Order::Open(title, on_close, on_input, reply) => {
+                let Some(open) = open(event_loop, &title, on_close, on_input) else {
                     return;
                 };
                 let id = open.window.id();
@@ -143,6 +161,7 @@ impl ApplicationHandler<Order> for Shown {
             Order::Show(id, tree) => {
                 if let Some(open) = self.windows.get_mut(&id) {
                     open.tree = tree;
+                    open.lay_out(&self.text);
                     open.window.request_redraw();
                 }
             }
@@ -168,12 +187,50 @@ impl ApplicationHandler<Order> for Shown {
                     f()
                 }
             }
+            WindowEvent::CursorMoved { position, .. } => {
+                let scale = open.window.scale_factor();
+                open.pointer.moved(position.x, position.y, scale);
+            }
+            WindowEvent::MouseInput { state, button, .. } => {
+                let pointer = &mut open.pointer;
+                if let Some(click) = pointer.button(button, state, &open.tree, &open.rects) {
+                    (open.on_input)(click);
+                }
+            }
+            WindowEvent::ModifiersChanged(mods) => open.mods = mods.state(),
+            WindowEvent::KeyboardInput {
+                event:
+                    KeyEvent {
+                        logical_key,
+                        text,
+                        state: ElementState::Pressed,
+                        ..
+                    },
+                is_synthetic: false,
+                ..
+            } => {
+                for event in events::key(&logical_key, text.as_deref(), open.mods) {
+                    (open.on_input)(event);
+                }
+            }
+            WindowEvent::Ime(ime) => {
+                let shown = focused_input(&open.tree, &open.rects);
+                let preedit = shown.map_or("", |(_, _, edit)| edit.preedit.as_str());
+                if let Some(event) = events::ime(ime, preedit) {
+                    (open.on_input)(event);
+                }
+            }
             _ => {}
         }
     }
 }
 
-fn open(event_loop: &ActiveEventLoop, title: &str, on_close: OnClose) -> Option<Open> {
+fn open(
+    event_loop: &ActiveEventLoop,
+    title: &str,
+    on_close: OnClose,
+    on_input: OnInput,
+) -> Option<Open> {
     let (w, h) = crate::SIZE;
     let attributes = window::Window::default_attributes()
         .with_title(title)
@@ -188,12 +245,42 @@ fn open(event_loop: &ActiveEventLoop, title: &str, on_close: OnClose) -> Option<
             gap: 0,
             children: vec![],
         },
+        rects: vec![],
         on_close: Some(on_close),
+        on_input,
+        pointer: Pointer::default(),
+        mods: ModifiersState::empty(),
+        ime_area: None,
         presented: false,
     })
 }
 
 impl Open {
+    /// Lays the tree out at the window's width in units, and moves the IME cursor area to the
+    /// focused Input's cursor when it moved there. The input method is on only while an Input
+    /// has focus.
+    fn lay_out(&mut self, text: &Text) {
+        let width = f64::from(self.window.inner_size().width) / self.window.scale_factor();
+        self.rects = layout(&self.tree, width as u64, text);
+        let area = focused_input(&self.tree, &self.rects).map(|(r, shown, edit)| {
+            let before: String = shown.chars().take(edit.cursor).collect();
+            let x = r.x as f64 + 8.0 + f64::from(text.advance(&before));
+            (x, r.y as f64 + 6.0)
+        });
+        if area == self.ime_area {
+            return;
+        }
+        if area.is_some() != self.ime_area.is_some() {
+            self.window.set_ime_allowed(area.is_some());
+        }
+        // Each move makes the input method send its preedit again (M5-08).
+        if let Some((x, y)) = area {
+            let (at, size) = (LogicalPosition::new(x, y), LogicalSize::new(1.0, 20.0));
+            self.window.set_ime_cursor_area(at, size);
+        }
+        self.ime_area = area;
+    }
+
     /// Lays the tree out at the window's width and presents it.
     fn redraw(&mut self, text: &Text) {
         let size = self.window.inner_size();
@@ -201,10 +288,10 @@ impl Open {
             return;
         };
         let scale = self.window.scale_factor();
-        let rects = layout(&self.tree, (f64::from(w.get()) / scale) as u64, text);
+        self.lay_out(text);
         let pixmap = crate::draw::draw(
             &self.tree,
-            &rects,
+            &self.rects,
             text,
             scale,
             w.get() as u16,

@@ -39,6 +39,7 @@ fn button(label: &str) -> Tree {
     Node::Button {
         label: label.into(),
         on: "Go",
+        focus: false,
     }
 }
 

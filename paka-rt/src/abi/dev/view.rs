@@ -236,7 +236,11 @@ fn decode(
                     text: show(ty, address),
                 };
                 last = Some(match op {
-                    BUTTON => Node::Button { label, on: message },
+                    BUTTON => Node::Button {
+                        label,
+                        on: message,
+                        focus: false,
+                    },
                     _ => Node::Input {
                         text: label,
                         on_change: message,

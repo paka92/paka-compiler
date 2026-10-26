@@ -10,6 +10,7 @@ fn button(label: &str, on: &'static str) -> Tree {
     Node::Button {
         label: label.into(),
         on,
+        focus: false,
     }
 }
 
@@ -345,4 +346,30 @@ Col
   Input 'a' \"ab\" cursor=2 on_change=Draft
 ";
     assert_eq!(kept(&old, new), want);
+}
+
+#[test]
+fn a_focused_button_prints_focus_and_keeps_it_by_its_step() {
+    let focused = Node::Button {
+        label: "Add".into(),
+        on: "Add",
+        focus: true,
+    };
+    assert_eq!(focused.to_string(), "Button \"Add\" on=Add focus\n");
+    let old = Node::Col {
+        gap: 0,
+        children: vec![(Step::Place(1), focused)],
+    };
+    let mut new = Node::Col {
+        gap: 0,
+        children: vec![
+            (Step::Place(0), button("Add", "Add")),
+            (Step::Place(1), button("Add", "Add")),
+        ],
+    };
+    keep(&old, &mut new);
+    let held: Vec<_> = (new.children().iter())
+        .map(|(_, n)| matches!(n, Node::Button { focus: true, .. }))
+        .collect();
+    assert_eq!(held, [false, true]);
 }

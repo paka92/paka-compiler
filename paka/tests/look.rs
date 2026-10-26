@@ -152,6 +152,29 @@ fn look_drives_the_windowless_app() {
     assert!(tree(&keyed).contains("\"hé\" cursor=2"), "{keyed}");
     let moved = call(s, "look_key", vec![("key", "Shift+Home".into())]);
     assert!(tree(&moved).contains("cursor=0 sel=0..2"), "{moved}");
+    let key = |s: &mut Session, name: &str| call(s, "look_key", vec![("key", name.into())]);
+    let entered = key(s, "Enter");
+    assert!(
+        tree(&entered).contains("\"hé\" cursor=0 sel=0..2"),
+        "{entered}"
+    );
+    let spaced = key(s, "Space");
+    assert!(tree(&spaced).contains("\" \" cursor=1"), "{spaced}");
+    let back = key(s, "Shift+Tab");
+    assert!(tree(&back).contains("on=Inc focus"), "{back}");
+    let pressed = key(s, "Space");
+    assert!(tree(&pressed).contains("Text #0 \"2\""), "{pressed}");
+    let pressed = key(s, "Enter");
+    assert!(tree(&pressed).contains("Text #0 \"3\""), "{pressed}");
+    refused(s, "look_key", vec![("text", "a".into())], "no_focus");
+    key(s, "Tab");
+    let next = key(s, "Tab");
+    assert!(tree(&next).contains("on=Quit focus"), "{next}");
+    let to_input = key(s, "Shift+Tab");
+    assert!(
+        tree(&to_input).contains("on_change=Edit focus"),
+        "{to_input}"
+    );
 
     refused(s, "look_click", vec![("path", "#9".into())], "no_element");
     refused(s, "look_click", vec![("path", "#".into())], "bad_request");

@@ -27,17 +27,14 @@ impl Edit {
     /// Applies `key` to `text`. A move changes the edit and sends nothing; an edit leaves it as
     /// is and returns the change to send. A key that would not change the text gives `None`.
     pub fn key(&mut self, text: &str, key: Key) -> Option<Change> {
-        let len = text.chars().count();
-        self.select(self.sel.start.min(len), self.sel.end.min(len));
-        self.cursor = self.cursor.min(len);
+        let (len, cut) = self.clip(text);
         let (sel, at) = (self.sel.clone(), self.cursor);
-        let cut = if sel.is_empty() { at..at } else { sel.clone() };
         let (to, extend) = match key {
             Key::Type('\n' | '\r' | '\t') => return None,
-            Key::Type(c) => return Some(splice(text, cut, Some(c))),
-            Key::Back | Key::Delete if !sel.is_empty() => return Some(splice(text, cut, None)),
-            Key::Back if at > 0 => return Some(splice(text, at - 1..at, None)),
-            Key::Delete if at < len => return Some(splice(text, at..at + 1, None)),
+            Key::Type(c) => return Some(splice(text, cut, c.encode_utf8(&mut [0; 4]))),
+            Key::Back | Key::Delete if !sel.is_empty() => return Some(splice(text, cut, "")),
+            Key::Back if at > 0 => return Some(splice(text, at - 1..at, "")),
+            Key::Delete if at < len => return Some(splice(text, at..at + 1, "")),
             Key::Back | Key::Delete => return None,
             Key::Left(false) if !sel.is_empty() => (sel.start, false),
             Key::Right(false) if !sel.is_empty() => (sel.end, false),
@@ -57,6 +54,33 @@ impl Edit {
         None
     }
 
+    /// Ends the preedit with the input method's commit of `put` (M5-03 section 1.4): it replaces
+    /// the selection or goes in at the cursor, as typing does, and gives the one change to send.
+    /// Line breaks and tabs in it type nothing; an empty commit sends nothing.
+    pub fn commit(&mut self, text: &str, put: &str) -> Option<Change> {
+        self.preedit.clear();
+        let put: String = put
+            .chars()
+            .filter(|c| !matches!(c, '\n' | '\r' | '\t'))
+            .collect();
+        let (_, cut) = self.clip(text);
+        (!put.is_empty()).then(|| splice(text, cut, &put))
+    }
+
+    /// Clips cursor and selection to `text`; its length and the span typing replaces.
+    fn clip(&mut self, text: &str) -> (usize, Range<usize>) {
+        let len = text.chars().count();
+        self.select(self.sel.start.min(len), self.sel.end.min(len));
+        self.cursor = self.cursor.min(len);
+        let at = self.cursor;
+        let cut = if self.sel.is_empty() {
+            at..at
+        } else {
+            self.sel.clone()
+        };
+        (len, cut)
+    }
+
     /// Follows the text the view handed back (M5-03 section 1.3). The same text as `before` moves
     /// nothing; any other is shown with the cursor at `sent`, or where it was when the app set the
     /// text itself, pulled back to the end, and the selection cleared.
@@ -73,14 +97,12 @@ impl Edit {
 }
 
 /// `text` with the code points in `cut` replaced by `put`, the cursor just after.
-fn splice(text: &str, cut: Range<usize>, put: Option<char>) -> Change {
+fn splice(text: &str, cut: Range<usize>, put: &str) -> Change {
     let byte = |i| text.char_indices().nth(i).map_or(text.len(), |(b, _)| b);
-    let mut new = text[..byte(cut.start)].to_string();
-    new.extend(put);
-    new.push_str(&text[byte(cut.end)..]);
+    let new = [&text[..byte(cut.start)], put, &text[byte(cut.end)..]].concat();
     Change {
         text: new,
-        cursor: cut.start + usize::from(put.is_some()),
+        cursor: cut.start + put.chars().count(),
     }
 }
 

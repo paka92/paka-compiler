@@ -1,6 +1,7 @@
 //! The window, drawing and accessibility side of a visual app (docs/decisions/M5-08.md).
 
 pub mod draw;
+pub mod events;
 pub mod png;
 pub mod text;
 pub mod window;
