@@ -18,6 +18,7 @@ const KINDS: &[(&str, bool, bool)] = &[
     ("nesting-too-deep", false, false),
     ("unsupported-form", false, false),
     ("duplicate-name", false, false),
+    ("bad-foreign", false, false),
     ("duplicate-local", false, false),
     ("no-app", false, false),
     ("multiple-apps", false, false),

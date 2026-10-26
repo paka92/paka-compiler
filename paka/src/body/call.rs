@@ -46,7 +46,8 @@ impl<'a> Cx<'_, 'a> {
             },
             Some(Binding::Variant(i, j)) => {
                 let sig = self.variant_sig(i, j);
-                self.bare(e, &[sig], (true, true), want)
+                let user = !matches!(defs[i].item, Item::Foreign(_));
+                self.bare(e, &[sig], (user, true), want)
             }
             Some(Binding::Builtin(b)) => match (variants.get(b), fns.get(b)) {
                 (Some(sig), _) => self.bare(e, from_ref(sig), (false, true), want),
@@ -108,8 +109,8 @@ impl<'a> Cx<'_, 'a> {
         Err(self.fail_at(e, "not-a-value", message))
     }
 
-    /// The text that offers a function to stand where a built-in variant was named; the letters
-    /// of its row are filled in from the function type asked for.
+    /// The text that offers a function to stand where a built-in variant or a foreign effect was
+    /// named; the letters of its row are filled in from the function type asked for.
     fn variant_wrapper(&mut self, name: &str, sig: &Sig<'_>, want: Option<Ty>) -> String {
         let mut bound = Bound::new();
         if let Some(w) = want
@@ -134,7 +135,11 @@ impl<'a> Cx<'_, 'a> {
         let result = sig.result.map(&mut show).unwrap_or_default();
         let names: Vec<_> = sig.params.iter().map(|p| p.name).collect();
         format!(
-            "{name} is a built-in variant and cannot be a value; write fn {}_of({}) -> {result} {{ {name}({}) }}",
+            "{name} is {} and cannot be a value; write fn {}_of({}) -> {result} {{ {name}({}) }}",
+            match self.variants.contains_key(name) {
+                true => "a built-in variant",
+                false => "a foreign effect",
+            },
             name.to_lowercase(),
             params.join(", "),
             names.join(", ")
@@ -144,6 +149,7 @@ impl<'a> Cx<'_, 'a> {
     pub(super) fn variant_sig(&self, i: usize, j: usize) -> Sig<'a> {
         let fields = match &self.defs[i].item {
             Item::Enum(variants) => &variants[j].fields[..],
+            Item::Foreign(sigs) => return sigs[j].clone(),
             _ => &[],
         };
         let param = |f: &crate::sig::Field<'a>| Param {

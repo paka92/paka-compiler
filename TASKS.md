@@ -432,7 +432,7 @@ or merged during review. Ids with a letter were added during review.
 - done when: Reference merged; the size test passes under the one counting rule (bytes divided by 3, at most 8,000, until M3 records real tokens); a checklist maps every decision point to a line; samples are marked for later testing; the reference replaces the M1-06 spec, and each M1 case affected by M2-15 gets a re-expected copy under tests/cases-pending with the decision cited; tests/cases is not touched.
 - why this level: Must be exact, complete and tiny; one wrong sentence silently misleads every model reading it.
 - note: The same counting rule is reused by M4-18, M5-41 and M7-13. Follows docs/decisions/M2-15.md for the app form, effects, grants and ending. Follows docs/decisions/M2-14.md for the built-in table. Done: spec/paka.md with its checklist and size test. The copies under tests/cases-pending wait for the run loop task, which moves them into tests/cases; two `paka check` status changes and one run case cannot be held there and are described in its NOTE.md.
-- note: Per M7-02: gains a short `foreign` section in M7-13's pull request, within its size rule.
+- note: Per M7-02: gains a short `foreign` section in M7-13's pull request, within its size rule. Done: section 16, with section 12 trimmed within its lines so the checklist line numbers hold.
 
 ### M2-19 · L3 · Check statements and expressions against signatures only
 
@@ -2254,7 +2254,7 @@ or merged during review. Ids with a letter were added during review.
 - flags: none
 - done when: `foreign` is a keyword in the lexer and in the reference's keyword list; a test shows it is refused as a name and is not yet a definition.
 - why this level: One keyword row, one test and one word in the reference.
-- note: Done: paka/src/lexer.rs reserves it as `Kind::Foreign`; the lexer's keyword test and the parser test `foreign_is_reserved` cover it (`unexpected-token` as a local name and at the start of a definition); spec/paka.md section 2 lists it. M7-13 gives it meaning.
+- note: Done: paka/src/lexer.rs reserves it as `Kind::Foreign`; the lexer's keyword test and the parser test `foreign_parses_and_is_reserved` covers it as a local name; spec/paka.md section 2 lists it. M7-13 gives it meaning: it now starts a definition.
 
 ### M7-03 · L4 · Propose how human-owned examples run against the shipped release binary
 
@@ -2272,7 +2272,7 @@ or merged during review. Ids with a letter were added during review.
 - why this level: A forged or stale approval accepted here goes unnoticed; this is the trust anchor.
 - note: Per M7-01: no cryptography crate, no download; calls the system ssh-keygen by fixed path with an empty environment. Stores approved text, a serial and three record kinds. Tests add: a store signed by another key is refused; an older signed store put back is refused.
 - note: Per M7-02: a grants record can carry a declaration's text and its files' SHA-256.
-- note: Done: paka/src/approvals.rs. `records` makes a program's grants and example records as its source stands (example text canonical, with the comment lines right above it); `Store::save` writes `approvals` and signs it into `approvals.sig` through `/usr/bin/ssh-keygen -Y sign` on standard input; `Store::open` verifies with `-Y verify`, signer `owner`, namespace `paka-approval`, against a public key file, and only then parses; `Store::changes` lists each record of a program its source no longer matches (edited, gone, other grants as a set); `Store::follows` is the serial rule. Text form: a record's text is its line count, then its lines indented. File and foreign parts are stored and read back, not yet compared (M7-07, M7-13). Tests: paka/tests/approvals.rs.
+- note: Done: paka/src/approvals.rs. `records` makes a program's grants and example records as its source stands (example text canonical, with the comment lines right above it); `Store::save` writes `approvals` and signs it into `approvals.sig` through `/usr/bin/ssh-keygen -Y sign` on standard input; `Store::open` verifies with `-Y verify`, signer `owner`, namespace `paka-approval`, against a public key file, and only then parses; `Store::changes` lists each record of a program its source no longer matches (edited, gone, other grants as a set); `Store::follows` is the serial rule. Text form: a record's text is its line count, then its lines indented. File and foreign parts are stored and read back; `changes` compares foreign parts with the rest of a grants record (M7-13). Tests: paka/tests/approvals.rs.
 
 ### M7-05 · L2 · Label every example agent-written or human-owned from the approval store
 
@@ -2293,7 +2293,7 @@ or merged during review. Ids with a letter were added during review.
 - why this level: Must describe code changes truthfully to a non-reader; a misleading summary gets a wrong approval with no error anywhere.
 - note: Per M7-01: grows: per-item screen with fixed grant meanings, whole bodies with marked lines, escaped non-ASCII, `--adopt`, `--drop`, terminal-only answers, signing and the serial bump. The walk-through uses a paka built from `development`.
 - note: Per M7-02: the foreign grant screen shows the declaration's lines and named files, and a changed C file as changed.
-- note: Done: `paka approve <path> [--adopt <name>] [--drop <name>] [--key <file>]` in paka/src/main.rs, screens in paka/src/approve.rs. Items: the program's changed records and apps never approved, then `--adopt` and `--drop`, then owned files; each on its own screen with its own yes or no from a terminal (else status 2); one or more yes raises the serial by one and signs. With no store yet, the first starts beside the nearest `approvals.pub`. The program must check, since an example screen shows its status. Tests in paka/tests/approve.rs run the command under `script` for a terminal; the expected screens are written by hand, two of them differing only in one expected value. The owner's walk-through is still to do. The foreign screen waits for M7-13, which gives `foreign` meaning.
+- note: Done: `paka approve <path> [--adopt <name>] [--drop <name>] [--key <file>]` in paka/src/main.rs, screens in paka/src/approve.rs. Items: the program's changed records and apps never approved, then `--adopt` and `--drop`, then owned files; each on its own screen with its own yes or no from a terminal (else status 2); one or more yes raises the serial by one and signs. With no store yet, the first starts beside the nearest `approvals.pub`. The program must check, since an example screen shows its status. Tests in paka/tests/approve.rs run the command under `script` for a terminal; the expected screens are written by hand, two of them differing only in one expected value. The owner's walk-through is still to do. Foreign grants (M7-13): an added one shows its meaning, its files (a source with its line count) and its function lines; a changed declaration or file shows as `~ Name`.
 
 ### M7-07 · L4 · Build the gate: refuse when approvals differ or a human-owned example fails
 
@@ -2303,7 +2303,7 @@ or merged during review. Ids with a letter were added during review.
 - done when: The gate exits non-zero for a changed, deleted or renamed human-owned example, a changed grant list, a new app whose grant list was never approved, a missing or tampered store record, or a failing or unfinished human-owned example; each case is tested.
 - why this level: Unlisted cases (a deleted example, a new app with grants) pass silently; this gate stands in for code review.
 - note: Per M7-01: `paka gate <tree> --base <tree>`; 'a new app never approved' means one in a gated program. Adds the serial rule, owned files, the workflow-directory rule and the key-file refusal; runs human-owned examples in the interpreter.
-- note: Done: `paka gate <tree> --base <tree>` in paka/src/gate.rs. Refuses when the base has no `approvals.pub` or the tree's differs; when the tree's store does not verify with the base's key or does not follow the base's store; per gated program, each record its source no longer matches and each app never approved; each owned file (every recorded file, every file under `.github/workflows/`, `TRUSTED`) changed, gone or never approved; each human-owned example that does not pass in the interpreter. One line per refusal, then the line naming revert or `paka approve`, status 1; else `gate: passed`, status 0. `Store::file_changes` compares file records; foreign parts wait for M7-13. Tests: paka/tests/gate.rs.
+- note: Done: `paka gate <tree> --base <tree>` in paka/src/gate.rs. Refuses when the base has no `approvals.pub` or the tree's differs; when the tree's store does not verify with the base's key or does not follow the base's store; per gated program, each record its source no longer matches and each app never approved; each owned file (every recorded file, every file under `.github/workflows/`, `TRUSTED`) changed, gone or never approved; each human-owned example that does not pass in the interpreter; each symbolic link among the store files, the owned files and the files of gated programs, or on a directory of their paths, before it reads them. One line per refusal, then the line naming revert or `paka approve`, status 1; else `gate: passed`, status 0. `Store::file_changes` compares file records; foreign parts are compared with their grants record (M7-13). Tests: paka/tests/gate.rs.
 
 ### M7-08 · L2 · Report pending approvals and refusals to the agent in the agreed shape
 
@@ -2355,12 +2355,14 @@ or merged during review. Ids with a letter were added during review.
 
 ### M7-13 · L3 · Add foreign library declarations and their named grants to the checker
 
+- status: done
 - needs: M7-02, M7-07
 - flags: none
 - done when: A call into a declared C library runs only under that library's named grant; without it the call is refused as every ungranted effect is; adding the grant needs approval at the gate; reference updated. The declaration prints in the canonical layout and reparses unchanged; Edit, Find and View accept it; editing it rechecks its users.
 - why this level: New declaration through parser, resolver, checker and grants; several modules with clear rules.
 - note: Updates the language reference in the same pull request, within M2-18's size rule.
 - note: Per M7-02: adds the `foreign` kind, its three line kinds and the plain-file-name rule; the word itself is reserved by M7-02a. Foreign grants are approved through the M7-01 store.
+- note: Done: `Def::Foreign` in paka/src/ast.rs, parsed, printed and hashed (its lines are part of the interface, so an edit rechecks its users); paka/src/resolve/foreign.rs checks the shape (`bad-foreign`, spec/m1.md section 10). The name is a grant and each function an effect with `then:` and `or:` (paka/src/sig.rs). The interpreter refuses a foreign effect without its grant as every ungranted effect is, and with it answers `or("no host")` until M7-14 and M7-15; compiled code refuses it, and `paka build` reports `unsupported-form`. `records` stores each granted declaration's printed text and the SHA-256 of its source and header files (`none` for a link or a missing file); `changes`, the gate and `paka approve` compare and show them. Tests: paka/src/resolve/tests.rs, paka/src/approve.rs, paka/tests/effects.rs, paka/tests/gate.rs, tests/print. The conformance exit gate needs cases for the new node kinds under tests/conformance.
 
 ### M7-14 · L4 · Build the foreign host process with generated glue and a pipe protocol
 

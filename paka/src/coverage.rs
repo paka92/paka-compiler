@@ -25,7 +25,8 @@ macro_rules! node_kinds {
 
 node_kinds! {
     NODE_KINDS;
-    Def<'_>: Type Enum Fn Example App View;
+    Def<'_>: Type Enum Fn Example App View Foreign;
+    ForeignLine<'_>: File Function;
     Entry<'_>: State Start Update Grants View;
     Type<'_>: Name Fn;
     StmtKind<'_>: Let Discard Assign Return Break Continue For While Expr;
@@ -99,6 +100,15 @@ impl Uses {
             } => self.callable(params, Some(result), body),
             Def::Example { body, .. } => self.block(body),
             Def::App { entries, .. } => entries.iter().for_each(|e| self.entry(e)),
+            Def::Foreign { lines, .. } => lines.iter().for_each(|l| self.foreign_line(l)),
+        }
+    }
+
+    fn foreign_line(&mut self, line: &ForeignLine) {
+        self.kinds.insert(line.kind());
+        if let ForeignLine::Function { params, result, .. } = line {
+            params.iter().for_each(|p| self.ty(&p.ty));
+            result.iter().for_each(|t| self.ty(t));
         }
     }
 

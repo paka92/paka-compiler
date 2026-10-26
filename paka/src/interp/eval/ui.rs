@@ -186,7 +186,8 @@ impl<'a> Machine<'a> {
         ui.state = state;
         if matches!(effects, Value::List(_)) {
             let mut answers = VecDeque::new();
-            let end = perform(app, &mut effects, &mut Dropped, &mut answers);
+            let foreign = &self.core.foreign;
+            let end = perform(app, foreign, &mut effects, &mut Dropped, &mut answers);
             if !answers.is_empty() {
                 ui.events = None;
             }

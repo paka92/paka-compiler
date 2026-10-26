@@ -276,10 +276,12 @@ fn program(mut fns: Vec<Func>, mut update: Func) -> Program {
             view: None,
             update: fns.len() - 1,
             grants: BTreeSet::from([Grant::Console]),
+            foreign: BTreeSet::new(),
         }),
         fns,
         examples: vec![],
         ui_examples: vec![],
+        foreign: vec![],
         sites,
     }
 }

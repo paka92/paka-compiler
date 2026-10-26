@@ -64,6 +64,25 @@ pub enum Def<'a> {
         result: Type<'a>,
         body: Block<'a>,
     },
+    /// A C library whose functions are effects; its name is their grant (docs/decisions/M7-02.md).
+    Foreign {
+        name: Name<'a>,
+        lines: Vec<ForeignLine<'a>>,
+    },
+}
+
+/// A line of a `foreign` block. Quoted text is held as written between its quotes.
+#[derive(Debug, PartialEq)]
+pub enum ForeignLine<'a> {
+    /// `library:`, `source:` or `header:` and its file name.
+    File(Name<'a>, Name<'a>),
+    /// An effect and its C symbol: `Name(params) -> Result = "symbol"`.
+    Function {
+        name: Name<'a>,
+        params: Vec<Param<'a>>,
+        result: Option<Type<'a>>,
+        symbol: Name<'a>,
+    },
 }
 
 impl<'a> Def<'a> {
@@ -74,14 +93,21 @@ impl<'a> Def<'a> {
             | Def::Fn { name, .. }
             | Def::Example { name, .. }
             | Def::App { name, .. }
-            | Def::View { name, .. } => name,
+            | Def::View { name, .. }
+            | Def::Foreign { name, .. } => name,
         }
     }
 
-    /// The names it defines: its own and, for an enum, its variants'.
+    /// The names it defines: its own and its variants', a foreign declaration's effects too.
     pub fn names(&self) -> Vec<&'a str> {
         let variants = match self {
             Def::Enum { variants, .. } => variants.iter().map(|v| v.name.text).collect(),
+            Def::Foreign { lines, .. } => (lines.iter())
+                .filter_map(|line| match line {
+                    ForeignLine::Function { name, .. } => Some(name.text),
+                    ForeignLine::File(..) => None,
+                })
+                .collect(),
             _ => vec![],
         };
         [self.name().text].into_iter().chain(variants).collect()

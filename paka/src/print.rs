@@ -248,7 +248,37 @@ impl<'s> Printer<'s> {
                 };
                 self.container(self.braces(after), entries, lines, Self::entry);
             }
+            Def::Foreign { lines, .. } => {
+                write!(self.out, "foreign {} ", name.text).unwrap();
+                let at = |_: &Self, line: &ForeignLine| {
+                    let (ForeignLine::File(first, _) | ForeignLine::Function { name: first, .. }) =
+                        line;
+                    (first.at.0, first.at.0)
+                };
+                self.container(self.braces(after), lines, at, Self::foreign_line);
+            }
         }
+    }
+
+    fn foreign_line(&mut self, line: &ForeignLine) {
+        match line {
+            ForeignLine::File(key, file) => write!(self.out, "{}: \"{}\"", key.text, file.text),
+            ForeignLine::Function {
+                name,
+                params,
+                result,
+                symbol,
+            } => {
+                write!(self.out, "{}(", name.text).unwrap();
+                self.join(params, Self::param);
+                self.out.push(')');
+                if let Some(result) = result {
+                    write!(self.out, " -> {result}").unwrap();
+                }
+                write!(self.out, " = \"{}\"", symbol.text)
+            }
+        }
+        .unwrap();
     }
 
     /// `word name(params) -> result ` up to the body.

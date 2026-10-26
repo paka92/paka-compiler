@@ -1,12 +1,13 @@
 //! The screens of `paka approve` (docs/decisions/M7-01.md section 1.7): one item at a time, old
 //! and new, in words only the toolchain writes, every character outside printable ASCII escaped.
 
-use crate::approvals::{Change, Record, Store, records};
+use crate::approvals::{Change, Foreign, Record, Store, records};
 use crate::core_form::Program;
 use crate::diagnostic::Diagnostic;
 use crate::source::Source;
 use crate::{DefCheck, Lowered, check_defs, interp};
-use std::collections::BTreeSet;
+use std::collections::{BTreeMap, BTreeSet};
+use std::fs;
 use std::path::Path;
 
 /// A change awaiting the owner, and its screen without the `[i/n]` in front.
@@ -32,6 +33,8 @@ pub fn items(
         .map(|c| (word(&c), c))
         .collect();
     let records = records(program, source)?;
+    let dir = (source.files.first()).and_then(|f| Path::new(&f.path).parent());
+    let dir = dir.unwrap_or(Path::new(""));
     for name in adopt {
         let found = records.iter().find(|r| example_named(r, name));
         let found = found.ok_or_else(|| refused(format!("no example {name} to adopt")))?;
@@ -59,7 +62,7 @@ pub fn items(
     }
     Ok((changes.into_iter())
         .map(|(word, change)| Item {
-            screen: escaped(&screen(program, word, &change, &checked)),
+            screen: escaped(&screen(program, word, &change, &checked, dir)),
             change,
         })
         .collect())
@@ -73,16 +76,13 @@ fn screen(
     word: &str,
     change: &Change,
     checked: &(Lowered, Vec<DefCheck>),
+    dir: &Path,
 ) -> String {
     let ((core, ..), defs) = checked;
     match change.approved.as_ref().or(change.now.as_ref()) {
         Some(Record::Grants { app, .. }) => {
-            let grants = |r: &Option<Record>| match r {
-                Some(Record::Grants { grants, .. }) => Some(grants.clone()),
-                _ => None,
-            };
             let head = format!("{program}, app {app}, grants, {word}");
-            grants_screen(&head, grants(&change.approved), grants(&change.now))
+            grants_screen(&head, &change.approved, &change.now, dir)
         }
         Some(Record::Example { name, .. }) => {
             let head = format!(
@@ -136,12 +136,15 @@ fn word(change: &Change) -> &'static str {
     }
 }
 
-/// Both lists, then each grant added or removed with its fixed meaning.
+/// Both lists, then each grant added or removed with its fixed meaning, and each foreign
+/// declaration added or changed with its files and functions.
 fn grants_screen(
     head: &str,
-    approved: Option<BTreeSet<String>>,
-    now: Option<BTreeSet<String>>,
+    approved: &Option<Record>,
+    now: &Option<Record>,
+    dir: &Path,
 ) -> String {
+    let ((approved, was), (now, is)) = (parts(approved), parts(now));
     let list = |g: &Option<BTreeSet<String>>| match g {
         Some(g) => format!(
             "[{}]",
@@ -160,11 +163,37 @@ fn grants_screen(
         ('-', approved.difference(&now)),
     ] {
         for grant in grants {
-            screen += &format!("  {mark} {grant}: {}\n", meaning(grant));
+            let foreign = is.get(grant.as_str()).or(was.get(grant.as_str()));
+            let meaning = foreign.map_or(meaning(grant), |_| FOREIGN);
+            screen += &format!("  {mark} {grant}: {meaning}\n");
+            if let Some(f) = is.get(grant.as_str()).filter(|_| mark == '+') {
+                screen += &described(f, dir);
+            }
+        }
+    }
+    for (name, f) in &is {
+        if was.get(name).is_some_and(|old| old != f) {
+            screen += &format!("  ~ {name}: {FOREIGN}; its declaration or files changed\n");
+            screen += &described(f, dir);
         }
     }
     screen
 }
+
+/// A grants record's list, and its foreign declarations by name.
+fn parts(r: &Option<Record>) -> (Option<BTreeSet<String>>, BTreeMap<&str, &Foreign>) {
+    match r {
+        Some(Record::Grants {
+            grants, foreign, ..
+        }) => (
+            Some(grants.clone()),
+            foreign.iter().map(|f| (name(f), f)).collect(),
+        ),
+        _ => (None, BTreeMap::new()),
+    }
+}
+
+const FOREIGN: &str = "runs C code with all your rights, in a separate process";
 
 fn meaning(grant: &str) -> &'static str {
     match grant {
@@ -173,6 +202,36 @@ fn meaning(grant: &str) -> &'static str {
         "WriteFiles" => "may create or replace any file you can write",
         _ => "has no fixed meaning: not a grant paka knows",
     }
+}
+
+/// The name of a declaration in canonical text: `foreign Name {`.
+fn name(f: &Foreign) -> &str {
+    let rest = f.text.strip_prefix("foreign ").unwrap_or_default();
+    rest.split(' ').next().unwrap_or_default()
+}
+
+/// The declaration's files on one line, a source with its line count, then each function line.
+fn described(f: &Foreign, dir: &Path) -> String {
+    let (mut files, mut functions) = (vec![], String::new());
+    for line in f
+        .text
+        .lines()
+        .map(str::trim)
+        .filter(|l| !l.ends_with(['{', '}']))
+    {
+        let Some((key, file)) = line.split_once(": \"").filter(|(k, _)| !k.contains('(')) else {
+            functions += &format!("      {line}\n");
+            continue;
+        };
+        let file = file.trim_end_matches('"');
+        let count = match fs::read(dir.join(file)) {
+            Ok(bytes) => format!(" ({} lines)", bytes.iter().filter(|&&b| b == b'\n').count()),
+            Err(_) => " (missing)".into(),
+        };
+        let count = if key == "source" { count.as_str() } else { "" };
+        files.push(format!("{key} {file}{count}"));
+    }
+    format!("      {}\n{functions}", files.join("   "))
 }
 
 /// The whole text, old and new, with each changed line marked; unmarked when `plain`.
@@ -240,4 +299,45 @@ pub fn escaped(text: &str) -> String {
         }
     }
     out
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    fn grants(names: &[&str], foreign: &[Foreign]) -> Option<Record> {
+        Some(Record::Grants {
+            program: "sum".into(),
+            app: "sum".into(),
+            grants: names.iter().map(|n| n.to_string()).collect(),
+            foreign: foreign.to_vec(),
+        })
+    }
+
+    #[test]
+    fn a_foreign_grant_shows_its_files_and_functions() {
+        let sum = Foreign {
+            text: "foreign Sum {\n  source: \"sum.c\"\n  header: \"sum.h\"\n  Add(a: Int) -> Int = \"sum_add\"\n}".into(),
+            files: vec![],
+        };
+        let added = grants_screen(
+            "grants",
+            &grants(&[], &[]),
+            &grants(&["Sum"], std::slice::from_ref(&sum)),
+            Path::new("/nonexistent"),
+        );
+        let expected = "grants\n  approved: []   now: [Sum]\n  + Sum: runs C code with all your rights, in a separate process\n      source sum.c (missing)   header sum.h\n      Add(a: Int) -> Int = \"sum_add\"\n";
+        assert_eq!(added, expected);
+        let edited = Foreign {
+            files: vec![("sum.c".into(), "00".into())],
+            ..sum.clone()
+        };
+        let changed = grants_screen(
+            "grants",
+            &grants(&["Sum"], &[sum]),
+            &grants(&["Sum"], &[edited]),
+            Path::new("/nonexistent"),
+        );
+        assert!(changed.contains("  ~ Sum: runs C code with all your rights, in a separate process; its declaration or files changed\n"), "{changed}");
+    }
 }

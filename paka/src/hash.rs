@@ -51,6 +51,7 @@ fn interface(def: &Def, types: &BTreeMap<&str, Hash>) -> Hash {
         Def::Fn { params, result, .. } => key.signature(params, result.as_ref()),
         Def::View { params, result, .. } => key.signature(params, Some(result)),
         Def::App { entries, .. } => entries.iter().for_each(|e| key.entry(e)),
+        Def::Foreign { lines, .. } => key.foreign(lines),
         Def::Example { .. } | Def::Type { .. } | Def::Enum { .. } => {}
     }
     sha256(key.out.as_bytes())
@@ -64,6 +65,7 @@ fn kind(def: &Def) -> &'static str {
         Def::Example { .. } => "example",
         Def::App { .. } => "app",
         Def::View { .. } => "view",
+        Def::Foreign { .. } => "foreign",
     }
 }
 
@@ -214,8 +216,29 @@ impl<'t> Key<'t> {
             } => self.callable(params, Some(result), body),
             Def::Example { body, .. } => self.block(body),
             Def::App { entries, .. } => entries.iter().for_each(|e| self.entry(e)),
+            Def::Foreign { lines, .. } => self.foreign(lines),
             Def::Type { .. } | Def::Enum { .. } => {}
         }
+    }
+
+    /// The whole declaration: what each effect's caller sees and what its grant approves.
+    fn foreign(&mut self, lines: &[ForeignLine]) {
+        self.list(lines.iter(), |k, line| match line {
+            ForeignLine::File(key, file) => {
+                k.word(key.text);
+                k.word(file.text);
+            }
+            ForeignLine::Function {
+                name,
+                params,
+                result,
+                symbol,
+            } => {
+                k.word(name.text);
+                k.signature(params, result.as_ref());
+                k.word(symbol.text);
+            }
+        });
     }
 
     /// What a caller sees: each parameter's type, mark and label, and the result.

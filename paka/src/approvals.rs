@@ -2,12 +2,14 @@
 //! approved text of every record, `approvals.sig` signs it whole, `approvals.pub` is the key.
 //! Signing and checking run the system's ssh-keygen by a fixed path with an empty environment.
 
-use crate::ast::{Def, Entry};
+use crate::ast::{Def, Entry, ForeignLine};
 use crate::diagnostic::Diagnostic;
+use crate::hash::hex;
 use crate::parser::{parse_def, split};
 use crate::print;
+use crate::sha256::sha256;
 use crate::source::Source;
-use std::collections::BTreeSet;
+use std::collections::{BTreeMap, BTreeSet};
 use std::io::{self, ErrorKind, Write};
 use std::path::{Path, PathBuf};
 use std::process::{Command, Output, Stdio};
@@ -152,16 +154,8 @@ impl Store {
     /// Each owned file under `root` that differs from its record, has none or is gone: every
     /// recorded file, every file under `.github/workflows/`, and `TRUSTED` (M7-01, M7-02).
     pub fn file_changes(&self, root: &Path) -> Result<Vec<Change>, String> {
-        let mut paths: BTreeSet<_> = (self.records.iter())
-            .filter(|r| matches!(r, Record::File { .. }))
-            .map(|r| r.name().to_string())
-            .collect();
-        walk(root, ".github/workflows", &mut paths)?;
-        if root.join("TRUSTED").is_file() {
-            paths.insert("TRUSTED".into());
-        }
         let mut changes = vec![];
-        for path in paths {
+        for path in self.owned_files(root)? {
             let approved = (self.records.iter())
                 .find(|r| matches!(r, Record::File { path: p, .. } if *p == path))
                 .cloned();
@@ -178,6 +172,19 @@ impl Store {
             }
         }
         Ok(changes)
+    }
+
+    /// The owned files: those recorded, every file under `.github/workflows`, and `TRUSTED`.
+    pub fn owned_files(&self, root: &Path) -> Result<BTreeSet<String>, String> {
+        let mut paths: BTreeSet<_> = (self.records.iter())
+            .filter(|r| matches!(r, Record::File { .. }))
+            .map(|r| r.name().to_string())
+            .collect();
+        walk(root, ".github/workflows", &mut paths)?;
+        if root.join("TRUSTED").is_file() {
+            paths.insert("TRUSTED".into());
+        }
+        Ok(paths)
     }
 
     /// Takes `change` in: its approved record gives way to what the source holds now.
@@ -350,7 +357,7 @@ impl<'a> Reader<'a> {
 /// The grants record of each app and the example record of each example in `source`, as it
 /// stands, for `program`.
 pub fn records(program: &str, source: &Source) -> Result<Vec<Record>, Diagnostic> {
-    let mut records = vec![];
+    let (mut records, mut declared) = (vec![], BTreeMap::new());
     for file in &source.files {
         let printed = print::program(&file.name, &source.text[file.bytes.clone()])?;
         for (name, text) in split(&file.name, printed.as_bytes())? {
@@ -367,19 +374,56 @@ pub fn records(program: &str, source: &Source) -> Result<Vec<Record>, Diagnostic
                         _ => &[],
                     });
                     let grants = grants.map(|g| g.text.to_string()).collect();
-                    let foreign = vec![];
                     records.push(Record::Grants {
                         program,
                         app: name,
                         grants,
-                        foreign,
+                        foreign: vec![],
                     });
+                }
+                Def::Foreign { lines, .. } => {
+                    let dir = Path::new(&file.path).parent().unwrap_or(Path::new(""));
+                    let text = String::from_utf8_lossy(text).into();
+                    let files = built_files(dir, &lines);
+                    declared.insert(name, Foreign { text, files });
                 }
                 _ => {}
             }
         }
     }
+    for record in &mut records {
+        if let Record::Grants {
+            grants, foreign, ..
+        } = record
+        {
+            *foreign = grants
+                .iter()
+                .filter_map(|g| declared.get(g).cloned())
+                .collect();
+        }
+    }
     Ok(records)
+}
+
+/// Each `source:` and `header:` file in `dir` with its SHA-256, or `none` when it is not a regular
+/// file; a library is covered by its name alone.
+fn built_files(dir: &Path, lines: &[ForeignLine]) -> Vec<(String, String)> {
+    let hash = |name: &str| {
+        let path = dir.join(name);
+        let regular = fs::symlink_metadata(&path).is_ok_and(|m| m.is_file());
+        match fs::read(&path) {
+            Ok(bytes) if regular => hex(&sha256(&bytes)),
+            _ => "none".into(),
+        }
+    };
+    (lines.iter())
+        .filter_map(|line| match line {
+            ForeignLine::File(key, file) if key.text != "library" => {
+                Some((file.text.to_string(), hash(file.text)))
+            }
+            _ => None,
+        })
+        .collect()
 }
 
 /// Adds each file under `dir`, a path relative to `root`, to `paths`; none when `dir` is not

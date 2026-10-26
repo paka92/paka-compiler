@@ -27,6 +27,16 @@ pub struct Program {
     pub ui_examples: Vec<Fn>,
     pub app: Option<App>,
     pub sites: Vec<TrapSite>,
+    /// Each foreign effect, in declared order; an `Effect::Foreign` value's first field is its
+    /// index here.
+    pub foreign: Vec<Foreign>,
+}
+
+/// A function of a foreign declaration: its effect's name and the declaration's, its grant.
+#[derive(Debug, PartialEq)]
+pub struct Foreign {
+    pub name: String,
+    pub grant: String,
 }
 
 impl Program {
@@ -131,6 +141,8 @@ pub struct App {
     /// The view of a visual app.
     pub view: Option<FnId>,
     pub grants: BTreeSet<Grant>,
+    /// The foreign declarations it is granted.
+    pub foreign: BTreeSet<String>,
 }
 
 /// The variants of `Effect<M>`, in declared order.
@@ -141,6 +153,8 @@ pub enum Effect {
     WriteFile,
     Exit,
     ExitWith,
+    /// A foreign effect: its index in `Program::foreign`, then its arguments, `then` and `or`.
+    Foreign,
 }
 
 /// Where a trap is reported; `line` counts across the files, the kind travels with the trap.
@@ -357,6 +371,7 @@ mod tests {
             fns: vec![],
             examples: vec![],
             ui_examples: vec![],
+            foreign: vec![],
             app: None,
             sites: vec![],
         };

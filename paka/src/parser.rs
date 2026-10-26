@@ -154,7 +154,7 @@ fn pos(token: Token) -> Pos {
 
 fn definition_start(kind: Kind) -> bool {
     use Kind::*;
-    matches!(kind, Fn | Enum | Type | App | Example | View)
+    matches!(kind, Fn | Enum | Type | App | Example | View | Foreign)
 }
 
 fn assign_op(kind: Kind) -> Option<AssignOp> {
@@ -464,6 +464,7 @@ impl<'a> Parser<'a> {
             Kind::Example => self.example_def()?,
             Kind::App => self.app_def()?,
             Kind::View => self.view_def()?,
+            Kind::Foreign => self.foreign_def()?,
             Kind::Lower if INTERFACES.contains(&text(self.cur)) => {
                 let message = "Paka has no interfaces; write one function per type and pass it by \
                     name: sort_by(&xs, before)";
@@ -646,6 +647,55 @@ impl<'a> Parser<'a> {
             params,
             result,
             body,
+        })
+    }
+
+    fn foreign_def(&mut self) -> Parse<Def<'a>> {
+        self.advance()?;
+        let name = self.name(Kind::Upper, "foreign")?;
+        let lines = self.between(Kind::LBrace, Kind::RBrace, |p| p.lines(Self::foreign_line))?;
+        Ok(Def::Foreign { name, lines })
+    }
+
+    fn foreign_line(&mut self) -> Parse<ForeignLine<'a>> {
+        if self.cur.kind == Kind::Upper {
+            let name = self.name(Kind::Upper, "effect")?;
+            let params = self.between(Kind::LParen, Kind::RParen, |p| {
+                p.items(&[Kind::RParen], |p| p.param(false))
+            })?;
+            let result = if self.accept(Kind::Arrow)? {
+                Some(self.ty()?)
+            } else {
+                None
+            };
+            self.eat(Kind::Eq)?;
+            let symbol = self.quoted()?;
+            return Ok(ForeignLine::Function {
+                name,
+                params,
+                result,
+                symbol,
+            });
+        }
+        let named = matches!(self.cur.text, b"library" | b"source" | b"header");
+        if !(self.cur.kind == Kind::Lower && named) {
+            return Err(self.unexpected("library, source, header or an effect"));
+        }
+        let key = self.name(Kind::Lower, "line")?;
+        self.eat(Kind::Colon)?;
+        Ok(ForeignLine::File(key, self.quoted()?))
+    }
+
+    /// A string's text as written between its quotes, at its first character; escapes stay.
+    fn quoted(&mut self) -> Parse<Name<'a>> {
+        let token = self.cur;
+        if token.kind != Kind::Str {
+            return Err(self.unexpected("a quoted name"));
+        }
+        self.advance()?;
+        Ok(Name {
+            text: text(token),
+            at: (token.line, token.col + 1),
         })
     }
 
@@ -3688,9 +3738,17 @@ example steps_up {
     }
 
     #[test]
-    fn foreign_is_reserved() {
+    fn foreign_parses_and_is_reserved() {
         unexpected("let foreign = 1", 7, "found `foreign`");
-        let message = "expected a definition, found `foreign`";
-        fail("foreign Sum {}\n", (1, 1), "unexpected-token", message);
+        fail(
+            "foreign Sum {\n  source: sum.c\n}\n",
+            (2, 11),
+            "unexpected-token",
+            "",
+        );
+        let program = parse("main.paka", b"foreign Sum {\n  Add(a: Int) = \"add\"\n}\n");
+        assert!(
+            matches!(&program.unwrap().defs[0], Def::Foreign { lines, .. } if lines.len() == 1)
+        );
     }
 }

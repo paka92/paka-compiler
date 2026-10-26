@@ -94,6 +94,11 @@ fn lines_of(src: &str, errors: bool) -> Vec<String> {
                 Item::Fn(sig) => format!("fn {}", sig_text(t, name, sig, false)),
                 Item::View(sig) => format!("view {}", sig_text(t, name, sig, false)),
                 Item::Example => format!("example {name}"),
+                Item::Foreign(sigs) => {
+                    let effects = def.names().into_iter().skip(1).zip(sigs);
+                    let effects: Vec<_> = effects.map(|(n, s)| sig_text(t, n, s, false)).collect();
+                    format!("foreign {name} {{ {} }}", effects.join(", "))
+                }
                 Item::App { state, update } => {
                     let state = state.map(|s| format!("state: {}", t.types.show(s)));
                     let update = update.map(|u| format!("update: {}", program.defs[u].name().text));

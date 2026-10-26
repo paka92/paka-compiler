@@ -81,3 +81,11 @@ view counter_view(s: Counter) -> View<Msg> {
     Spacer() {}
   }
 }
+
+foreign Sum {
+  library: "m"
+  source: "sum.c"
+  header: "sum.h"
+  Checksum(text: String) -> Int = "sum_bytes"
+  Reset() = "sum_reset"
+}

@@ -4,7 +4,7 @@
 //! stack slot, a temporary slot, a List's item, or a parameter's caller memory.
 
 use super::{Emitted, Gen, Label, Refusal, args, words::Op};
-use crate::core_form::{Arm, Compound, Expr, Local, Place, Root, Step, Tag, Ty, Type};
+use crate::core_form::{Arm, Compound, Effect, Expr, Local, Place, Root, Step, Tag, Ty, Type};
 use crate::layout;
 use cranelift_codegen::ir::{
     InstBuilder, MemFlagsData, StackSlotData, StackSlotKind, Value, types,
@@ -367,6 +367,7 @@ pub(super) fn alternative(tag: &Tag) -> Result<usize, Refusal> {
         Tag::User(_, i) => Ok(*i),
         Tag::Some | Tag::Ok => Ok(0),
         Tag::None | Tag::Err => Ok(1),
+        Tag::Effect(Effect::Foreign) => Err("a foreign effect runs only in the interpreter".into()),
         Tag::Effect(e) => Ok(*e as usize),
     }
 }

@@ -200,6 +200,8 @@ pub enum Item<'a> {
     /// Its result is `View<M>`.
     View(Sig<'a>),
     Example,
+    /// The signature of each effect of a foreign declaration (docs/decisions/M7-02.md section 2).
+    Foreign(Vec<Sig<'a>>),
     /// The type after the first `state:` and the function after the first `update:`, when those
     /// name any; the rules of an app are the app task's (M2-32).
     App {
@@ -424,6 +426,16 @@ impl<'a> Convert<'_, 'a> {
             Def::Example { .. } => Item::Example,
             Def::App { entries, .. } => self.app(entries),
             Def::View { params, result, .. } => Item::View(self.sig(params, Some(result))),
+            Def::Foreign { lines, .. } => Item::Foreign(
+                (lines.iter())
+                    .filter_map(|line| match line {
+                        ast::ForeignLine::Function { params, result, .. } => {
+                            Some(self.foreign(params, result.as_ref()))
+                        }
+                        ast::ForeignLine::File(..) => None,
+                    })
+                    .collect(),
+            ),
         };
         if let Err(d) = &self.resolved.defs[i] {
             earliest(&mut self.error, d.clone());
@@ -464,6 +476,27 @@ impl<'a> Convert<'_, 'a> {
             params: params.iter().map(param).collect(),
             result: result.map(|t| self.ty(t)),
         }
+    }
+
+    /// `Name(params; then: fn(R) -> M, or: fn(String) -> M) -> Effect<M>`, `then: M` with no `R`.
+    fn foreign(&mut self, params: &[ast::Param<'a>], result: Option<&Type<'a>>) -> Sig<'a> {
+        let mut sig = self.sig(params, result);
+        let m = self.types.intern(Node::Var('M'));
+        let string = self.types.named("String", &[]);
+        let then = match sig.result {
+            Some(r) => self.types.intern(Node::Fn([r].into(), Some(m))),
+            None => m,
+        };
+        let or = self.types.intern(Node::Fn([string].into(), Some(m)));
+        let label = |(name, ty)| Param {
+            name,
+            inout: false,
+            labelled: true,
+            ty,
+        };
+        sig.params.extend([("then", then), ("or", or)].map(label));
+        sig.result = Some(self.types.named("Effect", &[m]));
+        sig
     }
 
     fn fields(&mut self, fields: &[ast::Field<'a>]) -> Vec<Field<'a>> {

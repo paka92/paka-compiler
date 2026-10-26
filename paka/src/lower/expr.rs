@@ -5,8 +5,8 @@ use super::{Cx, builtin_tag};
 use crate::ast::{self, BinOp, ExprKind as K, Pos, StrPart, UnOp};
 use crate::builtins::{self, Kind};
 use crate::core_form::{
-    Arg, Arith, Bin, Callee, Cmp, Compound, Expr, ExprKind, FloatArith, FnRef, Place, Root, Site,
-    Step, Tag, Ty, Type, Un,
+    Arg, Arith, Bin, Callee, Cmp, Compound, Effect, Expr, ExprKind, FloatArith, FnRef, Place, Root,
+    Site, Step, Tag, Ty, Type, Un,
 };
 use crate::resolve::Binding;
 use crate::sig::{Item, Node};
@@ -145,7 +145,7 @@ impl<'a> Cx<'_, 'a> {
             Binding::Def(d) => ExprKind::FnValue(FnRef::Fn(self.ids[d])),
             Binding::Variant(d, v) => {
                 let Item::Enum(variants) = &table.defs[d].item else {
-                    unreachable!("a variant of an enum");
+                    unreachable!("a variant of an enum; a foreign effect is always called");
                 };
                 if variants[v].fields.is_empty() {
                     ExprKind::Variant(Tag::User(self.ids[d], v), vec![])
@@ -324,6 +324,15 @@ impl<'a> Cx<'_, 'a> {
                 return self.value_call(call, f);
             }
             Binding::Def(d) => self.call(Callee::Fn(self.ids[d]), args, callee.at),
+            Binding::Variant(d, v) if matches!(self.table.defs[d].item, Item::Foreign(_)) => {
+                let id = i64::try_from(self.ids[d] + v).expect("fewer than 2^63 effects");
+                let id = Expr {
+                    ty: Some(self.core.ty(Type::Int)),
+                    kind: ExprKind::Int(Int::new(id)),
+                };
+                let values = [id].into_iter().chain(self.values(args)).collect();
+                ExprKind::Variant(Tag::Effect(Effect::Foreign), values)
+            }
             Binding::Variant(d, v) => {
                 ExprKind::Variant(Tag::User(self.ids[d], v), self.values(args))
             }

@@ -9,6 +9,7 @@ use common::{PAKA, Scratch};
 use paka::approvals::{Record, Store, records};
 use paka::source::Source;
 use std::fs;
+use std::os::unix::fs::symlink;
 use std::path::PathBuf;
 use std::process::Command;
 
@@ -93,6 +94,16 @@ impl Trees {
         let text = fs::read_to_string(&path).unwrap();
         assert!(text.contains(from), "{from:?}");
         fs::write(path, text.replace(from, to)).unwrap();
+    }
+
+    /// Puts in place of the merged tree's `file` a link to the base tree's copy, the same bytes.
+    fn link(&self, file: &str) {
+        let path = self.path("merged").join(file);
+        match fs::symlink_metadata(&path).unwrap().is_dir() {
+            true => fs::remove_dir_all(&path).unwrap(),
+            false => fs::remove_file(&path).unwrap(),
+        }
+        symlink(self.path("base").join(file), path).unwrap();
     }
 
     /// The gate's standard output and exit status.
@@ -343,4 +354,87 @@ fn json_lists_each_item_in_the_agreed_shape() {
         "\n",
     );
     assert_eq!(json(), (expected.into(), Some(1)));
+}
+
+#[test]
+fn links_among_the_files_the_gate_reads_are_refused() {
+    let link = |file| format!("{file}: a symbolic link; the gate follows none");
+    let trees = Trees::new("gate_links_store");
+    for file in ["approvals", "approvals.sig", "approvals.pub"] {
+        trees.link(file);
+    }
+    trees.refuses(&[
+        &link("approvals"),
+        &link("approvals.pub"),
+        &link("approvals.sig"),
+    ]);
+    let trees = Trees::new("gate_links_owned");
+    trees.link(".github/workflows/gate.yml");
+    trees.link("main.paka");
+    trees.refuses(&[&link(".github/workflows/gate.yml"), &link("main.paka")]);
+    let trees = Trees::new("gate_links_dirs");
+    trees.link(".github/workflows");
+    fs::write(trees.path("base/TRUSTED"), "libc system\n").unwrap();
+    symlink(trees.path("base/TRUSTED"), trees.path("merged/TRUSTED")).unwrap();
+    trees.refuses(&[&link(".github/workflows"), &link("TRUSTED")]);
+}
+
+#[test]
+fn a_link_in_a_gated_program_directory_is_refused() {
+    let trees = Trees::new("gate_links_program_dir");
+    for tree in ["base", "merged"] {
+        fs::create_dir(trees.path(tree).join("app")).unwrap();
+        fs::write(trees.path(tree).join("app/main.paka"), PROGRAM).unwrap();
+    }
+    let (source, read) = paka::source::read(trees.path("base/app").as_os_str());
+    read.unwrap();
+    let mut store = approved(2, PROGRAM);
+    store.records.extend(records("app", &source).unwrap());
+    trees.sign("base", &store);
+    trees.sign("merged", &store);
+    assert_eq!(trees.gate(), (PASSED.0.into(), PASSED.1));
+    trees.link("app/main.paka");
+    trees.refuses(&["app/main.paka: a symbolic link; the gate follows none"]);
+    fs::remove_file(trees.path("merged/app/main.paka")).unwrap();
+    fs::remove_dir(trees.path("merged/app")).unwrap();
+    symlink(trees.path("base/app"), trees.path("merged/app")).unwrap();
+    trees.refuses(&["app: a symbolic link; the gate follows none"]);
+}
+
+#[test]
+fn a_foreign_grant_and_its_c_files_are_gated() {
+    let trees = Trees::new("gate_foreign");
+    let foreign = "\nforeign Sum {\n  source: \"sum.c\"\n  header: \"sum.h\"\n  Add(a: Int) -> Int = \"sum_add\"\n}\n";
+    let program = PROGRAM.to_string() + foreign;
+    for tree in ["base", "merged"] {
+        let dir = trees.path(tree).join("sum");
+        fs::create_dir(&dir).unwrap();
+        fs::write(dir.join("main.paka"), &program).unwrap();
+        fs::write(dir.join("sum.c"), "long sum_add(long a) { return a; }\n").unwrap();
+        fs::write(dir.join("sum.h"), "long sum_add(long a);\n").unwrap();
+    }
+    let sign = |grants: &str| {
+        let text = program.replace("[Console]", grants);
+        fs::write(trees.path("base/sum/main.paka"), &text).unwrap();
+        fs::write(trees.path("merged/sum/main.paka"), &text).unwrap();
+        let (source, read) = paka::source::read(trees.path("base/sum").as_os_str());
+        read.unwrap();
+        let mut store = approved(2, PROGRAM);
+        store.records.extend(records("sum", &source).unwrap());
+        trees.sign("base", &store);
+        trees.sign("merged", &store);
+    };
+    sign("[Console]");
+    assert_eq!(trees.gate(), (PASSED.0.into(), PASSED.1));
+    trees.edit("sum/main.paka", "[Console]", "[Console, Sum]");
+    trees.refuses(&["grants sum counter: approved [Console], found [Console, Sum]"]);
+    sign("[Console, Sum]");
+    assert_eq!(trees.gate(), (PASSED.0.into(), PASSED.1));
+    let changed =
+        "grants sum counter: approved [Console, Sum], found [Console, Sum], foreign code changed";
+    trees.edit("sum/sum.c", "return a;", "return -a;");
+    trees.refuses(&[changed]);
+    trees.edit("sum/sum.c", "return -a;", "return a;");
+    trees.link("sum/sum.h");
+    trees.refuses(&[changed]);
 }

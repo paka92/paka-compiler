@@ -4,8 +4,8 @@
 //! left to the checker. A local no use names is the `unused-name` warning (M2-02 section 5).
 
 use crate::ast::{
-    Arm, ArmBody, Block, Def, Entry, Expr, ExprKind, Field, Name, Param, Pat, PatKind, Pos,
-    Program, Stmt, StmtKind, StrPart, Type,
+    Arm, ArmBody, Block, Def, Entry, Expr, ExprKind, Field, ForeignLine, Name, Param, Pat, PatKind,
+    Pos, Program, Stmt, StmtKind, StrPart, Type,
 };
 use crate::builtins::{self, Kind};
 use crate::diagnostic::Diagnostic;
@@ -20,9 +20,10 @@ type Res<T = ()> = Result<T, Diagnostic>;
 pub enum Binding {
     /// A `let`, `var`, parameter, `for` name or pattern name, by the position of its name.
     Local(Pos),
-    /// A `type`, `enum`, `fn`, `example` or `app`, by its index in `Program::defs`.
+    /// A definition, by its index in `Program::defs`.
     Def(usize),
-    /// A variant: its enum's index in `Program::defs`, then its index in the enum.
+    /// A variant or a foreign effect: its definition's index in `Program::defs`, then its index
+    /// among the definition's variants or effects.
     Variant(usize, usize),
     /// A name of the built-in table.
     Builtin(&'static str),
@@ -301,18 +302,21 @@ impl<'a> Resolver<'a> {
             Def::Type { .. } | Def::Enum { .. } => Kind::Type,
             Def::Fn { .. } | Def::View { .. } => Kind::Fn,
             Def::Example { .. } | Def::App { .. } => Kind::Other,
+            Def::Foreign { .. } => Kind::Grant,
         };
         self.declare(name.text, name.at, kind, Binding::Def(i))?;
-        let Def::Enum { variants, .. } = def else {
-            return Ok(());
+        let variants: Vec<_> = match def {
+            Def::Enum { variants, .. } => variants.iter().map(|v| &v.name).collect(),
+            Def::Foreign { lines, .. } => (lines.iter())
+                .filter_map(|line| match line {
+                    ForeignLine::Function { name, .. } => Some(name),
+                    ForeignLine::File(..) => None,
+                })
+                .collect(),
+            _ => return Ok(()),
         };
-        for (j, v) in variants.iter().enumerate() {
-            self.declare(
-                v.name.text,
-                v.name.at,
-                Kind::Variant,
-                Binding::Variant(i, j),
-            )?;
+        for (j, v) in variants.into_iter().enumerate() {
+            self.declare(v.text, v.at, Kind::Variant, Binding::Variant(i, j))?;
         }
         Ok(())
     }
@@ -344,6 +348,7 @@ impl<'a> Resolver<'a> {
                 self.app(name.text, entries);
                 Ok(())
             }
+            Def::Foreign { name, lines } => self.foreign(name, lines),
             Def::View {
                 params,
                 result,
@@ -718,5 +723,6 @@ impl<'a> Resolver<'a> {
     }
 }
 
+mod foreign;
 #[cfg(test)]
 mod tests;

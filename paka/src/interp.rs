@@ -126,7 +126,7 @@ fn serve(
             };
             let (mut effects, next) = machine.update(app, state, message)?;
             state = next;
-            if let Some(end) = perform(app, &mut effects, world, &mut queue) {
+            if let Some(end) = perform(app, &core.foreign, &mut effects, world, &mut queue) {
                 return Ok(end);
             }
         }

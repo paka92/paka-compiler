@@ -494,14 +494,14 @@ the signed approval store holds it, else `agent-written`.
 | `paka run <path> [arguments]` | checks, then runs the app |
 | `paka examples <path>` | checks, then runs every example |
 | `paka build <path> -o <output>` | checks, then writes an executable |
-| `paka gate <tree> --base <tree> [--json]` | refuses a merge whose approvals differ or whose human-owned examples fail; lists each item |
-| `paka approve <path>` | the owner's alone: signs approved changes |
+| `paka gate <tree> --base <tree> [--json]` | refuses a merge whose approvals differ or owned examples fail; lists each |
+| `paka approve <path>` | the owner's: signs approved changes |
 
-Exit status: 0 good; 1 an error in the program; 2 bad usage; 3 a trap, a stop or an example that
+Exit status: 0 good; 1 a program error; 2 bad usage; 3 a trap, a stop or an example that
 did not pass; 4 an internal error.
 
-`paka build` lists every hole, one line each; every other command reports the first error only,
-as one line. `paka check` adds one line per field:
+`paka build` lists every hole, one line each; the others report only the first error, as one
+line. `paka check` adds one line per field:
 
 ```
 main.paka:4:3: error[type-mismatch]: expected `List<Effect<Msg>>`, found `String`
@@ -515,3 +515,17 @@ main.paka:4:3: error[type-mismatch]: expected `List<Effect<Msg>>`, found `String
 A `fix:` line follows when the error knows its repair. With `--json` the same error is one object
 with the keys `kind`, `definition`, `message`, `file`, `start`, `end`, `line`, `column`, `text`,
 `expected`, `found`, `fix`. Lines and columns start at 1; columns count bytes.
+
+## 16. Foreign code
+
+```
+foreign Sum {
+  source: "sum.c"   // or library: "z"; beside the program
+  header: "sum.h"
+  Add(a: Int) -> Int = "add"
+}
+```
+
+Each line is an effect under grant `Sum`, answered like `ReadFile`; `then: Msg` with no result.
+Arguments: Int, Float, Bool, String; result: Int, Float, Bool. The owner approves the grant,
+declaration and files. For now it answers `or("no host")`.

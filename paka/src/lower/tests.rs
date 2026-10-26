@@ -171,6 +171,7 @@ fn light_paka_lowers() {
         fns: vec![update],
         examples: vec![],
         ui_examples: vec![],
+        foreign: vec![],
         app: Some(App {
             name: "light".into(),
             state: None,
@@ -178,6 +179,7 @@ fn light_paka_lowers() {
             view: None,
             update: 0,
             grants: BTreeSet::from([Grant::Console]),
+            foreign: BTreeSet::new(),
         }),
         sites: vec![site(3, 4)],
     };
@@ -1004,6 +1006,7 @@ fn an_app_with_state_an_inout_handler_and_an_example() {
         view: None,
         update: 0,
         grants: BTreeSet::from([Grant::Console, Grant::ReadFiles]),
+        foreign: BTreeSet::new(),
     };
     let by_hand = Program {
         files: vec![("main.paka".into(), 1)],
@@ -1039,6 +1042,7 @@ fn an_app_with_state_an_inout_handler_and_an_example() {
         fns: vec![update],
         examples: vec![one],
         ui_examples: vec![],
+        foreign: vec![],
         app: Some(app),
         sites: vec![
             site(4, 4),

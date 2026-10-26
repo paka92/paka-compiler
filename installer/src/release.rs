@@ -46,7 +46,7 @@ pub fn tags(core: &Program) -> BTreeSet<&'static str> {
         }
         let start = app.start.map(|s| t.msg.map(|m| &core.enums[m].variants[s]));
         let fields = start.flatten().is_some_and(|v| !v.fields.is_empty());
-        let grants = app.grants.iter().any(|g| *g != Grant::Console);
+        let grants = app.grants.iter().any(|g| *g != Grant::Console) || !app.foreign.is_empty();
         if app.state.is_some() || app.view.is_some() || fields || grants {
             t.tags.insert("apps and grants");
         }

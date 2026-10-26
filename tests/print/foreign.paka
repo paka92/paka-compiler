@@ -1,0 +1,7 @@
+foreign   Sum{
+  source :"sum.c"   // the code
+  header:"sum.h"
+
+  Checksum( text :String )->Int="sum_bytes"
+  Reset(  ) =  "sum_reset"
+}

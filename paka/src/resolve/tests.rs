@@ -719,3 +719,44 @@ fn the_update_message_and_an_example_local_warn_and_underscore_never_does() {
         ]
     );
 }
+
+#[test]
+fn a_foreign_declaration_keeps_its_shape() {
+    let decl = |line: &str| {
+        let lines = [
+            "foreign Sum {",
+            "  source: \"sum.c\"",
+            "  header: \"sum.h\"",
+            line,
+            "}",
+        ];
+        program(&lines)
+    };
+    assert!(errors(&decl("  Add(a: Int, b: String) -> Float = \"sum_add\"")).is_empty());
+    let cases = [
+        ("  header: \"two.h\"", "bad-foreign", "^header"),
+        ("  library: \"../lib\"", "bad-foreign", "\"^../lib"),
+        ("  Add(a: List<Int>) = \"add\"", "bad-foreign", "^List"),
+        ("  Add() -> String = \"add\"", "bad-foreign", "^String"),
+        ("  Add(a: Int) = \"9add\"", "bad-foreign", "\"^9add"),
+        (
+            "  Add(a: Int, a: Int) = \"add\"",
+            "duplicate-name",
+            "Int, ^a",
+        ),
+        ("  Add(then: Int) = \"add\"", "duplicate-name", "(^then"),
+    ];
+    for (line, code, pattern) in cases {
+        let src = decl(line);
+        assert_eq!(found(&src), [(code, at(&src, 4, pattern))], "{line}");
+    }
+    let bare = program(&["foreign Sum {", "  header: \"sum.h\"", "}"]);
+    assert_eq!(found(&bare), [("bad-foreign", (1, 9))]);
+    let taken = program(&[
+        "foreign Sum {",
+        "  header: \"sum.h\"",
+        "  Exit() = \"p\"",
+        "}",
+    ]);
+    assert_eq!(found(&taken)[0].0, "duplicate-name");
+}

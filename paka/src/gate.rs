@@ -1,18 +1,26 @@
 //! `paka gate <tree> --base <tree>` (docs/decisions/M7-01.md): what keeps the merged tree from
 //! merging into its base. The key must be the base's, the store must verify with it and follow
 //! the base's, every record of every gated program and every owned file must match, and every
-//! human-owned example must pass in the interpreter.
+//! human-owned example must pass in the interpreter. None of the files it reads may be a link.
 
 use crate::approvals::Store;
 use crate::pending::Item;
 use crate::source::read;
 use crate::{check_defs, interp};
+use std::collections::BTreeSet;
 use std::fs;
 use std::path::Path;
+
+const STORE: [&str; 3] = ["approvals", "approvals.sig", "approvals.pub"];
+const OWNED: [&str; 2] = [".github/workflows", "TRUSTED"];
 
 /// One item per refusal; none when `tree` may merge into `base`.
 pub fn gate(tree: &Path, base: &Path) -> Vec<Item> {
     let refused = |why: &str| vec![Item::Refused(why.into())];
+    let fixed = links(tree, STORE.iter().chain(&OWNED).map(|p| p.to_string()));
+    if !fixed.is_empty() {
+        return fixed;
+    }
     let key = base.join("approvals.pub");
     let Ok(base_key) = fs::read(&key) else {
         return refused("approvals.pub: missing on the base");
@@ -24,6 +32,14 @@ pub fn gate(tree: &Path, base: &Path) -> Vec<Item> {
         Ok(store) => store,
         Err(why) => return refused(&why),
     };
+    let read = match store.owned_files(tree) {
+        Ok(owned) => owned.into_iter().chain(program_files(tree, &store)),
+        Err(why) => return refused(&why),
+    };
+    let read = links(tree, read);
+    if !read.is_empty() {
+        return read;
+    }
     let mut items = vec![];
     if base.join("approvals").exists() {
         match Store::open(base, &key) {
@@ -85,4 +101,42 @@ fn program_items(store: &Store, tree: &Path, program: &str) -> Vec<Item> {
         });
     }
     items
+}
+
+/// Each gated program path, and the `.paka` files directly in a program directory.
+fn program_files(tree: &Path, store: &Store) -> Vec<String> {
+    let mut files = vec![];
+    for program in store.programs() {
+        files.push(program.to_string());
+        let Ok(entries) = fs::read_dir(tree.join(program)) else {
+            continue;
+        };
+        for name in entries
+            .flatten()
+            .filter_map(|e| e.file_name().into_string().ok())
+        {
+            if name.ends_with(".paka") {
+                files.push(format!("{program}/{name}"));
+            }
+        }
+    }
+    files
+}
+
+/// One refusal per symbolic link among `paths` and the directories on them, so the gate reads
+/// only what the tree itself holds.
+fn links(tree: &Path, paths: impl IntoIterator<Item = String>) -> Vec<Item> {
+    let mut found = BTreeSet::new();
+    for path in paths {
+        let mut at = tree.to_path_buf();
+        for part in Path::new(&path).components() {
+            at.push(part);
+            if fs::symlink_metadata(&at).is_ok_and(|m| m.file_type().is_symlink()) {
+                found.insert(at.strip_prefix(tree).unwrap_or(&at).display().to_string());
+                break;
+            }
+        }
+    }
+    let refuse = |path| Item::Refused(format!("{path}: a symbolic link; the gate follows none"));
+    found.into_iter().map(refuse).collect()
 }

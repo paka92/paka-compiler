@@ -34,7 +34,8 @@ impl Item {
         };
         let what = match (&change.approved, &change.now) {
             (Some(Record::Grants { grants: a, .. }), Some(Record::Grants { grants: b, .. })) => {
-                format!("approved {}, found {}", list(a), list(b))
+                let foreign = if a == b { ", foreign code changed" } else { "" };
+                format!("approved {}, found {}{foreign}", list(a), list(b))
             }
             (None, Some(Record::Grants { grants, .. })) => {
                 format!("never approved, found {}", list(grants))

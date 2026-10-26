@@ -4,8 +4,8 @@
 use crate::ast::{self, BinOp, Def, Entry, ExprKind as K, Pos, StmtKind};
 use crate::body::Bodies;
 use crate::core_form::{
-    self, App, Enum, Expr, ExprKind, Field, Fn, Grant, Local, Param, Program, Record, Site, Tag,
-    TrapSite, Ty, Type, Variant,
+    self, App, Enum, Expr, ExprKind, Field, Fn, Foreign, Grant, Local, Param, Program, Record,
+    Site, Tag, TrapSite, Ty, Type, Variant,
 };
 use crate::resolve::{Binding, Resolved};
 use crate::sig::{self, Item, Node, Table};
@@ -63,6 +63,7 @@ pub fn lower<'a>(
             ui_examples: vec![],
             app: None,
             sites: vec![],
+            foreign: vec![],
         },
         program,
         resolved,
@@ -89,19 +90,21 @@ pub fn lower<'a>(
     (cx.core, reads)
 }
 
+/// Each definition's index in its core list; a foreign declaration's is its first effect's.
 fn ids(program: &ast::Program) -> Vec<usize> {
-    let mut counts = [0; 5];
+    let mut counts = [0; 6];
     let place = |def: &Def| {
-        let list = match def {
-            Def::Type { .. } => 0,
-            Def::Enum { .. } => 1,
-            Def::Fn { .. } | Def::View { .. } => 2,
-            Def::Example { .. } if drives_ui(def) => 4,
-            Def::Example { .. } => 3,
+        let (list, size) = match def {
+            Def::Type { .. } => (0, 1),
+            Def::Enum { .. } => (1, 1),
+            Def::Fn { .. } | Def::View { .. } => (2, 1),
+            Def::Example { .. } if drives_ui(def) => (4, 1),
+            Def::Example { .. } => (3, 1),
+            Def::Foreign { .. } => (5, def.names().len() - 1),
             Def::App { .. } => return 0,
         };
-        counts[list] += 1;
-        counts[list] - 1
+        counts[list] += size;
+        counts[list] - size
     };
     program.defs.iter().map(place).collect()
 }
@@ -160,6 +163,13 @@ impl<'a> Cx<'_, 'a> {
             (Def::App { name, entries }, _) => {
                 let app = self.app(name, entries);
                 self.core.app = Some(app);
+            }
+            (Def::Foreign { name, .. }, _) => {
+                let effects = def.names().into_iter().skip(1).map(|effect| Foreign {
+                    name: effect.into(),
+                    grant: name.text.into(),
+                });
+                self.core.foreign.extend(effects);
             }
             _ => unreachable!("a definition and its table row agree"),
         }
@@ -258,6 +268,7 @@ impl<'a> Cx<'_, 'a> {
             update: 0,
             view: None,
             grants: Default::default(),
+            foreign: Default::default(),
         };
         for entry in entries {
             match entry {
@@ -270,7 +281,14 @@ impl<'a> Cx<'_, 'a> {
                 }
                 Entry::Update(_, n) => app.update = self.def(n),
                 Entry::View(_, n) => app.view = Some(self.def(n)),
-                Entry::Grants(_, names) => app.grants = names.iter().map(grant).collect(),
+                Entry::Grants(_, names) => {
+                    for n in names {
+                        match self.resolved.get(n.at) {
+                            Some(Binding::Def(_)) => app.foreign.insert(n.text.into()),
+                            _ => app.grants.insert(grant(n)),
+                        };
+                    }
+                }
             }
         }
         app

@@ -225,8 +225,8 @@ impl<W: World + Send> Windowless<W> {
         if !matches!(effects, Value::List(_)) {
             return Ok(());
         }
-        let app = app(&self.core);
-        match perform(app, &mut effects, &mut self.world, &mut self.queue) {
+        let (app, foreign) = (app(&self.core), &self.core.foreign);
+        match perform(app, foreign, &mut effects, &mut self.world, &mut self.queue) {
             Some(end) => Err(end),
             None => Ok(()),
         }
