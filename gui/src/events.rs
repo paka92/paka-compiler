@@ -2,10 +2,10 @@
 //! button on the same element; keys and the input method's text become `Event`s for the app's
 //! queue, which works them out against the tree of their turn.
 
-use paka_rt::input;
-use paka_rt::layout::{Rect, hit};
-use paka_rt::route::Event;
-use paka_rt::tree::{Edit, Node, Step};
+use crate::input;
+use crate::layout::{Rect, hit};
+use crate::route::Event;
+use crate::tree::{Edit, Node, Step};
 use winit::event::{ElementState, Ime, MouseButton};
 use winit::keyboard::{Key, ModifiersState, NamedKey};
 

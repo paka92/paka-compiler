@@ -3,8 +3,8 @@
 
 use std::slice;
 
-use paka_rt::layout::Rect;
-use paka_rt::tree::{Edit, Node};
+use crate::layout::Rect;
+use crate::tree::{Edit, Node};
 use parley::{Layout, PositionedLayoutItem};
 use vello_cpu::color::{AlphaColor, Srgb};
 use vello_cpu::kurbo::{self, Affine, RoundedRect, Shape};
@@ -22,7 +22,7 @@ const ERROR_FILL: u32 = 0xFFE0E0;
 const ERROR_EDGE: u32 = 0xC00000;
 const DASH: u64 = 4;
 
-/// Draws `root`, whose nodes `rects` places in pre-order as `paka_rt::layout::layout` gives
+/// Draws `root`, whose nodes `rects` places in pre-order as `crate::layout::layout` gives
 /// them, on white into a `width` by `height` pixel image at `scale`. Every pixel is opaque.
 pub fn draw<M>(
     root: &Node<M>,

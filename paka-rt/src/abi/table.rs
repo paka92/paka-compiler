@@ -48,8 +48,10 @@ pub const TEXT: &str = "declare i32 @paka_rt1_text(i64, i64, i64, i64, ptr, ptr,
 pub const COPY: &str = "declare i32 @paka_rt1_copy(ptr, ptr, ptr) nounwind";
 pub const DROP: &str = "declare void @paka_rt1_drop(ptr, ptr) nounwind";
 pub const MAP: &str = "declare i32 @paka_rt1_map(i64, ptr, i64, ptr, i64, ptr, ptr, i64) nounwind";
-/// An app's entry (M6-17).
+/// A headless app's entry (M6-17).
 pub const APP: &str = "declare i32 @paka_rt1_app(ptr)";
+/// A visual app's entry (M6-18).
+pub const VISUAL: &str = "declare i32 @paka_rt1_visual(ptr)";
 /// A view's op (M6-18a).
 pub const VIEW: &str = "declare i32 @paka_rt1_view(i64, i64, i64, i64, i64, i64) nounwind";
 pub const ENTRIES: &[&str] = &[
@@ -62,6 +64,7 @@ pub const ENTRIES: &[&str] = &[
     DROP,
     MAP,
     APP,
+    VISUAL,
     VIEW,
 ];
 
@@ -75,6 +78,7 @@ mod tests {
     };
     use super::super::{
         App, Update, paka_rt1_app, paka_rt1_run, paka_rt1_stack_limit, paka_rt1_trap,
+        paka_rt1_visual,
     };
     use super::*;
     use std::slice;
@@ -148,6 +152,8 @@ mod tests {
         let lines = [ALLOC, TEXT, COPY, DROP, MAP, VIEW];
         let app = paka_rt1_app as unsafe extern "C" fn(&'static App) -> _;
         assert_eq!(APP, app.declared("paka_rt1_app"));
+        let visual = paka_rt1_visual as unsafe extern "C" fn(&'static App) -> _;
+        assert_eq!(VISUAL, visual.declared("paka_rt1_visual"));
         for (line, made) in lines.iter().zip(made) {
             assert_eq!(*line, format!("{made} nounwind"));
         }

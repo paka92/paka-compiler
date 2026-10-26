@@ -51,8 +51,8 @@ pub fn lower(core: &mut Program, update: usize, computed: bool) -> Option<(Strin
 }
 
 /// The IR of an app beyond the M1 view (ABI sections 13 and 14): every function its handler,
-/// state and view reach, `@app.call`, and the `@app` constant `paka_rt1_app` takes; `None` when
-/// any of it is beyond this lowering.
+/// state and view reach, `@app.call`, and the `@app` constant its entry takes; `None` when any of
+/// it is beyond this lowering.
 pub fn lower_app(core: &mut Program) -> Option<String> {
     let layouts = Layouts::new(core);
     let core = &*core;

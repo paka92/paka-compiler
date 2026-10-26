@@ -1,7 +1,6 @@
 //! The element tree a view builds (M5-02, M5-04) and its text form (M5-06 section 1.3). Nodes
 //! carry no rectangles; layout results live beside the tree (M5-05).
 
-use crate::ops::quoted;
 use std::collections::BTreeMap;
 use std::fmt::{self, Display, Formatter};
 use std::ops::Range;
@@ -245,6 +244,24 @@ impl<M: Display> Node<M> {
             .iter()
             .try_for_each(|(step, child)| child.lines(f, depth + 1, Some(step)))
     }
+}
+
+/// A String in its value text form: quoted, with the escapes of the language.
+pub fn quoted(text: &str) -> String {
+    let mut out = String::from("\"");
+    for c in text.chars() {
+        match c {
+            '\n' => out.push_str("\\n"),
+            '\r' => out.push_str("\\r"),
+            '\t' => out.push_str("\\t"),
+            '\\' | '"' | '{' | '}' => {
+                out.push('\\');
+                out.push(c);
+            }
+            _ => out.push(c),
+        }
+    }
+    out + "\""
 }
 
 #[cfg(test)]

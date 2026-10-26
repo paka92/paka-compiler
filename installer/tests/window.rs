@@ -73,6 +73,7 @@ fn the_counter_opens_a_window_and_presents_a_frame() {
     let text = fs::read_to_string(format!("{root}{COUNTER}")).unwrap();
     let mut runner = Runner(
         Command::new(env!("CARGO_BIN_EXE_paka-runner"))
+            .env("PAKA_FRAME_LOG", "1")
             .stdin(Stdio::piped())
             .stdout(Stdio::piped())
             .stderr(Stdio::piped())

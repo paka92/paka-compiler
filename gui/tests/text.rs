@@ -1,5 +1,5 @@
+use paka_gui::layout::Measure;
 use paka_gui::text::Text;
-use paka_rt::layout::Measure;
 
 #[test]
 fn a_string_measures_the_same_twice() {

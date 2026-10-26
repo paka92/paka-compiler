@@ -6,10 +6,10 @@ use std::collections::BTreeMap;
 use std::mem;
 use std::slice;
 
+use crate::layout::Rect;
+use crate::route::Event;
+use crate::tree::{Node, Step};
 use accesskit::{Action, NodeId, Role, TreeId, TreeInfo, TreeUpdate};
-use paka_rt::layout::Rect;
-use paka_rt::route::Event;
-use paka_rt::tree::{Node, Step};
 
 /// The window's node; elements are numbered from 1.
 pub const WINDOW: NodeId = NodeId(0);

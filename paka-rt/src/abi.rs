@@ -9,6 +9,7 @@
 //! only by a constructor here that takes a `'static` reference, by `Str::from_raw` under its
 //! contract, or by compiled code under the contract of `paka_rt1_run`.
 
+use crate::headless::drawn;
 use crate::{Decoded, Refused, run, run_app};
 use std::cell::Cell;
 use std::sync::atomic::AtomicU64;
@@ -290,7 +291,7 @@ pub struct App {
 
 const _: () = assert!(size_of::<App>() == 16 * 8 && align_of::<App>() == 8);
 
-/// The entry of an app's `main` (ABI sections 13 and 14).
+/// The entry of a headless app's `main` (ABI section 13).
 ///
 /// # Safety
 ///
@@ -300,7 +301,19 @@ const _: () = assert!(size_of::<App>() == 16 * 8 && align_of::<App>() == 8);
 #[unsafe(no_mangle)]
 pub unsafe extern "C" fn paka_rt1_app(app: &App) -> i32 {
     ignore_signals();
-    run_app(app)
+    run_app(app, None)
+}
+
+/// The entry of a visual app's `main` (ABI section 14), the only path to its window.
+///
+/// # Safety
+///
+/// As for `paka_rt1_app`.
+// SAFETY: as for `paka_rt1_run`.
+#[unsafe(no_mangle)]
+pub unsafe extern "C" fn paka_rt1_visual(app: &App) -> i32 {
+    ignore_signals();
+    run_app(app, Some(drawn))
 }
 
 /// The lowest stack address compiled code may reach before it traps `stack`; 0 turns the check
@@ -343,6 +356,11 @@ pub(crate) fn record_kind(kind: &'static [u8], text: Option<&'static [u8]>) {
 /// The trap recorded since the last call, if any.
 pub(crate) fn take_trap() -> Option<Trapped> {
     TRAP.try_with(Cell::take).ok().flatten()
+}
+
+/// The trap recorded since the last call, if any, left recorded.
+pub(crate) fn peek_trap() -> Option<Trapped> {
+    TRAP.try_with(Cell::get).ok().flatten()
 }
 
 /// Test only: an effect holding these words. They must make a value the decoder refuses, or one

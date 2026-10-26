@@ -1739,7 +1739,6 @@ version = "0.0.0"
 dependencies = [
  "accesskit",
  "accesskit_winit",
- "paka-rt",
  "parley",
  "softbuffer",
  "vello_cpu",
@@ -1763,6 +1762,9 @@ version = "0.0.0"
 [[package]]
 name = "paka-rt"
 version = "0.0.0"
+dependencies = [
+ "paka-gui",
+]
 
 [[package]]
 name = "parking"

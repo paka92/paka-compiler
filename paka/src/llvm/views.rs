@@ -1,5 +1,5 @@
-//! Views built for release (M6-18a): their first tree as the interpreter draws it. `paka build`
-//! refuses a visual app until M6-18, so each test links the IR with the runtime itself.
+//! Views built for release (M6-18a): their first tree as the interpreter draws it, with no display.
+//! Each test links the IR with the runtime itself, so that a test can plant a fault in the IR.
 
 use super::{app, lint};
 use paka::interp::Windowless;
@@ -120,7 +120,10 @@ fn release(name: &str, text: &str, plant: fn(String) -> String) -> (Option<i32>,
         .status()
         .unwrap();
     assert!(linked.success());
-    let out = Command::new(&exe).output().unwrap();
+    let out = Command::new(&exe)
+        .env_remove("WAYLAND_DISPLAY")
+        .output()
+        .unwrap();
     fs::remove_dir_all(&dir).unwrap();
     let text = |b| String::from_utf8(b).unwrap();
     (out.status.code(), text(out.stdout), text(out.stderr))

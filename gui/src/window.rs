@@ -10,10 +10,10 @@ use std::sync::mpsc::{self, Sender};
 use std::sync::{Arc, Mutex, OnceLock, PoisonError};
 use std::thread;
 
+use crate::layout::{Rect, layout};
+use crate::route::Event;
+use crate::tree::{Node, Step};
 use accesskit_winit::{Adapter, WindowEvent as AccessEvent};
-use paka_rt::layout::{Rect, layout};
-use paka_rt::route::Event;
-use paka_rt::tree::{Node, Step};
 use softbuffer::{Context, Surface};
 use winit::application::ApplicationHandler;
 use winit::dpi::{LogicalPosition, LogicalSize};
@@ -192,6 +192,9 @@ struct Open {
     mods: ModifiersState,
     /// The IME cursor area last set, in units; `None` while no Input has focus.
     ime_area: Option<(f64, f64)>,
+    /// Whether each new tree's frame is logged to standard error: only under `PAKA_FRAME_LOG`,
+    /// which the window tests set.
+    log: bool,
     presented: bool,
     /// Whether the tree changed since the last frame presented.
     fresh: bool,
@@ -321,6 +324,7 @@ fn open(
         pointer: Pointer::default(),
         mods: ModifiersState::empty(),
         ime_area: None,
+        log: std::env::var_os("PAKA_FRAME_LOG").is_some(),
         presented: false,
         fresh: false,
     })
@@ -411,10 +415,11 @@ impl Open {
         for (out, px) in buffer.iter_mut().zip(pixmap.data()) {
             *out = u32::from_be_bytes([0, px.r, px.g, px.b]);
         }
-        // Each new tree's frame is logged, so a test can see one follow each change.
         if buffer.present().is_ok() && (self.fresh || !self.presented) {
-            let first = if self.presented { "" } else { "first " };
-            eprintln!("{first}frame presented, {w}x{h} px at scale {scale}");
+            if self.log {
+                let first = if self.presented { "" } else { "first " };
+                eprintln!("{first}frame presented, {w}x{h} px at scale {scale}");
+            }
             (self.presented, self.fresh) = (true, false);
         }
     }

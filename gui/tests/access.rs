@@ -3,9 +3,9 @@
 
 use accesskit::{Action, NodeId, Rect as Bounds, Role, TreeUpdate};
 use paka_gui::access::{Ids, WINDOW, action};
-use paka_rt::layout::Rect;
-use paka_rt::route::{Event, Sent, route};
-use paka_rt::tree::{Edit, Node, Step};
+use paka_gui::layout::Rect;
+use paka_gui::route::{Event, Sent, route};
+use paka_gui::tree::{Edit, Node, Step};
 
 type Tree = Node<&'static str>;
 

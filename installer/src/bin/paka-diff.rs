@@ -256,10 +256,11 @@ fn planted_clang() -> io::Result<OsString> {
     Ok(path)
 }
 
-/// Runs `exe` in `dir`, killed past `limit`, its output in files beside `dir`.
+/// Runs `exe` in `dir` with no display, killed past `limit`, its output in files beside `dir`.
 fn native(exe: &Path, dir: &Path, args: &[OsString], limit: Duration) -> io::Result<Outcome> {
     let [stdout, stderr] = ["stdout", "stderr"].map(|e| dir.with_extension(e));
     let mut child = (Command::new(exe).current_dir(dir).args(args))
+        .env_remove("WAYLAND_DISPLAY")
         .stdin(Stdio::null())
         .stdout(fs::File::create(&stdout)?)
         .stderr(fs::File::create(&stderr)?)

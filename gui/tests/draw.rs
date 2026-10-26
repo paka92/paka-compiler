@@ -1,8 +1,8 @@
 use paka_gui::draw::draw;
+use paka_gui::layout::{Measure, Rect, layout};
 use paka_gui::png;
 use paka_gui::text::Text;
-use paka_rt::layout::{Measure, Rect, layout};
-use paka_rt::tree::{Node, Step};
+use paka_gui::tree::{Node, Step};
 
 const WIDTH: u64 = 480;
 const HEIGHT: u64 = 360;

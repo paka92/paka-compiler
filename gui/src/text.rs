@@ -4,7 +4,7 @@
 use std::cell::RefCell;
 use std::sync::Arc;
 
-use paka_rt::layout::Measure;
+use crate::layout::Measure;
 use parley::fontique::{Blob, Collection, CollectionOptions};
 use parley::{
     FontContext, FontFamily, FontFamilyName, Layout, LayoutContext, LineHeight, StyleProperty,

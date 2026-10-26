@@ -2,7 +2,7 @@
 //! sections 3, 4 and 11. The view is all the back end builds until it takes the whole core form.
 
 use crate::core_form::{self, Expr, ExprKind, Grant, Program, Tag, Type};
-use paka_rt::abi::table::{APP, RUN};
+use paka_rt::abi::table::{APP, RUN, VISUAL};
 
 mod code;
 pub mod lint;
@@ -134,14 +134,18 @@ pub fn app(core: &mut Program) -> Option<String> {
     if !app.foreign.is_empty() {
         return None;
     }
+    let (entry, name) = match app.view {
+        Some(_) => (VISUAL, "paka_rt1_visual"),
+        None => (APP, "paka_rt1_app"),
+    };
     let code = code::lower_app(core)?;
     Some(format!(
         "target triple = \"x86_64-pc-linux-gnu\"
 
-{APP}
+{entry}
 
 define i32 @main() {{
-  %st = call i32 @paka_rt1_app(ptr @app)
+  %st = call i32 @{name}(ptr @app)
   ret i32 %st
 }}
 

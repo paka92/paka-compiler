@@ -2,10 +2,10 @@
 //! release at the scale factor, keys, and the input method's text.
 
 use paka_gui::events::{Pointer, focused_input, ime, key};
-use paka_rt::input::Key as Edit;
-use paka_rt::layout::Rect;
-use paka_rt::route::{Event, route};
-use paka_rt::tree::{Node, Step};
+use paka_gui::input::Key as Edit;
+use paka_gui::layout::Rect;
+use paka_gui::route::{Event, route};
+use paka_gui::tree::{Node, Step};
 use winit::event::{ElementState, Ime, MouseButton};
 use winit::keyboard::{Key, ModifiersState, NamedKey};
 

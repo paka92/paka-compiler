@@ -16,6 +16,8 @@ const RUNTIME: &str = "libpaka_rt.a";
 /// The optimization flags and target CPU for every release build (M6-02 section 1.1): `-O3` and
 /// no CPU flag, which keeps clang's baseline x86-64.
 const OPTIMIZE: [&str; 1] = ["-O3"];
+/// Drops the runtime code a binary never reaches: a headless app links no window.
+const GC_SECTIONS: &str = "-Wl,--gc-sections";
 const SYSTEM_LIBS: [&str; 7] = [
     "-lgcc_s",
     "-lutil",
@@ -27,10 +29,9 @@ const SYSTEM_LIBS: [&str; 7] = [
 ];
 
 /// Writes the executable for `core` to `output`; `path` is the source path for diagnostics.
-/// The back end builds headless apps only.
 pub fn build(path: &str, core: &mut Program, output: &OsStr) -> Result<(), Diagnostic> {
     let text = llvm::ir(core).ok_or_else(|| {
-        let message = "the back end builds only headless apps without foreign effects";
+        let message = "the back end builds only apps without foreign effects";
         Diagnostic::tool(path, "unsupported-form", message)
     })?;
     let broken = llvm::lint::lint(&text);
@@ -72,6 +73,7 @@ pub fn build(path: &str, core: &mut Program, output: &OsStr) -> Result<(), Diagn
 fn link(path: &str, ir: &Path, runtime: &Path, output: &OsStr) -> Result<(), Diagnostic> {
     let status = Command::new("clang")
         .args(OPTIMIZE)
+        .arg(GC_SECTIONS)
         .args([ir, runtime])
         .args(SYSTEM_LIBS)
         .arg("-o")

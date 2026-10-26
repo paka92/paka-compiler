@@ -157,7 +157,7 @@ fn clang_gets_the_documents_command() {
     let recorded = fs::read_to_string(log_file).unwrap();
     let args: Vec<_> = recorded.lines().collect();
     let output = output.to_str().unwrap();
-    let ir = args[1]
+    let ir = args[2]
         .strip_prefix(output)
         .and_then(|r| r.strip_prefix('.'));
     let pid = ir.and_then(|r| r.strip_suffix(".ll"));
@@ -166,10 +166,10 @@ fn clang_gets_the_documents_command() {
         "{args:?}"
     );
     let archive = fs::canonicalize(archive).unwrap();
-    assert_eq!(fs::canonicalize(args[2]).unwrap(), archive);
-    assert_eq!(args[0], "-O3");
-    assert_eq!(args[3..10], SYSTEM_LIBS);
-    assert_eq!(args[10..], ["-o", output]);
+    assert_eq!(fs::canonicalize(args[3]).unwrap(), archive);
+    assert_eq!(args[..2], ["-O3", "-Wl,--gc-sections"]);
+    assert_eq!(args[4..11], SYSTEM_LIBS);
+    assert_eq!(args[11..], ["-o", output]);
 }
 
 #[test]

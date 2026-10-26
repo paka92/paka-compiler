@@ -1,14 +1,19 @@
-//! The window, drawing and accessibility side of a visual app (docs/decisions/M5-08.md).
+//! A visual app's element tree, layout and input, and its window, drawing and accessibility side
+//! (docs/decisions/M5-08.md).
 
 pub mod access;
 pub mod draw;
 pub mod events;
+pub mod input;
+pub mod layout;
 pub mod png;
+pub mod route;
 pub mod text;
+pub mod tree;
 pub mod window;
 
-use paka_rt::layout::layout;
-use paka_rt::tree::Node;
+use crate::layout::layout;
+use crate::tree::Node;
 use text::Text;
 
 /// Noto Sans Regular, the one font every visual app draws with; its notice is `fonts/OFL.txt`.

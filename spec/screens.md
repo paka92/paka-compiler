@@ -66,8 +66,8 @@ example add_one {
 A visual app adds `view:`, needs `state:`, and may leave out `start:`. Its `update` may give no
 result. The state starts from its defaults, the `start:` message is handled if there is one, then
 the view runs. The view runs again after every handler that did not trap; a trap in a handler
-keeps the state, the tree and the queue. `paka run` and `paka build` refuse a visual app for now
-(`no-app`); `paka examples` runs its UI examples with no window.
+keeps the state, the tree and the queue. `paka run` refuses a visual app for now (`no-app`);
+`paka build` builds it to open in a window; `paka examples` runs its UI examples with no window.
 
 - `view name(params) -> View<Msg>` gives one element. Parameters are read-only; no `inout`, no
   `&`. The app's view takes exactly the state and gives `View<M>` for `update`'s message enum M.

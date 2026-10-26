@@ -45,7 +45,7 @@ fn main() -> ExitCode {
     };
     let path = &file.to_string_lossy();
     let (source, found) = read_and_check(file);
-    let result = load(path, found).and_then(|(mut core, holes)| match output {
+    let result = load(path, found, output.is_some()).and_then(|(mut core, holes)| match output {
         None => {
             abi::ignore_signals();
             Ok(interp::run(
@@ -76,12 +76,12 @@ fn read_and_check(file: &OsStr) -> (Source, Checked) {
     (source, found)
 }
 
-/// The core form of a checked program that holds a headless app, and its holes.
-fn load(path: &str, found: Checked) -> Result<(Program, Vec<Hole>), Diagnostic> {
+/// The core form of a checked program that holds an app, headless unless `built`, and its holes.
+fn load(path: &str, found: Checked, built: bool) -> Result<(Program, Vec<Hole>), Diagnostic> {
     let (core, holes, _) = found?;
     match &core.app {
-        Some(app) if app.view.is_some() => {
-            let why = "a visual app is not run or built from the command line yet";
+        Some(app) if app.view.is_some() && !built => {
+            let why = "a visual app is not run from the command line yet";
             Err(Diagnostic::tool(path, "no-app", why))
         }
         Some(_) => Ok((core, holes)),
