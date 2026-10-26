@@ -36,7 +36,7 @@ fn main() -> ExitCode {
     };
     let path = &file.to_string_lossy();
     let (source, found) = read_and_check(file);
-    let result = load(path, found).and_then(|(core, holes)| match output {
+    let result = load(path, found).and_then(|(mut core, holes)| match output {
         None => {
             abi::ignore_signals();
             Ok(interp::run(
@@ -52,7 +52,7 @@ fn main() -> ExitCode {
             }
             Ok(1)
         }
-        Some(output) => build::build(path, &core, output).map(|()| 0),
+        Some(output) => build::build(path, &mut core, output).map(|()| 0),
     });
     match result {
         Ok(status) => ExitCode::from(status),

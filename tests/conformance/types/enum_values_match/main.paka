@@ -1,0 +1,65 @@
+enum Msg { Start }
+
+enum Shape { Dot, Circle(r: Float), Rect(w: Int, h: Int), Line(from: Spot, to: Spot) }
+
+enum Spot { Origin, At(x: Int, y: Int) }
+
+fn area(s: Shape) -> Int {
+  match s {
+    Dot => 0
+    Circle(r) => to_int(r * r * 3.0)
+    Rect(w, h) => w * h
+    Line(_, _) => 0
+  }
+}
+
+fn far(s: Spot) -> Int {
+  match s {
+    Origin => 0
+    At(x, y) => abs(x) + abs(y)
+  }
+}
+
+fn length(s: Shape) -> Int {
+  match s {
+    Line(a, b) => far(a) + far(b)
+    Dot | Circle(_) => 0
+    Rect(_, _) => -1
+  }
+}
+
+fn first(o: Option<Int>, fallback: Int) -> Int {
+  match o {
+    Some(v) => v
+    None => fallback
+  }
+}
+
+fn pick(n: Int) -> Option<Shape> {
+  if n > 0 { Some(Rect(n, 2)) } else { None }
+}
+
+fn update(msg: Msg) -> List<Effect<Msg>> {
+  assert(area(Dot) == 0 && area(Circle(2.0)) == 12 && area(Rect(3, 4)) == 12)
+  let line = Line(At(1, -2), At(-3, 4))
+  assert(length(line) == 10 && length(Dot) == 0 && length(Rect(1, 1)) == -1)
+  assert(first(Some(5), 0) == 5 && first(None, 7) == 7)
+  var total = 0
+  for i in 0..<4 {
+    match pick(i - 1) {
+      Some(s) => { total += area(s) }
+      None => {}
+    }
+  }
+  assert(total == 6)
+  var s = Circle(1.0)
+  s = Rect(2, 5)
+  assert(area(s) == 10)
+  [Print("enums agree"), Exit]
+}
+
+app types {
+  start: Start
+  update: update
+  grants: [Console]
+}

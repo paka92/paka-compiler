@@ -31,10 +31,10 @@ pub enum Effect {
 }
 
 /// The M1 view of `core`, or `None` when it holds what the back end cannot build.
-pub fn view(core: &Program) -> Option<M1> {
+pub fn view(core: &mut Program) -> Option<M1> {
     let app = core.app.as_ref()?;
-    let start = app.start?;
-    let update = &core.fns[app.update];
+    let (start, id) = (app.start?, app.update);
+    let update = &core.fns[id];
     if app.state.is_some() {
         return None;
     }
@@ -44,10 +44,11 @@ pub fn view(core: &Program) -> Option<M1> {
     if !core.enums[msg].variants[start].fields.is_empty() {
         return None;
     }
+    let (body, code) = code::lower(core, id)?;
+    let (app, update) = (core.app.as_ref()?, &core.fns[id]);
     let ExprKind::List(items) = &update.body.value.as_ref()?.kind else {
         return None;
     };
-    let (body, code) = code::lower(core, app.update)?;
     Some(M1 {
         app: app.name.clone(),
         start,
@@ -170,7 +171,7 @@ mod tests {
     /// The view of a program the front end accepts and the back end can build.
     fn accepted(file: &Path) -> Option<M1> {
         view(
-            &crate::check(
+            &mut crate::check(
                 "main.paka",
                 &crate::source::Source::file("main.paka", fs::read(file).unwrap()),
             )
@@ -262,7 +263,7 @@ app light {
             body: String::new(),
             code: String::new(),
         };
-        assert_eq!(view(&lowered(LIGHT)), Some(by_hand));
+        assert_eq!(view(&mut lowered(LIGHT)), Some(by_hand));
     }
 
     #[test]
@@ -285,18 +286,18 @@ app light {
         let mut none = lowered(LIGHT);
         none.app = None;
         let payload = lowered(&LIGHT.replace("Start }", "Start(path: String) }"));
-        for core in [state, statement, computed, none, payload] {
-            assert_eq!(view(&core), None);
+        for mut core in [state, statement, computed, none, payload] {
+            assert_eq!(view(&mut core), None);
         }
     }
 
     #[test]
     fn grants_beyond_console_do_not_change_the_view() {
         let mut core = lowered(LIGHT);
-        let plain = view(&core);
+        let plain = view(&mut core);
         core.app.as_mut().unwrap().grants.insert(Grant::ReadFiles);
         assert!(plain.is_some());
-        assert_eq!(view(&core), plain);
+        assert_eq!(view(&mut core), plain);
     }
 
     #[test]

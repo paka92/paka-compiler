@@ -203,7 +203,11 @@ fn ran(
     let out = build(paka, dir)?;
     if !out.status.success() {
         let why = String::from_utf8_lossy(&out.stderr).into_owned();
-        return Ok(Err(format!("build failed: {why:?}")));
+        let stale = match why.contains("undefined") && why.contains("paka_rt1_") {
+            true => " (the runtime looks stale: rebuild paka-rt in release)",
+            false => "",
+        };
+        return Ok(Err(format!("build failed{stale}: {why:?}")));
     }
     let release = native(&dir.with_extension("prog"), dir, args)?;
     Ok(match difference_in(reference, &release, "release") {

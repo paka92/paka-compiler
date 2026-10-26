@@ -1,7 +1,8 @@
 //! The release IR linter: the promise table of docs/decisions/M6-01.md as an allow-list. Every
 //! keyword, attribute, metadata name and intrinsic in the IR Paka writes must be a row or a plain
 //! word, every use of an `inbounds` result must be a load or store address, no store may target a
-//! global, and an instruction undefined on some inputs must take the operand its check made.
+//! global, an instruction undefined on some inputs must take the operand its check made, and only
+//! runtime entries and intrinsics are declared, so no call names a maths function LLVM can fold.
 
 /// The approved rows (M6-01 section 2). An entry starting `@llvm.` names an intrinsic and any of
 /// its typed forms, such as `@llvm.expect.i1`.
@@ -111,15 +112,27 @@ const PLAIN: &[&str] = &[
 
 /// Instructions undefined on some inputs, written only by the helpers that check first (M6-01
 /// section 3).
-const GUARDED: &[&str] = &["sdiv", "srem", "shl", "ashr"];
+const GUARDED: &[&str] = &["sdiv", "srem", "shl", "ashr", "fptosi"];
 
-/// Whether `def` is how the helper of `word` makes its last operand: a divisor selected to 1 where
-/// it is 0 or -1, a count masked to 0 to 63.
+/// Whether `def` is how the helper of `word` makes its checked operand: a divisor selected to 1
+/// where it is 0 or -1, a count masked to 0 to 63, a Float selected to 0.0 where it is out of range.
 fn checked(word: &str, def: &str) -> bool {
     match word {
         "sdiv" | "srem" => def.starts_with("select i1 ") && def.contains(", i64 1, i64 "),
+        "fptosi" => def.starts_with("select i1 ") && def.contains(", double 0.0, double "),
         _ => def.starts_with("and i64 ") && def.ends_with(", 63"),
     }
+}
+
+/// The checked operand of a guarded instruction: the last of `sdiv`, `srem`, `shl` and `ashr`, the
+/// only one of `fptosi`.
+fn operand<'a>(word: &str, inst: &'a str) -> Option<&'a str> {
+    let rest = inst.strip_prefix(word)?;
+    let operand = match word {
+        "fptosi" => rest.strip_prefix(" double ")?.split_once(" to ")?.0,
+        _ => rest.strip_prefix(" i64 ")?.split_once(", ")?.1,
+    };
+    Some(operand.trim())
 }
 
 /// Whether `word` is a guarded instruction whose last operand is made, earlier in `body`, in the
@@ -128,11 +141,7 @@ fn guarded(word: &str, inst: &str, body: &[(usize, &str)]) -> bool {
     if !GUARDED.contains(&word) {
         return false;
     }
-    let operand = inst
-        .strip_prefix(word)
-        .and_then(|rest| rest.strip_prefix(" i64 "))
-        .and_then(|rest| Some(rest.split_once(", ")?.1.trim()));
-    operand.is_some_and(|operand| {
+    operand(word, inst).is_some_and(|operand| {
         let defines = |line: &str| {
             let (result, def) = line.trim().split_once(" = ")?;
             Some(result == operand && checked(word, def))
@@ -167,6 +176,9 @@ pub fn lint(ir: &str) -> Vec<String> {
         if inst.starts_with("store ") && address(inst).is_none_or(|a| a.starts_with('@')) {
             say("a store targets a global".into());
         }
+        if line.starts_with("declare ") && !declares_own(line) {
+            say("a declaration names neither a runtime entry nor an intrinsic".into());
+        }
         if line.starts_with("define ") {
             body.clear();
         }
@@ -176,6 +188,12 @@ pub fn lint(ir: &str) -> Vec<String> {
         }
     }
     found
+}
+
+/// Whether a `declare` line names a runtime entry or an intrinsic.
+fn declares_own(line: &str) -> bool {
+    line.split_once(" @")
+        .is_some_and(|(_, name)| name.starts_with("paka_rt1_") || name.starts_with("llvm."))
 }
 
 fn allowed(word: &str) -> bool {
@@ -476,6 +494,35 @@ attributes #0 = { nounwind inlinehint }
         ];
         for (word, ir) in unchecked {
             assert!(names(&function(ir), word), "{word} passed in {ir:?}");
+        }
+    }
+
+    #[test]
+    fn to_int_passes_only_on_the_operand_its_check_made() {
+        let checked = "  %s = select i1 %c, double 0.0, double %x\n  %r = fptosi double %s to i64";
+        assert_eq!(lint(&function(checked)), Vec::<String>::new());
+        for ir in [
+            "%r = fptosi double %x to i64",
+            "%s = select i1 %c, double 1.0, double %x\n  %r = fptosi double %s to i64",
+            "%s = select i1 %c, double 0.0, double %x\n  %r = fptosi double %x to i64",
+        ] {
+            assert!(names(&function(ir), "fptosi"), "passed: {ir:?}");
+        }
+    }
+
+    #[test]
+    fn only_runtime_entries_and_intrinsics_are_declared() {
+        assert!(lint("declare double @llvm.floor.f64(double)").is_empty());
+        assert!(lint("declare void @paka_rt1_trap(ptr, i64) cold nounwind").is_empty());
+        for line in [
+            "declare double @sqrt(double)",
+            "declare double @floor(double) nounwind",
+            "declare double @pow(double, double)",
+        ] {
+            assert!(
+                lint(line).iter().any(|f| f.contains("declaration")),
+                "{line}"
+            );
         }
     }
 

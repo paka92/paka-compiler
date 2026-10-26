@@ -29,7 +29,7 @@ const SYSTEM_LIBS: [&str; 7] = [
 
 /// Writes the executable for `core` to `output`; `path` is the source path for diagnostics.
 /// The back end builds the milestone 1 subset only.
-pub fn build(path: &str, core: &Program, output: &OsStr) -> Result<(), Diagnostic> {
+pub fn build(path: &str, core: &mut Program, output: &OsStr) -> Result<(), Diagnostic> {
     let view = llvm::view(core).ok_or_else(|| {
         let message = "the back end builds only the milestone 1 subset";
         Diagnostic::tool(path, "unsupported-form", message)

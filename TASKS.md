@@ -1985,6 +1985,8 @@ or merged during review. Ids with a letter were added during review.
 - done when: Float conformance tests are bit-identical in three modes; the linter finds no fast-math flag and no maths call LLVM can fold. M2-08's float vectors, every NaN row included, and M2-08b's maths vectors if they exist, pass bit for bit in release; maths functions are called through the same private runtime names as M4-29.
 - why this level: Optimizer folding or fused operations change results silently; only bit-exact comparison shows it.
 - note: Per M6-01: no `fmuladd`, `fma` or float flags; only the six exact float intrinsics.
+- status: done
+- note: Done: paka/src/llvm/code.rs lowers `Float` as `double`: IEEE `fadd fsub fmul fdiv fneg`, ordered comparisons with `!=` as `une`, `abs sqrt floor ceil trunc round` through the six exact intrinsics, `min` and `max` by compares and selects (NaN if either side is, -0.0 below 0.0), `to_float` by `sitofp`, and `to_int` by a range check that traps `bad_conversion` before `fptosi`, which the linter allows only on an operand that check made. The linter refuses any declaration that is neither a runtime entry nor an intrinsic, so no maths call can be folded; M2-08b approved no maths functions, so there are none to route. paka/tests/release_floats.rs builds every float, `to_int` and `to_float` row of tests/vectors/ops.vec, NaN rows included, at full optimization and compares bits, -0.0 included. `floats` leaves tests/conformance/release-skip.
 
 ### M6-09 · L3 · Lower struct and enum values, match, inout and borrowed parameters
 
@@ -1993,6 +1995,8 @@ or merged during review. Ids with a letter were added during review.
 - done when: Conformance groups for types, enums, match and parameter passing leave the skip file and match the interpreter.
 - why this level: Layouts and passing conventions across several modules; known technique with easy-to-miss cases.
 - note: Per M6-01: field addresses passed to a call carry no `inbounds`.
+- status: done
+- note: Done: paka/src/llvm/code.rs lowers records, user enums, `Option` and `Result` that own nothing, by paka/src/layout.rs: each value lives in a first-block `alloca` of its size, fields sit at `getelementptr i8` offsets without `inbounds`, and copies are whole `llvm.memmove`s. Such values are passed and returned by address, which the checker's aliasing rule makes safe for borrowed parameters; an `inout` parameter is the address of the caller's place, a field included. `match` loads the tag word and `switch`es to its arms, which copy their binds out. Equality and order on these values, and values that own memory, are not lowered yet. No existing case used only these features, so three new run cases cover them: types/record_values, types/enum_values_match and core/inout_records. `types`, `enums`, `match` and `parameter passing` leave the skip file: 43 cases agree in release, 6 are refused by their holes' names and 389 are skipped.
 
 ### M6-10 · L4 · Share runtime header layouts with the compiler and verify both sides agree
 

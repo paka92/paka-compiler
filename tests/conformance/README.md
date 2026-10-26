@@ -53,7 +53,8 @@ Two files at the root serve release mode of the differential harness (M6-06, `pa
 `installer/src/release.rs`, which tags each case from its program; a run case is skipped in release
 while any of its tags is listed. `release-exempt` lists, as `hole CASE` lines, every run case with
 a hole, which `paka build` must refuse by the holes' names, and as `examples CASE` lines every
-example-status case, compared in interpreter and dev only until M7-11. `#` lines are comments.
+example-status case, compared in interpreter and dev only until M7-11. `#` lines are comments. Build
+first with `cargo build --release -p paka -p paka-installer -p paka-rt`.
 
 ## Pass rules
 
@@ -368,6 +369,7 @@ M2-41 reuses `order_call_arguments` and `order_assignment_right_first`.
 | labels are tested before the argument types | `wrong_label_before_type` |
 | argument count, tested before labels | `wrong_argument_count_few`, `wrong_argument_count_many`, `wrong_argument_count_before_label` |
 | `inout` parameters, forwarded `&`, Int and String | `inout_calls` |
+| `inout` Int, Float, Bool, record and field; a borrowed record | `inout_records` |
 | `return` early: in `for`, in `while`, bare | `early_return` |
 | `return` on the last line, bare, also through a branch or a `match` arm | `return_last`, `return_last_bare`, `return_last_in_branch`, `return_last_in_match_arm` |
 | `return` with a value in a function without a result | `return_value_without_result` |
@@ -824,6 +826,7 @@ builds the core form.
 | Point | Case(s) |
 |---|---|
 | record fields, defaults, order of fields in a literal | `record_defaults_and_order` |
+| records copied, nested, written by field, passed and returned | `record_values` |
 | field omitted with no default | `record_field_omitted` |
 | label not a field / out of order | `record_label_not_a_field`, `record_label_out_of_order` |
 | duplicate field name | `record_duplicate_field` |
@@ -845,6 +848,7 @@ builds the core form.
 | arm forms: block, single line, alternatives, `_`, nested patterns | `match_arm_forms`, `match_enum_arms`, `match_int_string_bool` |
 | a single-line arm `_ = e`, its `?` passing an error on | `match_arm_discard` |
 | `Option` and `Result` subjects | `match_option_result` |
+| enum values: built, matched with binds, nested, reassigned | `enum_values_match` |
 | an arm that leaves: bare after `=>` is refused at the keyword; as a block it runs | `match_arm_return`, `match_arm_break`, `match_arm_continue`, `match_arms_that_leave` |
 | arm types differ | `match_arm_type_differs` |
 | a single-line arm with no value: `missing-value` at its pattern (M2-02 §5) | `match_single_line_arm_no_value` |
