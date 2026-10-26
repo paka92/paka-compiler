@@ -25,7 +25,7 @@ pub const VALUES: u64 = 5;
 pub const STRING_KEY: u64 = 1 << 63;
 
 /// The words before the entries: length and capacity.
-const HEAD: u64 = 16;
+pub const HEAD: u64 = 16;
 
 /// `rt.map`: Map row `row` on the Map whose word is at `map`, its value type's record `record` (0
 /// when values own nothing) and `shape`. `key` is an Int key, or a String key's address; the key

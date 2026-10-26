@@ -47,14 +47,17 @@ pub const ALLOC: &str = "declare ptr @paka_rt1_alloc(i64) nounwind";
 pub const TEXT: &str = "declare i32 @paka_rt1_text(i64, i64, i64, i64, ptr, ptr, i64) nounwind";
 pub const COPY: &str = "declare i32 @paka_rt1_copy(ptr, ptr, ptr) nounwind";
 pub const DROP: &str = "declare void @paka_rt1_drop(ptr, ptr) nounwind";
-pub const ENTRIES: &[&str] = &[RUN, TRAP, STACK_LIMIT, ALLOC, TEXT, COPY, DROP];
+pub const MAP: &str = "declare i32 @paka_rt1_map(i64, ptr, i64, ptr, i64, ptr, ptr, i64) nounwind";
+pub const ENTRIES: &[&str] = &[RUN, TRAP, STACK_LIMIT, ALLOC, TEXT, COPY, DROP, MAP];
 
 #[cfg(test)]
 mod tests {
     use super::super::dev::items::{APPEND, rt_items};
     use super::super::dev::records::{Part, Records, Spec, rt_copy, rt_drop};
     use super::super::dev::{Context, Heap};
-    use super::super::heap::{paka_rt1_alloc, paka_rt1_copy, paka_rt1_drop, paka_rt1_text};
+    use super::super::heap::{
+        paka_rt1_alloc, paka_rt1_copy, paka_rt1_drop, paka_rt1_map, paka_rt1_text,
+    };
     use super::super::{Update, paka_rt1_run, paka_rt1_stack_limit, paka_rt1_trap};
     use super::*;
     use std::slice;
@@ -101,6 +104,7 @@ mod tests {
     declared!(A, B);
     declared!(A, B, C);
     declared!(A, B, C, D, E, F, G);
+    declared!(A, B, C, D, E, F, G, H);
 
     #[test]
     fn entries_are_declared_as_the_runtime_defines_them() {
@@ -110,13 +114,15 @@ mod tests {
         let text = paka_rt1_text as unsafe extern "C" fn(_, _, _, _, _, _, _) -> _;
         let copy = paka_rt1_copy as unsafe extern "C" fn(_, _, _) -> _;
         let drop = paka_rt1_drop as unsafe extern "C" fn(_, _);
+        let map = paka_rt1_map as unsafe extern "C" fn(_, _, _, _, _, _, _, _) -> _;
         let made = [
             alloc.declared("paka_rt1_alloc"),
             text.declared("paka_rt1_text"),
             copy.declared("paka_rt1_copy"),
             drop.declared("paka_rt1_drop"),
+            map.declared("paka_rt1_map"),
         ];
-        let lines = [ALLOC, TEXT, COPY, DROP];
+        let lines = [ALLOC, TEXT, COPY, DROP, MAP];
         for (line, made) in lines.iter().zip(made) {
             assert_eq!(*line, format!("{made} nounwind"));
         }

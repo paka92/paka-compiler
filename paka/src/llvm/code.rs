@@ -26,6 +26,7 @@ use std::collections::{BTreeMap, BTreeSet};
 use std::fmt::Write;
 
 mod items;
+mod map;
 mod owned;
 mod rows;
 mod sort;
@@ -51,6 +52,7 @@ pub fn lower(core: &mut Program, update: usize, computed: bool) -> Option<(Strin
                     | Type::Float
                     | Type::String
                     | Type::List(_)
+                    | Type::Map(..)
                     | Type::Record(_)
                     | Type::Enum(_)
                     | Type::Option(_)
@@ -66,6 +68,7 @@ pub fn lower(core: &mut Program, update: usize, computed: bool) -> Option<(Strin
         let fields = layouts.get(t).alternatives.iter().flatten();
         let item = match &core.types[t] {
             Type::List(item) => held[*item],
+            Type::Map(k, v) => held[*k] && held[*v],
             Type::Fn(params, result) => params.iter().chain(result).all(|&p| held[p]),
             _ => true,
         };
@@ -401,6 +404,8 @@ enum Op {
     Field(usize),
     Item(String, Site),
     Slice(String, String, Site),
+    /// A Map key; true when a missing entry is added.
+    Key(String, Site, bool),
 }
 
 impl Body<'_, '_> {
@@ -487,7 +492,7 @@ impl Body<'_, '_> {
                 Step::Field(i) => Op::Field(*i),
                 Step::Item(i, site) => Op::Item(self.expr(i)??, *site),
                 Step::Slice(a, b, site) => Op::Slice(self.expr(a)??, self.expr(b)??, *site),
-                Step::Key(..) => return None,
+                Step::Key(k, site) => Op::Key(self.expr(k)??, *site, false),
             });
         }
         Some((root, t, ops))
@@ -503,6 +508,11 @@ impl Body<'_, '_> {
                 _ => None,
             };
             at = match (op, list) {
+                (Op::Key(key, site, add), _) => {
+                    let at = self.entry(&at, t, &key, site, add);
+                    t = self.map_types(t).1;
+                    at
+                }
                 (Op::Field(i), _) => {
                     let field = self.module.layouts.get(t).alternatives[0][i];
                     t = field.ty;
@@ -652,7 +662,10 @@ impl Body<'_, '_> {
                 self.bind_owned(*l, &v)?;
             }
             Stmt::Assign(place, op, e) => {
-                let (root, t, ops) = self.operands(place)?;
+                let (root, t, mut ops) = self.operands(place)?;
+                if let (None, Some(Op::Key(.., add))) = (op, ops.last_mut()) {
+                    *add = true;
+                }
                 let mut v = self.expr(e)??;
                 let (at, t) = self.walk(root, t, ops)?;
                 if let Some(op) = op {
@@ -744,6 +757,7 @@ impl Body<'_, '_> {
             ExprKind::Float(f) => format!("0x{:016X}", f.bits()),
             ExprKind::Str(s) => self.literal(s),
             ExprKind::List(items) => self.list(e.ty?, items)?,
+            ExprKind::Map(entries) => self.map(e.ty?, entries)?,
             ExprKind::Interp(parts, site) => self.interpolate(parts, *site)?,
             ExprKind::Place(place) => {
                 let (at, t) = self.address(place)?;
@@ -1079,10 +1093,14 @@ impl Body<'_, '_> {
             "to_int(x: Float) -> Int" => self.integer(x[0], site),
             "len(x: String) -> Int" => self.chars(x[0]),
             "len(x: List<T>) -> Int" => self.length(x[0]),
-            "is_empty(x: String) -> Bool" | "is_empty(x: List<T>) -> Bool" => {
-                let n = match row.contains("String") {
-                    true => self.chars(x[0]),
-                    false => self.length(x[0]),
+            "len(x: Map<K, V>) -> Int" => self.map_len(x[0]),
+            "is_empty(x: String) -> Bool"
+            | "is_empty(x: List<T>) -> Bool"
+            | "is_empty(x: Map<K, V>) -> Bool" => {
+                let n = match row {
+                    "is_empty(x: String) -> Bool" => self.chars(x[0]),
+                    "is_empty(x: List<T>) -> Bool" => self.length(x[0]),
+                    _ => self.map_len(x[0]),
                 };
                 self.op(format!("icmp eq i64 {n}, 0"))
             }

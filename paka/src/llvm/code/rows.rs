@@ -36,6 +36,9 @@ impl Body<'_, '_> {
                 self.start(&dead);
                 result.map(|t| stand_in(self.ty(t)))
             }
+            name @ ("get" | "has" | "remove" | "keys" | "values") => {
+                return self.map_builtin(name, &x, tys, result, site);
+            }
             _ => return self.text_builtin(row, args, site).map(Some),
         })
     }

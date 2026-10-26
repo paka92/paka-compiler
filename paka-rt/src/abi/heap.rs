@@ -2,7 +2,7 @@
 //! copy and free blocks and to run the String rows. They work on one dev `Context` per call of
 //! `update`, on the thread that makes it, so every block is in its ledger.
 
-use super::dev::{BAD_CONVERSION, Context, Heap, MEMORY, OUT_OF_BOUNDS, records, words};
+use super::dev::{BAD_CONVERSION, Context, Heap, MEMORY, OUT_OF_BOUNDS, map, records, words};
 use super::{List, Str, Update, record_kind};
 use std::cell::{Cell, RefCell};
 use std::panic::{AssertUnwindSafe, catch_unwind};
@@ -78,6 +78,46 @@ pub unsafe extern "C" fn paka_rt1_text(
         let status = unsafe { words::rt_text(ctx, row, 0, a, b, c, out) };
         (status, ctx.trap.kind)
     });
+    // SAFETY: the caller promises an ABI string.
+    unsafe { trapped(status, kind, at, len) }
+}
+
+/// The dev runtime's Map row `row` (`rt_map`) on the Map whose word is at `map`; on a trap,
+/// records its kind with the text `at` and returns 1.
+///
+/// # Safety
+///
+/// The operands are as `rt_map` asks, `record` the value type's record or null, and `at` and `len`
+/// a string as ABI section 2 defines it.
+// SAFETY: as for `paka_rt1_run`.
+#[unsafe(no_mangle)]
+#[allow(clippy::too_many_arguments)]
+pub unsafe extern "C" fn paka_rt1_map(
+    row: u64,
+    record: *const u64,
+    shape: u64,
+    map: *mut *mut u8,
+    key: u64,
+    out: *mut u8,
+    at: *const u8,
+    len: u64,
+) -> i32 {
+    let record = record.expose_provenance() as u64;
+    let (status, kind) = with((1, 0), |ctx| {
+        // SAFETY: the caller vouches for the operands and `out`.
+        let status = unsafe { map::rt_map(ctx, row, 0, record, shape, map, key, out) };
+        (status, ctx.trap.kind)
+    });
+    // SAFETY: the caller promises an ABI string.
+    unsafe { trapped(status, kind, at, len) }
+}
+
+/// Records a trap of `kind` at the text `at` when a row's `status` is not 0, and gives `status`.
+///
+/// # Safety
+///
+/// `at` and `len` are a string as ABI section 2 defines it.
+unsafe fn trapped(status: i32, kind: u64, at: *const u8, len: u64) -> i32 {
     if status != 0 {
         let kind: &[u8] = match kind {
             OUT_OF_BOUNDS => b"out_of_bounds ",

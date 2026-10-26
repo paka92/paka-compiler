@@ -216,13 +216,19 @@ impl Body<'_, '_> {
         }
     }
 
-    /// `i1 @q<t>(ptr %x, ptr %y)`: a List item by item, a variant's tags, then field by field
-    /// until one differs.
+    /// `i1 @q<t>(ptr %x, ptr %y)`: a List item by item, a Map entry by entry in key order, a
+    /// variant's tags, then field by field until one differs.
     pub(super) fn equality(mut self, t: Ty) -> String {
-        if let Type::List(_) = self.module.core.types[t] {
-            self.equal_items(t);
-            return self.equality_fn(t);
+        match self.module.core.types[t] {
+            Type::List(_) => self.equal_items(t),
+            Type::Map(..) => self.equal_entries(t),
+            _ => return self.equal_fields(t),
         }
+        self.equality_fn(t)
+    }
+
+    /// A record's or variant's equality.
+    fn equal_fields(mut self, t: Ty) -> String {
         let layout = self.module.layouts.get(t);
         let (tagged, alternatives) = (layout.tagged, layout.alternatives.clone());
         let mut labels = vec![];

@@ -1,8 +1,7 @@
 enum Msg { Start }
 
 fn update(msg: Msg) -> List<Effect<Msg>> {
-  let ages = ["ana": 3]
-  [Print("done"), Exit]
+  [Print("done"), ExitWith(7)]
 }
 
 app errors {

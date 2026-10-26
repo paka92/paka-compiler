@@ -2033,6 +2033,8 @@ or merged during review. Ids with a letter were added during review.
 - flags: unsafe, native-only
 - done when: M2's collection conformance cases agree in all three modes.
 - why this level: Same unsafe container as dev mode with inline fast paths; a layout or order mismatch is silent.
+- status: done
+- note: Done: a Map is its one word, as in dev mode, and its rows call the dev runtime's Map code through one new entry, `paka_rt1_map`, so entry order and traps are the interpreter's. A Map's length and its entries in equality are read inline. A literal adds its entries in written order, a later equal key replacing the value. `maps` left tests/conformance/release-skip, and the `unsupported_form` case and its CLI test now use `ExitWith` in place of a Map.
 
 ### M6-14 · L4 · Specialize generic definitions per concrete type in release builds
 
