@@ -11,11 +11,17 @@ const EDGE_INTS: &[&str] = &[
     "-9223372036854775808",
     "4611686018427387904",
     "-4611686018427387905",
+    "9223372036854775806",
+    "-9223372036854775807",
+    "3037000500",
+    "-3037000500",
 ];
 const FLOATS: &[&str] = &[
     "0.0",
     "1.5",
     "-2.25",
+    "-1.5",
+    "-3.0",
     "0.1",
     "3.0",
     "1000000.0",
@@ -154,7 +160,7 @@ impl Gen {
         Some(fx.locals[i].name.clone())
     }
 
-    /// A local, or a field, item or entry of one, of type `ty`.
+    /// A local, or a field, item or entry of one, of type `ty`; an item may be near a List's end.
     pub(crate) fn read(&mut self, fx: &mut Fx, ty: &Ty) -> Option<String> {
         let mut found = vec![];
         for (i, l) in fx.locals.iter().enumerate().filter(|(_, l)| !l.hidden) {
@@ -162,6 +168,12 @@ impl Gen {
                 if t == *ty {
                     found.push((i, format!("{}{path}", l.name)));
                 }
+            }
+            if let Ty::List(t) = &l.ty
+                && **t == *ty
+            {
+                let back = self.rng.pick(&[1, 1, 2, 0]);
+                found.push((i, format!("{0}[len({0}) - {back}]", l.name)));
             }
         }
         if found.is_empty() {

@@ -15,8 +15,8 @@
 //! `paka-diff --fuzz-release FIRST COUNT KEEP` also builds each program in release (M6-20) and
 //! keeps each that differs as the run case `KEEP/SEED`, its expectations the interpreter's run.
 //! Where the interpreter ends in a stack trap, release may finish or run on: that run is cut by
-//! the limit and not compared. `PAKA_PLANT` 9 plants `>` as `>=` in every release build, in the
-//! IR handed to clang.
+//! the limit and not compared, unless it died by a signal. `PAKA_PLANT` 9 to 18 plants a fault in
+//! every release build, in the IR handed to clang (`RELEASE_PLANTS`, M6-21).
 //!
 //! `paka-diff --edits FIRST COUNT KEEP` runs the edit sequences of COUNT seeds from FIRST (M4-43).
 //! After each edit that checks, the dev run has edited in every version before it, so it runs the
@@ -231,21 +231,51 @@ fn build(paka: &Path, dir: &Path) -> io::Result<process::Output> {
         "-o".as_ref(),
         dir.with_extension("prog").as_os_str(),
     ]);
-    if env::var("PAKA_PLANT").is_ok_and(|n| n == "9") {
-        command.env("PATH", planted_clang()?);
+    if let Some(plant) = release_plant() {
+        command.env("PATH", planted_clang(plant)?);
     }
     command.output()
 }
 
-/// A `PATH` whose first `clang` turns each `icmp sgt` of the IR it is given into `icmp sge`, then
-/// runs the next `clang` on `PATH`.
-fn planted_clang() -> io::Result<OsString> {
-    let dir = scratch().join("plant");
+/// The release fault `PAKA_PLANT` 9 to 18 names (M6-21): a sed script on the IR handed to clang.
+fn release_plant() -> Option<usize> {
+    let n: usize = env::var("PAKA_PLANT").ok()?.parse().ok()?;
+    (9..9 + RELEASE_PLANTS.len()).contains(&n).then_some(n)
+}
+
+const RELEASE_PLANTS: [&str; 10] = [
+    // 9: `>` as `>=`.
+    "s/icmp sgt/icmp sge/g",
+    // 10: Float arithmetic folded as if no value were NaN or infinite.
+    r"s/= f\(add\|sub\|mul\|div\) double/= f\1 fast double/",
+    // 11: the bounds check of a List index left out.
+    "s/= icmp uge i64 .*/= icmp ne i64 0, 0/",
+    // 12: the overflow check of checked arithmetic left out.
+    "s/= extractvalue { i64, i1 } .*, 1$/= icmp ne i64 0, 0/",
+    // 13: the stack check of each function small enough to inline left out.
+    "/^define .* noinline {/,/^}/!s/br i1 %deep,/br i1 false,/",
+    // 14: sort's Float instance built as its Int instance.
+    "/^define internal i32 @s[0-9]/,/^}/{s/fcmp olt double/icmp slt i64/;s/double/i64/g}",
+    // 15: each owned value dropped twice.
+    "/call void @paka_rt1_drop(/p",
+    // 16: a String-keyed Map row of word values laid out as an Int-keyed one.
+    "/@paka_rt1_map(/s/i64 -9223372036854775800,/i64 8,/",
+    // 17: the count check of a shift left out.
+    r"s/= icmp ugt i64 \(.*\), 63$/= icmp ne i64 0, 0/",
+    // 18: the range check of `to_int` left out.
+    "s/= fcmp o[gl][et] double .*, 0x[C4]3E0000000000000$/= icmp eq i64 0, 0/",
+];
+
+/// A `PATH` whose first `clang` applies release plant `n` to each IR file it is given, then runs
+/// the next `clang` on `PATH`.
+fn planted_clang(n: usize) -> io::Result<OsString> {
+    let dir = scratch().join(format!("plant{n}"));
     let clang = dir.join("clang");
     if !clang.exists() {
         fs::create_dir_all(&dir)?;
+        fs::write(dir.join("plant.sed"), RELEASE_PLANTS[n - 9])?;
         let script = "#!/bin/sh\n\
-            for a; do case $a in *.ll) sed -i 's/icmp sgt/icmp sge/g' \"$a\";; esac; done\n\
+            for a; do case $a in *.ll) sed -i -f \"${0%/*}/plant.sed\" \"$a\";; esac; done\n\
             PATH=${PATH#*:} exec clang \"$@\"\n";
         fs::write(&clang, script)?;
         fs::set_permissions(&clang, fs::Permissions::from_mode(0o755))?;
@@ -293,6 +323,7 @@ fn native(exe: &Path, dir: &Path, args: &[OsString], limit: Duration) -> io::Res
 }
 
 fn fuzz(seeds: Range<u64>, keep: &Path, release: bool) -> io::Result<ExitCode> {
+    no_core_dumps();
     let scratch = scratch();
     let dirs = ENGINES.map(|e| scratch.join(e));
     let built = scratch.join("release");
@@ -378,8 +409,10 @@ fn released(built: &Path, reference: &Outcome) -> io::Result<(usize, String)> {
         .next()
         .is_some_and(|l| l.contains(" trap stack at "));
     Ok(match difference_in(reference, &run, "release") {
-        // Release may finish or run on where the interpreter's stack ran out (M6-01).
-        _ if reference.status == Some(3) && stack => (2, "not compared: a stack trap".into()),
+        // Release may finish or run on where the interpreter's stack ran out, not crash (M6-01).
+        _ if reference.status == Some(3) && stack && run.status.is_some() => {
+            (2, "not compared: a stack trap".into())
+        }
         Some(why) => (1, why),
         None => (0, "agree".into()),
     })

@@ -1,5 +1,6 @@
 //! Random programs from paka-gen (M4-21): each checks, finishes in the interpreter, and together
-//! they produce every core-form node kind but a view's. `PAKA_GEN_SEEDS` sets how many (default 10,000).
+//! they produce every core-form node kind but a view's; a release build refuses each with a hole
+//! (M6-21). `PAKA_GEN_SEEDS` sets how many (default 10,000).
 
 use paka::coverage::core::{CORE_KINDS, VIEW_KINDS, kinds};
 use paka::source::Source;
@@ -83,12 +84,36 @@ fn one(seed: u64) -> Result<(Vec<&'static str>, i32), String> {
     let kinds = kinds(&program).0.into_iter().collect();
     let path = Path::new(env!("CARGO_TARGET_TMPDIR")).join(format!("gen-{seed}.paka"));
     std::fs::write(&path, &text).unwrap();
+    if text.contains("??h") {
+        refused(&path, &text)?;
+    }
     let status = run(&path)?;
     if matches!(status, 0 | 3 | 5..=255) {
         std::fs::remove_file(&path).unwrap();
         return Ok((kinds, status));
     }
     Err(format!("status {status}, kept at {}", path.display()))
+}
+
+/// `paka build` refuses the program at `path`, naming each of its holes.
+fn refused(path: &Path, text: &str) -> Result<(), String> {
+    let out = Command::new(env!("CARGO_BIN_EXE_paka"))
+        .arg("build")
+        .arg(path)
+        .arg("-o")
+        .arg(path.with_extension("prog"))
+        .output()
+        .unwrap();
+    let why = String::from_utf8_lossy(&out.stderr);
+    let named = (0..text.matches("??h").count()).all(|i| {
+        why.contains(&format!(
+            "error[hole-in-build]: a release build has no holes; finish ??h{i}\n"
+        ))
+    });
+    match out.status.code() == Some(1) && named {
+        true => Ok(()),
+        false => Err(format!("a build with holes was not refused: {why}")),
+    }
 }
 
 fn run(path: &Path) -> Result<i32, String> {

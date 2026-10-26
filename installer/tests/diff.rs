@@ -1,7 +1,8 @@
 //! The differential harness (M4-40): planted differences in output, status, trap kind and trap
 //! position each differ, as does a run ended by a signal; and the command lists every run case of
 //! the conformance suite once. Every UI example agrees on both back ends, and a planted view fault
-//! differs in each (M5-26). A planted release fault is found, shrunk and kept as a case (M6-20).
+//! differs in each (M5-26). A planted release fault is found, shrunk and kept as a case (M6-20),
+//! and each of a fast subset of the others is found (M6-21).
 
 use paka_installer::diff::{Outcome, cases, difference};
 use std::path::Path;
@@ -106,7 +107,7 @@ fn every_run_case_is_listed_once() {
 }
 
 /// Each planted fault of the dev back end, with a seed whose program it changes.
-const PLANTED: [(u8, u64); 5] = [(1, 224), (2, 59), (3, 60), (4, 181), (5, 119)];
+const PLANTED: [(u8, u64); 5] = [(1, 0), (2, 82), (3, 11), (4, 111), (5, 43)];
 
 #[test]
 fn the_fuzz_loop_finds_and_shrinks_each_planted_fault() {
@@ -115,17 +116,10 @@ fn the_fuzz_loop_finds_and_shrinks_each_planted_fault() {
         for (plant, seed) in PLANTED {
             let keep = keep.join(plant.to_string());
             s.spawn(move || {
-                let fuzz = |plant: u8| {
-                    let out = Command::new(env!("CARGO_BIN_EXE_paka-diff"))
-                        .args(["--fuzz", &seed.to_string(), "1"])
-                        .arg(&keep)
-                        .env("PAKA_PLANT", plant.to_string())
-                        .output()
-                        .unwrap();
-                    String::from_utf8(out.stdout).unwrap()
-                };
-                assert!(fuzz(0).starts_with(&format!("agree seed {seed};")));
-                let found = fuzz(plant);
+                assert!(
+                    fuzzed("--fuzz", seed, &keep, 0).starts_with(&format!("agree seed {seed};"))
+                );
+                let found = fuzzed("--fuzz", seed, &keep, plant);
                 assert!(
                     found.starts_with(&format!("differ seed {seed}:")),
                     "{found}"
@@ -138,7 +132,44 @@ fn the_fuzz_loop_finds_and_shrinks_each_planted_fault() {
     let _ = std::fs::remove_dir_all(&keep);
 }
 
-/// The release fault planted in the IR clang is given, `>` as `>=`, is found from seed 83, which
+/// The output of `paka-diff MODE SEED 1 KEEP` with `plant`.
+fn fuzzed(mode: &str, seed: u64, keep: &Path, plant: u8) -> String {
+    let out = Command::new(env!("CARGO_BIN_EXE_paka-diff"))
+        .args([mode, &seed.to_string(), "1"])
+        .arg(keep)
+        .env("PAKA_PLANT", plant.to_string())
+        .output()
+        .unwrap();
+    String::from_utf8(out.stdout).unwrap()
+}
+
+/// A fast subset of the other release faults (M6-21), each with the first seed whose program it
+/// changes; docs/results/M6-21.md lists all ten.
+const RELEASE_PLANTED: [(u8, u64); 4] = [(11, 7), (13, 4), (15, 0), (16, 1)];
+
+#[test]
+fn the_release_fuzz_loop_finds_each_fast_planted_release_fault() {
+    build_paka_beside(Path::new(env!("CARGO_BIN_EXE_paka-diff")));
+    let keep = std::env::temp_dir().join(format!("paka-fuzz-plants-{}", std::process::id()));
+    std::thread::scope(|s| {
+        for (plant, seed) in RELEASE_PLANTED {
+            let keep = keep.join(plant.to_string());
+            s.spawn(move || {
+                let agree = fuzzed("--fuzz-release", seed, &keep, 0);
+                assert!(agree.starts_with(&format!("agree seed {seed};")), "{agree}");
+                let found = fuzzed("--fuzz-release", seed, &keep, plant);
+                assert!(
+                    found.starts_with(&format!("differ seed {seed}: release ")),
+                    "plant {plant}: {found}"
+                );
+                assert!(keep.join(format!("{seed}/main.paka")).is_file());
+            });
+        }
+    });
+    let _ = std::fs::remove_dir_all(&keep);
+}
+
+/// The release fault planted in the IR clang is given, `>` as `>=`, is found from seed 0, which
 /// agrees without it, and kept as a run case of under 20 lines that release mode of the harness
 /// passes, and fails with the fault (M6-20).
 #[test]
@@ -153,25 +184,14 @@ fn the_release_fuzz_loop_keeps_a_planted_release_fault_as_a_case() {
             .unwrap();
         (String::from_utf8(out.stdout).unwrap(), out.status.code())
     };
-    let fuzz = |plant| {
-        diff(
-            plant,
-            &[
-                "--fuzz-release".as_ref(),
-                "83".as_ref(),
-                "1".as_ref(),
-                root.join("fuzz").as_ref(),
-            ],
-        )
-        .0
-    };
-    assert!(fuzz("0").starts_with("agree seed 83;"));
-    let found = fuzz("9");
+    let fuzz = |plant| fuzzed("--fuzz-release", 0, &root.join("fuzz"), plant);
+    assert!(fuzz(0).starts_with("agree seed 0;"));
+    let found = fuzz(9);
     assert!(
-        found.starts_with("differ seed 83: release stdout"),
+        found.starts_with("differ seed 0: release stdout"),
         "{found}"
     );
-    let kept = std::fs::read_to_string(root.join("fuzz/83/main.paka")).unwrap();
+    let kept = std::fs::read_to_string(root.join("fuzz/0/main.paka")).unwrap();
     assert!(kept.lines().count() < 20, "{kept}");
     for list in ["release-skip", "release-exempt"] {
         std::fs::write(root.join(list), "").unwrap();
@@ -179,12 +199,12 @@ fn the_release_fuzz_loop_keeps_a_planted_release_fault_as_a_case() {
     let release = |plant| diff(plant, &["--release".as_ref(), root.as_ref()]);
     let (text, status) = release("0");
     assert!(
-        text.starts_with("agree fuzz/83;") && status == Some(0),
+        text.starts_with("agree fuzz/0;") && status == Some(0),
         "{text}"
     );
     let (text, status) = release("9");
     assert!(
-        text.starts_with("differ fuzz/83: release stdout") && status == Some(1),
+        text.starts_with("differ fuzz/0: release stdout") && status == Some(1),
         "{text}"
     );
     let _ = std::fs::remove_dir_all(&root);

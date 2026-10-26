@@ -19,6 +19,8 @@ const FUEL: u64 = 6;
 /// The cost one function body may reach, and the handler's.
 const BUDGET: u64 = 4_000;
 const TOP_BUDGET: u64 = 40_000;
+/// The levels a recursive function is charged for.
+const RECURSION: u64 = 101;
 /// The most a function value may cost; a call through one is charged this much.
 const LEAF: u64 = 40;
 
@@ -274,6 +276,9 @@ impl Gen {
     }
 
     fn function(&mut self) -> String {
+        if self.rng.chance(5) {
+            return self.recursive();
+        }
         let id = self.fns.len();
         let mut params = vec![];
         for _ in 0..self.rng.below(4) {
@@ -306,8 +311,43 @@ impl Gen {
         format!("fn f{id}({}){arrow} {body}\n\n", sig.join(", "))
     }
 
+    /// `fn f{id}(p0: Int, ...)`, which calls itself on `p0 - 1` until `p0` is 0, or on `p0` for good
+    /// past `RECURSION` levels, which runs out of stack on every back end. A level costs at most
+    /// `LEAF`.
+    fn recursive(&mut self) -> String {
+        let id = self.fns.len();
+        let result = self.ty(1, false);
+        let mut params = vec![(Ty::Int, false)];
+        params.extend((0..self.rng.below(2)).map(|_| (self.ty(1, false), false)));
+        let mut fx = Fx::new(Ret::Value(result.clone()), LEAF);
+        let mut sig = vec![];
+        for (j, (ty, _)) in params.iter().enumerate() {
+            fx.bind(format!("p{j}"), ty.clone(), false);
+            sig.push(format!("p{j}: {ty}"));
+        }
+        let base = self.typed(&mut fx, &result, 2);
+        let step = format!("(if (p0 > {}) {{ p0 }} else {{ (p0 - 1) }})", RECURSION - 1);
+        let args: Vec<_> = std::iter::once(step)
+            .chain((1..params.len()).map(|j| format!("p{j}")))
+            .collect();
+        let head = [
+            format!("if (p0 <= 0) {{ return {base} }}"),
+            format!("let r: {result} = f{id}({})", args.join(", ")),
+        ];
+        let n = self.rng.below(3);
+        let binds = vec![("r".into(), result.clone())];
+        let body = self.block(&mut fx, binds, &head, n, Some(&result));
+        let text = format!("fn f{id}({}) -> {result} {body}\n\n", sig.join(", "));
+        self.fns.push(Func {
+            params,
+            result: Some(result),
+            cost: (fx.cost + 1) * RECURSION,
+        });
+        text
+    }
+
     /// The handler calls every function the budget allows and prints its result and what it
-    /// changed through `inout`.
+    /// changed through `inout`, a List of ordered items sometimes sorted as well.
     fn app(&mut self) -> String {
         let mut fx = Fx::new(Ret::Never, TOP_BUDGET);
         fx.indent = 1;
@@ -339,6 +379,11 @@ impl Gen {
             }
             for (name, ty) in shown {
                 effects.push(format!("Print({}({name}))", self.show(&ty)));
+                if matches!(&ty, Ty::List(t) if t.ordered()) && self.rng.chance(2) {
+                    let sorted = fx.fresh();
+                    lines += &format!("  var {sorted} = {name}\n  sort(&{sorted})\n");
+                    effects.push(format!("Print({}({sorted}))", self.show(&ty)));
+                }
                 fx.bind(name, ty, false);
             }
         }

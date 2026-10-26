@@ -583,4 +583,41 @@ app a {
             );
         }
     }
+
+    /// Generated programs (M6-21): each without a hole builds in release, and together they give
+    /// every core-form node kind but a view's and a hole's. `PAKA_GEN_SEEDS` sets how many
+    /// (default 2,000).
+    #[test]
+    fn generated_programs_build_in_release_with_every_kind() {
+        use paka::coverage::core::{CORE_KINDS, VIEW_KINDS, kinds};
+        let n = std::env::var("PAKA_GEN_SEEDS").map_or(2_000, |n| n.parse().unwrap());
+        // The main thread's stack, which `paka` checks on.
+        let worker = std::thread::Builder::new().stack_size(8 << 20);
+        let found = worker.spawn(move || {
+            let mut found = std::collections::BTreeMap::new();
+            for seed in 0..n {
+                let text = crate::source::Source::file("main.paka", paka_gen::program(seed).into());
+                let (mut core, holes, _) = crate::check("main.paka", &text).unwrap();
+                if holes.iter().any(|h| h.refusal.is_some()) {
+                    continue;
+                }
+                kinds(&core)
+                    .0
+                    .into_iter()
+                    .for_each(|k| *found.entry(k).or_insert(0) += 1);
+                let ir = ir(&mut core).unwrap_or_else(|| panic!("seed {seed} is refused"));
+                assert_eq!(lint::lint(&ir), Vec::<String>::new(), "seed {seed}");
+            }
+            found
+        });
+        let found = found.unwrap().join().unwrap();
+        for kind in CORE_KINDS {
+            println!("{:>6} {kind}", found.get(kind).unwrap_or(&0));
+        }
+        let missing: Vec<_> = (CORE_KINDS.iter())
+            .filter(|k| !found.contains_key(*k) && !VIEW_KINDS.contains(k))
+            .filter(|k| **k != "ExprKind::Hole")
+            .collect();
+        assert!(missing.is_empty(), "never built: {missing:?}");
+    }
 }

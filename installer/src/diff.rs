@@ -254,15 +254,26 @@ fn spans(line: &str, marks: &[usize]) -> Vec<Range<usize>> {
     [first].into_iter().chain(rest).collect()
 }
 
-/// Turns off core dumps of this process: a fault that crashes a dev run would hand one to the
-/// system's crash reporter for every program the shrinker tries.
+/// Turns off core dumps of this process and the programs it starts: a fault that crashes a run
+/// would hand one to the system's crash reporter for every program the shrinker tries. A core
+/// limit of 1 byte stops a piped dump too, where 0 does not.
 pub fn no_core_dumps() {
     unsafe extern "C" {
         fn prctl(option: i32, arg: u64, ...) -> i32;
+        fn getrlimit(resource: i32, limit: *mut [u64; 2]) -> i32;
+        fn setrlimit(resource: i32, limit: *const [u64; 2]) -> i32;
     }
     const PR_SET_DUMPABLE: i32 = 4;
-    // SAFETY: `PR_SET_DUMPABLE` takes one integer, 0 or 1, and touches no memory of ours.
-    unsafe { prctl(PR_SET_DUMPABLE, 0) };
+    const RLIMIT_CORE: i32 = 4;
+    let mut limit = [0; 2];
+    // SAFETY: `PR_SET_DUMPABLE` takes one integer, 0 or 1, and touches no memory of ours; the
+    // limit calls read or write one `rlimit`, two words.
+    unsafe {
+        prctl(PR_SET_DUMPABLE, 0);
+        if getrlimit(RLIMIT_CORE, &mut limit) == 0 && limit[1] >= 1 {
+            setrlimit(RLIMIT_CORE, &[1, limit[1]]);
+        }
+    }
 }
 
 /// Plays each UI example of `core`, installed in `dev`, on both back ends: the events of every
