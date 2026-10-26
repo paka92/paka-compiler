@@ -10,18 +10,20 @@ use paka::diagnostic::Diagnostic;
 use paka::results::Cache;
 use paka::serve::serve;
 use paka::session::{self, Runner, Session};
-use paka::{Checked, Hole, approvals, check, check_defs, core_form, diagnostic, interp, source};
+use paka::{Checked, Hole, approvals, approve, check, check_defs, core_form, diagnostic, gate};
+use paka::{interp, source};
 use paka_rt::{Fd1, abi};
 use source::{Source, read};
 use std::collections::BTreeSet;
 use std::ffi::OsStr;
 use std::fs::{self, TryLockError};
-use std::io::Write;
+use std::io::{IsTerminal, Write};
 use std::os::unix::ffi::OsStrExt;
+use std::path::{Path, PathBuf};
 use std::process::ExitCode;
 use std::{env, io};
 
-const USAGE: &str = "usage: paka run <path> [argument...]\n       paka build <path> -o <output>\n       paka check <path> [--json]\n       paka examples <path>\n       paka serve <path>\n";
+const USAGE: &str = "usage: paka run <path> [argument...]\n       paka build <path> -o <output>\n       paka check <path> [--json]\n       paka examples <path>\n       paka serve <path>\n       paka approve <path> [--adopt <name>] [--drop <name>] [--key <file>]\n       paka gate <tree> --base <tree>\n";
 
 fn main() -> ExitCode {
     let args: Vec<_> = env::args_os().skip(1).collect();
@@ -33,6 +35,8 @@ fn main() -> ExitCode {
         [Some("check"), _, Some("--json")] => return check_file(&args[1], true),
         [Some("examples"), _] => return examples_file(&args[1]),
         [Some("serve"), _] => return serve_program(&args[1]),
+        [Some("approve"), _, ..] => return approve_program(&args[1], &words[2..]),
+        [Some("gate"), _, Some("--base"), _] => return gate_tree(&args[1], &args[3]),
         _ => return report(USAGE.as_bytes(), 2),
     };
     let path = &file.to_string_lossy();
@@ -131,6 +135,96 @@ fn serve_program(file: &OsStr) -> ExitCode {
         Ok(()) => ExitCode::SUCCESS,
         Err(e) => report(format!("paka serve: {e}\n").as_bytes(), 1),
     }
+}
+
+/// `paka approve`: each item awaiting the owner on its own screen with its own yes or no, read
+/// from a terminal only; then the store with a higher serial, signed (docs/decisions/M7-01.md).
+fn approve_program(file: &OsStr, flags: &[Option<&str>]) -> ExitCode {
+    let (mut adopt, mut drop, mut key) = (vec![], vec![], None);
+    for pair in flags.chunks(2) {
+        match pair {
+            [Some("--adopt"), Some(name)] => adopt.push(name.to_string()),
+            [Some("--drop"), Some(name)] => drop.push(name.to_string()),
+            [Some("--key"), Some(path)] if key.is_none() => key = Some(PathBuf::from(path)),
+            _ => return report(USAGE.as_bytes(), 2),
+        }
+    }
+    if !io::stdin().is_terminal() {
+        return report(b"paka approve: answers are read from a terminal only\n", 2);
+    }
+    let home = env::var_os("HOME").map(|h| Path::new(&h).join(".config/paka/approval_key"));
+    let Some(key) = key.or(home) else {
+        return report(b"paka approve: no HOME; name the key with --key\n", 2);
+    };
+    let (dir, program, mut store) = match approvals::to_approve(file.as_ref()) {
+        Ok(found) => found,
+        Err(why) => return report(format!("paka approve: {why}\n").as_bytes(), 1),
+    };
+    let (source, read) = read(file);
+    let items = read.and_then(|()| approve::items(&store, &dir, &program, &source, &adopt, &drop));
+    let items = match items {
+        Ok(items) => items,
+        Err(d) => return reject(&source, d),
+    };
+    if items.is_empty() {
+        return report(b"approvals: nothing awaits approval\n", 0);
+    }
+    let count = items.len();
+    let mut answers = io::stdin().lines();
+    let mut approved = 0;
+    for (at, item) in items.into_iter().enumerate() {
+        print!("[{}/{count}] {}", at + 1, item.screen);
+        match yes(&mut answers) {
+            Some(true) => {
+                store.apply(item.change);
+                approved += 1;
+            }
+            Some(false) => {}
+            None => return report(b"paka approve: no answer; nothing is signed\n", 1),
+        }
+    }
+    if approved == 0 {
+        return report(b"approvals: nothing approved, nothing signed\n", 0);
+    }
+    store.serial += 1;
+    match store.save(&dir, &key) {
+        Ok(()) => {
+            println!("approvals: serial {}, signed", store.serial);
+            ExitCode::SUCCESS
+        }
+        Err(why) => report(format!("paka approve: {why}\n").as_bytes(), 1),
+    }
+}
+
+/// Asks until the answer is yes or no; none when the answers end.
+fn yes(answers: &mut impl Iterator<Item = io::Result<String>>) -> Option<bool> {
+    loop {
+        print!("Approve this item? yes / no: ");
+        let _ = io::stdout().flush();
+        match answers.next()?.ok()?.trim() {
+            "yes" => return Some(true),
+            "no" => return Some(false),
+            _ => {}
+        }
+    }
+}
+
+/// `paka gate`: one line per refusal and exit status 1, else status 0.
+fn gate_tree(tree: &OsStr, base: &OsStr) -> ExitCode {
+    let refused = gate::gate(tree.as_ref(), base.as_ref());
+    let mut out = io::stdout().lock();
+    for line in &refused {
+        let _ = writeln!(out, "{line}");
+    }
+    if refused.is_empty() {
+        let _ = writeln!(out, "gate: passed");
+        return ExitCode::SUCCESS;
+    }
+    let _ = writeln!(
+        out,
+        "Revert the change, or ask the owner to run paka approve."
+    );
+    ExitCode::from(1)
 }
 
 /// `paka check`: the diagnostic `run` would print, or a note per hole and a warning per unused

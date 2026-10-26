@@ -494,6 +494,8 @@ the signed approval store holds it, else `agent-written`.
 | `paka run <path> [arguments]` | checks, then runs the app |
 | `paka examples <path>` | checks, then runs every example |
 | `paka build <path> -o <output>` | checks, then writes an executable |
+| `paka gate <tree> --base <tree>` | refuses a merge whose approvals differ or whose human-owned examples fail |
+| `paka approve <path>` | the owner's alone: signs approved changes |
 
 Exit status: 0 good; 1 an error in the program; 2 bad usage; 3 a trap, a stop or an example that
 did not pass; 4 an internal error.

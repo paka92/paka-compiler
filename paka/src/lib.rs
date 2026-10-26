@@ -4,6 +4,7 @@
 
 pub mod alone;
 pub mod approvals;
+pub mod approve;
 pub mod ast;
 mod body;
 pub mod builtins;
@@ -11,6 +12,7 @@ pub mod core_form;
 pub mod coverage;
 pub mod diagnostic;
 pub mod emit;
+pub mod gate;
 pub mod hash;
 pub mod index;
 pub mod interp;

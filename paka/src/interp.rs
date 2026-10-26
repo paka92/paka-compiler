@@ -316,6 +316,12 @@ pub fn examples(
     }
 }
 
+/// Example `name` run fresh, as `paka examples` shows it; none when there is no such example.
+pub fn example(core: &Program, name: &str) -> Option<Result<Entry, String>> {
+    let f = (core.examples.iter().chain(&core.ui_examples)).find(|f| f.name == name)?;
+    Some(on_big_stack(|| entry(core, f)).and_then(|entry| entry))
+}
+
 /// Whether the example passed, and its entry; the reason if the interpreter faults.
 fn entry(core: &Program, f: &Func) -> Result<(bool, String), String> {
     let name = &f.name;

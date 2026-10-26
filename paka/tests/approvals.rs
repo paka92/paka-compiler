@@ -103,7 +103,8 @@ fn an_edited_example_is_detected() {
     let store = open(&dir).unwrap();
     let changes = store.changes("main.paka", &source(&edited)).unwrap();
     assert_eq!(changes.len(), 1);
-    assert!(matches!(changes[0].approved, Record::Example { name, .. } if name == "inc_once"));
+    let approved = &changes[0].approved;
+    assert!(matches!(approved, Some(Record::Example { name, .. }) if name == "inc_once"));
     let now = changes[0].now.as_ref();
     assert!(matches!(now, Some(Record::Example { text, .. }) if text.contains("s.count == 2")));
 }
@@ -116,7 +117,7 @@ fn a_deleted_example_is_detected() {
     let changes = store.changes("main.paka", &source(&deleted)).unwrap();
     assert_eq!(changes.len(), 1);
     assert!(
-        matches!(changes[0].approved, Record::Example { name, .. } if name == "starts_at_zero")
+        matches!(&changes[0].approved, Some(Record::Example { name, .. }) if name == "starts_at_zero")
     );
     assert_eq!(changes[0].now, None);
 }

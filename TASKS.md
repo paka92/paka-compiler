@@ -2282,20 +2282,24 @@ or merged during review. Ids with a letter were added during review.
 
 ### M7-06 · L4 · Build the owner's approve command: show pending changes plainly, record approval
 
+- status: done
 - needs: M7-04, M7-05
 - flags: owner
 - done when: For a hand-written set of example and grant changes, including two that differ only in one expected value, the command prints the hand-written expected text; the owner completes one approval of each in a walk-through.
 - why this level: Must describe code changes truthfully to a non-reader; a misleading summary gets a wrong approval with no error anywhere.
 - note: Per M7-01: grows: per-item screen with fixed grant meanings, whole bodies with marked lines, escaped non-ASCII, `--adopt`, `--drop`, terminal-only answers, signing and the serial bump. The walk-through uses a paka built from `development`.
 - note: Per M7-02: the foreign grant screen shows the declaration's lines and named files, and a changed C file as changed.
+- note: Done: `paka approve <path> [--adopt <name>] [--drop <name>] [--key <file>]` in paka/src/main.rs, screens in paka/src/approve.rs. Items: the program's changed records and apps never approved, then `--adopt` and `--drop`, then owned files; each on its own screen with its own yes or no from a terminal (else status 2); one or more yes raises the serial by one and signs. With no store yet, the first starts beside the nearest `approvals.pub`. The program must check, since an example screen shows its status. Tests in paka/tests/approve.rs run the command under `script` for a terminal; the expected screens are written by hand, two of them differing only in one expected value. The owner's walk-through is still to do. The foreign screen waits for M7-13, which gives `foreign` meaning.
 
 ### M7-07 · L4 · Build the gate: refuse when approvals differ or a human-owned example fails
 
+- status: done
 - needs: M7-04, M7-05
 - flags: none
 - done when: The gate exits non-zero for a changed, deleted or renamed human-owned example, a changed grant list, a new app whose grant list was never approved, a missing or tampered store record, or a failing or unfinished human-owned example; each case is tested.
 - why this level: Unlisted cases (a deleted example, a new app with grants) pass silently; this gate stands in for code review.
 - note: Per M7-01: `paka gate <tree> --base <tree>`; 'a new app never approved' means one in a gated program. Adds the serial rule, owned files, the workflow-directory rule and the key-file refusal; runs human-owned examples in the interpreter.
+- note: Done: `paka gate <tree> --base <tree>` in paka/src/gate.rs. Refuses when the base has no `approvals.pub` or the tree's differs; when the tree's store does not verify with the base's key or does not follow the base's store; per gated program, each record its source no longer matches and each app never approved; each owned file (every recorded file, every file under `.github/workflows/`, `TRUSTED`) changed, gone or never approved; each human-owned example that does not pass in the interpreter. One line per refusal, then the line naming revert or `paka approve`, status 1; else `gate: passed`, status 0. `Store::file_changes` compares file records; foreign parts wait for M7-13. Tests: paka/tests/gate.rs.
 
 ### M7-08 · L2 · Report pending approvals and refusals to the agent in the agreed shape
 

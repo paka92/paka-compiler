@@ -8,7 +8,7 @@ use crate::parser::{parse_def, split};
 use crate::print;
 use crate::source::Source;
 use std::collections::BTreeSet;
-use std::io::Write;
+use std::io::{self, ErrorKind, Write};
 use std::path::{Path, PathBuf};
 use std::process::{Command, Output, Stdio};
 use std::sync::atomic::{AtomicUsize, Ordering};
@@ -18,13 +18,13 @@ const SSH_KEYGEN: &str = "/usr/bin/ssh-keygen";
 const NAMESPACE: &str = "paka-approval";
 const SIGNER: &str = "owner";
 
-#[derive(Debug, PartialEq)]
+#[derive(Debug, Default, PartialEq)]
 pub struct Store {
     pub serial: u64,
     pub records: Vec<Record>,
 }
 
-#[derive(Debug, PartialEq)]
+#[derive(Clone, Debug, PartialEq)]
 pub enum Record {
     /// One app's grant list, and the `foreign` declarations behind its grants (M7-02).
     Grants {
@@ -44,17 +44,17 @@ pub enum Record {
 }
 
 /// A declaration's text and each file it names with its SHA-256 in hex.
-#[derive(Debug, PartialEq)]
+#[derive(Clone, Debug, PartialEq)]
 pub struct Foreign {
     pub text: String,
     pub files: Vec<(String, String)>,
 }
 
-/// A record the source no longer matches, and what the source holds now; `None` when its
-/// example or app is gone.
+/// What the store holds and what the source holds now, when they differ; `None` on one side
+/// for a record never approved or one whose example, app or file is gone.
 #[derive(Debug, PartialEq)]
-pub struct Change<'a> {
-    pub approved: &'a Record,
+pub struct Change {
+    pub approved: Option<Record>,
     pub now: Option<Record>,
 }
 
@@ -64,7 +64,7 @@ impl Record {
         mem::discriminant(self) == mem::discriminant(other) && self.name() == other.name()
     }
 
-    fn program(&self) -> Option<&str> {
+    pub fn program(&self) -> Option<&str> {
         match self {
             Record::Grants { program, .. } | Record::Example { program, .. } => Some(program),
             Record::File { .. } => None,
@@ -125,17 +125,81 @@ impl Store {
     }
 
     /// The records of `program`, a path relative to the store, that its source no longer
-    /// matches.
-    pub fn changes(&self, program: &str, source: &Source) -> Result<Vec<Change<'_>>, Diagnostic> {
+    /// matches, then each of its apps with no grants record.
+    pub fn changes(&self, program: &str, source: &Source) -> Result<Vec<Change>, Diagnostic> {
         let mut now = records(program, source)?;
         let approved = self.records.iter().filter(|r| r.program() == Some(program));
-        Ok(approved
+        let mut changes: Vec<_> = approved
             .filter_map(|r| {
                 let at = now.iter().position(|n| n.names(r));
                 let now = at.map(|i| now.swap_remove(i));
-                (now.as_ref() != Some(r)).then_some(Change { approved: r, now })
+                (now.as_ref() != Some(r)).then(|| Change {
+                    approved: Some(r.clone()),
+                    now,
+                })
             })
-            .collect())
+            .collect();
+        let new = now
+            .into_iter()
+            .filter(|r| matches!(r, Record::Grants { .. }));
+        changes.extend(new.map(|r| Change {
+            approved: None,
+            now: Some(r),
+        }));
+        Ok(changes)
+    }
+
+    /// Each owned file under `root` that differs from its record, has none or is gone: every
+    /// recorded file, every file under `.github/workflows/`, and `TRUSTED` (M7-01, M7-02).
+    pub fn file_changes(&self, root: &Path) -> Result<Vec<Change>, String> {
+        let mut paths: BTreeSet<_> = (self.records.iter())
+            .filter(|r| matches!(r, Record::File { .. }))
+            .map(|r| r.name().to_string())
+            .collect();
+        walk(root, ".github/workflows", &mut paths)?;
+        if root.join("TRUSTED").is_file() {
+            paths.insert("TRUSTED".into());
+        }
+        let mut changes = vec![];
+        for path in paths {
+            let approved = (self.records.iter())
+                .find(|r| matches!(r, Record::File { path: p, .. } if *p == path))
+                .cloned();
+            let now = match fs::read(root.join(&path)) {
+                Ok(bytes) => {
+                    let text = String::from_utf8(bytes).map_err(|_| format!("{path}: not text"))?;
+                    Some(Record::File { path, text })
+                }
+                Err(e) if e.kind() == ErrorKind::NotFound => None,
+                Err(e) => return Err(format!("{path}: {e}")),
+            };
+            if approved != now {
+                changes.push(Change { approved, now });
+            }
+        }
+        Ok(changes)
+    }
+
+    /// Takes `change` in: its approved record gives way to what the source holds now.
+    pub fn apply(&mut self, change: Change) {
+        let at = (change.approved).and_then(|a| self.records.iter().position(|r| *r == a));
+        match (at, change.now) {
+            (Some(i), Some(now)) => self.records[i] = now,
+            (Some(i), None) => _ = self.records.remove(i),
+            (None, Some(now)) => self.records.push(now),
+            (None, None) => {}
+        }
+    }
+
+    /// The programs the store gates, in record order.
+    pub fn programs(&self) -> Vec<&str> {
+        let mut programs: Vec<&str> = vec![];
+        for program in self.records.iter().filter_map(Record::program) {
+            if !programs.contains(&program) {
+                programs.push(program);
+            }
+        }
+        programs
     }
 
     /// The names of `program`'s examples the store holds.
@@ -318,6 +382,29 @@ pub fn records(program: &str, source: &Source) -> Result<Vec<Record>, Diagnostic
     Ok(records)
 }
 
+/// Adds each file under `dir`, a path relative to `root`, to `paths`; none when `dir` is not
+/// there.
+fn walk(root: &Path, dir: &str, paths: &mut BTreeSet<String>) -> Result<(), String> {
+    let failed = |e: io::Error| format!("{dir}: {e}");
+    let entries = match fs::read_dir(root.join(dir)) {
+        Err(e) if e.kind() == ErrorKind::NotFound => return Ok(()),
+        entries => entries.map_err(failed)?,
+    };
+    for entry in entries {
+        let entry = entry.map_err(failed)?;
+        let name = entry.file_name().into_string();
+        let path = format!(
+            "{dir}/{}",
+            name.map_err(|_| format!("{dir}: a name is not text"))?
+        );
+        match entry.file_type().map_err(failed)?.is_dir() {
+            true => walk(root, &path, paths)?,
+            false => _ = paths.insert(path),
+        }
+    }
+    Ok(())
+}
+
 /// Definition `def`, a slice of canonical text `printed`, with the comment lines right above it.
 fn with_comments<'a>(printed: &'a str, def: &[u8]) -> &'a str {
     let start = def.as_ptr() as usize - printed.as_ptr() as usize;
@@ -334,15 +421,34 @@ fn with_comments<'a>(printed: &'a str, def: &[u8]) -> &'a str {
 /// The directory of the store that governs `program`, the nearest at or above it holding
 /// `approvals`, and the program's path relative to it.
 pub fn find(program: &Path) -> Option<(PathBuf, String)> {
+    nearest(program, "approvals")
+}
+
+/// The nearest directory at or above `program` holding the file `name`, and the program's path
+/// relative to it.
+pub fn nearest(program: &Path, name: &str) -> Option<(PathBuf, String)> {
     let program = fs::canonicalize(program).ok()?;
     let start = if program.is_dir() {
         &program
     } else {
         program.parent()?
     };
-    let dir = start.ancestors().find(|d| d.join("approvals").is_file())?;
+    let dir = start.ancestors().find(|d| d.join(name).is_file())?;
     let relative = program.strip_prefix(dir).ok()?.to_str()?.to_string();
     Some((dir.into(), relative))
+}
+
+/// The store `paka approve` starts from for `program`, its directory and the program's path
+/// relative to it: the one found by the walk-up rule, verified against the `approvals.pub` beside
+/// it; with none, an empty store beside the nearest `approvals.pub`, the first one.
+pub fn to_approve(program: &Path) -> Result<(PathBuf, String, Store), String> {
+    if let Some((dir, program)) = find(program) {
+        let store = Store::open(&dir, &dir.join("approvals.pub"))?;
+        return Ok((dir, program, store));
+    }
+    let found = nearest(program, "approvals.pub");
+    let (dir, program) = found.ok_or("no approvals or approvals.pub at or above the program")?;
+    Ok((dir, program, Store::default()))
 }
 
 /// The names of the human-owned examples of `program`: none without a store; an error when its
