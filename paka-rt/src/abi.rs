@@ -9,6 +9,7 @@
 //! contract, or by compiled code under the contract of `paka_rt1_run`.
 
 use crate::{Decoded, Refused, run};
+use std::cell::Cell;
 use std::{ptr, slice};
 
 pub mod dev;
@@ -225,6 +226,32 @@ pub unsafe extern "C" fn paka_rt1_run(
     // `from_raw` asks for.
     let name = unsafe { Str::from_raw(name, name_len) };
     run(name, update, start, grants)
+}
+
+thread_local! {
+    /// The text of the trap compiled code reported last; a refused text is `None`.
+    static TRAP: Cell<Option<&'static [u8]>> = const { Cell::new(None) };
+}
+
+/// The entry compiled code calls on a trap, before it returns status 1 (ABI section 3).
+///
+/// # Safety
+///
+/// `text` and `len` are a string as ABI section 2 defines it.
+// SAFETY: as for `paka_rt1_run`.
+#[unsafe(no_mangle)]
+pub unsafe extern "C" fn paka_rt1_trap(text: *const u8, len: u64) {
+    // SAFETY: the caller promises an ABI string, which is what `from_raw` asks for.
+    record_trap(unsafe { Str::from_raw(text, len) }.bytes());
+}
+
+pub(crate) fn record_trap(text: Option<&'static [u8]>) {
+    let _ = TRAP.try_with(|t| t.set(text));
+}
+
+/// The trap's text recorded since the last call, if any.
+pub(crate) fn take_trap() -> Option<&'static [u8]> {
+    TRAP.try_with(Cell::take).ok().flatten()
 }
 
 /// Test only: an effect holding these words. They must make a value the decoder refuses, or one

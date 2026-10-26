@@ -1971,6 +1971,8 @@ or merged during review. Ids with a letter were added during review.
 - done when: Conformance groups for integers, control flow and calls leave the skip file and match the interpreter, including overflow and assertion traps.
 - why this level: Known technique, but every call and checked operation needs a correct trap exit.
 - note: Per M6-01: checked arithmetic through the overflow intrinsics; division and shifts through the helpers that check first; a match's fall-through returns status 3.
+- status: done
+- note: Done: paka/src/llvm/code.rs lowers `update`'s statements and every function it calls over `Int` and `Bool`: locals in first-block stack slots, `if`, `while`, range `for`, `break`, `continue`, `return`, `&&` and `||`, calls that pass a non-zero status on, and the Int builtins. Checked `+ - *` and negation use the overflow intrinsics; `/`, `%` and the shifts go through helpers that check first and select the divisor or mask the count, so the instruction is defined on every input. A trap calls the new runtime entry `paka_rt1_trap` with `<kind> at <file>:<line>:<col>` and returns 1; the runtime then prints the interpreter's first trap line and exits 3 (docs/abi/m1.md sections 3, 5 and 7). The linter allows `sdiv`, `srem`, `shl` and `ashr` only on an operand made in the helper's shape. No match is lowered yet, so the `match` tag stays skipped with its fall-through. The direct-call test now allows loads only from the function's own slots. Integers, control flow and calls leave tests/conformance/release-skip: 39 cases agree in release, 6 are refused by their holes' names and 390 are skipped; errors/unsupported_form now uses a string.
 
 ### M6-08 · L4 · Lower Float operations so full optimization cannot change any result
 

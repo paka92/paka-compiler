@@ -3,9 +3,11 @@
 
 use crate::core_form::{self, Expr, ExprKind, Grant, Program, Tag, Type};
 
+mod code;
 pub mod lint;
 
-/// What the back end builds: the effects of an `update` whose body is a constant list.
+/// What the back end builds: the effects of an `update` whose body ends in a constant list, after
+/// statements over `Int` and `Bool` that may call such functions.
 #[derive(Debug, PartialEq)]
 pub struct M1 {
     pub app: String,
@@ -16,6 +18,10 @@ pub struct M1 {
     pub update_name: String,
     /// The effects `update` returns, in order.
     pub update: Vec<Effect>,
+    /// The start of `update`'s body, which leaves its block open; empty when it has no statements.
+    pub body: String,
+    /// The other functions with their constants and declarations.
+    pub code: String,
 }
 
 #[derive(Debug, PartialEq)]
@@ -29,7 +35,7 @@ pub fn view(core: &Program) -> Option<M1> {
     let app = core.app.as_ref()?;
     let start = app.start?;
     let update = &core.fns[app.update];
-    if app.state.is_some() || !update.body.stmts.is_empty() {
+    if app.state.is_some() {
         return None;
     }
     let Type::Enum(msg) = core.types[update.params.last()?.ty] else {
@@ -41,12 +47,15 @@ pub fn view(core: &Program) -> Option<M1> {
     let ExprKind::List(items) = &update.body.value.as_ref()?.kind else {
         return None;
     };
+    let (body, code) = code::lower(core, app.update)?;
     Some(M1 {
         app: app.name.clone(),
         start,
         console: app.grants.contains(&Grant::Console),
         update_name: update.name.clone(),
         update: items.iter().map(effect).collect::<Option<_>>()?,
+        body,
+        code,
     })
 }
 
@@ -94,7 +103,7 @@ pub fn emit(core: &M1) -> String {
 declare i32 @paka_rt1_run(ptr, i64, ptr, i64, i64)
 
 define internal i32 @{update}(i64 %m, ptr %out) {{
-  store {{ ptr, i64 }} {{ ptr {list}, i64 {count} }}, ptr %out
+{}  store {{ ptr, i64 }} {{ ptr {list}, i64 {count} }}, ptr %out
   ret i32 0
 }}
 
@@ -102,9 +111,11 @@ define i32 @main() {{
   %st = call i32 @paka_rt1_run(ptr @name, i64 {}, ptr @{update}, i64 {}, i64 {grants})
   ret i32 %st
 }}
-",
+{}",
+        core.body,
         core.app.len(),
-        core.start
+        core.start,
+        core.code
     )
 }
 
@@ -205,6 +216,8 @@ mod tests {
             console: true,
             update_name: "go".into(),
             update,
+            body: String::new(),
+            code: String::new(),
         }
     }
 
@@ -246,6 +259,8 @@ app light {
             console: true,
             update_name: "update".into(),
             update: vec![Effect::Print("let there be light".into()), Effect::Exit],
+            body: String::new(),
+            code: String::new(),
         };
         assert_eq!(view(&lowered(LIGHT)), Some(by_hand));
     }
@@ -316,7 +331,8 @@ app light {
         }
     }
 
-    /// Release IR has no slot table: every call names its callee, so none goes through a load.
+    /// Release IR has no slot table: every call names its callee, and a load reads only a stack
+    /// slot of its own function.
     #[test]
     fn every_call_in_any_run_case_is_direct() {
         let cases = run_cases();
@@ -328,7 +344,22 @@ app light {
             for (_, callee) in calls {
                 assert!(callee.starts_with('@'), "{}: {callee}", folder.display());
             }
-            assert!(!ir.contains(" load "), "{}", folder.display());
+            for define in ir.split("\ndefine ") {
+                let slots: Vec<_> = define
+                    .lines()
+                    .filter_map(|l| Some(l.split_once(" = alloca ")?.0.trim()))
+                    .collect();
+                for line in define.lines().filter(|l| l.contains(" = load ")) {
+                    let at = line
+                        .rsplit_once("ptr ")
+                        .unwrap()
+                        .1
+                        .split(',')
+                        .next()
+                        .unwrap();
+                    assert!(slots.contains(&at), "{}: {line}", folder.display());
+                }
+            }
         }
     }
 

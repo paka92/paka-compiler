@@ -1,6 +1,6 @@
 //! The run loop of ABI section 5 and the safe decoding around it.
 
-use crate::abi::{List, Str, Update};
+use crate::abi::{List, Str, Update, take_trap};
 use std::fs::File;
 use std::io::{self, ErrorKind, Write};
 use std::os::fd::AsFd;
@@ -68,6 +68,8 @@ enum Stop {
     Ended,
     Missing,
     Failed(&'static str),
+    /// A trap's kind and position.
+    Trapped(&'static [u8]),
     Internal(&'static str),
 }
 
@@ -87,13 +89,14 @@ impl Stop {
     }
 
     /// The line's text after `<app>: `, in two pieces.
-    fn pieces(&self) -> [&'static str; 2] {
+    fn pieces(&self) -> [&'static [u8]; 2] {
         match self {
-            Stop::Usage(_) => ["expected 0 arguments, got ", ""],
-            Stop::Ended => ["ended without Exit", ""],
-            Stop::Missing => ["effect Print refused: grant Console is missing", ""],
-            Stop::Failed(reason) => ["effect Print failed: ", reason],
-            Stop::Internal(reason) => ["internal error: ", reason],
+            Stop::Usage(_) => [b"expected 0 arguments, got ", b""],
+            Stop::Ended => [b"ended without Exit", b""],
+            Stop::Missing => [b"effect Print refused: grant Console is missing", b""],
+            Stop::Failed(reason) => [b"effect Print failed: ", reason.as_bytes()],
+            Stop::Trapped(text) => [b"trap ", text],
+            Stop::Internal(reason) => [b"internal error: ", reason.as_bytes()],
         }
     }
 }
@@ -173,8 +176,11 @@ fn perform(
         return Err(Stop::Usage(args));
     }
     let mut slot = List::UNWRITTEN;
-    if update(start, &mut slot) != 0 {
-        return Err(Stop::Internal("update returned a non-zero status"));
+    take_trap();
+    match (update(start, &mut slot), take_trap()) {
+        (0, _) => {}
+        (1, Some(text)) => return Err(Stop::Trapped(text)),
+        _ => return Err(Stop::Internal("update returned a non-zero status")),
     }
     for effect in slot.effects()? {
         match effect.decode()? {
@@ -214,7 +220,7 @@ fn reason(e: &io::Error) -> &'static str {
 /// Writes the stop's line piece by piece, without allocating; a failure to write is ignored.
 fn stop(err: &mut dyn Write, app: &[u8], why: Stop) -> i32 {
     let [text, reason] = why.pieces();
-    let line = [app, b": ", text.as_bytes(), reason.as_bytes()];
+    let line = [app, b": ", text, reason];
     let _ = line.iter().try_for_each(|piece| err.write_all(piece));
     if let Stop::Usage(count) = why {
         let _ = write!(err, "{count}");

@@ -1,7 +1,7 @@
 //! The release IR linter: the promise table of docs/decisions/M6-01.md as an allow-list. Every
 //! keyword, attribute, metadata name and intrinsic in the IR Paka writes must be a row or a plain
-//! word, every use of an `inbounds` result must be a load or store address, and no store may
-//! target a global.
+//! word, every use of an `inbounds` result must be a load or store address, no store may target a
+//! global, and an instruction undefined on some inputs must take the operand its check made.
 
 /// The approved rows (M6-01 section 2). An entry starting `@llvm.` names an intrinsic and any of
 /// its typed forms, such as `@llvm.expect.i1`.
@@ -109,17 +109,56 @@ const PLAIN: &[&str] = &[
     "@llvm.fabs",
 ];
 
+/// Instructions undefined on some inputs, written only by the helpers that check first (M6-01
+/// section 3).
+const GUARDED: &[&str] = &["sdiv", "srem", "shl", "ashr"];
+
+/// Whether `def` is how the helper of `word` makes its last operand: a divisor selected to 1 where
+/// it is 0 or -1, a count masked to 0 to 63.
+fn checked(word: &str, def: &str) -> bool {
+    match word {
+        "sdiv" | "srem" => def.starts_with("select i1 ") && def.contains(", i64 1, i64 "),
+        _ => def.starts_with("and i64 ") && def.ends_with(", 63"),
+    }
+}
+
+/// Whether `word` is a guarded instruction whose last operand is made, earlier in `body`, in the
+/// shape its check gives.
+fn guarded(word: &str, inst: &str, body: &[(usize, &str)]) -> bool {
+    if !GUARDED.contains(&word) {
+        return false;
+    }
+    let operand = inst
+        .strip_prefix(word)
+        .and_then(|rest| rest.strip_prefix(" i64 "))
+        .and_then(|rest| Some(rest.split_once(", ")?.1.trim()));
+    operand.is_some_and(|operand| {
+        let defines = |line: &str| {
+            let (result, def) = line.trim().split_once(" = ")?;
+            Some(result == operand && checked(word, def))
+        };
+        body.iter().any(|(_, line)| defines(line) == Some(true))
+    })
+}
+
 /// What in `ir` breaks the table, one line per finding; empty when the IR passes.
 pub fn lint(ir: &str) -> Vec<String> {
     let mut found = vec![];
     let mut body = vec![];
     for (n, line) in (1..).zip(ir.lines()) {
         let words = keywords(line);
-        let mut say = |why: String| found.push(format!("line {n}: {why}"));
-        for word in words.iter().filter(|w| !allowed(w)) {
-            say(format!("`{word}` is not on the allow-list"));
-        }
         let inst = instruction(line);
+        let mut say = |why: String| found.push(format!("line {n}: {why}"));
+        for word in words
+            .iter()
+            .filter(|w| !allowed(w) && !guarded(w, inst, &body))
+        {
+            let why = match GUARDED.contains(word) {
+                true => "is not behind its check",
+                false => "is not on the allow-list",
+            };
+            say(format!("`{word}` {why}"));
+        }
         if words.contains(&"inbounds")
             && !(named(line) && inst.starts_with("getelementptr inbounds "))
         {
@@ -405,6 +444,38 @@ attributes #0 = { nounwind inlinehint }
         ];
         for ir in misuses {
             assert!(!lint(&function(ir)).is_empty(), "{ir}");
+        }
+    }
+
+    #[test]
+    fn division_and_shifts_pass_only_on_the_operand_their_check_made() {
+        let checked = [
+            "  %d = select i1 %c, i64 1, i64 %b\n  %r = sdiv i64 %a, %d\n  %s = srem i64 %a, %d",
+            "  %k = and i64 %b, 63\n  %r = shl i64 %a, %k\n  %s = ashr i64 %a, %k",
+        ];
+        for ir in checked {
+            assert_eq!(lint(&function(ir)), Vec::<String>::new(), "{ir}");
+        }
+        let unchecked = [
+            ("sdiv", "%r = sdiv i64 %a, %b"),
+            ("srem", "%r = srem i64 %a, 7"),
+            ("shl", "%r = shl i64 %a, %b"),
+            ("ashr", "%k = and i64 %b, 31\n  %r = ashr i64 %a, %k"),
+            (
+                "sdiv",
+                "%d = select i1 %c, i64 2, i64 %b\n  %r = sdiv i64 %a, %d",
+            ),
+            (
+                "shl",
+                "%d = select i1 %c, i64 1, i64 %b\n  %r = shl i64 %a, %d",
+            ),
+            (
+                "sdiv",
+                "%v = load i64, ptr getelementptr (i8, ptr @g, i64 sdiv (i64 1, i64 0))",
+            ),
+        ];
+        for (word, ir) in unchecked {
+            assert!(names(&function(ir), word), "{word} passed in {ir:?}");
         }
     }
 

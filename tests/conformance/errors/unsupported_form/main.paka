@@ -1,7 +1,7 @@
 enum Msg { Start }
 
 fn update(msg: Msg) -> List<Effect<Msg>> {
-  let x = 1
+  let x = "unused"
   [Print("done"), Exit]
 }
 
