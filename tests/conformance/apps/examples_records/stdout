@@ -1,6 +1,6 @@
-a_copy_is_separate pass
-defaults_fill_fields pass
-enums_carry_payloads pass
-nested_fields_write pass
-options_and_results_match pass
-results_come_back_whole pass
+a_copy_is_separate agent-written pass
+defaults_fill_fields agent-written pass
+enums_carry_payloads agent-written pass
+nested_fields_write agent-written pass
+options_and_results_match agent-written pass
+results_come_back_whole agent-written pass

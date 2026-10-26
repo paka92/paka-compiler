@@ -2259,20 +2259,24 @@ or merged during review. Ids with a letter were added during review.
 
 ### M7-04 · L4 · Build the approval store: record and verify approved examples and grant lists
 
+- status: done
 - needs: M7-01
 - flags: none
 - done when: Tests show a recorded approval verifies, and that an edited example, an edited grant list and a tampered record are each detected.
 - why this level: A forged or stale approval accepted here goes unnoticed; this is the trust anchor.
 - note: Per M7-01: no cryptography crate, no download; calls the system ssh-keygen by fixed path with an empty environment. Stores approved text, a serial and three record kinds. Tests add: a store signed by another key is refused; an older signed store put back is refused.
 - note: Per M7-02: a grants record can carry a declaration's text and its files' SHA-256.
+- note: Done: paka/src/approvals.rs. `records` makes a program's grants and example records as its source stands (example text canonical, with the comment lines right above it); `Store::save` writes `approvals` and signs it into `approvals.sig` through `/usr/bin/ssh-keygen -Y sign` on standard input; `Store::open` verifies with `-Y verify`, signer `owner`, namespace `paka-approval`, against a public key file, and only then parses; `Store::changes` lists each record of a program its source no longer matches (edited, gone, other grants as a set); `Store::follows` is the serial rule. Text form: a record's text is its line count, then its lines indented. File and foreign parts are stored and read back, not yet compared (M7-07, M7-13). Tests: paka/tests/approvals.rs.
 
 ### M7-05 · L2 · Label every example agent-written or human-owned from the approval store
 
+- status: done
 - needs: M7-04
 - flags: none
 - done when: The example listing and every example result carry the label; a test shows an unapproved example never reads as human-owned.
 - why this level: One lookup per example and one output field; tests are obvious.
 - note: Per M7-01: the label is 'a store record exists for this program and name'; the store is found by the walk-up rule.
+- note: Done: each `paka examples` line reads name, label, status (`inc_once human-owned pass`); the cached entry holds no label. The store must verify against the `approvals.pub` beside it, else one line on standard error and every example reads as agent-written. spec/paka.md section 11 says so. Tests in paka/tests/approvals.rs: no store, another program's record, an unsigned record and another key's signature all read agent-written.
 
 ### M7-06 · L4 · Build the owner's approve command: show pending changes plainly, record approval
 

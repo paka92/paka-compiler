@@ -10,9 +10,10 @@ use paka::diagnostic::Diagnostic;
 use paka::results::Cache;
 use paka::serve::serve;
 use paka::session::{self, Runner, Session};
-use paka::{Checked, Hole, check, check_defs, core_form, diagnostic, interp, source};
+use paka::{Checked, Hole, approvals, check, check_defs, core_form, diagnostic, interp, source};
 use paka_rt::{Fd1, abi};
 use source::{Source, read};
+use std::collections::BTreeSet;
 use std::ffi::OsStr;
 use std::fs::{self, TryLockError};
 use std::io::Write;
@@ -81,14 +82,20 @@ fn load(path: &str, found: Checked) -> Result<(Program, Vec<Hole>), Diagnostic> 
 }
 
 /// `paka examples`: the program needs no app, since each example starts with a fresh world.
-/// Results come from the user's example cache when it holds them (M7-09).
+/// Results come from the user's example cache when it holds them (M7-09); labels from the
+/// approval store, and a store that does not verify owns nothing (M7-05).
 fn examples_file(file: &OsStr) -> ExitCode {
     let (source, read) = read(file);
     match read.and_then(|()| check_defs(&file.to_string_lossy(), &source)) {
         Ok(((core, ..), defs)) => {
             let mut cache = Cache::user(&defs, &source);
             let (mut out, mut err) = (io::stdout().lock(), io::stderr());
-            ExitCode::from(interp::examples(&core, &mut cache, &mut out, &mut err))
+            let owned = approvals::owned(file.as_ref()).unwrap_or_else(|why| {
+                let _ = writeln!(err, "{why}; every example reads as agent-written");
+                BTreeSet::new()
+            });
+            let status = interp::examples(&core, &mut cache, &owned, &mut out, &mut err);
+            ExitCode::from(status)
         }
         Err(d) => reject(&source, d),
     }

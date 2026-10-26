@@ -3,6 +3,7 @@
 #![deny(clippy::float_arithmetic)]
 
 pub mod alone;
+pub mod approvals;
 pub mod ast;
 mod body;
 pub mod builtins;

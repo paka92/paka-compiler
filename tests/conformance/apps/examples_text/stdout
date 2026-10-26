@@ -1,13 +1,13 @@
-a_failing_compare fail at main.paka:38:39
+a_failing_compare agent-written fail at main.paka:38:39
   left: "ab"
   right: "ba"
-codes pass
-compares pass
-copies pass
-in_records pass
-indexes pass
-interpolation pass
-joins pass
-literals pass
-long_literal pass
-min_max pass
+codes agent-written pass
+compares agent-written pass
+copies agent-written pass
+in_records agent-written pass
+indexes agent-written pass
+interpolation agent-written pass
+joins agent-written pass
+literals agent-written pass
+long_literal agent-written pass
+min_max agent-written pass

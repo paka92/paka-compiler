@@ -65,13 +65,13 @@ fn statuses(p: &Program, slots: &Slots) -> Vec<(String, &'static str)> {
     all
 }
 
-/// The status lines of a hand-written `paka examples` stdout.
+/// The status lines of a hand-written `paka examples` stdout: name, label, status.
 fn expected(stdout: &str) -> Vec<(String, &str)> {
     let lines = stdout.lines().filter(|l| !l.starts_with(' '));
     let mut all: Vec<_> = lines
         .map(|l| {
             let mut words = l.split(' ');
-            (words.next().unwrap().to_string(), words.next().unwrap())
+            (words.next().unwrap().to_string(), words.nth(1).unwrap())
         })
         .collect();
     all.sort();

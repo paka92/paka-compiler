@@ -1,21 +1,21 @@
-in_range pass
-item_past_end trapped at main.paka:1:41
+in_range agent-written pass
+item_past_end agent-written trapped at main.paka:1:41
   trap out_of_bounds
   index 2, length 2
   in at, called from example item_past_end
-negative_item trapped at main.paka:1:41
+negative_item agent-written trapped at main.paka:1:41
   trap out_of_bounds
   index -1, length 2
   in at, called from example negative_item
-slice_past_end trapped at main.paka:11:39
+slice_past_end agent-written trapped at main.paka:11:39
   trap out_of_bounds
   slice 0..<4, length 3
   in example slice_past_end
-slice_reversed trapped at main.paka:10:39
+slice_reversed agent-written trapped at main.paka:10:39
   trap out_of_bounds
   slice 2..<1, length 3
   in example slice_reversed
-write_past_end trapped at main.paka:7:5
+write_past_end agent-written trapped at main.paka:7:5
   trap out_of_bounds
   index 1, length 1
   in example write_past_end

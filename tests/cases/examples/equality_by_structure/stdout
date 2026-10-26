@@ -1,10 +1,10 @@
-asks_for_the_file pass
-different_variants pass
-empty_meets_typed pass
-float_is_ieee pass
-function_values_by_definition pass
-list_by_position pass
-map_order_is_free pass
-nan_inside_a_record pass
-option_and_result pass
-record_by_fields pass
+asks_for_the_file agent-written pass
+different_variants agent-written pass
+empty_meets_typed agent-written pass
+float_is_ieee agent-written pass
+function_values_by_definition agent-written pass
+list_by_position agent-written pass
+map_order_is_free agent-written pass
+nan_inside_a_record agent-written pass
+option_and_result agent-written pass
+record_by_fields agent-written pass

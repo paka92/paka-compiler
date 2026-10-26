@@ -70,7 +70,13 @@ fn run(dir: &Path, stamp: &str, text: &str) -> (String, usize) {
         .unwrap();
     let examples = |mut cache: Cache| {
         let mut out = vec![];
-        interp::examples(&core, &mut cache, &mut out, &mut vec![]);
+        interp::examples(
+            &core,
+            &mut cache,
+            &Default::default(),
+            &mut out,
+            &mut vec![],
+        );
         (String::from_utf8(out).unwrap(), cache.runs)
     };
     let (cached, runs) = examples(Cache::open(dir.into(), stamp, &defs, &source));
@@ -90,7 +96,7 @@ fn a_rerun_with_no_edit_runs_no_example() {
     let dir = dir.path("");
     let (first, runs) = run(&dir, STAMP, PROGRAM);
     assert_eq!(runs, 5);
-    assert!(first.starts_with("clicked pass\none pass\norigin pass\ntwo pass\nwrong fail at"));
+    assert!(first.starts_with("clicked agent-written pass\none agent-written pass\norigin agent-written pass\ntwo agent-written pass\nwrong agent-written fail at"));
     assert_eq!(run(&dir, STAMP, PROGRAM), (first, 0));
 }
 
@@ -156,7 +162,7 @@ fn paka_examples_reads_the_user_cache() {
     };
     let (first, status) = examples();
     assert_eq!(status, Some(3));
-    assert!(first.starts_with("clicked pass\n"));
+    assert!(first.starts_with("clicked agent-written pass\n"));
     let mut versions = fs::read_dir(dir.path("cache/paka/examples")).unwrap();
     let held = versions.next().unwrap().unwrap().path();
     assert!(versions.next().is_none(), "one compiler version");
@@ -172,7 +178,7 @@ fn paka_examples_reads_the_user_cache() {
     let (second, status) = examples();
     assert_eq!(status, Some(3));
     assert!(
-        second.starts_with("held\nheld\nheld\nheld\nwrong fail at"),
+        second.starts_with("held\nheld\nheld\nheld\nwrong agent-written fail at"),
         "{second}"
     );
     assert!(first.ends_with(second.trim_start_matches("held\n")));

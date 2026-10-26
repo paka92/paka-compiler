@@ -1,12 +1,12 @@
-a_failing_item fail at main.paka:65:36
+a_failing_item agent-written fail at main.paka:65:36
   left: 2
   right: 1
-bools_and_floats pass
-items pass
-literal_and_len pass
-loop_total pass
-nested pass
-records_in_lists pass
-slices pass
-strings_in_lists pass
-writes pass
+bools_and_floats agent-written pass
+items agent-written pass
+literal_and_len agent-written pass
+loop_total agent-written pass
+nested agent-written pass
+records_in_lists agent-written pass
+slices agent-written pass
+strings_in_lists agent-written pass
+writes agent-written pass

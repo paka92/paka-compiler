@@ -1,2 +1,2 @@
-add_one_item pass
-toggle_marks_done pass
+add_one_item agent-written pass
+toggle_marks_done agent-written pass

@@ -483,7 +483,8 @@ An example is `example name { ... }`: statements, then one Bool expression. It t
 arguments, performs no effects and may not use `?`. Examples may call `update` on a `var` state
 and compare effect lists with `==`. They are checked with the program and run only by
 `paka examples`. Each gets one status: `pass` (true), `fail` (false), `trapped` (a trap) or
-`unfinished` (a hole reached).
+`unfinished` (a hole reached). Its line reads name, label, status; the label is `human-owned` when
+the signed approval store holds it, else `agent-written`.
 
 ## 12. Tools
 

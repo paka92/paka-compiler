@@ -3,7 +3,7 @@
 
 use crate::core_form::{App, Field, FnId, Program, Type};
 use crate::core_form::{Fn as Func, Site};
-use crate::results::Cache;
+use crate::results::{Cache, Entry};
 use crate::source::in_file;
 use effects::{End, Host, Queued, World, perform};
 pub use eval::Left;
@@ -12,7 +12,7 @@ use paka_rt::route::Event;
 use paka_rt::tree::Node;
 use show::show;
 use std::any::Any;
-use std::collections::VecDeque;
+use std::collections::{BTreeSet, VecDeque};
 use std::ffi::OsString;
 use std::io::Write;
 use std::sync::Once;
@@ -273,10 +273,12 @@ pub fn ui_log(core: &Program, f: &Func) -> Result<Vec<(Vec<Event>, Left)>, Strin
 }
 
 /// Runs every example in name order, or takes its result from `cache`, and prints its status
-/// (M2-06 section 1.6); the status is 0 when all pass, else 3.
+/// (M2-06 section 1.6) after its label: `human-owned` for a name in `owned`, else `agent-written`
+/// (M7-05). The status is 0 when all pass, else 3.
 pub fn examples(
     core: &Program,
     cache: &mut Cache,
+    owned: &BTreeSet<String>,
     out: &mut impl Write,
     err: &mut impl Write,
 ) -> u8 {
@@ -289,7 +291,17 @@ pub fn examples(
     });
     match entries {
         Ok(Ok(entries)) => {
-            let text: String = entries.iter().map(|(_, text)| text.as_str()).collect();
+            let labelled = |(f, (_, text)): (&&Func, &Entry)| {
+                let label = match owned.contains(&f.name) {
+                    true => "human-owned",
+                    false => "agent-written",
+                };
+                match text.strip_prefix(&f.name) {
+                    Some(rest) => format!("{} {label}{rest}", f.name),
+                    None => text.clone(),
+                }
+            };
+            let text: String = order.iter().zip(&entries).map(labelled).collect();
             let _ = out.write_all(text.as_bytes());
             if entries.iter().all(|(passed, _)| *passed) {
                 0
