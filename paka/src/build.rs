@@ -34,6 +34,10 @@ pub fn build(path: &str, core: &Program, output: &OsStr) -> Result<(), Diagnosti
         let message = "the back end builds only the milestone 1 subset";
         Diagnostic::tool(path, "unsupported-form", message)
     })?;
+    let text = llvm::emit(&view);
+    let broken = llvm::lint::lint(&text);
+    // The emitter alone keeps the promise table (M6-01 section 1.1); a finding is its bug.
+    assert!(broken.is_empty(), "release IR breaks M6-01: {broken:?}");
     let runtime = env::current_exe()
         .map(|exe| exe.with_file_name(RUNTIME))
         .ok()
@@ -60,7 +64,7 @@ pub fn build(path: &str, core: &Program, output: &OsStr) -> Result<(), Diagnosti
     // Only a file created here is removed; one that already had the name is never touched.
     let mut file = File::create_new(&ir).map_err(write_failed)?;
     let result = file
-        .write_all(llvm::emit(&view).as_bytes())
+        .write_all(text.as_bytes())
         .map_err(write_failed)
         .and_then(|()| link(path, &ir, &runtime, output));
     let _ = fs::remove_file(&ir);

@@ -3,6 +3,8 @@
 
 use crate::core_form::{self, Expr, ExprKind, Grant, Program, Tag, Type};
 
+pub mod lint;
+
 /// What the back end builds: the effects of an `update` whose body is a constant list.
 #[derive(Debug, PartialEq)]
 pub struct M1 {
@@ -150,11 +152,6 @@ mod tests {
     use std::path::{Path, PathBuf};
     use std::process::{Command, Stdio};
 
-    const BANNED: [&str; 12] = [
-        "nsw", "nuw", "inbounds", "noalias", "fast", "nnan", "ninf", "nsz", "arcp", "contract",
-        "afn", "reassoc",
-    ];
-
     fn root() -> PathBuf {
         Path::new(env!("CARGO_MANIFEST_DIR")).join("..")
     }
@@ -199,17 +196,6 @@ mod tests {
             true => Ok(()),
             false => Err(format!("{}: {stderr}", out.status)),
         }
-    }
-
-    /// The banned words found as whole words, outside the hex of string constants.
-    fn banned_in(ir: &str) -> Vec<&str> {
-        let code = ir.split("c\"").enumerate().map(|(i, part)| match i {
-            0 => part,
-            _ => part.split_once('"').map_or("", |(_, rest)| rest),
-        });
-        code.flat_map(|part| part.split(|c: char| !c.is_ascii_alphanumeric() && c != '_'))
-            .filter(|word| BANNED.contains(word))
-            .collect()
     }
 
     fn core(update: Vec<Effect>) -> M1 {
@@ -319,12 +305,14 @@ app light {
     }
 
     #[test]
-    fn no_banned_word_in_any_run_case() {
+    fn every_run_case_and_the_abi_document_pass_the_linter() {
         let cases = run_cases();
         assert!(!cases.is_empty(), "no runnable case found");
-        for (folder, ir) in cases {
-            assert!(!ir.is_empty(), "{}", folder.display());
-            assert_eq!(banned_in(&ir), Vec::<&str>::new(), "{}", folder.display());
+        let reference = fs::read_to_string(root().join("docs/abi/light.ll")).unwrap();
+        let document = (root().join("docs/abi/light.ll"), reference);
+        for (file, ir) in cases.into_iter().chain([document]) {
+            assert!(!ir.is_empty(), "{}", file.display());
+            assert_eq!(lint::lint(&ir), Vec::<String>::new(), "{}", file.display());
         }
     }
 
@@ -342,14 +330,6 @@ app light {
             }
             assert!(!ir.contains(" load "), "{}", folder.display());
         }
-    }
-
-    #[test]
-    fn banned_word_scan_sees_words_and_skips_constants() {
-        assert_eq!(banned_in("add nsw i64 %a, %b"), ["nsw"]);
-        assert_eq!(banned_in("fadd fast double"), ["fast"]);
-        assert!(banned_in("call @faster(i64 1) @inbounds_x").is_empty());
-        assert!(banned_in("@s0 = private constant [4 x i8] c\"fast\"").is_empty());
     }
 
     #[test]
