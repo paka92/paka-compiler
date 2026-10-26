@@ -1,9 +1,11 @@
 //! The server's side of the dev runner (docs/decisions/M4-04.md): one child process, sent the
 //! runnable program when it changes, or only its changed files when its paths stay, and each run
 //! after. A run that does not answer by its limit and
-//! a little more, or a runner that dies, ends the child; the next run starts another.
+//! a little more, or a runner that dies, ends the child; the next run starts another. Look calls
+//! go to the app the runner shows in a window (M5-38).
 
-use crate::serve::Failure;
+use super::visual::not_running;
+use crate::serve::{Call, Failure, Reply};
 use paka_json::{Value, parse};
 use std::io::{BufRead, BufReader, Write};
 use std::path::PathBuf;
@@ -16,6 +18,8 @@ use std::time::Duration;
 const LOAD: Duration = Duration::from_secs(60);
 /// How long past its limit a run's answer may take.
 const GRACE: Duration = Duration::from_millis(100);
+/// How long a Look call may take.
+const LOOK: Duration = Duration::from_secs(60);
 
 pub struct Runner {
     exe: PathBuf,
@@ -77,6 +81,19 @@ impl Runner {
         }
     }
 
+    /// The Look `call` sent on to the runner's app; `not_running` with no runner, or when it
+    /// does not answer.
+    pub fn look(&mut self, call: &Call) -> Reply {
+        let live = self.live.as_mut().ok_or_else(not_running)?;
+        match live.ask(call.request(), LOOK) {
+            Ok(reply) => relayed(reply),
+            Err(_) => {
+                self.end("");
+                Err(not_running())
+            }
+        }
+    }
+
     fn start(&self) -> Result<Live, Failure> {
         let spawned = (Command::new(&self.exe)
             .stdin(Stdio::piped())
@@ -130,6 +147,27 @@ impl Live {
             Err(RecvTimeoutError::Disconnected) => Err("crash"),
         }
     }
+}
+
+/// The runner's reply line to a Look call as this server's reply. Its fields and error kinds are
+/// those of docs/decisions/M5-09.md section 2.
+fn relayed(reply: Value) -> Reply {
+    const FIELDS: [&str; 6] = ["tree", "running", "trap", "png", "width", "height"];
+    const KINDS: [&str; 4] = ["not_running", "no_element", "no_focus", "bad_request"];
+    let known = |names: &[&'static str], name: &str| names.iter().copied().find(|n| *n == name);
+    if let Some(error) = reply.get("error") {
+        let kind = error.get("kind").and_then(Value::as_str);
+        let message = error.get("message").and_then(Value::as_str);
+        let kind = kind.and_then(|k| known(&KINDS, k)).unwrap_or("not_running");
+        return Err(Failure::new(kind, message.unwrap_or_default()));
+    }
+    let Value::Object(fields) = reply else {
+        return Err(not_running());
+    };
+    let fields = fields
+        .into_iter()
+        .filter_map(|(k, v)| Some((known(&FIELDS, &k)?, v)));
+    Ok(fields.collect())
 }
 
 fn paths(files: &[(String, String)]) -> impl Iterator<Item = &str> {

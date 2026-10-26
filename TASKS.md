@@ -1852,15 +1852,18 @@ or merged during review. Ids with a letter were added during review.
 
 ### M5-38 · L3 · Serve Look from the windowed app
 
+- status: done
 - needs: M5-34, M5-36
 - flags: none
 - done when: The M5-34 script passes against windowed apps, and a new frame is presented after each change.
 - why this level: Calls cross into the window's event loop; the screenshot must be redrawn from the tree, not grabbed.
 - note: Per M5-09: a Look call reaches the loop through winit's event-loop proxy and its reply returns over a channel. Look clicks and keys enter the app's one input queue beside the window's own input, in arrival order. The screenshot is drawn at the requested scale, not the window's, at the window's current size in units. The frame for each new tree is requested before the reply is sent.
 - note: The windowed test skips, and says so, when WAYLAND_DISPLAY is unset; the caller runs it once on the build machine inside the session.
+- note: Done: a Look call on a windowed app is a job on the app's one queue, the queue the window's input already feeds, so Look and window input keep arrival order; the window holds only a copy of the tree to draw. After each job the new tree goes to the window, which requests a frame when it differs, before the job's reply is sent. The window keeps its size in units current, and a screenshot is drawn from the tree at that size and the requested scale. The dev runner answers Look calls on its stdin, and the session relays them when the app runs there. The first tree goes with the window's open order, so no empty frame is drawn. Read as: Look calls are queued with the app's input rather than sent through the event-loop proxy, since the app's thread holds the tree; every new tree's frame is logged to stderr, not only the first. Test: paka/tests/common/look.rs holds the M5-34 script, run windowless by paka/tests/look.rs and against the dev runner in a window by installer/tests/window.rs, which also checks a frame is presented after a Look click on the counter.
 
 ### M5-39 · L4 · Expose the element tree through AccessKit
 
+- status: done
 - needs: M5-08, M5-17, M5-36
 - flags: conditional
 - done when: Tests map hand-built trees to AccessKit nodes with tree-wide unique ids; an AccessKit click action delivers the button's message without moving focus, and a Focus action moves focus as Tab would.
@@ -1869,6 +1872,7 @@ or merged during review. Ids with a letter were added during review.
 - note: Per M5-02: the runtime keeps a table from path ids to AccessKit numbers that stays stable while the id lives.
 - note: Per M5-04: a screen-reader ruling in M5-08 reopens the focus rule, since buttons must then be reachable from the keyboard.
 - note: Per M5-08: the focus rule is the one M5-36 builds. An AccessKit Focus action follows the same rule as Tab; an AccessKit Click on a Button sends its message without moving focus.
+- note: Done: gui/src/access.rs maps the tree to AccessKit under a Window node titled as the window: Text, Hole and Error are Labels with their text as value, a Button has its label and Click and Focus, an Input is a TextInput with its text as value and Focus, Row and Col are containers; bounds are in pixels and focus is the focused Input or Button, else the window. Each path keeps its number while it lives, and a new path gets one never used. The window creates the AccessKit adapter before it is shown, sends the whole tree when its layout changes or a tool asks, and turns a tool's Click or Focus into input on the app's queue. `route::Event` gains `Focus`, which moves focus to an Input or Button as Tab would, its cursor kept. Read as: an Input has no accessible name yet; the screen-reader check is M5-40's and the owner's. Test: gui/tests/access.rs checks roles, names, values, actions, bounds, focus and unique, stable numbers on hand-built trees, and that a Click action sends the Button's message with focus kept and a Focus action matches Shift+Tab; paka-rt's route tests check a focus request keeps the cursor.
 
 ### M5-40 · L4 · Script an AT-SPI and Orca check
 

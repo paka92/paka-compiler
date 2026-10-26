@@ -6,7 +6,8 @@ use crate::input::{Change, Key};
 use crate::tree::{Node, Step};
 
 /// An event as queued: a click aimed at the element of that kind at that path, a key, Tab
-/// (Shift+Tab when true), or the input method's preedit or commit. Enter arrives as
+/// (Shift+Tab when true), the input method's preedit or commit, or an assistive tool's request to
+/// focus the element at that path (M5-39). Enter arrives as
 /// `Key::Type('\n')`, Space as `Key::Type(' ')`.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum Event {
@@ -15,6 +16,7 @@ pub enum Event {
     Tab(bool),
     Preedit(String),
     Commit(String),
+    Focus(Vec<Step>),
 }
 
 /// What an event sends: a Button's message, or an Input's `on_change` with the new text, which
@@ -30,7 +32,8 @@ pub enum Sent<'a, M> {
 /// cursor at the end (M5-06), any other leaves it. Tab and Shift+Tab move focus through Inputs
 /// and Buttons in tree order and wrap; Enter or Space on a focused Button clicks it (M5-08). A key
 /// with nothing focused is dropped. A preedit stays in the focused Input and sends nothing; a
-/// commit ends it and sends one change (M5-03).
+/// commit ends it and sends one change (M5-03). A focus request moves focus to that Input or Button
+/// as Tab would, its cursor kept.
 pub fn route<'a, M>(tree: &'a mut Node<M>, event: &Event) -> Option<Sent<'a, M>> {
     match event {
         Event::Key(key) => match focused(tree)? {
@@ -64,6 +67,16 @@ pub fn route<'a, M>(tree: &'a mut Node<M>, event: &Event) -> Option<Sent<'a, M>>
         },
         Event::Tab(back) => {
             tab(tree, *back);
+            None
+        }
+        Event::Focus(path) => {
+            if !matches!(at(tree, path)?, Node::Input { .. } | Node::Button { .. }) {
+                return None;
+            }
+            if let Some(node) = focused(tree) {
+                set_focus(node, false);
+            }
+            set_focus(at(tree, path)?, true);
             None
         }
         Event::Click(path, kind) => {

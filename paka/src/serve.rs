@@ -31,6 +31,11 @@ impl Call {
         self.get(key).and_then(Value::as_bool)
     }
 
+    /// The request as sent, envelope and all.
+    pub fn request(&self) -> &Value {
+        &self.fields
+    }
+
     pub fn strs(&self, key: &str) -> Option<Vec<&str>> {
         match self.get(key)? {
             Value::Array(items) => items.iter().map(Value::as_str).collect(),

@@ -1,12 +1,12 @@
 //! A visual app run on the interpreter (M5-20), in a thread that owns its program and each version
 //! installed into it, with no window or with one (M5-35). Its effects are performed; what it
 //! prints is dropped. Work, the window's input included, reaches it as jobs, each run between
-//! turns.
+//! turns; the window is handed each job's tree before the job's answer is sent (M5-38).
 
 use crate::core_form::{FnId, Program};
 use crate::interp::Windowless;
-use crate::serve::trap;
-use paka_gui::window::Window;
+use crate::serve::{Failure, trap};
+use paka_gui::window::{Size, Window};
 use paka_json::Value;
 use paka_rt::effects::{End, Host};
 use paka_rt::route::Event;
@@ -19,14 +19,16 @@ use std::time::Duration;
 
 /// The running app, and the arguments it was launched with.
 pub type Ui = Windowless<Host<io::Sink>>;
-type Job = Box<dyn FnOnce(&mut Ui, &[OsString]) + Send>;
+/// A job, and what it sends once the window has the tree it left.
+type Job = Box<dyn FnOnce(&mut Ui, &[OsString]) -> Answer + Send>;
+type Answer = Box<dyn FnOnce()>;
 
 pub struct Visual {
     inbox: Sender<Job>,
     /// The app's name, which its trap reports start with.
     pub app: String,
-    /// Whether it shows in a window.
-    pub window: bool,
+    /// Its window's size, when it shows in one.
+    pub window: Option<Size>,
 }
 
 /// What the app shows after a job: its tree text, its end once it has ended, and the report of
@@ -49,21 +51,23 @@ impl Visual {
             let mut ui = Windowless::start(Arc::new(core), &args, Host(io::sink()));
             let on_close = move || drop(closer.send(Box::new(close)));
             let on_input = move |event: Event| {
-                let _ = input.send(Box::new(move |ui: &mut Ui, _: &[OsString]| {
-                    ui.send([event])
+                let _ = input.send(Box::new(move |ui: &mut Ui, _: &[OsString]| -> Answer {
+                    ui.send([event]);
+                    Box::new(|| ())
                 }));
             };
             let window = windowed
-                .then(|| Window::open(&title, on_close, on_input))
+                .then(|| Window::open(&title, &ui.tree, on_close, on_input))
                 .flatten();
-            let _ = first.send((shown_since(&ui, 0), window.is_some()));
+            let _ = first.send((shown_since(&ui, 0), window.as_ref().map(Window::size)));
             while ui.end.is_none() {
-                window.iter().for_each(|w| w.show(&ui.tree));
                 let Ok(job) = jobs.recv() else { break };
-                job(&mut ui, &args);
+                let answer = job(&mut ui, &args);
+                window.iter().for_each(|w| w.show(&ui.tree));
+                answer();
             }
         });
-        let (first, window) = shown.recv().unwrap_or_else(|_| (gone(), false));
+        let (first, window) = shown.recv().unwrap_or_else(|_| (gone(), None));
         (Visual { inbox, app, window }, first)
     }
 
@@ -73,8 +77,9 @@ impl Visual {
         f: impl FnOnce(&mut Ui, &[OsString]) -> R + Send + 'static,
     ) -> Option<R> {
         let (reply, answer) = mpsc::channel();
-        let job = move |ui: &mut Ui, args: &[OsString]| {
-            let _ = reply.send(f(ui, args));
+        let job = move |ui: &mut Ui, args: &[OsString]| -> Answer {
+            let r = f(ui, args);
+            Box::new(move || drop(reply.send(r)))
         };
         self.inbox.send(Box::new(job)).ok()?;
         answer.recv().ok()
@@ -112,6 +117,11 @@ impl Visual {
         migrated.unwrap_or_else(gone)
     }
 
+    /// Its window's size in units, or the windowless size (M5-05).
+    pub fn size(&self) -> (u64, u64) {
+        self.window.as_ref().map_or(paka_gui::SIZE, Size::get)
+    }
+
     /// Runs `f` as one turn; what the app shows after.
     pub fn turn(&self, f: impl FnOnce(&mut Ui, &[OsString]) + Send + 'static) -> Shown {
         let shown = self.with(move |ui, args| {
@@ -130,8 +140,14 @@ impl Drop for Visual {
     }
 }
 
-fn close(ui: &mut Ui, _: &[OsString]) {
+fn close(ui: &mut Ui, _: &[OsString]) -> Answer {
     ui.end.get_or_insert((0, String::new()));
+    Box::new(|| ())
+}
+
+/// The refusal of a Look call with no visual app running.
+pub fn not_running() -> Failure {
+    Failure::new("not_running", "no visual app is running")
 }
 
 impl Shown {

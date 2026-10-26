@@ -1,8 +1,9 @@
 //! The Look calls on the running visual app, and a run that launches one
-//! (docs/decisions/M5-09.md section 2). Look acts on the element tree, never on a screen.
+//! (docs/decisions/M5-09.md section 2). Look acts on the element tree, never on a screen. An app
+//! in a window runs in the dev runner, which answers its Look calls (M5-38).
 
 use super::Session;
-use super::visual::{Shown, Visual};
+use super::visual::{Shown, Visual, not_running, shown_since};
 use crate::serve::{Call, Failure, Reply, trap};
 use paka_gui::text::Text;
 use paka_json::Value;
@@ -24,25 +25,39 @@ impl Session {
         Ok(self.started(args)?.run(app, false))
     }
 
+    /// The Look `call` on the windowless app, or else on the runner's app in a window.
     pub(super) fn look(&mut self, call: &Call) -> Reply {
-        let visual = self.visual.as_ref().ok_or_else(not_running)?;
+        let Some(visual) = &self.visual else {
+            return self.runner.look(call);
+        };
+        let reply = visual.look(call)?;
+        if reply.contains(&("running", false.into())) {
+            (self.visual, self.choice) = (None, None);
+        }
+        Ok(reply)
+    }
+}
+
+impl Visual {
+    /// The reply to the Look `call` on this app.
+    pub fn look(&self, call: &Call) -> Reply {
         match call.name {
             "look_tree" => {
-                let tree = visual.with(|ui, _| ui.tree.to_string());
+                let tree = self.with(|ui, _| ui.tree.to_string());
                 let tree = tree.ok_or_else(not_running)?;
                 Ok(vec![("tree", tree.into()), ("running", true.into())])
             }
-            "look_screenshot" => screenshot(visual, call.int("scale").unwrap_or(1)),
+            "look_screenshot" => self.screenshot(call.int("scale").unwrap_or(1)),
             "look_click" => {
                 let path = call.str("path").expect("a click has a path");
                 let steps = tree::path(path).ok_or_else(|| {
                     Failure::new("bad_request", format!("`{path}` is not a path"))
                 })?;
-                let clicked = visual.with(move |ui, _| {
+                let clicked = self.with(move |ui, _| {
                     let kind = ui.tree.at(&steps)?.kind();
                     let before = ui.traps.len();
                     ui.send([Event::Click(steps, kind)]);
-                    Some(super::visual::shown_since(ui, before))
+                    Some(shown_since(ui, before))
                 });
                 let shown = clicked
                     .ok_or_else(not_running)?
@@ -52,13 +67,13 @@ impl Session {
             _ => {
                 let keys = keys(call.str("text"), call.str("key"))?;
                 let typed = call.str("text").is_some();
-                let pressed = visual.with(move |ui, _| {
+                let pressed = self.with(move |ui, _| {
                     if typed && !matches!(focused(&mut ui.tree), Some(Node::Input { .. })) {
                         return None;
                     }
                     let before = ui.traps.len();
                     ui.send(keys);
-                    Some(super::visual::shown_since(ui, before))
+                    Some(shown_since(ui, before))
                 });
                 let shown = pressed
                     .ok_or_else(not_running)?
@@ -69,35 +84,30 @@ impl Session {
     }
 
     /// The reply to a click or key that left `shown`.
-    fn turned(&mut self, shown: Shown) -> Vec<(&'static str, Value)> {
-        let app = self
-            .visual
-            .as_ref()
-            .map(|v| v.app.clone())
-            .unwrap_or_default();
-        let shown = self.after(shown);
-        let trap = shown.trap.as_deref().map_or(Value::Null, |t| trap(&app, t));
+    fn turned(&self, shown: Shown) -> Vec<(&'static str, Value)> {
+        let trap = (shown.trap.as_deref()).map_or(Value::Null, |t| trap(&self.app, t));
         vec![
             ("tree", shown.tree.into()),
             ("running", shown.end.is_none().into()),
             ("trap", trap),
         ]
     }
-}
 
-/// The current tree drawn at `scale` (1 or 2) as a base64 PNG, at the windowless size.
-fn screenshot(visual: &Visual, scale: u64) -> Reply {
-    if !(1..=2).contains(&scale) {
-        return Err(Failure::new("bad_request", "`scale` must be 1 or 2"));
+    /// The current tree drawn at `scale` (1 or 2) as a base64 PNG, at the window's size in units.
+    fn screenshot(&self, scale: u64) -> Reply {
+        if !(1..=2).contains(&scale) {
+            return Err(Failure::new("bad_request", "`scale` must be 1 or 2"));
+        }
+        let size = self.size();
+        let drawn =
+            self.with(move |ui, _| paka_gui::screenshot(&ui.tree, &Text::default(), scale, size));
+        let (png, width, height) = drawn.ok_or_else(not_running)?;
+        Ok(vec![
+            ("png", base64(&png).into()),
+            ("width", (width as usize).into()),
+            ("height", (height as usize).into()),
+        ])
     }
-    let drawn = visual
-        .with(move |ui, _| paka_gui::screenshot(&ui.tree, &Text::default(), scale, paka_gui::SIZE));
-    let (png, width, height) = drawn.ok_or_else(not_running)?;
-    Ok(vec![
-        ("png", base64(&png).into()),
-        ("width", (width as usize).into()),
-        ("height", (height as usize).into()),
-    ])
 }
 
 /// The events `look_key` sends: each code point of `text`, or the one named `key`.
@@ -125,10 +135,6 @@ fn keys(text: Option<&str>, key: Option<&str>) -> Result<Vec<Event>, Failure> {
         _ => return bad(format!("no key `{name}`")),
     };
     Ok(vec![Event::Key(key)])
-}
-
-fn not_running() -> Failure {
-    Failure::new("not_running", "no visual app is running")
 }
 
 /// `bytes` in base64 with padding.

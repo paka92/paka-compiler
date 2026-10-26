@@ -3,12 +3,13 @@
 //! checks, and `change` the same program with some files replaced; a run request runs its app as M4-03 section 3.4 says, or answers null when the program
 //! has no app by that name. A program the dev back end does not compile yet runs on the
 //! interpreter, in this process all the same. A visual app runs on the interpreter in a window,
-//! answered at once with its first tree; the next run ends it (docs/decisions/M5-09.md).
+//! answered at once with its first tree; the next run ends it (docs/decisions/M5-09.md). A Look
+//! call, sent on as the server got it, is answered by that app with the server's reply line.
 
 use paka::core_form::Program;
 use paka::interp;
-use paka::serve::trap;
-use paka::session::visual::Visual;
+use paka::serve::{serve, trap};
+use paka::session::visual::{Visual, not_running};
 use paka::source::Source;
 use paka_installer::dev::Dev;
 use paka_json::{Value, parse};
@@ -28,7 +29,13 @@ fn main() -> io::Result<()> {
     let mut shown: Option<Visual> = None;
     let mut out = io::stdout().lock();
     for line in io::stdin().lock().lines() {
-        let request = parse(&line?).expect("the server sends JSON");
+        let line = line?;
+        let request = parse(&line).expect("the server sends JSON");
+        if request.get("call").is_some() {
+            let look = |call: &_| shown.as_ref().ok_or_else(not_running)?.look(call);
+            serve(line.as_bytes(), &mut out, look)?;
+            continue;
+        }
         let reply = match (request.get("files"), request.get("change")) {
             (Some(all), _) => {
                 files = items(Some(all)).iter().map(file).collect();
@@ -93,7 +100,7 @@ fn run(
         .collect();
     if found.view.is_some() {
         let (visual, first) = Visual::start(checked(files), args, true);
-        let reply = first.run(app, visual.window);
+        let reply = first.run(app, visual.window.is_some());
         *shown = first.end.is_none().then_some(visual);
         return reply;
     }

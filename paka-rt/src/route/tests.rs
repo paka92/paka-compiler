@@ -311,3 +311,22 @@ fn a_click_aimed_at_an_element_the_next_diff_removed_is_dropped() {
     }
     assert!(focus(&new).is_empty());
 }
+
+#[test]
+fn a_focus_request_moves_focus_as_tab_does_and_keeps_the_cursor() {
+    let mut tree = form("mil", "");
+    route(&mut tree, &click(&[key("a")], "Input"));
+    route(&mut tree, &Event::Key(Key::Left(false)));
+    for step in [Step::Place(2), key("b"), key("a")] {
+        assert_eq!(route(&mut tree, &Event::Focus(vec![step.clone()])), None);
+        assert_eq!(holder(&tree), [step]);
+    }
+    for path in [vec![Step::Place(0)], vec![], vec![key("z")]] {
+        route(&mut tree, &Event::Focus(path));
+        assert_eq!(holder(&tree), [key("a")]);
+    }
+    assert_eq!(
+        route(&mut tree, &Event::Key(Key::Type('k'))),
+        Some(Sent::Change(&"A", typed("mikl", 3)))
+    );
+}

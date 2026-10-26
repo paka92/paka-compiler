@@ -1,6 +1,10 @@
 //! The counter in a window (M5-35): the dev runner opens it in the Wayland session and logs its
-//! first presented frame; a second run closes it and opens another on the kept event loop, and
-//! the runner exits cleanly when its input ends. Skipped with no Wayland display.
+//! first presented frame, and a frame after a Look click (M5-38); a second run closes it and opens
+//! another on the kept event loop, and the runner exits cleanly when its input ends. The M5-34
+//! Look script passes on an app in a window. Skipped with no Wayland display.
+
+#[path = "../../paka/tests/common/look.rs"]
+mod look;
 
 use paka_json::{Value, parse};
 use std::env;
@@ -23,10 +27,30 @@ impl Drop for Runner {
     }
 }
 
+/// Whether a window can open; says so when not.
+fn displayed() -> bool {
+    let shown = env::var_os("WAYLAND_DISPLAY").is_some();
+    if !shown {
+        eprintln!("skipped: WAYLAND_DISPLAY is unset, so no window can open");
+    }
+    shown
+}
+
+#[test]
+fn look_drives_the_app_in_a_window() {
+    if !displayed() {
+        return;
+    }
+    let dir = env::temp_dir().join(format!("paka-look-window-{}", std::process::id()));
+    fs::create_dir_all(&dir).unwrap();
+    let runner = paka::session::Runner::new(env!("CARGO_BIN_EXE_paka-runner").into());
+    look::drive(&mut look::session(&dir, runner), true);
+    fs::remove_dir_all(&dir).unwrap();
+}
+
 #[test]
 fn the_counter_opens_a_window_and_presents_a_frame() {
-    if env::var_os("WAYLAND_DISPLAY").is_none() {
-        eprintln!("skipped: WAYLAND_DISPLAY is unset, so no window can open");
+    if !displayed() {
         return;
     }
     let root = concat!(env!("CARGO_MANIFEST_DIR"), "/../");
@@ -61,15 +85,28 @@ fn the_counter_opens_a_window_and_presents_a_frame() {
         ("limit_ms", 10_000usize.into()),
         ("max_bytes", 65_536usize.into()),
     ]);
+    let click = Value::object([
+        ("v", 1usize.into()),
+        ("id", 1usize.into()),
+        ("call", "look_click".into()),
+        ("path", "#1/#1".into()),
+    ]);
+    let frame = || {
+        let line = log.recv_timeout(Duration::from_secs(10));
+        line.expect("a frame is logged")
+    };
     for _ in 0..2 {
         let run = ask(order.clone());
         assert_eq!(run.get("window"), Some(&Value::Bool(true)), "{run}");
         let tree = run.get("tree").and_then(Value::as_str).unwrap();
         assert!(tree.contains("Button #1 \"+\" on=Inc"), "{tree}");
-        let line = log
-            .recv_timeout(Duration::from_secs(10))
-            .expect("a frame is logged");
+        let line = frame();
         assert!(line.starts_with("first frame presented, "), "{line}");
+        let clicked = ask(click.clone());
+        let tree = clicked.get("tree").and_then(Value::as_str).unwrap();
+        assert!(tree.contains("Text #0 \"1\""), "{clicked}");
+        let line = frame();
+        assert!(line.starts_with("frame presented, "), "{line}");
     }
     drop(runner.0.stdin.take());
     assert!(runner.0.wait().unwrap().success());
