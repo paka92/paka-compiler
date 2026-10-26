@@ -2,7 +2,10 @@
 //! keyword, attribute, metadata name and intrinsic in the IR Paka writes must be a row or a plain
 //! word, every use of an `inbounds` result must be a load or store address, no store may target a
 //! global, an instruction undefined on some inputs must take the operand its check made, and only
-//! runtime entries and intrinsics are declared, so no call names a maths function LLVM can fold.
+//! intrinsics and the runtime's entries, line for line as its table gives them, are declared, so no
+//! call names a maths function LLVM can fold.
+
+use paka_rt::abi::table::ENTRIES;
 
 /// The approved rows (M6-01 section 2). An entry starting `@llvm.` names an intrinsic and any of
 /// its typed forms, such as `@llvm.expect.i1`.
@@ -155,6 +158,9 @@ pub fn lint(ir: &str) -> Vec<String> {
     let mut found = vec![];
     let mut body = vec![];
     for (n, line) in (1..).zip(ir.lines()) {
+        if ENTRIES.contains(&line) {
+            continue;
+        }
         let words = keywords(line);
         let inst = instruction(line);
         let mut say = |why: String| found.push(format!("line {n}: {why}"));
@@ -176,8 +182,11 @@ pub fn lint(ir: &str) -> Vec<String> {
         if inst.starts_with("store ") && address(inst).is_none_or(|a| a.starts_with('@')) {
             say("a store targets a global".into());
         }
-        if line.starts_with("declare ") && !declares_own(line) {
-            say("a declaration names neither a runtime entry nor an intrinsic".into());
+        if line.starts_with("declare ") && !line.contains(" @llvm.") {
+            say(
+                "a declaration is neither a runtime entry as the runtime gives it nor an intrinsic"
+                    .into(),
+            );
         }
         if line.starts_with("define ") {
             body.clear();
@@ -188,12 +197,6 @@ pub fn lint(ir: &str) -> Vec<String> {
         }
     }
     found
-}
-
-/// Whether a `declare` line names a runtime entry or an intrinsic.
-fn declares_own(line: &str) -> bool {
-    line.split_once(" @")
-        .is_some_and(|(_, name)| name.starts_with("paka_rt1_") || name.starts_with("llvm."))
 }
 
 fn allowed(word: &str) -> bool {
@@ -326,7 +329,7 @@ mod tests {
 
 @s0 = private unnamed_addr constant [4 x i8] c"fast" ; nsw tail in a comment
 
-declare i32 @paka_rt1_list_grow(ptr, i64) nounwind
+declare void @paka_rt1_trap(ptr, i64) cold nounwind
 declare { i64, i1 } @llvm.sadd.with.overflow.i64(i64, i64) nounwind
 declare i1 @llvm.expect.i1(i1, i1) nounwind
 declare double @llvm.sqrt.f64(double) nounwind
@@ -354,8 +357,8 @@ trap7:
 }
 
 define internal i32 @p_other(ptr %data) cold noinline {
-  %p = call i32 @paka_rt1_list_grow(ptr %data, i64 1)
-  ret i32 %p
+  call void @paka_rt1_trap(ptr %data, i64 1)
+  ret i32 1
 }
 
 attributes #0 = { nounwind inlinehint }
@@ -518,6 +521,8 @@ attributes #0 = { nounwind inlinehint }
             "declare double @sqrt(double)",
             "declare double @floor(double) nounwind",
             "declare double @pow(double, double)",
+            "declare void @paka_rt1_trap(ptr, i64)",
+            "declare i32 @paka_rt1_list_grow(ptr, i64) nounwind",
         ] {
             assert!(
                 lint(line).iter().any(|f| f.contains("declaration")),

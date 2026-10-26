@@ -162,3 +162,23 @@ fn a_field_that_reaches_its_own_type_by_value_is_boxed() {
         ),
     ]);
 }
+
+#[test]
+fn runtime_headers_and_alignment_match_the_hand_layout() {
+    let words = |h: &Header| [h.size, h.ptr, h.len, h.cap];
+    assert_eq!((words(&STRING), CHARS), ([32, 0, 8, 24], 16));
+    assert_eq!(words(&LIST), [24, 0, 8, 16]);
+    assert_eq!(CONSTANT, 0, "a cap of 0 owns no block");
+    let source = Source::file("main.paka", FIXTURE.into());
+    let (mut p, ..) = crate::check("main.paka", &source).unwrap();
+    let layouts = Layouts::new(&mut p);
+    for t in 0..p.types.len() {
+        let l = layouts.get(t);
+        let places = l.alternatives.iter().flatten().map(|f| f.offset);
+        assert!(
+            places.chain([l.size]).all(|n| n % ALIGN == 0),
+            "{}",
+            name(&p, t)
+        );
+    }
+}

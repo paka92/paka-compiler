@@ -15,11 +15,14 @@ use crate::core_form::{
 use paka::builtins::ROWS;
 use paka::layout::Layouts;
 use paka::source::in_file;
+use paka_rt::abi::table::{STACK_LIMIT, TRAP};
 use paka_rt::ops::Int;
 use std::collections::{BTreeMap, BTreeSet};
 use std::fmt::Write;
 
-const TRAP: &str = "declare void @paka_rt1_trap(ptr, i64) cold nounwind";
+/// The largest frame inlined, and the largest built: the runtime keeps 1 MiB under its limit.
+const INLINE_FRAME: usize = 4 << 10;
+const MAX_FRAME: usize = 256 << 10;
 
 /// The IR of `update`'s statements, which leave an open block, and of every other function with
 /// the constants and declarations they need; `None` when any of it is beyond this lowering.
@@ -45,6 +48,9 @@ pub fn lower(core: &mut Program, update: usize) -> Option<(String, String)> {
     }
     if !module.traps.is_empty() {
         code += &format!("\n{TRAP}\n");
+    }
+    if !defines.is_empty() {
+        code += &format!("{STACK_LIMIT}\n");
     }
     for declare in module.intrinsics.values() {
         code += declare;
@@ -79,6 +85,7 @@ impl Module<'_> {
         let mut b = Body {
             module: self,
             slots: String::new(),
+            frame: 0,
             lines: String::new(),
             names: 0,
             loops: vec![],
@@ -127,8 +134,9 @@ impl Module<'_> {
         let end = b.lines.trim_end().rfind('\n').map_or(0, |i| i + 1);
         b.lines.truncate(end);
         let (name, params) = (&f.name, params.join(", "));
+        let (check, inline) = b.stack_check(f.site)?;
         Some(format!(
-            "\ndefine internal i32 @p_{name}({params}) {{\nentry:\n{}{}}}\n",
+            "\ndefine internal i32 @p_{name}({params}){inline} {{\nentry:\n{}{check}{}}}\n",
             b.slots, b.lines
         ))
     }
@@ -160,8 +168,9 @@ impl Module<'_> {
 
 struct Body<'m, 'a> {
     module: &'m mut Module<'a>,
-    /// The `alloca` lines, which go in the first block.
+    /// The `alloca` lines, which go in the first block, and their bytes.
     slots: String,
+    frame: usize,
     lines: String,
     /// Counts the `%t` values and the `b` labels.
     names: usize,
@@ -189,6 +198,7 @@ impl Body<'_, '_> {
 
     fn slot(&mut self, name: &str, ty: &str) {
         let align = if ty == "i1" { 1 } else { 8 };
+        self.frame += 8;
         let _ = writeln!(self.slots, "  {name} = alloca {ty}, align {align}");
     }
 
@@ -205,6 +215,7 @@ impl Body<'_, '_> {
         match self.ty(t) {
             "ptr" => {
                 let size = self.size(t);
+                self.frame += size;
                 let _ = writeln!(self.slots, "  {name} = alloca [{size} x i8], align 8");
             }
             ty => self.slot(name, ty),
@@ -306,6 +317,35 @@ impl Body<'_, '_> {
         }
         self.ended("ret i32 0".into());
         Some(())
+    }
+
+    /// The first lines of a function: a `stack` trap at `site` when its frame would reach below the
+    /// runtime's limit (M6-16). A large frame is never inlined, so the frame it lands in is the one
+    /// its check counted; past `MAX_FRAME` the margin under the limit might not hold it.
+    fn stack_check(&mut self, site: Site) -> Option<(String, &'static str)> {
+        if self.frame > MAX_FRAME {
+            return None;
+        }
+        let inline = if self.frame > INLINE_FRAME {
+            " noinline"
+        } else {
+            ""
+        };
+        let _ = writeln!(self.slots, "  %mark = alloca i8, align 1");
+        let (text, len) = self.module.trap("stack", site);
+        let check = format!(
+            "  %mark.at = ptrtoint ptr %mark to i64\n  \
+             %limit = load i64, ptr @paka_rt1_stack_limit, align 8\n  \
+             %room = sub i64 %mark.at, {}\n  \
+             %deep = icmp ult i64 %room, %limit\n  \
+             br i1 %deep, label %stack, label %body\n\
+             stack:\n  \
+             call void @paka_rt1_trap(ptr {text}, i64 {len})\n  \
+             ret i32 1\n\
+             body:\n",
+            self.frame
+        );
+        Some((check, inline))
     }
 
     /// Traps with `kind` at `site` when `bad` holds.

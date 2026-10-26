@@ -2,6 +2,7 @@
 //! sections 3, 4 and 11. The view is all the back end builds until it takes the whole core form.
 
 use crate::core_form::{self, Expr, ExprKind, Grant, Program, Tag, Type};
+use paka_rt::abi::table::RUN;
 
 mod code;
 pub mod lint;
@@ -101,7 +102,7 @@ pub fn emit(core: &M1) -> String {
         "target triple = \"x86_64-pc-linux-gnu\"
 
 {constants}
-declare i32 @paka_rt1_run(ptr, i64, ptr, i64, i64)
+{RUN}
 
 define internal i32 @{update}(i64 %m, ptr %out) {{
 {}  store {{ ptr, i64 }} {{ ptr {list}, i64 {count} }}, ptr %out
@@ -333,7 +334,7 @@ app light {
     }
 
     /// Release IR has no slot table: every call names its callee, and a load reads only a stack
-    /// slot of its own function.
+    /// slot of its own function or the runtime's stack limit.
     #[test]
     fn every_call_in_any_run_case_is_direct() {
         let cases = run_cases();
@@ -358,7 +359,8 @@ app light {
                         .split(',')
                         .next()
                         .unwrap();
-                    assert!(slots.contains(&at), "{}: {line}", folder.display());
+                    let limit = at == "@paka_rt1_stack_limit";
+                    assert!(slots.contains(&at) || limit, "{}: {line}", folder.display());
                 }
             }
         }
@@ -392,5 +394,39 @@ app light {
         assert!(ir.contains("define internal i32 @p_go(i64 %m, ptr %out) {\n"));
         assert!(ir.contains("(ptr @name, i64 3, ptr @p_go, i64 1, i64 0)\n"));
         assert_eq!(clang_accepts(&ir), Ok(()));
+    }
+
+    /// Every defined function checks its frame against the runtime's limit before anything else;
+    /// only a large frame is kept from being inlined.
+    #[test]
+    fn every_function_checks_the_stack_and_a_large_frame_is_not_inlined() {
+        let fields: Vec<String> = (0..1024).map(|i| format!("f{i}: Int")).collect();
+        let values: Vec<String> = (0..1024).map(|i| format!("f{i}: n")).collect();
+        let source = format!(
+            "enum Msg {{ Start }}\ntype Big {{ {} }}\n\
+             fn down(n: Int) -> Int {{ down(n + 1) + 1 }}\n\
+             fn wide(n: Int) -> Int {{ let b = Big {{ {} }}\n b.f0 + down(n) }}\n\
+             fn update(m: Msg) -> List<Effect<Msg>> {{ let r = wide(0)\n [Exit] }}\n\
+             app a {{\n start: Start\n update: update\n grants: []\n}}\n",
+            fields.join(", "),
+            values.join(", ")
+        );
+        let ir = emit(&view(&mut lowered(&source)).unwrap());
+        assert_eq!(lint::lint(&ir), Vec::<String>::new());
+        assert_eq!(clang_accepts(&ir), Ok(()));
+        let defines: Vec<_> = ir.split("\ndefine internal i32 @p_").skip(2).collect();
+        assert_eq!(defines.len(), 2, "{ir}");
+        for define in defines {
+            let (head, body) = define.split_once("\nentry:\n").unwrap();
+            let first = body.lines().find(|l| !l.contains(" = alloca ")).unwrap();
+            assert_eq!(first, "  %mark.at = ptrtoint ptr %mark to i64", "{define}");
+            let large = head.starts_with("wide(");
+            assert_eq!(head.ends_with(" noinline {"), large, "{head}");
+            let frame = if large { "16400" } else { "16" };
+            assert!(
+                body.contains(&format!("%room = sub i64 %mark.at, {frame}\n")),
+                "{body}"
+            );
+        }
     }
 }

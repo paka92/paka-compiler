@@ -9,6 +9,7 @@
 use crate::core_form::{Program, Ty, Type};
 use paka_rt::abi::dev::map::STRING_KEY;
 use paka_rt::abi::dev::records::{Part, Spec};
+pub use paka_rt::abi::table::{ALIGN, CHARS, CONSTANT, Header, LIST, STRING};
 use std::collections::{BTreeMap, BTreeSet};
 
 /// How a value of one type lies in memory.
@@ -147,8 +148,8 @@ impl Layouts {
             Type::Int | Type::Float | Type::Bool | Type::Fn(..) | Type::View(_) | Type::Ui => {
                 leaf(1, vec![])
             }
-            Type::String => leaf(4, at0(Owned::String)),
-            Type::List(item) => leaf(3, at0(Owned::List(item))),
+            Type::String => leaf(STRING.size / 8, at0(Owned::String)),
+            Type::List(item) => leaf(LIST.size / 8, at0(Owned::List(item))),
             Type::Map(k, v) => leaf(1, at0(Owned::Map(k, v))),
             _ => {
                 let (tagged, alts) = alternatives(p, ty);

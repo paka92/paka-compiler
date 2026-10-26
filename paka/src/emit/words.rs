@@ -5,6 +5,7 @@
 use super::values::slot;
 use super::{Gen, Refusal, ty};
 use crate::core_form::{Bin, Block, Expr, Local, Site, Ty, Type};
+use crate::layout::{self, CONSTANT, LIST, STRING};
 use cranelift_codegen::ir::condcodes::IntCC;
 use cranelift_codegen::ir::{InstBuilder, MemFlagsData, Value, types};
 use paka_rt::abi::dev::words::{
@@ -23,12 +24,13 @@ pub(super) enum Op {
     Key(Value, Site, bool),
 }
 
-/// The words of a String and a List.
-const PTR: i32 = 0;
-const LEN: i32 = 8;
-const CHARS: i32 = 16;
-const CAP: i32 = 24;
-const LIST_CAP: i32 = 16;
+/// The words of a String and a List; a List's `ptr` and `len` sit where a String's do.
+const PTR: i32 = STRING.ptr as i32;
+const LEN: i32 = STRING.len as i32;
+const CHARS: i32 = layout::CHARS as i32;
+const CAP: i32 = STRING.cap as i32;
+const LIST_CAP: i32 = LIST.cap as i32;
+const _: () = assert!(LIST.ptr == STRING.ptr && LIST.len == STRING.len);
 
 impl Gen<'_> {
     /// Follows `ops` from the value at `root` of type `ty`: the address, type and offset reached.
@@ -100,9 +102,9 @@ impl Gen<'_> {
         let skip = self.b.ins().imul_imm_s(a, size as i64);
         let from = self.b.ins().iadd(ptr, skip);
         let count = self.b.ins().isub(b, a);
-        let zero = self.int_const(0);
-        let view = slot(&mut self.b, 24);
-        for (w, at) in [(from, PTR), (count, LEN), (zero, LIST_CAP)] {
+        let constant = self.int_const(CONSTANT as i64);
+        let view = slot(&mut self.b, LIST.size);
+        for (w, at) in [(from, PTR), (count, LEN), (constant, LIST_CAP)] {
             self.b.ins().store(flags, w, view, at);
         }
         view
@@ -114,7 +116,7 @@ impl Gen<'_> {
             unreachable!("a List literal is a List");
         };
         let size = self.size(item);
-        let out = slot(&mut self.b, 24);
+        let out = slot(&mut self.b, LIST.size);
         let given = [0, 0, items.len(), size].map(|n| self.int_const(n as i64));
         // A literal has no site of its own; only a full heap can trap here.
         self.rt_try(
@@ -171,7 +173,7 @@ impl Gen<'_> {
     /// time; the empty String takes no block.
     pub(super) fn literal(&mut self, s: &str) -> Value {
         let flags = MemFlagsData::trusted();
-        let out = slot(&mut self.b, 32);
+        let out = slot(&mut self.b, STRING.size);
         let cap = s.len().next_multiple_of(8);
         let ptr = match cap {
             0 => self.int_const(0),

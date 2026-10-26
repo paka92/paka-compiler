@@ -10,9 +10,11 @@
 
 use crate::{Decoded, Refused, run};
 use std::cell::Cell;
+use std::sync::atomic::AtomicU64;
 use std::{ptr, slice};
 
 pub mod dev;
+pub mod table;
 
 /// The longest string: 2^63 - 1 bytes.
 const MAX_BYTES: u64 = i64::MAX.unsigned_abs();
@@ -71,6 +73,10 @@ pub struct List {
     ptr: *const Effect,
     count: u64,
 }
+
+// SAFETY: a List is only read through, at memory that lives for the whole process (section 2), so
+// the thread that called `update` may hand it to another.
+unsafe impl Send for List {}
 
 impl Str {
     /// # Safety
@@ -227,6 +233,14 @@ pub unsafe extern "C" fn paka_rt1_run(
     let name = unsafe { Str::from_raw(name, name_len) };
     run(name, update, start, grants)
 }
+
+/// The lowest stack address compiled code may reach before it traps `stack`; 0 turns the check
+/// off. The runtime sets it on the thread that calls `update` (ABI section 5); compiled code only
+/// loads it.
+// SAFETY: as for `paka_rt1_run`.
+#[unsafe(no_mangle)]
+#[allow(non_upper_case_globals)]
+pub static paka_rt1_stack_limit: AtomicU64 = AtomicU64::new(0);
 
 thread_local! {
     /// The text of the trap compiled code reported last; a refused text is `None`.

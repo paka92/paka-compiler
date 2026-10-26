@@ -2009,6 +2009,8 @@ or merged during review. Ids with a letter were added during review.
 - done when: The layout table dev mode already reads (M4-22, no second table) gains the runtime header layouts for list, string, shared box and pool slot and the slow-path entry points; a test fails when compiler and runtime disagree.
 - why this level: A layout mismatch between emitted IR and unsafe runtime code corrupts memory silently.
 - note: Per M6-01: its test covers 8-byte runtime alignment and the constant-buffer mark.
+- status: done
+- note: Done: paka-rt/src/abi/table.rs holds the String and List word offsets, taken from the runtime's own structs, the heap's alignment of 8, which the dev allocator now uses, the mark `CONSTANT`, a cap of 0 that owns no block, and the runtime entry lines compiled code writes. paka/src/layout.rs reads them, the dev emitter takes its String and List offsets from there, and release IR takes its entry lines from there; the linter accepts a runtime declaration or global only as one of those lines. Tests fail when the entry lines and the runtime's signatures differ, when the offsets leave docs/decisions/M4-05.md section 8, when a block or a layout is not 8-byte aligned, or when a String or List marked `CONSTANT` is freed or not copied into its own block. No shared box or pool slot exists to lay out (M2-10). No tag leaves tests/conformance/release-skip.
 
 ### M6-11 · L4 · Lower strings and lists: inline bounds checks, runtime slow paths, drops
 
@@ -2017,6 +2019,7 @@ or merged during review. Ids with a letter were added during review.
 - done when: String and list conformance groups match the interpreter, including bounds traps; an injected allocation failure ends in an out-of-memory trap, not an abort (not compared with the interpreter); M4-25's ledger is clean at exit.
 - why this level: A wrong drop or bounds check is a silent leak, double free or bad read.
 - note: Per M6-01: item access through one helper; `memmove` unless the destination is fresh; constant bytes copied before the first write, with a test; runtime declarations carry `nounwind` only.
+- note: Per M6-10: a `CONSTANT` (cap 0) String or List holds a pointer, so abi/dev/words.rs's "ptr is null when cap is 0" and M4-05 no longer hold, and items.rs `room()` copies old items only when cap is not 0: a constant List that grows would lose its items. Fix both here.
 
 ### M6-11b · L4 · Lower the built-in map for release
 
@@ -2047,6 +2050,8 @@ or merged during review. Ids with a letter were added during review.
 - done when: Deep-recursion and large-frame tests end in a stack trap, never a segmentation fault, at full optimization; no signal handler is installed.
 - why this level: A missed check is a crash outside the language; frame sizes are unknown when IR is written.
 - note: Per M6-01: constant-size slots in the first block; no `tail` marks; the stack-position read is a plain word; no guard-page attribute.
+- status: done
+- note: Done: release runs `update` on a thread with a 64 MiB stack and exports `paka_rt1_stack_limit`, 1 MiB above its bottom. Each function `update` calls starts by comparing the address of a one-byte slot of its own, less its slots' bytes, with that limit, and traps `stack` at its position when below (docs/abi/m1.md sections 3 and 5). A function with more than 4 KiB of slots is `noinline`; one past 256 KiB is not built. paka/tests/release_stack.rs builds recursion, mutual recursion and recursion through an 8 KiB record at full optimization: each exits 3 with a stack trap. No signal handler is installed. The stack cases in tests/conformance carry `apps and grants`, so no tag leaves the skip file.
 
 ### M6-17 · L3 · Link headless apps for release: direct handler calls, grants
 

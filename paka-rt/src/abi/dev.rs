@@ -137,7 +137,7 @@ impl Drop for Heap {
 
 /// The layout of a block of `bytes`; one byte at least, so that every block is its own address.
 fn layout(bytes: u64) -> Option<Layout> {
-    Layout::from_size_align(usize::try_from(bytes.max(1)).ok()?, 8).ok()
+    Layout::from_size_align(usize::try_from(bytes.max(1)).ok()?, super::table::ALIGN).ok()
 }
 
 /// # Safety
@@ -309,7 +309,7 @@ pub extern "sysv64" fn rt_push_frame(ctx: &mut Context, site: u64) {
 
 /// A runner thread's stack, and the room kept below `stack_limit` (M4-05 section 6).
 pub const RUNNER_STACK: usize = 64 << 20;
-const MARGIN: usize = 1 << 20;
+pub(crate) const MARGIN: usize = 1 << 20;
 
 /// Runs `f` on a new thread with a `RUNNER_STACK` stack and a fresh context of heap cap `cap`, its
 /// `stack_limit` about `MARGIN` above the bottom. The context sits near the stack's top, so its

@@ -1,10 +1,12 @@
 //! The run loop of ABI section 5 and the safe decoding around it.
 
-use crate::abi::{List, Str, Update, take_trap};
+use crate::abi::dev::{MARGIN, RUNNER_STACK};
+use crate::abi::{List, Str, Update, paka_rt1_stack_limit, take_trap};
 use std::fs::File;
 use std::io::{self, ErrorKind, Write};
 use std::os::fd::AsFd;
 use std::panic::{AssertUnwindSafe, catch_unwind};
+use std::sync::atomic::Ordering;
 
 /// The status of a stop that is the program's doing (ABI section 7).
 const STOPPED: i32 = 3;
@@ -176,8 +178,7 @@ fn perform(
         return Err(Stop::Usage(args));
     }
     let mut slot = List::UNWRITTEN;
-    take_trap();
-    match (update(start, &mut slot), take_trap()) {
+    match on_runner(|| (update(start, &mut slot), take_trap())) {
         (0, _) => {}
         (1, Some(text)) => return Err(Stop::Trapped(text)),
         _ => return Err(Stop::Internal("update returned a non-zero status")),
@@ -190,6 +191,22 @@ fn perform(
         }
     }
     Err(Stop::Ended)
+}
+
+/// Runs `f` on a new thread with a `RUNNER_STACK` stack, the stack limit `MARGIN` above its
+/// bottom; a local's address stands for the top.
+fn on_runner<R: Send>(f: impl FnOnce() -> R + Send) -> R {
+    std::thread::scope(|s| {
+        let runner = std::thread::Builder::new().stack_size(RUNNER_STACK);
+        let run = runner.spawn_scoped(s, || {
+            let mark = 0u8;
+            let top = (&raw const mark).addr() as u64;
+            paka_rt1_stack_limit.store(top - (RUNNER_STACK - MARGIN) as u64, Ordering::Relaxed);
+            f()
+        });
+        let run = run.expect("a runner thread");
+        run.join().unwrap_or_else(|e| std::panic::resume_unwind(e))
+    })
 }
 
 /// The text and a line feed in one buffer, one write.
