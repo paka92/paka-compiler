@@ -1,4 +1,6 @@
 //! Every outside crate in a lock file is listed in .cargo/approved-crates.txt and vendored (M4-06).
+//! Crates a lock names only for other systems are listed in .cargo/stubbed-crates.txt and vendored
+//! as a manifest with no code, so cargo can resolve offline without them ever being built.
 
 use std::collections::BTreeSet;
 use std::fs;
@@ -6,7 +8,11 @@ use std::path::Path;
 
 type Crates = BTreeSet<(String, String)>;
 
-const LOCKS: [&str; 2] = ["Cargo.lock", "bench/generators/Cargo.lock"];
+const LOCKS: [&str; 3] = [
+    "Cargo.lock",
+    "bench/generators/Cargo.lock",
+    "trial/gui/Cargo.lock",
+];
 
 fn root() -> &'static Path {
     Path::new(env!("CARGO_MANIFEST_DIR")).parent().unwrap()
@@ -55,7 +61,15 @@ fn unlisted(locked: &Crates, approved: &Crates) -> Vec<String> {
 }
 
 fn approved() -> Crates {
-    let list = fs::read_to_string(root().join(".cargo/approved-crates.txt")).unwrap();
+    listed(".cargo/approved-crates.txt")
+}
+
+fn stubbed() -> Crates {
+    listed(".cargo/stubbed-crates.txt")
+}
+
+fn listed(file: &str) -> Crates {
+    let list = fs::read_to_string(root().join(file)).unwrap();
     list.lines()
         .map(|l| {
             let (n, v) = l.split_once(' ').unwrap();
@@ -64,9 +78,24 @@ fn approved() -> Crates {
         .collect()
 }
 
+/// Whether a vendored directory holds no code: every file but the manifest and checksum is empty.
+fn is_stub(dir: &Path) -> bool {
+    fs::read_dir(dir).unwrap().all(|e| {
+        let path = e.unwrap().path();
+        let name = path.file_name().unwrap();
+        if path.is_dir() {
+            is_stub(&path)
+        } else {
+            name == "Cargo.toml"
+                || name == ".cargo-checksum.json"
+                || path.metadata().unwrap().len() == 0
+        }
+    })
+}
+
 #[test]
 fn every_locked_crate_is_approved() {
-    let approved = approved();
+    let approved: Crates = approved().union(&stubbed()).cloned().collect();
     for lock in LOCKS {
         let locked = outside(&fs::read_to_string(root().join(lock)).unwrap());
         assert_eq!(unlisted(&locked, &approved), Vec::<String>::new(), "{lock}");
@@ -75,11 +104,14 @@ fn every_locked_crate_is_approved() {
 
 #[test]
 fn the_vendor_directory_holds_exactly_the_approved_crates() {
-    let vendored: Crates = fs::read_dir(root().join("vendor"))
-        .unwrap()
-        .map(|e| package(&fs::read_to_string(e.unwrap().path().join("Cargo.toml")).unwrap()))
-        .collect();
-    assert_eq!(vendored, approved());
+    let (mut real, mut stubs) = (Crates::new(), Crates::new());
+    for entry in fs::read_dir(root().join("vendor")).unwrap() {
+        let dir = entry.unwrap().path();
+        let crate_ = package(&fs::read_to_string(dir.join("Cargo.toml")).unwrap());
+        if is_stub(&dir) { &mut stubs } else { &mut real }.insert(crate_);
+    }
+    assert_eq!(real, approved());
+    assert_eq!(stubs, stubbed());
 }
 
 #[test]

@@ -1488,10 +1488,12 @@ or merged during review. Ids with a letter were added during review.
 
 ### M5-08 · L4 · Run the library trial: one window, one text field, one button
 
+- status: done
 - needs: nothing
 - flags: decision, owner, download
 - done when: Owner rules on the report: elements from scratch or on an existing toolkit (paper section 8), the stack, the full crate list including PNG encoding, the default font, and yes or no on screen-reader support and on IME in M5.
 - why this level: Judging IME, Wayland and screen-reader behaviour from a small trial; a wrong call commits the whole stack.
+- note: Done: approved by the owner on 2026-10-26; see docs/decisions/M5-08.md and docs/results/M5-08.md. Elements are built from scratch on winit, softbuffer, vello_cpu, parley and AccessKit, Wayland only; PNG through a standard-library encoder; Noto Sans shipped as the default font; screen reader and IME are both in M5, and M5-04's focus rule now lets Tab reach Buttons.
 
 ### M5-09 · L4 · Decide the preview route on Wayland and the Look protocol
 
@@ -1918,10 +1920,10 @@ or merged during review. Ids with a letter were added during review.
 - done when: `paka build` builds M1's light program at full optimization; IR has no slot loads; a program with a hole is refused by name. paka build passes clang exactly the optimization flags and target CPU that M6-02 approves for Paka, from one constant; the benchmark runner (M6-27) adds none.
 - why this level: Joins database, emitter, clang and linker; reachability and link order are easy to get wrong.
 - note: Per M6-01 and M6-02: the one constant replaces M1's `-O2`; it is `-O3` with no CPU flag.
-
-### M6-05 · L2 · Make the IR linter enforce the approved promise table
 - status: done
 - note: Done: paka build passes clang the one constant `OPTIMIZE` in paka/src/build.rs, `-O3` and no CPU flag; docs/abi/m1.md section 9 shows the new command, and paka/tests/build.rs checks clang gets exactly it. A test over every run case's IR checks each call names its callee and nothing is loaded, so no call goes through a slot. Holes stay refused by name with `hole-in-build` before the back end runs (the conformance `hole_build_*` cases); a program the back end does not lower yet stays refused with `unsupported-form` until M6-07 to M6-15. The benchmark runner (M6-27) is not built yet and must add no flag.
+
+### M6-05 · L2 · Make the IR linter enforce the approved promise table
 
 - needs: M6-01, M6-04
 - flags: native-only
