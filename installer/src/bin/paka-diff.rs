@@ -3,6 +3,12 @@
 //! dev run's ledger ended clean (M4-40); one that did not differs. The status is 1 when a case
 //! differs.
 //!
+//! `paka-diff --release [ROOT]` adds release mode (M6-06): each case is also built with the `paka`
+//! next to this binary and run, and must agree with the interpreter. A case with a hole must be
+//! refused by the holes' names instead; a case is skipped while one of its tags (release.rs) is in
+//! ROOT's `release-skip`. ROOT's `release-exempt` must list exactly the cases with a hole and the
+//! example-status cases.
+//!
 //! `paka-diff --fuzz FIRST COUNT KEEP` does the same for the generated programs of COUNT seeds
 //! from FIRST (M4-41). Each that differs is shrunk while it keeps that kind of difference and
 //! written to `KEEP/SEED.paka`. `PAKA_PLANT` plants a fault in the dev back end, for a self-test.
@@ -25,11 +31,14 @@
 use paka::interp;
 use paka::source::{Source, read};
 use paka_installer::dev::Dev;
-use paka_installer::diff::{Outcome, cases, difference, no_core_dumps, shrink, stage, ui_examples};
+use paka_installer::diff::{
+    Outcome, cases, difference, difference_in, no_core_dumps, shrink, stage, ui_examples,
+};
+use paka_installer::release;
 use paka_rt::abi::dev::app::Stopped;
 use paka_rt::effects::Host;
 use paka_rt::{Fd1, abi};
-use std::collections::BTreeMap;
+use std::collections::{BTreeMap, BTreeSet};
 use std::env;
 use std::ffi::OsString;
 use std::fs;
@@ -37,7 +46,7 @@ use std::io::{self, Write};
 use std::ops::Range;
 use std::os::unix::ffi::OsStringExt;
 use std::path::{Path, PathBuf};
-use std::process::{self, Command, ExitCode};
+use std::process::{self, Command, ExitCode, Stdio};
 use std::thread;
 use std::time::{Duration, Instant};
 
@@ -46,6 +55,7 @@ const HEAP: u64 = 1 << 30;
 /// How long a run of a conformance case, and of a generated program, may take before it stops.
 const LIMIT: Duration = Duration::from_secs(3);
 const FUZZ_LIMIT: Duration = Duration::from_millis(250);
+const CONFORMANCE: &str = "tests/conformance";
 
 fn main() -> ExitCode {
     let args: Vec<OsString> = env::args_os().skip(1).collect();
@@ -53,6 +63,9 @@ fn main() -> ExitCode {
         Some("--one") => return one(&args[1..]),
         Some("--ui-one") => return ui_one(&args[1].to_string_lossy()),
         Some("--ui") => ui(&args.get(1).map_or("tests".into(), PathBuf::from)),
+        Some("--release") => {
+            compare_release(&args.get(1).map_or(CONFORMANCE.into(), PathBuf::from))
+        }
         Some(mode @ ("--fuzz" | "--edits")) => {
             let number = |i: usize| args.get(i).and_then(|a| a.to_str()?.parse::<u64>().ok());
             let (Some(first), Some(count), Some(keep)) = (number(1), number(2), args.get(3)) else {
@@ -65,11 +78,7 @@ fn main() -> ExitCode {
                 _ => edits(seeds, keep.as_ref()),
             }
         }
-        _ => compare(
-            &args
-                .first()
-                .map_or("tests/conformance".into(), PathBuf::from),
-        ),
+        _ => compare(&args.first().map_or(CONFORMANCE.into(), PathBuf::from)),
     };
     r.unwrap_or_else(|e| {
         eprintln!("paka-diff: {e}");
@@ -93,6 +102,161 @@ fn compare(root: &Path) -> io::Result<ExitCode> {
     }
     let _ = fs::remove_dir_all(&scratch);
     tally.end()
+}
+
+fn compare_release(root: &Path) -> io::Result<ExitCode> {
+    let file = |name| fs::read_to_string(root.join(name));
+    let invalid = |why| io::Error::new(io::ErrorKind::InvalidData, why);
+    let skip = release::skipped(&file("release-skip")?).map_err(invalid)?;
+    let [holes, examples] = release::exempt(&file("release-exempt")?).map_err(invalid)?;
+    let named = |dir: &Path| dir.strip_prefix(root).unwrap_or(dir).display().to_string();
+    let command = |dir: &Path| fs::read_to_string(dir.join("command")).unwrap_or_default();
+    let found: BTreeSet<_> = (programs(root)?.iter())
+        .filter(|dir| command(dir).starts_with("examples "))
+        .map(|dir| named(dir))
+        .collect();
+    if found != examples {
+        return Err(invalid(format!(
+            "release-exempt lists examples {examples:?}, not {found:?}"
+        )));
+    }
+    let paka = env::current_exe()?.with_file_name("paka");
+    let scratch = scratch();
+    let (mut tally, mut skipped, mut seen) = (Tally::default(), 0, BTreeSet::new());
+    for case in cases(root)? {
+        let name = named(&case);
+        let flat = name.replace('/', "-");
+        let dirs = ENGINES.map(|e| scratch.join(format!("{flat}-{e}")));
+        dirs.iter().try_for_each(|d| stage(&case, d))?;
+        let args = arguments(&case);
+        let ((mut verdict, mut line), reference) = judged(&dirs, &name, LIMIT, &args)?;
+        let (source, found) = read(&dirs[0].join("main.paka").into_os_string());
+        let Ok((core, ..)) = found.and_then(|()| paka::check("main.paka", &source)) else {
+            tally.add((1, format!("differ {name}: the program does not check")))?;
+            continue;
+        };
+        let names: Vec<_> = (core.sites.iter())
+            .filter_map(|s| s.hole.as_deref())
+            .collect();
+        let result = if !names.is_empty() {
+            seen.insert(name.clone());
+            refused(&paka, &dirs[1], &names, holes.contains(&name))?
+        } else if release::tags(&core).is_disjoint(&skip) {
+            let built = scratch.join(&flat);
+            stage(&case, &built)?;
+            ran(&paka, &built, &reference, &args)?
+        } else {
+            skipped += 1;
+            Ok("skipped".into())
+        };
+        match result {
+            Ok(note) => line += &format!("; release {note}"),
+            Err(why) => (verdict, line) = (1, format!("differ {name}: release {why}")),
+        }
+        tally.add((verdict, line))?;
+    }
+    let _ = fs::remove_dir_all(&scratch);
+    if seen != holes {
+        return Err(invalid(format!(
+            "release-exempt lists holes {holes:?}, not {seen:?}"
+        )));
+    }
+    writeln!(tally.out, "{skipped} skipped in release")?;
+    tally.end()
+}
+
+/// Whether `paka build` refuses the program staged in `dir`, which has holes `names`, naming each
+/// one; `listed` says the exemption list names the case.
+fn refused(
+    paka: &Path,
+    dir: &Path,
+    names: &[&str],
+    listed: bool,
+) -> io::Result<Result<String, String>> {
+    if !listed {
+        return Ok(Err(
+            "has a hole but is not a `hole` line of release-exempt".into()
+        ));
+    }
+    let out = Outcome::from(build(paka, dir)?);
+    let text = String::from_utf8_lossy(&out.stderr);
+    let named = names.iter().all(|n| text.contains(&format!("??{n}")));
+    Ok(
+        match out.status == Some(1) && text.contains("[hole-in-build]") && named {
+            true => Ok("refused by the holes' names".into()),
+            false => Err(format!(
+                "build did not refuse the holes: {:?}, {text:?}",
+                out.status
+            )),
+        },
+    )
+}
+
+/// Builds the program staged in `dir`, runs it stopped past the limit, and compares its run with
+/// the interpreter's, `reference`.
+fn ran(
+    paka: &Path,
+    dir: &Path,
+    reference: &Outcome,
+    args: &[OsString],
+) -> io::Result<Result<String, String>> {
+    let out = build(paka, dir)?;
+    if !out.status.success() {
+        let why = String::from_utf8_lossy(&out.stderr).into_owned();
+        return Ok(Err(format!("build failed: {why:?}")));
+    }
+    let release = native(&dir.with_extension("prog"), dir, args)?;
+    Ok(match difference_in(reference, &release, "release") {
+        Some(why) => Err(why),
+        None => Ok("agree".into()),
+    })
+}
+
+/// `paka build main.paka` in `dir`, written beside it.
+fn build(paka: &Path, dir: &Path) -> io::Result<process::Output> {
+    (Command::new(paka).current_dir(dir))
+        .args([
+            "build".as_ref(),
+            "main.paka".as_ref(),
+            "-o".as_ref(),
+            dir.with_extension("prog").as_os_str(),
+        ])
+        .output()
+}
+
+/// Runs `exe` in `dir`, killed past the limit, its output in files beside `dir`.
+fn native(exe: &Path, dir: &Path, args: &[OsString]) -> io::Result<Outcome> {
+    let [stdout, stderr] = ["stdout", "stderr"].map(|e| dir.with_extension(e));
+    let mut child = (Command::new(exe).current_dir(dir).args(args))
+        .stdin(Stdio::null())
+        .stdout(fs::File::create(&stdout)?)
+        .stderr(fs::File::create(&stderr)?)
+        .spawn()?;
+    let start = Instant::now();
+    let status = loop {
+        if let Some(status) = child.try_wait()? {
+            break Some(status);
+        }
+        if start.elapsed() > LIMIT {
+            child.kill()?;
+            child.wait()?;
+            break None;
+        }
+        thread::sleep(Duration::from_millis(2));
+    };
+    let Some(status) = status else {
+        return Ok(Outcome {
+            stdout: fs::read(&stdout)?,
+            stderr: b"stopped: time\n".to_vec(),
+            status: Some(4),
+        });
+    };
+    Ok(process::Output {
+        status,
+        stdout: fs::read(&stdout)?,
+        stderr: fs::read(&stderr)?,
+    }
+    .into())
 }
 
 fn fuzz(seeds: Range<u64>, keep: &Path) -> io::Result<ExitCode> {
@@ -267,32 +431,39 @@ fn judge(
     limit: Duration,
     args: &[OsString],
 ) -> io::Result<(usize, String)> {
+    judged(dirs, name, limit, args).map(|(verdict, _)| verdict)
+}
+
+/// The verdict `judge` gives and the interpreter's run.
+fn judged(
+    dirs: &[PathBuf; 2],
+    name: &str,
+    limit: Duration,
+    args: &[OsString],
+) -> io::Result<((usize, String), Outcome)> {
     let start = Instant::now();
     let (reference, _) = run(&dirs[0], ENGINES[0], limit, args)?;
     // Compiled code outruns the interpreter, so a dev run far slower than it has hung.
     let slow = (start.elapsed() * 4).max(Duration::from_millis(20));
     // How far a stopped run got depends on speed, not meaning.
     if reference.status == Some(4) && reference.stderr == b"stopped: time\n" {
-        return Ok((
-            2,
-            format!("unsupported {name}: the interpreter ran past the limit"),
-        ));
+        let why = format!("unsupported {name}: the interpreter ran past the limit");
+        return Ok(((2, why), reference));
     }
     let (dev, note) = run(&dirs[1], ENGINES[1], limit.min(slow), args)?;
-    Ok(
-        match (
-            note.strip_prefix("unsupported: "),
-            difference(&reference, &dev),
-        ) {
-            (Some(why), _) => (2, format!("unsupported {name}: {why}")),
-            // A leak or a bad free is a fault even when the output agrees.
-            (None, None) if ledger(&note) != "ledger clean" => {
-                (1, format!("differ {name}: {}", ledger(&note)))
-            }
-            (None, None) => (0, format!("agree {name}; {}", ledger(&note))),
-            (None, Some(why)) => (1, format!("differ {name}: {why}; {}", ledger(&note))),
-        },
-    )
+    let verdict = match (
+        note.strip_prefix("unsupported: "),
+        difference(&reference, &dev),
+    ) {
+        (Some(why), _) => (2, format!("unsupported {name}: {why}")),
+        // A leak or a bad free is a fault even when the output agrees.
+        (None, None) if ledger(&note) != "ledger clean" => {
+            (1, format!("differ {name}: {}", ledger(&note)))
+        }
+        (None, None) => (0, format!("agree {name}; {}", ledger(&note))),
+        (None, Some(why)) => (1, format!("differ {name}: {why}; {}", ledger(&note))),
+    };
+    Ok((verdict, reference))
 }
 
 /// Runs `main.paka` in `dir` on `engine` in a child, stopped past `limit`: its outcome and note.

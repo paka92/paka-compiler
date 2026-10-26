@@ -12,6 +12,7 @@ use std::io;
 pub mod dev;
 pub mod diff;
 mod load;
+pub mod release;
 mod slots;
 pub use load::Loader;
 pub use slots::{Refused, Session, Slots};

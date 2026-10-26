@@ -48,6 +48,13 @@ Files added by the `apps/` cases. Each is optional.
 - `absent`: paths, one per line, that must not exist after the command.
 - `present`: paths, one per line, that must exist after the command.
 
+Two files at the root serve release mode of the differential harness (M6-06, `paka-diff
+--release`). `release-skip` lists feature tags, one per line, from the fixed list in
+`installer/src/release.rs`, which tags each case from its program; a run case is skipped in release
+while any of its tags is listed. `release-exempt` lists, as `hole CASE` lines, every run case with
+a hole, which `paka build` must refuse by the holes' names, and as `examples CASE` lines every
+example-status case, compared in interpreter and dev only until M7-11. `#` lines are comments.
+
 ## Pass rules
 
 The case folder is the working directory, so every diagnostic path is `main.paka`.

@@ -36,25 +36,30 @@ impl From<Output> for Outcome {
 
 /// How the dev run of `b` differs in meaning from the reference run `a`; `None` when they agree.
 pub fn difference(a: &Outcome, b: &Outcome) -> Option<String> {
+    difference_in(a, b, "dev")
+}
+
+/// How the run of `b` in mode `mode` differs in meaning from the reference run `a`.
+pub fn difference_in(a: &Outcome, b: &Outcome, mode: &str) -> Option<String> {
     let text = |bytes: &[u8]| String::from_utf8_lossy(bytes).into_owned();
     if a.stdout != b.stdout {
         return Some(format!(
-            "stdout {:?}, dev {:?}",
+            "stdout {:?}, {mode} {:?}",
             text(&a.stdout),
             text(&b.stdout)
         ));
     }
     let (Some(x), Some(y)) = (a.status, b.status) else {
         return Some(format!(
-            "ended by a signal: {:?}, dev {:?}",
+            "ended by a signal: {:?}, {mode} {:?}",
             a.status, b.status
         ));
     };
     if x != y {
-        return Some(format!("status {x}, dev {y}"));
+        return Some(format!("status {x}, {mode} {y}"));
     }
     let (m, n) = (meaning(a), meaning(b));
-    (m != n).then(|| format!("stderr {m:?}, dev {n:?}"))
+    (m != n).then(|| format!("stderr {m:?}, {mode} {n:?}"))
 }
 
 /// The meaning of a run's standard error: all of it, unless the run trapped. A trap's meaning is
