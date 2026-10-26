@@ -1781,15 +1781,18 @@ or merged during review. Ids with a letter were added during review.
 
 ### M5-32 · L3 · Measure and shape text through Parley
 
+- status: done
 - needs: M5-10
 - flags: none
 - done when: Tests: a string measures the same twice, wraps into more lines at half width, and a missing glyph falls back.
 - why this level: Unfamiliar library; font loading, fallback and line breaking must give the same sizes to layout and drawing.
 - note: Per M5-05: text is measured at scale factor 1, widths are rounded up to whole units, the line height is fixed at 20 units and the font size at 14.
 - note: Per M5-10: the font is `paka_gui::FONT`, registered with no system font lookup as `trial/gui/src/ui.rs` does; its OFL notice is `gui/fonts/OFL.txt`.
+- note: Done: gui/src/text.rs. `paka_gui::text::Text` registers `paka_gui::FONT` with no system font lookup and implements M5-31's `Measure`: the one-line width rounded up, and the line count of Parley's breaking at the given width. `layout` gives the shaped lines that drawing uses, so layout and drawing measure alike. paka-gui now depends on paka-rt for the tree and layout. Read as: with no other font registered, a character Noto Sans lacks falls back to the font's own missing-glyph box (glyph 0) and its width; an empty text measures 0, though Parley gives it the width of a space. Widths are not cached yet. Test: gui/tests/text.rs.
 
 ### M5-33 · L3 · Draw the laid-out tree to an image through vello_cpu
 
+- status: done
 - needs: M5-19, M5-31, M5-32
 - flags: none
 - done when: With no display set, the counter draws to a PNG; hand-chosen pixels inside and outside each button have the expected colours.
@@ -1797,6 +1800,7 @@ or merged during review. Ids with a letter were added during review.
 - note: Per M5-04: it draws the fixed look M5-04 gives, with no hover or pressed form; pixel tests use those colours.
 - note: Per M5-05: the only clip is an Input's own text; units are multiplied by the scale factor when drawing.
 - note: Per M5-08: a focused Button draws M5-04's focused border, 2 units in #0060DF.
+- note: Done: gui/src/draw.rs. `draw` takes the tree, its rectangles from `paka_rt::layout::layout`, the `Text`, the scale and the size in pixels, and gives a vello_cpu pixmap on white in which every pixel is opaque. Text wraps as it was measured; a Button is a box with corners 4 and its label in by 12 and 6; an Input has its border, its text in by 8 with the preedit at the cursor and underlined, the selection behind and a 1-unit cursor when focused, all clipped inside the border; a placeholder has dashes 4 units on and 4 off; an error node is its box and wrapped message. A line break in a label or an Input's text is drawn as a space. gui/src/png.rs is the trial's standard-library encoder; as the pixmap is opaque, its bytes go in unchanged. Read as: a focused Button's border waits for M5-36, as the tree holds no focus for a Button yet. Test: gui/tests/draw.rs runs itself again with WAYLAND_DISPLAY and DISPLAY unset, lays out the counter's first tree, checks the Row and button rectangles, encodes PNGs at scale 1 and 2 and reads chosen pixels back from them: each button's border and fill, and white above, below and to the right.
 
 ### M5-34 · L3 · Add the Look tool on the windowless app: tree, screenshot, click, keystroke
 

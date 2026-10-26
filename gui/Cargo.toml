@@ -8,6 +8,7 @@ unsafe_code = "forbid"
 
 # The crates and features docs/decisions/M5-08.md approves, pinned exactly.
 [dependencies]
+paka-rt = { path = "../paka-rt" }
 winit = { version = "=0.30.13", default-features = false, features = ["rwh_06", "wayland", "wayland-dlopen"] }
 softbuffer = { version = "=0.4.8", default-features = false, features = ["wayland", "wayland-dlopen"] }
 vello_cpu = { version = "=0.3.0", default-features = false, features = ["std", "text", "u8_pipeline"] }
