@@ -1,10 +1,14 @@
 //! The counter in a window (M5-35): the dev runner opens it in the Wayland session and logs its
 //! first presented frame, and a frame after a Look click (M5-38); a second run closes it and opens
 //! another on the kept event loop, and the runner exits cleanly when its input ends. The M5-34
-//! Look script passes on an app in a window. Skipped with no Wayland display.
+//! Look script passes on an app in a window, and so do the M5-07 edits of paka/tests/look.rs
+//! (M5-42). Skipped with no Wayland display.
 
 #[path = "../../paka/tests/common/look.rs"]
 mod look;
+
+#[path = "../../paka/tests/common/edits.rs"]
+mod edits;
 
 use paka_json::{Value, parse};
 use std::env;
@@ -45,6 +49,18 @@ fn look_drives_the_app_in_a_window() {
     fs::create_dir_all(&dir).unwrap();
     let runner = paka::session::Runner::new(env!("CARGO_BIN_EXE_paka-runner").into());
     look::drive(&mut look::session(&dir, runner), true);
+    fs::remove_dir_all(&dir).unwrap();
+}
+
+#[test]
+fn edits_swap_reset_and_migrate_the_app_in_a_window() {
+    if !displayed() {
+        return;
+    }
+    let dir = env::temp_dir().join(format!("paka-edits-window-{}", std::process::id()));
+    fs::create_dir_all(&dir).unwrap();
+    let runner = paka::session::Runner::new(env!("CARGO_BIN_EXE_paka-runner").into());
+    edits::drive(&mut edits::session(&dir, runner), true);
     fs::remove_dir_all(&dir).unwrap();
 }
 

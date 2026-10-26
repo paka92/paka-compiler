@@ -2,9 +2,9 @@
 //! runnable program when it changes, or only its changed files when its paths stay, and each run
 //! after. A run that does not answer by its limit and
 //! a little more, or a runner that dies, ends the child; the next run starts another. Look calls
-//! go to the app the runner shows in a window (M5-38).
+//! go to the app the runner shows in a window (M5-38), and so do installed edits (M5-42).
 
-use super::visual::not_running;
+use super::visual::{Shown, not_running};
 use crate::serve::{Call, Failure, Reply};
 use paka_json::{Value, parse};
 use std::io::{BufRead, BufReader, Write};
@@ -52,12 +52,6 @@ impl Runner {
             None => self.live.insert(self.start()?),
         };
         if live.loaded != Some(generation) {
-            let file = |(path, text): &(String, String)| {
-                Value::object([
-                    ("path", path.as_str().into()),
-                    ("text", text.as_str().into()),
-                ])
-            };
             let same = live.loaded.is_some() && paths(&live.held).eq(paths(files));
             let load = match same {
                 true => {
@@ -67,7 +61,7 @@ impl Runner {
                         Value::Array(changed.map(|(f, _)| file(f)).collect()),
                     )])
                 }
-                false => Value::object([("files", Value::Array(files.iter().map(file).collect()))]),
+                false => Value::object([("files", all(files))]),
             };
             if live.ask(&load, LOAD).is_err() {
                 return Ok(self.end("crash"));
@@ -90,6 +84,54 @@ impl Runner {
             Err(_) => {
                 self.end("");
                 Err(not_running())
+            }
+        }
+    }
+
+    /// Installs the version in `files` into the app the runner shows in a window, its state
+    /// carried as the edit's state `choice` names, a migrate stopped past `limit`; what the app
+    /// shows after, or the migrate's check error. With no app shown, or no answer, it has ended.
+    pub fn install(
+        &mut self,
+        files: &[(String, String)],
+        choice: Option<&str>,
+        limit: Duration,
+    ) -> Result<Shown, Value> {
+        let Some(live) = &mut self.live else {
+            return Ok(Shown::gone());
+        };
+        let install = Value::object([
+            ("files", all(files)),
+            ("state", choice.into()),
+            ("limit_ms", (limit.as_millis() as usize).into()),
+        ]);
+        match live.ask(&Value::object([("install", install)]), limit + LOAD) {
+            Ok(reply) => reply
+                .get("error")
+                .cloned()
+                .map_or(Ok(Shown::of(&reply)), Err),
+            Err(why) => {
+                self.end(why);
+                Ok(Shown::gone())
+            }
+        }
+    }
+
+    /// Whether the runner still shows a running visual app in a window.
+    pub fn shows(&mut self) -> bool {
+        let Some(live) = &mut self.live else {
+            return false;
+        };
+        let tree = Value::object([
+            ("v", 1usize.into()),
+            ("id", 0usize.into()),
+            ("call", "look_tree".into()),
+        ]);
+        match live.ask(&tree, LOOK) {
+            Ok(reply) => reply.get("error").is_none(),
+            Err(_) => {
+                self.end("");
+                false
             }
         }
     }
@@ -168,6 +210,17 @@ fn relayed(reply: Value) -> Reply {
         .into_iter()
         .filter_map(|(k, v)| Some((known(&FIELDS, &k)?, v)));
     Ok(fields.collect())
+}
+
+fn file((path, text): &(String, String)) -> Value {
+    Value::object([
+        ("path", path.as_str().into()),
+        ("text", text.as_str().into()),
+    ])
+}
+
+fn all(files: &[(String, String)]) -> Value {
+    Value::Array(files.iter().map(file).collect())
 }
 
 fn paths(files: &[(String, String)]) -> impl Iterator<Item = &str> {

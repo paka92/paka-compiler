@@ -4,12 +4,13 @@
 //! has no app by that name. A program the dev back end does not compile yet runs on the
 //! interpreter, in this process all the same. A visual app runs on the interpreter in a window,
 //! answered at once with its first tree; the next run ends it (docs/decisions/M5-09.md). A Look
-//! call, sent on as the server got it, is answered by that app with the server's reply line.
+//! call, sent on as the server got it, is answered by that app with the server's reply line. An
+//! `install` swaps, resets or migrates a version into that app as the server decided (M5-42).
 
 use paka::core_form::Program;
 use paka::interp;
 use paka::serve::{serve, trap};
-use paka::session::visual::{Visual, not_running};
+use paka::session::visual::{Carry, Shown, Visual, not_running};
 use paka::source::Source;
 use paka_installer::dev::Dev;
 use paka_json::{Value, parse};
@@ -26,23 +27,26 @@ fn main() -> io::Result<()> {
     let mut dev = Dev::default();
     // The installed program's files, and its checked form when the dev back end refused it.
     let (mut files, mut interpreted) = (vec![], None);
-    let mut shown: Option<Visual> = None;
+    // The app shown in a window, and the files of the version it runs.
+    let mut shown: Option<(Visual, Vec<(String, String)>)> = None;
     let mut out = io::stdout().lock();
     for line in io::stdin().lock().lines() {
         let line = line?;
         let request = parse(&line).expect("the server sends JSON");
         if request.get("call").is_some() {
-            let look = |call: &_| shown.as_ref().ok_or_else(not_running)?.look(call);
+            let look = |call: &_| shown.as_ref().ok_or_else(not_running)?.0.look(call);
             serve(line.as_bytes(), &mut out, look)?;
             continue;
         }
-        let reply = match (request.get("files"), request.get("change")) {
-            (Some(all), _) => {
+        let ask = |key| request.get(key);
+        let reply = match (ask("files"), ask("change"), ask("install")) {
+            (_, _, Some(version)) => swapped(&mut shown, version),
+            (Some(all), _, _) => {
                 files = items(Some(all)).iter().map(file).collect();
                 interpreted = install(&mut dev, &files);
                 Value::object([])
             }
-            (_, Some(changed)) => {
+            (_, Some(changed), _) => {
                 for (path, text) in items(Some(changed)).iter().map(file) {
                     let held = files.iter_mut().find(|f| f.0 == path);
                     held.expect("a change replaces a held file").1 = text;
@@ -87,7 +91,7 @@ fn run(
     interpreted: Option<&Program>,
     files: &[(String, String)],
     request: &Value,
-    shown: &mut Option<Visual>,
+    shown: &mut Option<(Visual, Vec<(String, String)>)>,
 ) -> Value {
     *shown = None;
     let program = interpreted.unwrap_or(&dev.program);
@@ -101,7 +105,7 @@ fn run(
     if found.view.is_some() {
         let (visual, first) = Visual::start(checked(files), args, true);
         let reply = first.run(app, visual.window.is_some());
-        *shown = first.end.is_none().then_some(visual);
+        *shown = first.end.is_none().then(|| (visual, files.to_vec()));
         return reply;
     }
     let number = |key| request.get(key).and_then(Value::as_u64).expect("a limit");
@@ -137,6 +141,33 @@ fn run(
         ("trap", trap),
         ("stopped", stopped.into()),
     ])
+}
+
+/// Installs the version in `request` into the app shown, its state carried as the edit's state
+/// choice names; what the app shows after, or the migrate's check error.
+fn swapped(shown: &mut Option<(Visual, Vec<(String, String)>)>, request: &Value) -> Value {
+    let Some((visual, old)) = shown else {
+        return Shown::gone().value();
+    };
+    let new: Vec<_> = items(request.get("files")).iter().map(file).collect();
+    let carry = Carry::of(request.get("state").and_then(Value::as_str));
+    let limit = request
+        .get("limit_ms")
+        .and_then(Value::as_u64)
+        .expect("a limit");
+    match visual.install(old, &new, &carry, Duration::from_millis(limit)) {
+        Err(error) => Value::object([("error", error)]),
+        Ok(after) if after.end.is_some() => {
+            *shown = None;
+            after.value()
+        }
+        Ok(after) => {
+            if after.trap.is_none() {
+                *old = new;
+            }
+            after.value()
+        }
+    }
 }
 
 fn text<'a>(v: &'a Value, key: &str) -> &'a str {

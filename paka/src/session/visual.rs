@@ -3,8 +3,10 @@
 //! prints is dropped. Work, the window's input included, reaches it as jobs, each run between
 //! turns; the window is handed each job's tree before the job's answer is sent (M5-38).
 
+use super::{PATH, source, visual_app};
 use crate::core_form::{FnId, Program};
 use crate::interp::Windowless;
+use crate::migrate::check_migrate;
 use crate::serve::{Failure, trap};
 use paka_gui::window::{Size, Window};
 use paka_json::Value;
@@ -39,6 +41,34 @@ pub struct Shown {
     pub trap: Option<String>,
 }
 
+/// What an installed version does with the running app's state (docs/decisions/M5-07.md):
+/// keeps it, launches the app again, or converts it by the migrate in its text.
+pub enum Carry<'a> {
+    Keep,
+    Reset,
+    Migrate(&'a str),
+}
+
+impl<'a> Carry<'a> {
+    /// The carry an edit's state choice names; none keeps the state.
+    pub fn of(choice: Option<&'a str>) -> Carry<'a> {
+        match choice {
+            None => Carry::Keep,
+            Some("reset") => Carry::Reset,
+            Some(text) => Carry::Migrate(text),
+        }
+    }
+
+    /// What an edit's reply says became of the state once installed.
+    pub fn took(&self) -> &'static str {
+        match self {
+            Carry::Keep => "kept",
+            Carry::Reset => "reset",
+            Carry::Migrate(_) => "migrated",
+        }
+    }
+}
+
 impl Visual {
     /// Launches the visual app of `core` with `args`, in a window when `windowed` and a display
     /// lets one open; and what it first shows. Closing the window ends the app with status 0.
@@ -67,7 +97,7 @@ impl Visual {
                 answer();
             }
         });
-        let (first, window) = shown.recv().unwrap_or_else(|_| (gone(), None));
+        let (first, window) = shown.recv().unwrap_or_else(|_| (Shown::gone(), None));
         (Visual { inbox, app, window }, first)
     }
 
@@ -88,6 +118,45 @@ impl Visual {
     /// Handles `events`; what the app shows after them.
     pub fn send(&self, events: Vec<Event>) -> Shown {
         self.turn(move |ui, _| ui.send(events))
+    }
+
+    /// Installs the version in `new`, which follows `old`, between turns, its state carried as
+    /// `carry`; a migrate is checked against both versions and stopped past `limit`. What the app
+    /// shows after, its trap only the report of a migrate that kept the old version running; or
+    /// the migrate's check error. A version with no visual app ends the app.
+    pub fn install(
+        &self,
+        old: &[(String, String)],
+        new: &[(String, String)],
+        carry: &Carry,
+        limit: Duration,
+    ) -> Result<Shown, Value> {
+        let new = source(new);
+        let (core, function) = match carry {
+            Carry::Migrate(text) => {
+                let checked = check_migrate(&source(old), &new, text);
+                let m = checked.map_err(|d| d.value(text.as_bytes(), Some("migrate")))?;
+                (m.program, Some(m.function))
+            }
+            _ => (
+                crate::check(PATH, &new).expect("the version checks").0,
+                None,
+            ),
+        };
+        if !visual_app(&core) {
+            let end = Some((0, String::new()));
+            return Ok(Shown {
+                end,
+                ..Shown::gone()
+            });
+        }
+        Ok(match function {
+            Some(f) => self.migrate(core, f, limit),
+            None => Shown {
+                trap: None,
+                ..self.swap(core, matches!(carry, Carry::Reset))
+            },
+        })
     }
 
     /// Installs `core` between turns, keeping the state or, on a `reset`, launching again; what
@@ -114,7 +183,7 @@ impl Visual {
             }
             shown
         });
-        migrated.unwrap_or_else(gone)
+        migrated.unwrap_or_else(Shown::gone)
     }
 
     /// Its window's size in units, or the windowless size (M5-05).
@@ -129,7 +198,7 @@ impl Visual {
             f(ui, args);
             shown_since(ui, before)
         });
-        shown.unwrap_or_else(gone)
+        shown.unwrap_or_else(Shown::gone)
     }
 }
 
@@ -167,6 +236,40 @@ impl Shown {
             ("stopped", Value::Null),
         ])
     }
+
+    /// This as the dev runner's reply to an install, and back.
+    pub fn value(&self) -> Value {
+        let end = (self.end.as_ref()).map(|(status, line)| {
+            Value::Array(vec![usize::from(*status).into(), line.as_str().into()])
+        });
+        Value::object([
+            ("tree", self.tree.as_str().into()),
+            ("end", end.unwrap_or(Value::Null)),
+            ("trap", self.trap.as_deref().into()),
+        ])
+    }
+
+    pub fn of(v: &Value) -> Shown {
+        let text = |key| v.get(key).and_then(Value::as_str).map(String::from);
+        let end = match v.get("end") {
+            Some(Value::Array(end)) => end[0].as_u64().zip(end[1].as_str()),
+            _ => None,
+        };
+        Shown {
+            tree: text("tree").unwrap_or_default(),
+            end: end.map(|(status, line)| (status as u8, line.into())),
+            trap: text("trap"),
+        }
+    }
+
+    /// What an app shows once its thread is gone.
+    pub fn gone() -> Shown {
+        Shown {
+            tree: String::new(),
+            end: Some((3, String::new())),
+            trap: None,
+        }
+    }
 }
 
 /// What `ui` shows, with the first trap recorded past the first `before`.
@@ -175,14 +278,5 @@ pub(super) fn shown_since(ui: &Ui, before: usize) -> Shown {
         tree: ui.tree.to_string(),
         end: ui.end.clone(),
         trap: ui.traps.get(before).cloned(),
-    }
-}
-
-/// What an app shows once its thread is gone.
-fn gone() -> Shown {
-    Shown {
-        tree: String::new(),
-        end: Some((3, String::new())),
-        trap: None,
     }
 }

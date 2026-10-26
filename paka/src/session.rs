@@ -7,7 +7,6 @@
 use crate::ast::{Def, Entry};
 use crate::core_form::Program;
 use crate::diagnostic::Diagnostic;
-use crate::migrate::check_migrate;
 use crate::parser::{parse_def, split};
 use crate::print;
 use crate::serve::{Call, Failure, Reply};
@@ -33,7 +32,7 @@ pub mod visual;
 
 pub use runner::Runner;
 use stored::Stored;
-use visual::{Shown, Visual};
+use visual::{Carry, Shown, Visual};
 
 const PATH: &str = "main.paka";
 
@@ -58,8 +57,10 @@ pub struct Session {
     runner: Runner,
     /// The last version in which every definition checks: its generation, files and apps.
     runnable: Option<Runnable>,
-    /// The visual app running on the runnable version, and the state choice waiting for its swap.
+    /// The visual app running on the runnable version with no window, or whether the runner
+    /// shows it in one; and the state choice waiting for its swap.
     visual: Option<Visual>,
+    windowed: bool,
     choice: Option<String>,
 }
 
@@ -113,6 +114,7 @@ impl Session {
             runner,
             runnable: None,
             visual: None,
+            windowed: false,
             choice: None,
         };
         for f in &session.files {
@@ -148,6 +150,9 @@ impl Session {
             return Err(Failure::new("bad_request", message));
         }
         self.base_fits(name, call.str("base"), text.is_some())?;
+        if self.windowed && !self.runner.shows() {
+            (self.windowed, self.choice) = (false, None);
+        }
         let order = (call.get("run")).map(|run| order(|key| run.get(key)));
         if let Some(app) = order.as_ref().and_then(|o| o.get("app")?.as_str()) {
             let apps = self.apps();
@@ -175,7 +180,7 @@ impl Session {
             let message = format!("cannot write {}: {e}; nothing was stored", path.display());
             return Err(Failure::new("io", message));
         }
-        if let Some(c) = carried.filter(|_| self.visual.is_some()) {
+        if let Some(c) = carried.filter(|_| self.running()) {
             self.choice = Some(c.into());
         }
         let limit =
@@ -232,7 +237,7 @@ impl Session {
     /// Refuses an edit that changes the running app's stored types with no state choice carried
     /// or waiting.
     fn state_fits(&self, carried: bool) -> Result<(), Failure> {
-        let (Some(_), Some(r), false) = (&self.visual, &self.runnable, carried) else {
+        let (true, Some(r), false) = (self.running(), &self.runnable, carried) else {
             return Ok(());
         };
         let changes = r.stored.changes(&Stored::of(&self.workspace));
@@ -252,9 +257,9 @@ impl Session {
     /// What became of the running app's state, given whether a choice was `carried` and the
     /// install's `outcome`; with no app running, only that a carried choice was ignored.
     fn state_kept(&self, carried: bool, outcome: &Outcome) -> Option<&'static str> {
-        let Some(_) = self.visual else {
+        if !self.running() {
             return carried.then_some("ignored");
-        };
+        }
         Some(match outcome {
             Outcome::Installed(took) => took,
             Outcome::Trapped(_) => "migrate_trapped",
@@ -265,10 +270,11 @@ impl Session {
     }
 
     /// Takes the program as the runnable version when every definition checks, and swaps it into
-    /// the running visual app. There a waiting choice is applied and used up: a reset, or a
-    /// migrate, checked against the running and the new version and run on the state; a version
-    /// with other stored types and no choice is held back, as is one whose migrate fails its check
-    /// or traps, or does not finish within `limit` (docs/decisions/M5-07.md section 1.6).
+    /// the running visual app, with no window or in the runner's. There a waiting choice is
+    /// applied and used up: a reset, or a migrate, checked against the running and the new version
+    /// and run on the state; a version with other stored types and no choice is held back, as is
+    /// one whose migrate fails its check or traps, or does not finish within `limit`
+    /// (docs/decisions/M5-07.md section 1.6).
     fn installed(&mut self, limit: Duration) -> Outcome {
         if !self.failing().is_empty() {
             return Outcome::Held;
@@ -286,41 +292,28 @@ impl Session {
             visual: has_view(&self.workspace),
         };
         let mut took = "kept";
-        if let (Some(visual), Some(running)) = (&self.visual, &self.runnable) {
-            let (core, function) = match self.choice.as_deref() {
-                None if changed => return Outcome::Held,
-                Some(text) if text != "reset" => {
-                    let new = source(&runnable.files);
-                    match check_migrate(&source(&running.files), &new, text) {
-                        Ok(m) => (m.program, Some(m.function)),
-                        Err(d) => {
-                            let error = d.value(text.as_bytes(), Some("migrate"));
-                            return Outcome::Wrong(error);
-                        }
-                    }
-                }
-                _ => (core(&runnable), None),
+        if self.running()
+            && let Some(running) = &self.runnable
+        {
+            if changed && self.choice.is_none() {
+                return Outcome::Held;
+            }
+            let carry = Carry::of(self.choice.as_deref());
+            let shown = match &self.visual {
+                Some(visual) => visual.install(&running.files, &runnable.files, &carry, limit),
+                None => (self.runner).install(&runnable.files, self.choice.as_deref(), limit),
             };
-            let reset = self.choice.is_some() && function.is_none();
-            let (ended, trap) = match function {
-                _ if !visual_app(&core) => (true, None),
-                Some(f) => {
-                    let shown = visual.migrate(core, f, limit);
-                    (shown.end.is_some(), shown.trap)
-                }
-                None => (visual.swap(core, reset).end.is_some(), None),
+            let shown = match shown {
+                Ok(shown) => shown,
+                Err(error) => return Outcome::Wrong(error),
             };
-            if let Some(trap) = trap {
+            if let Some(trap) = shown.trap {
                 return Outcome::Trapped(trap);
             }
-            took = match (reset, function) {
-                (true, _) => "reset",
-                (_, Some(_)) => "migrated",
-                _ => "kept",
-            };
+            took = carry.took();
             self.choice = None;
-            if ended {
-                self.visual = None;
+            if shown.end.is_some() {
+                (self.visual, self.windowed) = (None, false);
             }
         }
         self.runnable = Some(runnable);
@@ -346,10 +339,19 @@ impl Session {
         if r.visual && env::var_os("WAYLAND_DISPLAY").is_none() {
             return self.run_visual(app, order);
         }
-        match self.runner.run((r.generation, &r.files), order)? {
-            Value::Null => Err(no_app(app, &r.apps)),
-            run => Ok(run),
-        }
+        self.visual = None;
+        let run = match self.runner.run((r.generation, &r.files), order)? {
+            Value::Null => return Err(no_app(app, &r.apps)),
+            run => run,
+        };
+        let shown = run.get("window") == Some(&true.into());
+        (self.windowed, self.choice) = (shown && run.get("status") == Some(&Value::Null), None);
+        Ok(run)
+    }
+
+    /// Whether a visual app runs, with no window or in the runner's.
+    fn running(&self) -> bool {
+        self.visual.is_some() || self.windowed
     }
 
     /// Refuses a `base` that is not the current version of `name`, or null when `name` exists.

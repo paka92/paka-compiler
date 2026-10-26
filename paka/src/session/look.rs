@@ -27,14 +27,18 @@ impl Session {
 
     /// The Look `call` on the windowless app, or else on the runner's app in a window.
     pub(super) fn look(&mut self, call: &Call) -> Reply {
-        let Some(visual) = &self.visual else {
-            return self.runner.look(call);
+        let reply = match &self.visual {
+            Some(visual) => visual.look(call),
+            None => self.runner.look(call),
         };
-        let reply = visual.look(call)?;
-        if reply.contains(&("running", false.into())) {
-            (self.visual, self.choice) = (None, None);
+        let ended = match &reply {
+            Ok(fields) => fields.contains(&("running", false.into())),
+            Err(refused) => refused.kind == "not_running",
+        };
+        if ended {
+            (self.visual, self.windowed, self.choice) = (None, false, None);
         }
-        Ok(reply)
+        reply
     }
 }
 

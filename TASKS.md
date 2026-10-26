@@ -1901,12 +1901,13 @@ or merged during review. Ids with a letter were added during review.
 
 ### M5-42 · L3 · Script the M5 exit check and run it on the build machine
 
+- status: done
 - needs: M5-23, M5-25b, M5-26, M5-27, M5-29, M5-30, M5-37, M5-38, M5-40, M5-41
 - flags: owner
 - done when: On the build machine the script exits 0 for every exit-check part, the M5-40 script included; the owner watches the windowed parts and does the IME check once.
 - why this level: Drives windowed and windowless apps, edits and Look in one repeatable script; includes a view that traps on purpose.
 - note: Per M5-07: part 3 is met by the Counter edits in docs/decisions/M5-07.md; since the accepted reset installs the change, the script restores the old type or adds a second field before the migrate part.
-- note: Open: scripts/m5-exit-check runs the eight parts (docs/results/M5-42.md). In the session, parts 2 and 3 fail: an edit installed while the app runs in a window is swapped, reset or migrated only in the server's own windowless copy (paka/src/session.rs), so the window keeps the old version and the edit reply carries no `state`. Run with no display, both pass. The window's app must take installed edits before this task can be done. Then the owner watches parts 1 to 3 (`--watch`) and types one composed word through the input method into the to-do Input (`--ime`).
+- note: Done: scripts/m5-exit-check passes all eight parts in the build machine's Wayland session; with no display, parts 1, 6 and 8 fail as they must (docs/results/M5-42.md). An edit installed while the app runs in a window now takes the same rules as with none: the server decides each install once (paka/src/session.rs), and `Visual::install` applies it, in the server or, for a window, in the dev runner through an `install` request. paka/tests/look.rs and installer/tests/window.rs drive the same refusal, keep, reset, migrate and migrate traps on both. Left for the owner's hand: watch parts 1 to 3 on screen (`--watch`), type one composed word through the input method into the to-do Input (`--ime`), and listen to both samples with Orca once; then sign docs/results/M5-42.md.
 
 ## M6 — Release mode
 
