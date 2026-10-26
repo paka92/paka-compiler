@@ -83,8 +83,8 @@ or merged during review. Ids with a letter were added during review.
 | M4 Dev mode for headless programs | 51 | 0 | 8 | 18 | 25 | 0 | 7 |
 | M5 Live GUI on Linux | 43 | 0 | 3 | 20 | 13 | 7 | 9 |
 | M6 Release mode | 34 | 1 | 7 | 10 | 14 | 2 | 3 |
-| M7 Evidence and gates | 16 | 1 | 4 | 3 | 6 | 2 | 3 |
-| **Total** | **229** | 3 | 44 | 81 | 75 | 26 | 40 |
+| M7 Evidence and gates | 17 | 1 | 4 | 3 | 7 | 2 | 3 |
+| **Total** | **230** | 3 | 44 | 81 | 76 | 26 | 40 |
 
 ## M1 — Let there be light
 
@@ -432,6 +432,7 @@ or merged during review. Ids with a letter were added during review.
 - done when: Reference merged; the size test passes under the one counting rule (bytes divided by 3, at most 8,000, until M3 records real tokens); a checklist maps every decision point to a line; samples are marked for later testing; the reference replaces the M1-06 spec, and each M1 case affected by M2-15 gets a re-expected copy under tests/cases-pending with the decision cited; tests/cases is not touched.
 - why this level: Must be exact, complete and tiny; one wrong sentence silently misleads every model reading it.
 - note: The same counting rule is reused by M4-18, M5-41 and M7-13. Follows docs/decisions/M2-15.md for the app form, effects, grants and ending. Follows docs/decisions/M2-14.md for the built-in table. Done: spec/paka.md with its checklist and size test. The copies under tests/cases-pending wait for the run loop task, which moves them into tests/cases; two `paka check` status changes and one run case cannot be held there and are described in its NOTE.md.
+- note: Per M7-02: gains a short `foreign` section in M7-13's pull request, within its size rule.
 
 ### M2-19 · L3 · Check statements and expressions against signatures only
 
@@ -1507,6 +1508,7 @@ or merged during review. Ids with a letter were added during review.
 - flags: download, owner
 - done when: cargo build --locked --offline passes; a check fails on any crate off the approved list; README names needed system packages.
 - why this level: Routine vendoring; the care is in matching the approved list exactly, licences included.
+- note: Per M7-02: adds its crates and licences to `TRUSTED` (M7-16).
 
 ### M5-11 · L3 · Parse and print view definitions and the app's view field
 
@@ -1861,6 +1863,7 @@ or merged during review. Ids with a letter were added during review.
 - note: Per M5-06: the reference gains `Ui`, the six `ui_` functions, the path form and the tree text form.
 - note: Per M5-07: the reference describes migrate as text carried by an edit, with one sample, not as a definition kind.
 - note: Done: spec/paka.md gains section 13 (views, the element table, keys), 14 (UI examples, paths, tree text) and 15 (reset and migrate carried by an edit), appended after section 12 so the M2 lines and checklist hold; spec/checklist.md maps every M5-01 to M5-07 point. One to-do sample uses all five elements and all six `ui_` functions; it checks and its example passes. The owner raised the budget from 8,000 to 10,500 tokens (paka/tests/reference.rs, the gate, tests/conformance/README.md): the M2 text left about 250 tokens and the shortest complete text needs about 2,300; the reference is now about 10,054. The gate no longer runs `paka run` on a sample whose app has `view:`, since `paka run` refuses a visual app for now. Written as the code does it where the records differ or are silent: no window is built, so `paka run` and `paka build` refuse a visual app (`no-app`) and M5-01 1.7 is left out; `var`, assignment, loops and jumps in a view are `unexpected-token`; an Input or key at a view's root is `key-on-root`; `key:` out of place is `wrong-label`; `on_change:` given a non-variant and a `Ui` compared are `type-mismatch`; a visual app without `state:` is `bad-view-signature`; a refused effect ends a UI example `trapped`; shared values and pools (M5-07 1.2) do not exist. The protocol note that a reference over 8,000 real tokens is an amendment (M3) and GENESIS's 8,000 target are left as recorded.
+- note: Moved: sections 13 to 15 now live on spec/screens.md, read with spec/paka.md for a program with `view:`, and the M5 rows of spec/checklist.md point at that page. spec/paka.md is back within 8,000 tokens (about 7,770); spec/screens.md has its own budget of 2,500 (about 2,390). paka/tests/reference.rs checks both, and the gate runs the samples of both pages.
 
 ### M5-42 · L3 · Script the M5 exit check and run it on the build machine
 
@@ -1872,7 +1875,7 @@ or merged during review. Ids with a letter were added during review.
 
 ## M6 — Release mode
 
-**Exit check.** `paka build` compiles a whole program ahead of time through the pinned clang at full optimization, with direct calls instead of slots, and refuses any program with a hole by naming it. The release skip file is deleted and the CI job fails if any conformance test differs in output, exit status or trap between interpreter, dev and release, with two fixed exceptions: a program with a hole must be refused by `paka build`, and example-status cases are compared in interpreter and dev only until M7-11. The owner-agreed benchmark set (float and array loops, integer loops checked and wrapping, pointer-heavy programs) is built in Paka, Rust and C++ with matching checksums, and a committed results table shows each measured number beside its section 3.2 expectation. The same table holds a measured figure for each section 8 cost: overflow and bounds checks, reference counting and handle checks, state copy per handler, dev-mode slowdown on a visual app.
+**Exit check.** `paka build` compiles a whole program ahead of time through the pinned clang at full optimization, with direct calls instead of slots, and refuses any program with a hole by naming it. The release skip file is deleted and the CI job fails if any conformance test differs in output, exit status or trap between interpreter, dev and release, with two fixed exceptions: a program with a hole must be refused by `paka build`, and example-status cases are compared in interpreter and dev only until M7-11. The owner-agreed benchmark set (float and array loops, integer loops checked and wrapping, pointer-heavy programs) is built in Paka, Rust and C++ with matching checksums, and a committed results table shows each measured number beside its section 3.2 expectation. The same table holds a measured figure for each section 8 cost: overflow and bounds checks, state copy per handler, dev-mode slowdown on a visual app. Reference counting and handle checks are listed as 'not built' with the reason (M2-10: no shared type, no pools), which counts as shown; the measured copy cost of owned trees stands in their place.
 
 - `paka build` is the release command since M1; there is no second spelling.
 - The lowering tasks M6-07 to M6-15 assume dev mode chose Cranelift. If it chose LLVM's JIT they shrink but keep their levels.
@@ -1883,19 +1886,21 @@ or merged during review. Ids with a letter were added during review.
 
 ### M6-01 · L5 · Decide what release IR may promise the optimizer and what proves it
 
+- status: done
 - needs: M2-06
 - flags: decision, owner, native-only
 - done when: Owner approves a table: each allowed LLVM flag or attribute, its required proof, and the tail-call rule; what a trap shows and which trap wins are taken from M2-06 as given.
 - why this level: One wrong promise silently brings undefined behaviour back; no test can prove the table right.
-- note: Drafted: docs/decisions/M6-01.md, awaiting owner approval.
+- note: Done: approved by the owner on 2026-10-26; see docs/decisions/M6-01.md.
 
 ### M6-02 · L4 · Propose the benchmark set, fairness rules and cost-measurement method
 
+- status: done
 - needs: nothing
 - flags: decision, owner, native-only
 - done when: Owner approves the written program list, compiler flags per language, run protocol, and how each section 8 cost is isolated, before any measurement. The owner also rules whether measurement-only builds that omit a check family are accepted, and how the published table states the LLVM 22 versus 21 difference.
 - why this level: Fair comparison across three compilers must be fixed before numbers exist; bias is invisible afterwards.
-- note: Drafted: docs/decisions/M6-02.md, awaiting owner approval.
+- note: Done: approved by the owner on 2026-10-26; see docs/decisions/M6-02.md.
 
 ### M6-03 · L2 · Pin clang and refuse release builds with any other version
 
@@ -1912,6 +1917,7 @@ or merged during review. Ids with a letter were added during review.
 - flags: native-only
 - done when: `paka build` builds M1's light program at full optimization; IR has no slot loads; a program with a hole is refused by name. paka build passes clang exactly the optimization flags and target CPU that M6-02 approves for Paka, from one constant; the benchmark runner (M6-27) adds none.
 - why this level: Joins database, emitter, clang and linker; reachability and link order are easy to get wrong.
+- note: Per M6-01 and M6-02: the one constant replaces M1's `-O2`; it is `-O3` with no CPU flag.
 
 ### M6-05 · L2 · Make the IR linter enforce the approved promise table
 
@@ -1919,6 +1925,7 @@ or merged during review. Ids with a letter were added during review.
 - flags: native-only
 - done when: Hand-written IR carrying each unapproved flag or attribute fails the linter; the linter is an allow-list over every IR keyword token, so anything not listed fails; every release build in the test suite passes through it. M1-18's banned-word test is replaced by this linter: a word on M1-18's list passes only where the approved table allows it.
 - why this level: Token scan against a given allow-list; tests follow directly from the table.
+- note: Per M6-01: the allow-list has two parts, rows and plain words, plus two whole-line checks: every use of an `inbounds` result is a load or store address, and no store targets a global. Its level 2 reason ('token scan') is looked at again.
 
 ### M6-06 · L2 · Add release mode to the differential harness with a skip file
 
@@ -1933,6 +1940,7 @@ or merged during review. Ids with a letter were added during review.
 - flags: native-only
 - done when: Conformance groups for integers, control flow and calls leave the skip file and match the interpreter, including overflow and assertion traps.
 - why this level: Known technique, but every call and checked operation needs a correct trap exit.
+- note: Per M6-01: checked arithmetic through the overflow intrinsics; division and shifts through the helpers that check first; a match's fall-through returns status 3.
 
 ### M6-08 · L4 · Lower Float operations so full optimization cannot change any result
 
@@ -1940,6 +1948,7 @@ or merged during review. Ids with a letter were added during review.
 - flags: native-only
 - done when: Float conformance tests are bit-identical in three modes; the linter finds no fast-math flag and no maths call LLVM can fold. M2-08's float vectors, every NaN row included, and M2-08b's maths vectors if they exist, pass bit for bit in release; maths functions are called through the same private runtime names as M4-29.
 - why this level: Optimizer folding or fused operations change results silently; only bit-exact comparison shows it.
+- note: Per M6-01: no `fmuladd`, `fma` or float flags; only the six exact float intrinsics.
 
 ### M6-09 · L3 · Lower struct and enum values, match, inout and borrowed parameters
 
@@ -1947,6 +1956,7 @@ or merged during review. Ids with a letter were added during review.
 - flags: native-only
 - done when: Conformance groups for types, enums, match and parameter passing leave the skip file and match the interpreter.
 - why this level: Layouts and passing conventions across several modules; known technique with easy-to-miss cases.
+- note: Per M6-01: field addresses passed to a call carry no `inbounds`.
 
 ### M6-10 · L4 · Share runtime header layouts with the compiler and verify both sides agree
 
@@ -1954,6 +1964,7 @@ or merged during review. Ids with a letter were added during review.
 - flags: unsafe, native-only
 - done when: The layout table dev mode already reads (M4-22, no second table) gains the runtime header layouts for list, string, shared box and pool slot and the slow-path entry points; a test fails when compiler and runtime disagree.
 - why this level: A layout mismatch between emitted IR and unsafe runtime code corrupts memory silently.
+- note: Per M6-01: its test covers 8-byte runtime alignment and the constant-buffer mark.
 
 ### M6-11 · L4 · Lower strings and lists: inline bounds checks, runtime slow paths, drops
 
@@ -1961,6 +1972,7 @@ or merged during review. Ids with a letter were added during review.
 - flags: unsafe, native-only
 - done when: String and list conformance groups match the interpreter, including bounds traps; an injected allocation failure ends in an out-of-memory trap, not an abort (not compared with the interpreter); M4-25's ledger is clean at exit.
 - why this level: A wrong drop or bounds check is a silent leak, double free or bad read.
+- note: Per M6-01: item access through one helper; `memmove` unless the destination is fresh; constant bytes copied before the first write, with a test; runtime declarations carry `nounwind` only.
 
 ### M6-11b · L4 · Lower the built-in map for release
 
@@ -1990,6 +2002,7 @@ or merged during review. Ids with a letter were added during review.
 - flags: unsafe, native-only
 - done when: Deep-recursion and large-frame tests end in a stack trap, never a segmentation fault, at full optimization; no signal handler is installed.
 - why this level: A missed check is a crash outside the language; frame sizes are unknown when IR is written.
+- note: Per M6-01: constant-size slots in the first block; no `tail` marks; the stack-position read is a plain word; no guard-page attribute.
 
 ### M6-17 · L3 · Link headless apps for release: direct handler calls, grants
 
@@ -2022,6 +2035,7 @@ or merged during review. Ids with a letter were added during review.
 - flags: native-only
 - done when: For a hand-written loop list, optimized IR has no trap branch inside the loop; each off-by-one twin still traps in release.
 - why this level: Removal must rest on a proof; a wrong fact removes a needed check with no symptom.
+- note: Per M6-01: shapes loops and removes no check.
 
 ### M6-20 · L2 · Add release mode to the M4 fuzz loop
 
@@ -2029,6 +2043,7 @@ or merged during review. Ids with a letter were added during review.
 - flags: native-only
 - done when: A deliberately divergent release build is detected, shrunk to under 20 lines and saved as a regression test, reproducibly from a seed.
 - why this level: Adds a third back end to an existing loop and shrinker.
+- note: Per M6-01: when the interpreter ends in a stack trap, release may finish or run on, so such runs are cut by a time limit and not filed as a divergence.
 
 ### M6-21 · L4 · Extend the program generator to reach release-only risks
 
@@ -2037,6 +2052,7 @@ or merged during review. Ids with a letter were added during review.
 - done when: With a fixed seed the fuzzer finds each of ten hand-planted release back-end bugs within ten minutes; the bug list is in the pull request. The ten bugs include at least one each of: a folded float operation, a wrongly removed bounds check, a wrongly removed overflow check, a missed stack check after inlining, a wrong reference-count update, a wrong stale-handle check, a wrong generic instance. The generator's coverage report shows every core-form node kind compiled by release, none rejected, except that a generated program with a hole must be refused by `paka build`.
 - why this level: Programs must pass ownership and exclusivity checks yet still reach rare traps and optimizer paths.
 - note: No reference counts or handles exist (docs/decisions/M2-10.md): the two planted bugs of those kinds are replaced or the count lowered by the owner.
+- note: Per M6-01: planted 'wrongly removed check' bugs are emitter bugs that leave a check out.
 
 ### M6-22 · L4 · Build the hard test suite for the inout overlap check
 
@@ -2070,6 +2086,7 @@ or merged during review. Ids with a letter were added during review.
 - done when: The linter allows the attribute only where signed; a two-array kernel vectorizes without a run-time overlap check; conformance stays identical in three modes.
 - why this level: LLVM's noalias rules are subtle; one misplaced attribute miscompiles only under optimization.
 - note: Dropped if the owner declines in M6-23.
+- note: Per M6-01: adds the `noalias` row and its linter rule together, only as M6-23 signs.
 
 ### M6-25 · L2 · Run the 24-hour three-back-end fuzz and file each divergence
 
@@ -2099,6 +2116,7 @@ or merged during review. Ids with a letter were added during review.
 - flags: native-only
 - done when: One command builds a sample in Paka, Rust and C++, refuses mismatched checksums, and writes medians and spread to a results file.
 - why this level: The approved protocol fixes every step; one module that runs commands and records times.
+- note: Per M6-02: timing as in its section 3; also builds the checked-Rust binary for integer kernels and records the machine facts.
 
 ### M6-28 · L3 · Write the numeric benchmark kernels in Paka, Rust and C++
 
@@ -2106,6 +2124,7 @@ or merged during review. Ids with a letter were added during review.
 - flags: native-only
 - done when: Every agreed float, array and integer kernel, checked and wrapping, exists in three languages and the runner reports matching checksums.
 - why this level: Same algorithm in three languages under the fairness rules; small differences skew results.
+- note: Per M6-02: seven kernels; sieve and collatz in both forms, mix wrapping only; C++ has no checked column; each kernel also gets M6-19's yes or no.
 
 ### M6-29 · L3 · Write the pointer-heavy benchmarks in Paka, Rust and C++
 
@@ -2113,14 +2132,17 @@ or merged during review. Ids with a letter were added during review.
 - flags: native-only
 - done when: Every agreed parser and graph program exists in three languages and the runner reports matching checksums.
 - why this level: Larger programs whose data structures must stay comparable across three ownership models.
+- note: Per M6-02: the four pointer-heavy programs as listed, no shared or pool forms.
 
 ### M6-30 · L3 · Add measurement-only builds that each omit one check family
 
 - needs: M6-02, M6-19
 - flags: native-only
-- done when: Only a compiler built with the `measure` feature accepts the switch; the normal compiler rejects it; such binaries print a warning banner. For each family named in M6-02 (bounds checks, reference-count updates, handle checks) a hand-written fixture built with the switch has none of that family's checks in its optimized IR; without the switch, IR for the conformance suite is byte-identical to the normal compiler's.
+- done when: Only a compiler built with the `measure` feature accepts the switch; the normal compiler rejects it; such binaries print a warning banner on standard error. For the one family M6-02 names, bounds checks, a hand-written fixture built with the switch has none of those checks in its optimized IR; without the switch, IR for the conformance suite is byte-identical to the normal compiler's.
 - why this level: Threads a switch through several lowerings without changing normal output.
 - note: Measures bounds checks and copies in place of reference-count updates and handle checks (docs/decisions/M2-10.md).
+- note: Per M6-01: a measurement build keeps the promises that rested on the dropped checks, so it is valid only on inputs the normal build ran without a trap.
+- note: Per M6-02: runs count only after a clean normal run with the same checksum. The `measure` runtime also times the copy routine: owned-tree copies in expr_parse, binary_trees and bfs, and the state copy for M6-31.
 
 ### M6-31 · L3 · Measure handler state-copy cost and dev-mode slowdown on a visual app
 
@@ -2128,6 +2150,7 @@ or merged during review. Ids with a letter were added during review.
 - flags: native-only
 - done when: The runner reports copy time per handler for the agreed state sizes, and dev versus release frame times for the agreed visual app.
 - why this level: Timing inside the runtime and windowless app runs; measurement overhead must stay out of results.
+- note: Per M6-02: the three state sizes and two handlers, the committed to-do script, both ratios.
 
 ### M6-32 · L2 · Run the agreed set and publish numbers beside the paper's expectations
 
@@ -2135,6 +2158,7 @@ or merged during review. Ids with a letter were added during review.
 - flags: owner, native-only
 - done when: Raw results are committed; a generated table shows each figure beside its section 3.2 expectation and each section 8 cost; owner approves.
 - why this level: Runs a given command and fills a given table; the owner checks the wording.
+- note: Per M6-02: compiler and LLVM version per header, the LLVM note, raw ratio, expectation and the fixed word; 'not built' rows for reference counting and handle checks, and the copy cost of owned trees in their place.
 
 ## M7 — Evidence and gates
 
@@ -2148,19 +2172,30 @@ or merged during review. Ids with a letter were added during review.
 
 ### M7-01 · L5 · Decide how the owner writes and approves examples and grant changes
 
+- status: done
 - needs: nothing
 - flags: decision, owner
 - done when: Owner approves a written workflow: where labels and approvals live, what makes an approval unforgeable by an agent, what a refused agent sees, and exactly what the owner is shown for an example change and for a grant change.
 - why this level: The evidence pillar rests on it; an agent able to approve itself breaks it silently.
-- note: Drafted: docs/decisions/M7-01.md, awaiting owner approval.
+- note: Done: approved by the owner on 2026-10-26; see docs/decisions/M7-01.md.
 
 ### M7-02 · L5 · Decide the foreign-code model: declaration, named grant, process boundary, trusted list
 
+- status: done
 - needs: nothing
 - flags: decision, owner
 - done when: Owner approves a written model with alternatives: how a C library is declared and called, what crosses the process boundary, how failures surface; that a foreign call is an effect answered by a message; which crate (or generated C built by the pinned clang) holds the host's unchecked code; and where the trusted list is kept.
 - why this level: Security model for code outside every Paka guarantee; tests cannot repair a wrong boundary.
-- note: Drafted: docs/decisions/M7-02.md, awaiting owner approval.
+- note: Done: approved by the owner on 2026-10-26; see docs/decisions/M7-02.md.
+
+### M7-02a · L1 · Reserve the `foreign` keyword
+
+- status: done
+- needs: M7-02
+- flags: none
+- done when: `foreign` is a keyword in the lexer and in the reference's keyword list; a test shows it is refused as a name and is not yet a definition.
+- why this level: One keyword row, one test and one word in the reference.
+- note: Done: paka/src/lexer.rs reserves it as `Kind::Foreign`; the lexer's keyword test and the parser test `foreign_is_reserved` cover it (`unexpected-token` as a local name and at the start of a definition); spec/paka.md section 2 lists it. M7-13 gives it meaning.
 
 ### M7-03 · L4 · Propose how human-owned examples run against the shipped release binary
 
@@ -2175,7 +2210,8 @@ or merged during review. Ids with a letter were added during review.
 - flags: none
 - done when: Tests show a recorded approval verifies, and that an edited example, an edited grant list and a tampered record are each detected.
 - why this level: A forged or stale approval accepted here goes unnoticed; this is the trust anchor.
-- note: Gains download and owner if M7-01's ruling needs a cryptography crate; no hand-written cryptography.
+- note: Per M7-01: no cryptography crate, no download; calls the system ssh-keygen by fixed path with an empty environment. Stores approved text, a serial and three record kinds. Tests add: a store signed by another key is refused; an older signed store put back is refused.
+- note: Per M7-02: a grants record can carry a declaration's text and its files' SHA-256.
 
 ### M7-05 · L2 · Label every example agent-written or human-owned from the approval store
 
@@ -2183,6 +2219,7 @@ or merged during review. Ids with a letter were added during review.
 - flags: none
 - done when: The example listing and every example result carry the label; a test shows an unapproved example never reads as human-owned.
 - why this level: One lookup per example and one output field; tests are obvious.
+- note: Per M7-01: the label is 'a store record exists for this program and name'; the store is found by the walk-up rule.
 
 ### M7-06 · L4 · Build the owner's approve command: show pending changes plainly, record approval
 
@@ -2190,6 +2227,8 @@ or merged during review. Ids with a letter were added during review.
 - flags: owner
 - done when: For a hand-written set of example and grant changes, including two that differ only in one expected value, the command prints the hand-written expected text; the owner completes one approval of each in a walk-through.
 - why this level: Must describe code changes truthfully to a non-reader; a misleading summary gets a wrong approval with no error anywhere.
+- note: Per M7-01: grows: per-item screen with fixed grant meanings, whole bodies with marked lines, escaped non-ASCII, `--adopt`, `--drop`, terminal-only answers, signing and the serial bump. The walk-through uses a paka built from `development`.
+- note: Per M7-02: the foreign grant screen shows the declaration's lines and named files, and a changed C file as changed.
 
 ### M7-07 · L4 · Build the gate: refuse when approvals differ or a human-owned example fails
 
@@ -2197,6 +2236,7 @@ or merged during review. Ids with a letter were added during review.
 - flags: none
 - done when: The gate exits non-zero for a changed, deleted or renamed human-owned example, a changed grant list, a new app whose grant list was never approved, a missing or tampered store record, or a failing or unfinished human-owned example; each case is tested.
 - why this level: Unlisted cases (a deleted example, a new app with grants) pass silently; this gate stands in for code review.
+- note: Per M7-01: `paka gate <tree> --base <tree>`; 'a new app never approved' means one in a gated program. Adds the serial rule, owned files, the workflow-directory rule and the key-file refusal; runs human-owned examples in the interpreter.
 
 ### M7-08 · L2 · Report pending approvals and refusals to the agent in the agreed shape
 
@@ -2205,6 +2245,7 @@ or merged during review. Ids with a letter were added during review.
 - done when: Edit results and gate output list each item awaiting approval in the agreed shape; expected outputs are written by hand.
 - why this level: Formats known data into a given shape.
 - note: Per M4-03: items awaiting approval ride in edit replies as a new optional field; they are not errors, and M7-01 fixes their shape.
+- note: Per M7-01: the agreed shape is the pending list of its section 1.6; an edit is stored, not refused.
 
 ### M7-09 · L4 · Cache example results by closure hash, mode and compiler version
 
@@ -2214,13 +2255,15 @@ or merged during review. Ids with a letter were added during review.
 - why this level: A stale hit is false evidence; the key must cover everything an example depends on.
 - status: done
 - note: Done: `paka::hash::closure` hashes the name and body hash of an example and of every definition it reaches through the Index. `paka::results::Cache` keys a result by the SHA-256 of the compiler version, the mode (`interpreter`, the only mode `paka examples` has) and that closure hash. A result is the example's status and entry text, nothing else, so no label or approval state is held. A pass names no position and is kept under its key; any other entry names positions, so it is kept under its key and a hash of where the definitions it reaches stand (file name, line, and their text from the start of their first line). Choices where the records are silent: no cache existed on disk, so results live as one file per key in a directory per compiler version under `$XDG_CACHE_HOME/paka/examples`, else `$HOME/.cache/paka/examples`, written to a temporary file and renamed; opening the cache removes the other versions' directories; with neither variable, every example runs. The compiler version is the package version with the executable's size and change time, so a rebuilt compiler never reads an older one's results. A read or write failure is only a miss. Every test that runs `paka examples` sets `XDG_CACHE_HOME` to a directory under the test target directory. `paka::check_defs` returns the lowered program with each definition's check. Tests: paka/tests/example_cache.rs: a rerun runs zero of five examples; nine scripted edits rerun the hand-written counts (a transitive dependency 2, a field default 2, a view 1, an update 1, an unrelated definition 0, a layout change 0, moving a failing example or a definition it reaches 1 each); another compiler version reruns all and removes the first version's results; every cached output equals an uncached run; `paka examples` prints entries planted in its cache.
+- note: Per M7-01: unchanged; a cached result holds no label, as its done-when already says.
 
-### M7-10 · L1 · Add the gate to CI as a required check on pull requests
+### M7-10 · L4 · Add the gate to CI as a required check on pull requests
 
 - needs: M7-07
 - flags: owner
-- done when: A test pull request changing a grant list without approval shows a failed check; the owner sees it go red and marks the check as required. A second test pull request that changes a grant list and its stored approval together also shows a failed check.
-- why this level: Adds a given command to CI; the required-check switch is the owner's.
+- done when: A test pull request changing a grant list without approval shows a failed check; the owner sees it go red and marks the check as required. A second test pull request that changes a grant list and its stored approval together also shows a failed check. A third adds a second workflow with a passing job named `gate` beside an unapproved grant change and is still blocked.
+- why this level: A mistake in this job is silent: a gate that runs the pull request's own workflow or code passes anything (M7-01).
+- note: Per M7-01: regraded from level 1 to level 4. `pull_request_target`, two checkouts, paka built from the target branch, read-only token, time limit, no pull-request code run.
 
 ### M7-11 · L3 · Run human-owned examples against the release binary itself
 
@@ -2229,6 +2272,7 @@ or merged during review. Ids with a letter were added during review.
 - done when: The owner has approved, through M7-06, at least one function example for each sample (wc, counter, to-do) and one UI example for each visual sample (counter, to-do); the counter is the hole-free copy from M6-18a. Every human-owned sample example, function and UI, passes against a release binary whose file hash equals the artefact's; M5-26's command, with release added, reports no tree difference on every UI example whose program has no hole; a planted failure is reported.
 - why this level: Drives a compiled binary from outside across runtime, release build and example runner.
 - note: Re-grade once M7-03 is approved: if examples are compiled into the binary, lowering them for release is split out as its own task.
+- note: Per M7-01: the owner first approves each sample's grant list, the empty ones too.
 
 ### M7-12 · L2 · Make the release command refuse unless gate and binary examples pass
 
@@ -2236,14 +2280,16 @@ or merged during review. Ids with a letter were added during review.
 - flags: native-only
 - done when: Release leaves an artefact only after the gate and the binary examples pass; tests show a refusal and no artefact for each failing case. M1's light check and M6's three-mode conformance still pass unchanged; a test shows the artefact's file hash equals the hash of the binary the examples ran against, and a rebuild planted between the two is refused.
 - why this level: Sequences existing steps and checks their exit codes.
+- note: Per M7-02: a release of a program with foreign code also builds and ships one host per declaration.
 
 ### M7-13 · L3 · Add foreign library declarations and their named grants to the checker
 
 - needs: M7-02, M7-07
 - flags: none
-- done when: A program using a declared C library builds only with that library's named grant; adding the grant needs approval at the gate; reference updated. The declaration prints in the canonical layout and reparses unchanged; Edit, Find and View accept it; editing it rechecks its users.
+- done when: A call into a declared C library runs only under that library's named grant; without it the call is refused as every ungranted effect is; adding the grant needs approval at the gate; reference updated. The declaration prints in the canonical layout and reparses unchanged; Edit, Find and View accept it; editing it rechecks its users.
 - why this level: New declaration through parser, resolver, checker and grants; several modules with clear rules.
 - note: Updates the language reference in the same pull request, within M2-18's size rule.
+- note: Per M7-02: adds the `foreign` kind, its three line kinds and the plain-file-name rule; the word itself is reserved by M7-02a. Foreign grants are approved through the M7-01 store.
 
 ### M7-14 · L4 · Build the foreign host process with generated glue and a pipe protocol
 
@@ -2251,6 +2297,7 @@ or merged during review. Ids with a letter were added during review.
 - flags: unsafe
 - done when: A test C library is called through the host in a separate process; malformed requests and a crashing library never take down the caller.
 - why this level: Marshalling into C and crash containment; a mistake corrupts data without any trap.
+- note: Per M7-02: the unchecked code is one fixed C file plus generated C per declaration, built by the pinned clang with warnings as errors and one exact-type line per function, from copies in an empty directory. The Rust side only starts a process and moves bytes, so its `unsafe` flag likely drops; the level stays.
 
 ### M7-15 · L3 · Perform foreign calls as effects: start host, exchange messages, report failures
 
@@ -2259,10 +2306,12 @@ or merged during review. Ids with a letter were added during review.
 - done when: A conformance test calls the test C library identically in three modes; without the grant the call is refused; host death becomes a message.
 - why this level: Process lifetime, timeouts and grant enforcement in the shared runtime; known technique.
 - note: Stays level 3 only while arguments and results pass through M4-36's existing decoder and message encoder unchanged; any new unsafe makes it level 4 with the unsafe flag.
+- note: Per M7-02: lazy start, one host per declaration, the fixed time limit, restart after death and the four reasons `no host`, `host died`, `timed out`, `bad reply`. It stays level 3 only while foreign effects use M4-36's decoder unchanged.
 
 ### M7-16 · L2 · Name the trusted libraries and ship a generated third-party notices file
 
 - needs: M7-02, M7-12
 - flags: owner
-- done when: A test fails when a vendored or linked library is missing from the trusted list; releases include a generated notices file; owner approves the list.
+- done when: The trusted list is the root file `TRUSTED`, moved from `.cargo/approved-crates.txt` with system libraries added and approved as an owned file in the M7-01 store; a test fails when a vendored or linked library is missing from it; releases include a generated notices file; owner approves the list.
 - why this level: Collects names and licence texts from the vendor directory in a fixed order.
+- note: Per M7-02: paka/tests/vendored.rs reads `TRUSTED`; the notices file is generated from it and `vendor/`.

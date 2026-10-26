@@ -3686,4 +3686,11 @@ example steps_up {
         );
         assert_eq!(error("enum A { X } x").position, Some((1, 14)));
     }
+
+    #[test]
+    fn foreign_is_reserved() {
+        unexpected("let foreign = 1", 7, "found `foreign`");
+        let message = "expected a definition, found `foreign`";
+        fail("foreign Sum {}\n", (1, 1), "unexpected-token", message);
+    }
 }

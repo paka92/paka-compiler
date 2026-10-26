@@ -10,7 +10,8 @@ GUI and release mode are being built, in that order.
 
 ## What works
 
-- [`spec/paka.md`](spec/paka.md): the whole language on one page.
+- [`spec/paka.md`](spec/paka.md): the language on one page; [`spec/screens.md`](spec/screens.md)
+  adds visual apps.
 - `paka check`: parses and type-checks the full language of the reference.
 - `paka run`: runs headless programs in an interpreter.
 - `paka build`: compiles the milestone 1 subset to a native binary through LLVM IR and `clang`.
