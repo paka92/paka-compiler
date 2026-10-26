@@ -1,0 +1,44 @@
+// Five-point average over a square grid, many sweeps; the border stays fixed.
+
+enum Msg { Start }
+
+fn randoms(n: Int, seed: Int) -> List<Float> {
+  var xs = list_of(0.0, count: n)
+  var s = seed
+  for i in 0..<n {
+    s = wrap_add(wrap_mul(s, 6364136223846793005), 1442695040888963407)
+    xs[i] = to_float(bit_and(shift_right(s, 11), 9007199254740991)) / 9007199254740992.0
+  }
+  xs
+}
+
+fn sweep(src: List<Float>, dst: inout List<Float>, n: Int) {
+  for i in 1..<n - 1 {
+    for j in 1..<n - 1 {
+      let p = i * n + j
+      dst[p] = (src[p] + src[p - 1] + src[p + 1] + src[p - n] + src[p + n]) * 0.2
+    }
+  }
+}
+
+fn update(msg: Msg) -> List<Effect<Msg>> {
+  let n = 1000
+  var a = randoms(n * n, 1)
+  var b = a
+  for s in 0..<1000 {
+    sweep(a, &b, n)
+    sweep(b, &a, n)
+  }
+  var total = 0.0
+  for x in a {
+    total += x
+  }
+  let checksum = to_int(total * 1000000000.0)
+  [Print("{checksum}"), Exit]
+}
+
+app stencil {
+  start: Start
+  update: update
+  grants: [Console]
+}

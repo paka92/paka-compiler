@@ -1,0 +1,89 @@
+// Five bodies under gravity, many time steps, then the total energy.
+
+enum Msg { Start }
+
+type Body { x: Float, y: Float, z: Float, vx: Float, vy: Float, vz: Float, mass: Float }
+
+fn randoms(n: Int, seed: Int) -> List<Float> {
+  var xs = list_of(0.0, count: n)
+  var s = seed
+  for i in 0..<n {
+    s = wrap_add(wrap_mul(s, 6364136223846793005), 1442695040888963407)
+    xs[i] = to_float(bit_and(shift_right(s, 11), 9007199254740991)) / 9007199254740992.0
+  }
+  xs
+}
+
+fn bodies() -> List<Body> {
+  let r = randoms(35, 1)
+  var bs: List<Body> = []
+  for i in 0..<5 {
+    let k = 7 * i
+    append(&bs, Body {
+      x: 10.0 * r[k] - 5.0,
+      y: 10.0 * r[k + 1] - 5.0,
+      z: 10.0 * r[k + 2] - 5.0,
+      vx: r[k + 3] - 0.5,
+      vy: r[k + 4] - 0.5,
+      vz: r[k + 5] - 0.5,
+      mass: r[k + 6] + 0.5
+    })
+  }
+  bs
+}
+
+fn advance(bs: inout List<Body>, dt: Float) {
+  for i in 0..<len(bs) {
+    for j in i + 1..<len(bs) {
+      let dx = bs[i].x - bs[j].x
+      let dy = bs[i].y - bs[j].y
+      let dz = bs[i].z - bs[j].z
+      let d2 = dx * dx + dy * dy + dz * dz
+      let mag = dt / (d2 * sqrt(d2))
+      let mi = bs[i].mass * mag
+      let mj = bs[j].mass * mag
+      bs[i].vx -= dx * mj
+      bs[i].vy -= dy * mj
+      bs[i].vz -= dz * mj
+      bs[j].vx += dx * mi
+      bs[j].vy += dy * mi
+      bs[j].vz += dz * mi
+    }
+  }
+  for i in 0..<len(bs) {
+    let b = bs[i]
+    bs[i].x += dt * b.vx
+    bs[i].y += dt * b.vy
+    bs[i].z += dt * b.vz
+  }
+}
+
+fn energy(bs: List<Body>) -> Float {
+  var e = 0.0
+  for i in 0..<len(bs) {
+    let b = bs[i]
+    e += 0.5 * b.mass * (b.vx * b.vx + b.vy * b.vy + b.vz * b.vz)
+    for j in i + 1..<len(bs) {
+      let dx = b.x - bs[j].x
+      let dy = b.y - bs[j].y
+      let dz = b.z - bs[j].z
+      e -= b.mass * bs[j].mass / sqrt(dx * dx + dy * dy + dz * dz)
+    }
+  }
+  e
+}
+
+fn update(msg: Msg) -> List<Effect<Msg>> {
+  var bs = bodies()
+  for s in 0..<30000000 {
+    advance(&bs, 0.001)
+  }
+  let checksum = to_int(energy(bs) * 1000000000000.0)
+  [Print("{checksum}"), Exit]
+}
+
+app nbody {
+  start: Start
+  update: update
+  grants: [Console]
+}

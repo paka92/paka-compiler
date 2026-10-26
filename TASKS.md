@@ -2194,6 +2194,8 @@ or merged during review. Ids with a letter were added during review.
 - done when: Every agreed float, array and integer kernel, checked and wrapping, exists in three languages and the runner reports matching checksums.
 - why this level: Same algorithm in three languages under the fairness rules; small differences skew results.
 - note: Per M6-02: seven kernels; sieve and collatz in both forms, mix wrapping only; C++ has no checked column; each kernel also gets M6-19's yes or no.
+- status: done
+- note: Done: bench/programs holds the seven kernels, each `<name>/main.{paka,rs,cpp}`, and a `list` of nine programs for `paka-bench run`: saxpy_dot, matmul (i-k-j order), stencil and nbody as float, sieve and collatz checked with `sieve_wrap` and `collatz_wrap` as their wrapping twins (Paka `wrap_*`, Rust `wrapping_*`, C++ `uint64_t`), and mix wrapping only (a splitmix-style mixer on Paka's sign-copying shift; C++ shifts through `int64_t`). Float inputs come from one 64-bit wrapping generator, seeded per list, in all three; sums run left to right, so the bits agree, and `list` gives the scale each Float result is printed at. Sizes come from a Rust-only calibration run. A Paka list holds at most 16,777,216 items, so sieve runs 80 sieves just above 10,000,000 rather than one large one. `paka-bench run bench/programs` agrees on every checksum. The runner also builds checked Rust for the wrapping programs, where it equals default Rust. M6-19's yes or no per kernel is left to M6-19, not done yet.
 
 ### M6-29 · L3 · Write the pointer-heavy benchmarks in Paka, Rust and C++
 

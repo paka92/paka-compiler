@@ -1,0 +1,45 @@
+// Scale-and-add over two lists, then their dot product, repeated.
+
+enum Msg { Start }
+
+fn randoms(n: Int, seed: Int) -> List<Float> {
+  var xs = list_of(0.0, count: n)
+  var s = seed
+  for i in 0..<n {
+    s = wrap_add(wrap_mul(s, 6364136223846793005), 1442695040888963407)
+    xs[i] = to_float(bit_and(shift_right(s, 11), 9007199254740991)) / 9007199254740992.0
+  }
+  xs
+}
+
+fn saxpy(a: Float, x: List<Float>, y: inout List<Float>) {
+  for i in 0..<len(y) {
+    y[i] = a * x[i] + y[i]
+  }
+}
+
+fn dot(a: List<Float>, b: List<Float>) -> Float {
+  var sum = 0.0
+  for i in 0..<len(a) {
+    sum += a[i] * b[i]
+  }
+  sum
+}
+
+fn update(msg: Msg) -> List<Effect<Msg>> {
+  let x = randoms(1000000, 1)
+  var y = randoms(1000000, 2)
+  var total = 0.0
+  for r in 0..<1000 {
+    saxpy(0.5, x, &y)
+    total += dot(x, y)
+  }
+  let checksum = to_int(total * 1000.0)
+  [Print("{checksum}"), Exit]
+}
+
+app saxpy_dot {
+  start: Start
+  update: update
+  grants: [Console]
+}
