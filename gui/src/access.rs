@@ -75,7 +75,7 @@ impl Ids {
         });
         let r = walk.rects.next().copied().unwrap_or_default();
         let px = |v: u64| v as f64 * walk.scale;
-        let mut out = element(node);
+        let mut out = element(node, path.last());
         out.set_bounds(accesskit::Rect::new(
             px(r.x),
             px(r.y),
@@ -99,8 +99,8 @@ impl Ids {
     }
 }
 
-/// `node`'s role, name or value, and actions.
-fn element<M>(node: &Node<M>) -> accesskit::Node {
+/// `node`'s role, name or value, and actions; an Input is named by its String key, `step`.
+fn element<M>(node: &Node<M>, step: Option<&Step>) -> accesskit::Node {
     let role = match node {
         Node::Text(_) | Node::Hole(_) | Node::Error(_) => Role::Label,
         Node::Button { .. } => Role::Button,
@@ -117,6 +117,9 @@ fn element<M>(node: &Node<M>) -> accesskit::Node {
             out.add_action(Action::Focus);
         }
         Node::Input { text, .. } => {
+            if let Some(Step::Str(key)) = step {
+                out.set_label(key.as_str());
+            }
             out.set_value(text.as_str());
             out.add_action(Action::Focus);
         }

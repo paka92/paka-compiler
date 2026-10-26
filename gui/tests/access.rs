@@ -100,7 +100,7 @@ fn each_element_gets_its_role_name_value_actions_and_bounds() {
             Some("+"),
             None,
         ),
-        (vec![key("in")], Role::TextInput, None, Some("ab")),
+        (vec![key("in")], Role::TextInput, Some("in"), Some("ab")),
         (vec![Step::Place(3)], Role::Label, None, Some("??reset")),
         (vec![Step::Place(4)], Role::Label, None, Some("boom")),
     ];

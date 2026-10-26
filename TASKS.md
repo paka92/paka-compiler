@@ -1876,12 +1876,14 @@ or merged during review. Ids with a letter were added during review.
 
 ### M5-40 · L4 · Script an AT-SPI and Orca check
 
+- status: done
 - needs: M5-23, M5-39
 - flags: conditional
 - done when: One script finds both samples' buttons and input by role and name over AT-SPI and in Orca's debug log; it fails with the bridge disabled.
 - why this level: No upstream harness exists; the check must fail when the bridge breaks silently, without being flaky.
 - note: Only if the owner's M5-08 ruling requires screen-reader support; M5-08 rules it into M5, so this task runs. The windowed test skips, and says so, when WAYLAND_DISPLAY is unset; the caller runs it once on the build machine inside the session.
 - note: Per M5-08: the script runs on a private session bus (`dbus-run-session`) with accessibility switched on there, as the trial did; the desktop's setting is never changed. With the switch off the bridge stays silent, so the check must fail then, not pass. Passing on both samples is part 8 of the M5 exit check.
+- note: Done: scripts/m5-atspi-check opens each sample through the dev runner in a window, on a private session bus (`dbus-run-session`) with accessibility switched on there, settings kept in memory and no speech server to reach. It finds the counter's "-" and "+" buttons and the to-do sample's "Add" button and "new" entry over AT-SPI by role and name, gives each focus, and then finds Orca's focus moving to each one, by role and name, in Orca's debug log. `--switch-off` leaves the switch off and starts no Orca, and the check then fails; it exits 77 and says so when WAYLAND_DISPLAY is unset. Written as the check needs: an Input is now named by its String key (gui/src/access.rs, gui/tests/access.rs), so the M5-39 reading that an Input has no accessible name no longer holds. Run in the build machine's session: every element found, both ways, four runs in a row; with the switch off, all four fail.
 
 ### M5-41 · L4 · Add views, elements, keys, UI examples and migrate to the language reference
 
@@ -1904,6 +1906,7 @@ or merged during review. Ids with a letter were added during review.
 - done when: On the build machine the script exits 0 for every exit-check part, the M5-40 script included; the owner watches the windowed parts and does the IME check once.
 - why this level: Drives windowed and windowless apps, edits and Look in one repeatable script; includes a view that traps on purpose.
 - note: Per M5-07: part 3 is met by the Counter edits in docs/decisions/M5-07.md; since the accepted reset installs the change, the script restores the old type or adds a second field before the migrate part.
+- note: Open: scripts/m5-exit-check runs the eight parts (docs/results/M5-42.md). In the session, parts 2 and 3 fail: an edit installed while the app runs in a window is swapped, reset or migrated only in the server's own windowless copy (paka/src/session.rs), so the window keeps the old version and the edit reply carries no `state`. Run with no display, both pass. The window's app must take installed edits before this task can be done. Then the owner watches parts 1 to 3 (`--watch`) and types one composed word through the input method into the to-do Input (`--ime`).
 
 ## M6 — Release mode
 
