@@ -2306,12 +2306,14 @@ or merged during review. Ids with a letter were added during review.
 
 ### M7-08 · L2 · Report pending approvals and refusals to the agent in the agreed shape
 
+- status: done
 - needs: M7-07
 - flags: none
 - done when: Edit results and gate output list each item awaiting approval in the agreed shape; expected outputs are written by hand.
 - why this level: Formats known data into a given shape.
 - note: Per M4-03: items awaiting approval ride in edit replies as a new optional field; they are not errors, and M7-01 fixes their shape.
 - note: Per M7-01: the agreed shape is the pending list of its section 1.6; an edit is stored, not refused.
+- note: Done: paka/src/pending.rs gives each item one line and one JSON object, and the fields `pending`, `blocks` (`merge`, `release`) and `next` of section 1.6. A grants item has `approved` and `found` (null when never approved or gone); an example or file item has `change` (`edited`, `renamed or deleted`, `never approved`); a human-owned example that does not pass has `result`; a refusal of the key, store or a whole program is kind `refused` with `message`. `paka gate ... --json` prints the object (empty and null when passed); text output is unchanged. An edit reply carries the three fields only when the edited program is gated and something awaits; the store is found by the walk-up rule and read without its signature. Hand-written expected outputs: tests/serve/pending.txt and `json_lists_each_item_in_the_agreed_shape` in paka/tests/gate.rs.
 
 ### M7-09 · L4 · Cache example results by closure hash, mode and compiler version
 
@@ -2330,6 +2332,8 @@ or merged during review. Ids with a letter were added during review.
 - done when: A test pull request changing a grant list without approval shows a failed check; the owner sees it go red and marks the check as required. A second test pull request that changes a grant list and its stored approval together also shows a failed check. A third adds a second workflow with a passing job named `gate` beside an unapproved grant change and is still blocked.
 - why this level: A mistake in this job is silent: a gate that runs the pull request's own workflow or code passes anything (M7-01).
 - note: Per M7-01: regraded from level 1 to level 4. `pull_request_target`, two checkouts, paka built from the target branch, read-only token, time limit, no pull-request code run.
+- note: Workflow written: .github/workflows/gate.yml, job `gate`. Runs on `pull_request_target` for `development` and `main` with `contents: read`; checks out the target branch and `refs/pull/<n>/merge` without keeping the token, builds paka from the target branch only, runs `paka gate merged --base base`, 30-minute limit. Until `approvals.pub` and a signed store recording both workflow files are on the target branch the gate refuses every pull request (`approvals.pub: missing on the base`); the check is not yet required, so this blocks nothing (M7-01 section 2: the first key goes in before the check is required). The workflow first runs on pull requests opened after it is on the target branch.
+- note: Owner steps left: (1) commit `approvals.pub` and a store signed with `paka approve` that records `.github/workflows/ci.yml` and `gate.yml`, and see `gate` go green on a pull request; (2) open the three test pull requests of the done-when and see each go red; (3) in Settings, Rules (or Branches), for `development`: require status checks to pass, add the check `gate` (source GitHub Actions), include administrators, allow no bypass; leave 'require branches to be up to date' off; on `main` after the M7 merge. Mark done after (3).
 
 ### M7-11 · L3 · Run human-owned examples against the release binary itself
 

@@ -97,11 +97,16 @@ impl Trees {
 
     /// The gate's standard output and exit status.
     fn gate(&self) -> (String, Option<i32>) {
+        self.gate_with(&[])
+    }
+
+    fn gate_with(&self, flags: &[&str]) -> (String, Option<i32>) {
         let out = Command::new(PAKA)
             .arg("gate")
             .arg(self.path("merged"))
             .arg("--base")
             .arg(self.path("base"))
+            .args(flags)
             .output()
             .unwrap();
         let text = String::from_utf8(out.stdout).unwrap();
@@ -302,4 +307,40 @@ fn a_base_without_a_key_refuses_everything() {
     let trees = Trees::new("gate_no_base_key");
     fs::remove_file(trees.path("base/approvals.pub")).unwrap();
     trees.refuses(&["approvals.pub: missing on the base"]);
+}
+
+#[test]
+fn json_lists_each_item_in_the_agreed_shape() {
+    let trees = Trees::new("gate_json");
+    let json = || trees.gate_with(&["--json"]);
+    let passed = r#"{"pending":[],"blocks":[],"next":null}"#;
+    assert_eq!(json(), (format!("{passed}\n"), Some(0)));
+    trees.edit("main.paka", "[Console]", "[Console, ReadFiles]");
+    trees.edit("main.paka", "s.count + 1", "s.count + 2");
+    trees.edit(
+        "main.paka",
+        "example starts_at_zero",
+        "example begins_at_zero",
+    );
+    let workflows = trees.path("merged/.github/workflows");
+    fs::write(workflows.join("second.yml"), WORKFLOW).unwrap();
+    let expected = concat!(
+        r#"{"pending":["#,
+        r#"{"kind":"grants","program":"main.paka","app":"counter","approved":["Console"],"found":["Console","ReadFiles"]},"#,
+        r#"{"kind":"example","program":"main.paka","name":"starts_at_zero","change":"renamed or deleted"},"#,
+        r#"{"kind":"example","program":"main.paka","name":"inc_once","result":"fail at main.paka:19:11"},"#,
+        r#"{"kind":"file","path":".github/workflows/second.yml","change":"never approved"}],"#,
+        r#""blocks":["merge","release"],"#,
+        r#""next":"The owner runs: paka approve. Or revert the change."}"#,
+        "\n",
+    );
+    assert_eq!(json(), (expected.into(), Some(1)));
+    fs::remove_file(trees.path("base/approvals.pub")).unwrap();
+    let expected = concat!(
+        r#"{"pending":[{"kind":"refused","message":"approvals.pub: missing on the base"}],"#,
+        r#""blocks":["merge","release"],"#,
+        r#""next":"The owner runs: paka approve. Or revert the change."}"#,
+        "\n",
+    );
+    assert_eq!(json(), (expected.into(), Some(1)));
 }

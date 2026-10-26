@@ -22,6 +22,7 @@ mod lower;
 pub mod migrate;
 pub mod owners;
 pub mod parser;
+pub mod pending;
 pub mod print;
 mod resolve;
 pub mod results;

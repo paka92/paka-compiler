@@ -1,0 +1,14 @@
+Served program: pending/before, whose unsigned store owns the grants of wc and the example
+counts_two. An edit is stored and its reply lists what awaits the owner (M7-01 section 1.6); with
+nothing awaiting, the reply has no pending field.
+
+> {"v":1,"id":1,"call":"edit","name":"count_words","base":"8f37a8d7c74b","text":"fn count_words(text: String) -> Int {\n  len(split(text, \" \"))\n}"}
+< {"v":1,"id":1,"ok":true,"name":"count_words","version":"6c4c8968c9e4","text":"fn count_words(text: String) -> Int {\n  len(split(text, \" \"))\n}","errors":[],"broke":[],"installed":true}
+> {"v":1,"id":2,"call":"edit","name":"wc","base":"a0fc527c3499","text":"app wc {\n  state: Tally\n  start: Start\n  update: update\n  grants: [Console]\n}"}
+< {"v":1,"id":2,"ok":true,"name":"wc","version":"d7774479d35b","text":"app wc {\n  state: Tally\n  start: Start\n  update: update\n  grants: [Console]\n}","errors":[],"broke":[],"installed":true,"pending":[{"kind":"grants","program":"main.paka","app":"wc","approved":["Console","ReadFiles"],"found":["Console"]}],"blocks":["merge","release"],"next":"The owner runs: paka approve. Or revert the change."}
+> {"v":1,"id":3,"call":"edit","name":"counts_two","base":"ed43af615b75","text":"example counts_two {\n  count_words(\"a b c\") == 3\n}"}
+< {"v":1,"id":3,"ok":true,"name":"counts_two","version":"77fbc00e6feb","text":"example counts_two {\n  count_words(\"a b c\") == 3\n}","errors":[],"broke":[],"installed":true,"pending":[{"kind":"grants","program":"main.paka","app":"wc","approved":["Console","ReadFiles"],"found":["Console"]},{"kind":"example","program":"main.paka","name":"counts_two","change":"edited"}],"blocks":["merge","release"],"next":"The owner runs: paka approve. Or revert the change."}
+> {"v":1,"id":4,"call":"edit","name":"wc","base":"d7774479d35b","text":"app wc {\n  state: Tally\n  start: Start\n  update: update\n  grants: [ReadFiles, Console]\n}"}
+< {"v":1,"id":4,"ok":true,"name":"wc","version":"a0fc527c3499","text":"app wc {\n  state: Tally\n  start: Start\n  update: update\n  grants: [ReadFiles, Console]\n}","errors":[],"broke":[],"installed":true,"pending":[{"kind":"example","program":"main.paka","name":"counts_two","change":"edited"}],"blocks":["merge","release"],"next":"The owner runs: paka approve. Or revert the change."}
+> {"v":1,"id":5,"call":"edit","name":"counts_two","base":"77fbc00e6feb","text":null}
+< {"v":1,"id":5,"ok":true,"name":"counts_two","version":null,"text":null,"errors":[],"broke":[],"installed":true,"pending":[{"kind":"example","program":"main.paka","name":"counts_two","change":"renamed or deleted"}],"blocks":["merge","release"],"next":"The owner runs: paka approve. Or revert the change."}

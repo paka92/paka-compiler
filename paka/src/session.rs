@@ -4,10 +4,12 @@
 //! The workspace holds each definition in canonical text, and its version is the first 12 hex
 //! digits of the SHA-256 of that text. The files keep their layout except where an edit writes.
 
+use crate::approvals::{self, Store};
 use crate::ast::{Def, Entry};
 use crate::core_form::Program;
 use crate::diagnostic::Diagnostic;
 use crate::parser::{parse_def, split};
+use crate::pending::{self, Item};
 use crate::print;
 use crate::serve::{Call, Failure, Reply};
 use crate::sha256::sha256;
@@ -199,7 +201,38 @@ impl Session {
         } else if order.is_some() {
             reply.push(("run", Value::Null));
         }
+        let pending = self.pending();
+        if !pending.is_empty() {
+            reply.extend(pending::fields(&pending));
+        }
         Ok(reply)
+    }
+
+    /// What awaits the owner in this program: each record of the store its source no longer
+    /// matches, the store read without checking its signature (M7-01). None when not gated.
+    fn pending(&self) -> Vec<Item> {
+        let at = self.dir.as_deref().unwrap_or(&self.files[0].path);
+        let Some((dir, program)) = approvals::find(at) else {
+            return vec![];
+        };
+        let store = (fs::read_to_string(dir.join("approvals")))
+            .map_err(|e| format!("approvals: {e}"))
+            .and_then(|text| Store::parse(&text));
+        let store = match store {
+            Ok(store) if store.programs().contains(&program.as_str()) => store,
+            Ok(_) => return vec![],
+            Err(why) => return vec![Item::Refused(why)],
+        };
+        let mut files: Vec<_> = self.files.iter().collect();
+        files.sort_by_key(|f| &f.path);
+        let mut source = Source::default();
+        for f in files {
+            source.add(f.path.clone().into(), f.text.clone().into_bytes());
+        }
+        match store.changes(&program, &source) {
+            Ok(changes) => changes.into_iter().map(Item::Change).collect(),
+            Err(d) => vec![Item::Refused(format!("program {program}: {}", d.message))],
+        }
     }
 
     /// Launches the runnable version's visual app with no window and gives its first tree. While

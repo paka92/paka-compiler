@@ -11,7 +11,8 @@ use paka::results::Cache;
 use paka::serve::serve;
 use paka::session::{self, Runner, Session};
 use paka::{Checked, Hole, approvals, approve, check, check_defs, core_form, diagnostic, gate};
-use paka::{interp, source};
+use paka::{interp, pending, source};
+use paka_json::Value;
 use paka_rt::{Fd1, abi};
 use source::{Source, read};
 use std::collections::BTreeSet;
@@ -23,7 +24,7 @@ use std::path::{Path, PathBuf};
 use std::process::ExitCode;
 use std::{env, io};
 
-const USAGE: &str = "usage: paka run <path> [argument...]\n       paka build <path> -o <output>\n       paka check <path> [--json]\n       paka examples <path>\n       paka serve <path>\n       paka approve <path> [--adopt <name>] [--drop <name>] [--key <file>]\n       paka gate <tree> --base <tree>\n";
+const USAGE: &str = "usage: paka run <path> [argument...]\n       paka build <path> -o <output>\n       paka check <path> [--json]\n       paka examples <path>\n       paka serve <path>\n       paka approve <path> [--adopt <name>] [--drop <name>] [--key <file>]\n       paka gate <tree> --base <tree> [--json]\n";
 
 fn main() -> ExitCode {
     let args: Vec<_> = env::args_os().skip(1).collect();
@@ -36,7 +37,10 @@ fn main() -> ExitCode {
         [Some("examples"), _] => return examples_file(&args[1]),
         [Some("serve"), _] => return serve_program(&args[1]),
         [Some("approve"), _, ..] => return approve_program(&args[1], &words[2..]),
-        [Some("gate"), _, Some("--base"), _] => return gate_tree(&args[1], &args[3]),
+        [Some("gate"), _, Some("--base"), _] => return gate_tree(&args[1], &args[3], false),
+        [Some("gate"), _, Some("--base"), _, Some("--json")] => {
+            return gate_tree(&args[1], &args[3], true);
+        }
         _ => return report(USAGE.as_bytes(), 2),
     };
     let path = &file.to_string_lossy();
@@ -209,22 +213,25 @@ fn yes(answers: &mut impl Iterator<Item = io::Result<String>>) -> Option<bool> {
     }
 }
 
-/// `paka gate`: one line per refusal and exit status 1, else status 0.
-fn gate_tree(tree: &OsStr, base: &OsStr) -> ExitCode {
-    let refused = gate::gate(tree.as_ref(), base.as_ref());
+/// `paka gate`: one line per refusal, or the pending list as one JSON object; status 1 when
+/// refused, else 0.
+fn gate_tree(tree: &OsStr, base: &OsStr, json: bool) -> ExitCode {
+    let items = gate::gate(tree.as_ref(), base.as_ref());
     let mut out = io::stdout().lock();
-    for line in &refused {
-        let _ = writeln!(out, "{line}");
-    }
-    if refused.is_empty() {
+    if json {
+        let _ = writeln!(out, "{}", Value::object(pending::fields(&items)));
+    } else if items.is_empty() {
         let _ = writeln!(out, "gate: passed");
-        return ExitCode::SUCCESS;
+    } else {
+        for item in &items {
+            let _ = writeln!(out, "{}", item.line());
+        }
+        let _ = writeln!(
+            out,
+            "Revert the change, or ask the owner to run paka approve."
+        );
     }
-    let _ = writeln!(
-        out,
-        "Revert the change, or ask the owner to run paka approve."
-    );
-    ExitCode::from(1)
+    ExitCode::from(u8::from(!items.is_empty()))
 }
 
 /// `paka check`: the diagnostic `run` would print, or a note per hole and a warning per unused

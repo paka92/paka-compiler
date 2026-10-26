@@ -3,50 +3,51 @@
 //! the base's, every record of every gated program and every owned file must match, and every
 //! human-owned example must pass in the interpreter.
 
-use crate::approvals::{Change, Record, Store};
+use crate::approvals::Store;
+use crate::pending::Item;
 use crate::source::read;
 use crate::{check_defs, interp};
-use std::collections::BTreeSet;
 use std::fs;
 use std::path::Path;
 
-/// One line per refusal; none when `tree` may merge into `base`.
-pub fn gate(tree: &Path, base: &Path) -> Vec<String> {
+/// One item per refusal; none when `tree` may merge into `base`.
+pub fn gate(tree: &Path, base: &Path) -> Vec<Item> {
+    let refused = |why: &str| vec![Item::Refused(why.into())];
     let key = base.join("approvals.pub");
     let Ok(base_key) = fs::read(&key) else {
-        return vec!["approvals.pub: missing on the base".into()];
+        return refused("approvals.pub: missing on the base");
     };
     if fs::read(tree.join("approvals.pub")).ok() != Some(base_key) {
-        return vec!["approvals.pub: changed; the key is changed only by hand".into()];
+        return refused("approvals.pub: changed; the key is changed only by hand");
     }
     let store = match Store::open(tree, &key) {
         Ok(store) => store,
-        Err(why) => return vec![why],
+        Err(why) => return refused(&why),
     };
-    let mut refused = vec![];
+    let mut items = vec![];
     if base.join("approvals").exists() {
         match Store::open(base, &key) {
-            Ok(old) if !store.follows(&old) => refused.push(format!(
+            Ok(old) if !store.follows(&old) => items.push(Item::Refused(format!(
                 "approvals: serial {} is not above the base's {}",
                 store.serial, old.serial
-            )),
+            ))),
             Ok(_) => {}
-            Err(why) => refused.push(format!("base: {why}")),
+            Err(why) => items.push(Item::Refused(format!("base: {why}"))),
         }
     }
     for program in store.programs() {
-        refused.extend(program_refusals(&store, tree, program));
+        items.extend(program_items(&store, tree, program));
     }
     match store.file_changes(tree) {
-        Ok(changes) => refused.extend(changes.iter().map(line)),
-        Err(why) => refused.push(why),
+        Ok(changes) => items.extend(changes.into_iter().map(Item::Change)),
+        Err(why) => items.push(Item::Refused(why)),
     }
-    refused
+    items
 }
 
 /// The records of `program` its source no longer matches, then its human-owned examples that do
 /// not pass.
-fn program_refusals(store: &Store, tree: &Path, program: &str) -> Vec<String> {
+fn program_items(store: &Store, tree: &Path, program: &str) -> Vec<Item> {
     let (source, found) = read(tree.join(program).as_os_str());
     let checked = found.and_then(|()| {
         let changes = store.changes(program, &source)?;
@@ -54,11 +55,14 @@ fn program_refusals(store: &Store, tree: &Path, program: &str) -> Vec<String> {
     });
     let (changes, checked) = match checked {
         Ok(found) => found,
-        Err(d) => return vec![format!("program {program}: {}", source.locate(d).0)],
+        Err(d) => {
+            let why = format!("program {program}: {}", source.locate(d).0);
+            return vec![Item::Refused(why)];
+        }
     };
-    let mut refused: Vec<_> = changes.iter().map(line).collect();
+    let mut items: Vec<_> = changes.into_iter().map(Item::Change).collect();
     for name in store.owned(program) {
-        let failed = match &checked {
+        let result = match &checked {
             Err(d) => format!("not run: {}", source.locate(d.clone()).0),
             Ok(((core, ..), _)) => match interp::example(core, &name) {
                 None | Some(Ok((true, _))) => continue,
@@ -73,34 +77,12 @@ fn program_refusals(store: &Store, tree: &Path, program: &str) -> Vec<String> {
                 Some(Err(why)) => format!("internal error: {why}"),
             },
         };
-        refused.push(format!("example {program} {name}: {failed}"));
+        let program = program.into();
+        items.push(Item::Failing {
+            program,
+            name,
+            result,
+        });
     }
-    refused
-}
-
-/// A change as one line: kind, program and name, then what differs.
-fn line(change: &Change) -> String {
-    let record = change.approved.as_ref().or(change.now.as_ref());
-    let what = match (&change.approved, &change.now) {
-        (Some(Record::Grants { grants: a, .. }), Some(Record::Grants { grants: b, .. })) => {
-            format!("approved {}, found {}", list(a), list(b))
-        }
-        (None, Some(Record::Grants { grants, .. })) => {
-            format!("never approved, found {}", list(grants))
-        }
-        (None, _) => "never approved".into(),
-        (Some(_), Some(_)) => "edited".into(),
-        (Some(_), None) => "renamed or deleted".into(),
-    };
-    match record {
-        Some(Record::Grants { program, app, .. }) => format!("grants {program} {app}: {what}"),
-        Some(Record::Example { program, name, .. }) => format!("example {program} {name}: {what}"),
-        Some(Record::File { path, .. }) => format!("file {path}: {what}"),
-        None => what,
-    }
-}
-
-fn list(grants: &BTreeSet<String>) -> String {
-    let names: Vec<_> = grants.iter().map(String::as_str).collect();
-    format!("[{}]", names.join(", "))
+    items
 }
