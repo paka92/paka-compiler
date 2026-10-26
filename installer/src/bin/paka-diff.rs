@@ -12,6 +12,11 @@
 //! `paka-diff --fuzz FIRST COUNT KEEP` does the same for the generated programs of COUNT seeds
 //! from FIRST (M4-41). Each that differs is shrunk while it keeps that kind of difference and
 //! written to `KEEP/SEED.paka`. `PAKA_PLANT` plants a fault in the dev back end, for a self-test.
+//! `paka-diff --fuzz-release FIRST COUNT KEEP` also builds each program in release (M6-20) and
+//! keeps each that differs as the run case `KEEP/SEED`, its expectations the interpreter's run.
+//! Where the interpreter ends in a stack trap, release may finish or run on: that run is cut by
+//! the limit and not compared. `PAKA_PLANT` 9 plants `>` as `>=` in every release build, in the
+//! IR handed to clang.
 //!
 //! `paka-diff --edits FIRST COUNT KEEP` runs the edit sequences of COUNT seeds from FIRST (M4-43).
 //! After each edit that checks, the dev run has edited in every version before it, so it runs the
@@ -45,6 +50,7 @@ use std::fs;
 use std::io::{self, Write};
 use std::ops::Range;
 use std::os::unix::ffi::OsStringExt;
+use std::os::unix::fs::PermissionsExt;
 use std::path::{Path, PathBuf};
 use std::process::{self, Command, ExitCode, Stdio};
 use std::thread;
@@ -66,7 +72,7 @@ fn main() -> ExitCode {
         Some("--release") => {
             compare_release(&args.get(1).map_or(CONFORMANCE.into(), PathBuf::from))
         }
-        Some(mode @ ("--fuzz" | "--edits")) => {
+        Some(mode @ ("--fuzz" | "--fuzz-release" | "--edits")) => {
             let number = |i: usize| args.get(i).and_then(|a| a.to_str()?.parse::<u64>().ok());
             let (Some(first), Some(count), Some(keep)) = (number(1), number(2), args.get(3)) else {
                 eprintln!("usage: paka-diff {mode} FIRST COUNT KEEP");
@@ -74,8 +80,8 @@ fn main() -> ExitCode {
             };
             let seeds = first..first + count;
             match mode {
-                "--fuzz" => fuzz(seeds, keep.as_ref()),
-                _ => edits(seeds, keep.as_ref()),
+                "--edits" => edits(seeds, keep.as_ref()),
+                _ => fuzz(seeds, keep.as_ref(), mode == "--fuzz-release"),
             }
         }
         _ => compare(&args.first().map_or(CONFORMANCE.into(), PathBuf::from)),
@@ -209,7 +215,7 @@ fn ran(
         };
         return Ok(Err(format!("build failed{stale}: {why:?}")));
     }
-    let release = native(&dir.with_extension("prog"), dir, args)?;
+    let release = native(&dir.with_extension("prog"), dir, args, LIMIT)?;
     Ok(match difference_in(reference, &release, "release") {
         Some(why) => Err(why),
         None => Ok("agree".into()),
@@ -218,18 +224,40 @@ fn ran(
 
 /// `paka build main.paka` in `dir`, written beside it.
 fn build(paka: &Path, dir: &Path) -> io::Result<process::Output> {
-    (Command::new(paka).current_dir(dir))
-        .args([
-            "build".as_ref(),
-            "main.paka".as_ref(),
-            "-o".as_ref(),
-            dir.with_extension("prog").as_os_str(),
-        ])
-        .output()
+    let mut command = Command::new(paka);
+    command.current_dir(dir).args([
+        "build".as_ref(),
+        "main.paka".as_ref(),
+        "-o".as_ref(),
+        dir.with_extension("prog").as_os_str(),
+    ]);
+    if env::var("PAKA_PLANT").is_ok_and(|n| n == "9") {
+        command.env("PATH", planted_clang()?);
+    }
+    command.output()
 }
 
-/// Runs `exe` in `dir`, killed past the limit, its output in files beside `dir`.
-fn native(exe: &Path, dir: &Path, args: &[OsString]) -> io::Result<Outcome> {
+/// A `PATH` whose first `clang` turns each `icmp sgt` of the IR it is given into `icmp sge`, then
+/// runs the next `clang` on `PATH`.
+fn planted_clang() -> io::Result<OsString> {
+    let dir = scratch().join("plant");
+    let clang = dir.join("clang");
+    if !clang.exists() {
+        fs::create_dir_all(&dir)?;
+        let script = "#!/bin/sh\n\
+            for a; do case $a in *.ll) sed -i 's/icmp sgt/icmp sge/g' \"$a\";; esac; done\n\
+            PATH=${PATH#*:} exec clang \"$@\"\n";
+        fs::write(&clang, script)?;
+        fs::set_permissions(&clang, fs::Permissions::from_mode(0o755))?;
+    }
+    let mut path = dir.into_os_string();
+    path.push(":");
+    path.push(env::var_os("PATH").unwrap_or_default());
+    Ok(path)
+}
+
+/// Runs `exe` in `dir`, killed past `limit`, its output in files beside `dir`.
+fn native(exe: &Path, dir: &Path, args: &[OsString], limit: Duration) -> io::Result<Outcome> {
     let [stdout, stderr] = ["stdout", "stderr"].map(|e| dir.with_extension(e));
     let mut child = (Command::new(exe).current_dir(dir).args(args))
         .stdin(Stdio::null())
@@ -241,7 +269,7 @@ fn native(exe: &Path, dir: &Path, args: &[OsString]) -> io::Result<Outcome> {
         if let Some(status) = child.try_wait()? {
             break Some(status);
         }
-        if start.elapsed() > LIMIT {
+        if start.elapsed() > limit {
             child.kill()?;
             child.wait()?;
             break None;
@@ -263,19 +291,25 @@ fn native(exe: &Path, dir: &Path, args: &[OsString]) -> io::Result<Outcome> {
     .into())
 }
 
-fn fuzz(seeds: Range<u64>, keep: &Path) -> io::Result<ExitCode> {
+fn fuzz(seeds: Range<u64>, keep: &Path, release: bool) -> io::Result<ExitCode> {
     let scratch = scratch();
     let dirs = ENGINES.map(|e| scratch.join(e));
-    dirs.iter().try_for_each(fs::create_dir_all)?;
+    let built = scratch.join("release");
+    let all = [&dirs[0], &dirs[1], &built];
+    all.iter().try_for_each(fs::create_dir_all)?;
     let write = |text: &str| {
-        dirs.iter()
+        all.iter()
             .try_for_each(|d| fs::write(d.join("main.paka"), text))
+    };
+    let judge = |name: &str| match release {
+        true => judged_release(&dirs, &built, name),
+        false => judged(&dirs, name, FUZZ_LIMIT, &[]).map(|(verdict, _)| verdict),
     };
     let mut tally = Tally::default();
     for seed in seeds {
         let text = paka_gen::program(seed);
         write(&text)?;
-        let (verdict, line) = judge(&dirs, &format!("seed {seed}"), FUZZ_LIMIT, &[])?;
+        let (verdict, line) = judge(&format!("seed {seed}"))?;
         let want = (verdict == 1).then(|| kind(&line));
         tally.add((verdict, line))?;
         let Some(want) = want else {
@@ -283,17 +317,88 @@ fn fuzz(seeds: Range<u64>, keep: &Path) -> io::Result<ExitCode> {
         };
         let small = shrink(&text, |t| {
             let checks = paka::check("main.paka", &Source::file("main.paka", t.into())).is_ok();
-            let judged = || write(t).and_then(|()| judge(&dirs, "", FUZZ_LIMIT, &[]));
+            let judged = || write(t).and_then(|()| judge(""));
             checks && judged().is_ok_and(|(v, line)| v == 1 && kind(&line) == want)
         });
         fs::create_dir_all(keep)?;
-        let kept = keep.join(format!("{seed}.paka"));
+        let kept = match release {
+            true => keep_case(&keep.join(seed.to_string()), &small, &dirs[0])?,
+            false => keep.join(format!("{seed}.paka")),
+        };
         fs::write(&kept, &small)?;
         let lines = small.lines().count();
         writeln!(tally.out, "  kept {} ({lines} lines)", kept.display())?;
     }
     let _ = fs::remove_dir_all(&scratch);
     tally.end()
+}
+
+/// `judged`'s verdict on the generated program staged in `dirs`, with the copy in `built` also
+/// built and run in release, which must agree with the interpreter.
+fn judged_release(dirs: &[PathBuf; 2], built: &Path, name: &str) -> io::Result<(usize, String)> {
+    let ((verdict, line), reference) = judged(dirs, name, FUZZ_LIMIT, &[])?;
+    if stopped(&reference) {
+        return Ok((verdict, line));
+    }
+    let (release, note) = released(built, &reference)?;
+    if release == 1 {
+        return Ok((1, format!("differ {name}: release {note}")));
+    }
+    let verdict = if verdict == 1 {
+        1
+    } else {
+        verdict.min(release)
+    };
+    let rest = line.split_once(' ').map_or("", |(_, r)| r);
+    let word = ["agree", "differ", "unsupported"][verdict];
+    Ok((verdict, format!("{word} {rest}; release {note}")))
+}
+
+/// The release verdict on the program staged in `built`, against the interpreter's run.
+fn released(built: &Path, reference: &Outcome) -> io::Result<(usize, String)> {
+    let out = build(&env::current_exe()?.with_file_name("paka"), built)?;
+    let why = String::from_utf8_lossy(&out.stderr);
+    let refused = ["[unsupported-form]", "[hole-in-build]"]
+        .iter()
+        .any(|r| why.contains(r));
+    if !out.status.success() {
+        return Ok(match refused {
+            true => (
+                2,
+                format!("unsupported: {}", why.lines().next().unwrap_or("")),
+            ),
+            false => (1, format!("build failed: {why:?}")),
+        });
+    }
+    let run = native(&built.with_extension("prog"), built, &[], FUZZ_LIMIT)?;
+    let trap = String::from_utf8_lossy(&reference.stderr);
+    let stack = trap
+        .lines()
+        .next()
+        .is_some_and(|l| l.contains(" trap stack at "));
+    Ok(match difference_in(reference, &run, "release") {
+        // Release may finish or run on where the interpreter's stack ran out (M6-01).
+        _ if reference.status == Some(3) && stack => (2, "not compared: a stack trap".into()),
+        Some(why) => (1, why),
+        None => (0, "agree".into()),
+    })
+}
+
+/// Writes the run case `dir` of program `text`, expecting what its run on the interpreter staged
+/// in `interp` leaves; the path of its program.
+fn keep_case(dir: &Path, text: &str, interp: &Path) -> io::Result<PathBuf> {
+    fs::write(interp.join("main.paka"), text)?;
+    let (out, _) = run(interp, ENGINES[0], FUZZ_LIMIT, &[])?;
+    let status = out
+        .status
+        .ok_or_else(|| io::Error::other("the interpreter was killed"))?;
+    fs::create_dir_all(dir)?;
+    fs::write(dir.join("stdout"), &out.stdout)?;
+    fs::write(dir.join("status"), format!("{status}\n"))?;
+    if !out.stderr.is_empty() {
+        fs::write(dir.join("stderr"), &out.stderr)?;
+    }
+    Ok(dir.join("main.paka"))
 }
 
 fn ui(root: &Path) -> io::Result<ExitCode> {
@@ -422,10 +527,16 @@ fn scratch() -> PathBuf {
     env::temp_dir().join(format!("paka-diff-{}", process::id()))
 }
 
-/// The kind of difference a `differ` line names: the first word of its reason.
+/// The kind of difference a `differ` line names: the first word of its reason, two for release.
 fn kind(line: &str) -> String {
     let reason = line.split_once(": ").map_or("", |(_, r)| r);
-    reason.split(' ').next().unwrap_or("").into()
+    let words = 1 + usize::from(reason.starts_with("release "));
+    reason.split(' ').take(words).collect::<Vec<_>>().join(" ")
+}
+
+/// Whether a run was stopped past its limit.
+fn stopped(o: &Outcome) -> bool {
+    o.status == Some(4) && o.stderr == b"stopped: time\n"
 }
 
 /// The verdict on the program staged in `dirs`, 0 agree, 1 differ or 2 unsupported, and its line.
@@ -450,7 +561,7 @@ fn judged(
     // Compiled code outruns the interpreter, so a dev run far slower than it has hung.
     let slow = (start.elapsed() * 4).max(Duration::from_millis(20));
     // How far a stopped run got depends on speed, not meaning.
-    if reference.status == Some(4) && reference.stderr == b"stopped: time\n" {
+    if stopped(&reference) {
         let why = format!("unsupported {name}: the interpreter ran past the limit");
         return Ok(((2, why), reference));
     }

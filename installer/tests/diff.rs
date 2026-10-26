@@ -1,7 +1,7 @@
 //! The differential harness (M4-40): planted differences in output, status, trap kind and trap
 //! position each differ, as does a run ended by a signal; and the command lists every run case of
 //! the conformance suite once. Every UI example agrees on both back ends, and a planted view fault
-//! differs in each (M5-26).
+//! differs in each (M5-26). A planted release fault is found, shrunk and kept as a case (M6-20).
 
 use paka_installer::diff::{Outcome, cases, difference};
 use std::path::Path;
@@ -136,6 +136,79 @@ fn the_fuzz_loop_finds_and_shrinks_each_planted_fault() {
         }
     });
     let _ = std::fs::remove_dir_all(&keep);
+}
+
+/// The release fault planted in the IR clang is given, `>` as `>=`, is found from seed 83, which
+/// agrees without it, and kept as a run case of under 20 lines that release mode of the harness
+/// passes, and fails with the fault (M6-20).
+#[test]
+fn the_release_fuzz_loop_keeps_a_planted_release_fault_as_a_case() {
+    build_paka_beside(Path::new(env!("CARGO_BIN_EXE_paka-diff")));
+    let root = std::env::temp_dir().join(format!("paka-fuzz-release-{}", std::process::id()));
+    let diff = |plant: &str, args: &[&std::ffi::OsStr]| {
+        let out = Command::new(env!("CARGO_BIN_EXE_paka-diff"))
+            .args(args)
+            .env("PAKA_PLANT", plant)
+            .output()
+            .unwrap();
+        (String::from_utf8(out.stdout).unwrap(), out.status.code())
+    };
+    let fuzz = |plant| {
+        diff(
+            plant,
+            &[
+                "--fuzz-release".as_ref(),
+                "83".as_ref(),
+                "1".as_ref(),
+                root.join("fuzz").as_ref(),
+            ],
+        )
+        .0
+    };
+    assert!(fuzz("0").starts_with("agree seed 83;"));
+    let found = fuzz("9");
+    assert!(
+        found.starts_with("differ seed 83: release stdout"),
+        "{found}"
+    );
+    let kept = std::fs::read_to_string(root.join("fuzz/83/main.paka")).unwrap();
+    assert!(kept.lines().count() < 20, "{kept}");
+    for list in ["release-skip", "release-exempt"] {
+        std::fs::write(root.join(list), "").unwrap();
+    }
+    let release = |plant| diff(plant, &["--release".as_ref(), root.as_ref()]);
+    let (text, status) = release("0");
+    assert!(
+        text.starts_with("agree fuzz/83;") && status == Some(0),
+        "{text}"
+    );
+    let (text, status) = release("9");
+    assert!(
+        text.starts_with("differ fuzz/83: release stdout") && status == Some(1),
+        "{text}"
+    );
+    let _ = std::fs::remove_dir_all(&root);
+}
+
+/// Builds `paka` and its runtime archive beside the binary `exe`, in its profile.
+fn build_paka_beside(exe: &Path) {
+    let profile = exe.parent().unwrap();
+    let mut cargo = Command::new(env!("CARGO"));
+    cargo.args([
+        "build",
+        "-p",
+        "paka",
+        "-p",
+        "paka-rt",
+        "--locked",
+        "--offline",
+        "--target-dir",
+    ]);
+    cargo.arg(profile.parent().unwrap());
+    if profile.ends_with("release") {
+        cargo.arg("--release");
+    }
+    assert!(cargo.status().unwrap().success(), "building paka failed");
 }
 
 /// Each planted staleness of the compile cache is found by seed 0's edit sequence, which agrees

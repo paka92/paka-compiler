@@ -2109,6 +2109,8 @@ or merged during review. Ids with a letter were added during review.
 - done when: A deliberately divergent release build is detected, shrunk to under 20 lines and saved as a regression test, reproducibly from a seed.
 - why this level: Adds a third back end to an existing loop and shrinker.
 - note: Per M6-01: when the interpreter ends in a stack trap, release may finish or run on, so such runs are cut by a time limit and not filed as a divergence.
+- status: done
+- note: Done: `paka-diff --fuzz-release FIRST COUNT KEEP` judges each seed's program on the interpreter and dev as `--fuzz` does, then builds it with `paka build`, runs it under the fuzz limit and compares it with the interpreter by the same meaning fields; a program release refuses (`unsupported-form`, `hole-in-build`) is unsupported there. Each that differs is shrunk while it differs the same way and kept as the run case `KEEP/SEED`: `main.paka` with the interpreter's `stdout`, `status` and `stderr`. Where the interpreter ends in a stack trap the release run is cut by the limit and not compared. `PAKA_PLANT=9` plants `>` as `>=` in every release build without touching the back end: `paka build` runs a `clang` first on `PATH` that rewrites `icmp sgt` to `icmp sge` in the IR. installer/tests/diff.rs finds it from seed 83, which agrees without it, shrinks it to 16 lines, and checks `paka-diff --release` passes the kept case and fails it with the plant. Seeds 0 to 219 agree in all three modes.
 
 ### M6-21 · L4 · Extend the program generator to reach release-only risks
 
