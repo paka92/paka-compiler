@@ -1131,16 +1131,19 @@ impl Body<'_, '_> {
         let c = self.expr(cond)??;
         let [yes, no] = ["b"; 2].map(|s| self.name(s));
         self.line(format!("br i1 {c}, label %{yes}, label %{no}"));
-        let branches = [(yes, Some(then), vec![]), (no, otherwise.as_ref(), vec![])];
+        let branches = [
+            (yes, Some(then), vec![], false),
+            (no, otherwise.as_ref(), vec![], false),
+        ];
         self.join(e, branches)
     }
 
-    /// Runs each branch from its label, after copying its bound fields, and gives the value of
-    /// the one taken.
+    /// Runs each branch from its label, after binding its fields, copied or, when `shared`,
+    /// borrowed, and gives the value of the one taken.
     fn join<'e>(
         &mut self,
         e: &Expr,
-        branches: impl IntoIterator<Item = (String, Option<&'e crate::core_form::Block>, Binds)>,
+        branches: impl IntoIterator<Item = (String, Option<&'e Block>, Binds, bool)>,
     ) -> Option<Value> {
         let ty = match e.ty {
             Some(t) => Some(self.module.ir(t)?),
@@ -1148,13 +1151,18 @@ impl Body<'_, '_> {
         };
         let merge = self.name("b");
         let mut incoming = vec![];
-        for (label, block, binds) in branches {
+        for (label, block, binds, shared) in branches {
             self.start(&label);
-            let binds: Vec<_> = (binds.into_iter())
-                .map(|(place, base, l)| (l, self.field(&place, &base)))
-                .collect();
+            let mut owned = vec![];
+            for (place, base, l) in binds {
+                let v = self.field(&place, &base);
+                match shared {
+                    true => self.bind_shared(l, &v)?,
+                    false => owned.push((l, v)),
+                }
+            }
             let v = match block {
-                Some(block) => self.scoped(&binds, block)?,
+                Some(block) => self.scoped(&owned, block)?,
                 None => None,
             };
             let v = v.unwrap_or_else(|| stand_in(ty.unwrap_or("i64")));
@@ -1215,6 +1223,15 @@ impl Body<'_, '_> {
     /// A `match` on a variant: a switch on its tag word.
     fn matched(&mut self, e: &Expr, subject: &Expr, arms: &[Arm]) -> Option<Value> {
         let t = subject.ty?;
+        // Pattern names borrow from the subject in an arm that writes nothing it is rooted at
+        // (M2-05 section 1.8); a fresh subject overlaps nothing.
+        let root = match &subject.kind {
+            ExprKind::Place(Place {
+                root: Root::Local(r),
+                ..
+            }) => Some(*r),
+            _ => None,
+        };
         let at = self.expr(subject)??;
         let tag = self.load("i64", &at);
         let labels: Vec<String> = arms.iter().map(|_| self.name("b")).collect();
@@ -1245,7 +1262,8 @@ impl Body<'_, '_> {
                     }
                 }
             }
-            branches.push((label, Some(&arm.body), binds));
+            let shared = root.is_none_or(|r| !owned::writes(&arm.body, r));
+            branches.push((label, Some(&arm.body), binds, shared));
         }
         self.join(e, branches)
     }

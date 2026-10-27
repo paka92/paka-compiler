@@ -3,7 +3,9 @@
 //! Taking a temporary moves it; taking anything else copies it.
 
 use super::{Body, Module, Value};
-use crate::core_form::{Block, Expr, ExprKind, Local, Root, Stmt, Ty};
+use crate::core_form::{
+    Arg, Block, Callee, Expr, ExprKind, Local, Place, Root, Step, Stmt, Ty, Walk,
+};
 use paka::owners::Owner;
 use paka_rt::abi::dev::records::{BOX, LIST, MAP, Part, STRING, TAGGED, VALUE};
 use paka_rt::abi::table::{COPY, DROP};
@@ -133,6 +135,14 @@ impl Body<'_, '_> {
         Some(())
     }
 
+    /// Binds local `l` to `v` without owning it: a pattern name that borrows from its subject.
+    pub(super) fn bind_shared(&mut self, l: Local, v: &str) -> Option<()> {
+        let t = self.locals[l]?;
+        let at = self.at[l].clone();
+        self.put(t, v, &at);
+        Some(())
+    }
+
     /// Frees what the value of type `t` at `at` owns. It drops a copy, so `at` does not escape
     /// and the optimizer keeps its words as known values, such as a list's length in a loop.
     pub(super) fn drop_at(&mut self, t: Ty, at: &str) {
@@ -241,5 +251,79 @@ fn whole_local(e: &Expr) -> Option<Local> {
             Root::Value(_) => None,
         },
         _ => None,
+    }
+}
+
+/// Whether `block` writes, by assignment or `&`, a place rooted at `root` anywhere inside it.
+pub(super) fn writes(block: &Block, root: Local) -> bool {
+    let stmt = |s: &Stmt| match s {
+        Stmt::Assign(p, _, e) => written(p, root) || expr_writes(e, root),
+        Stmt::Let(_, e) | Stmt::Expr(e) | Stmt::Return(Some(e)) => expr_writes(e, root),
+        Stmt::For(_, Walk::List(e), b) | Stmt::While(e, b) => {
+            expr_writes(e, root) || writes(b, root)
+        }
+        Stmt::For(_, Walk::Range(x, y), b) => {
+            expr_writes(x, root) || expr_writes(y, root) || writes(b, root)
+        }
+        Stmt::Return(None) | Stmt::Break | Stmt::Continue => false,
+    };
+    block.stmts.iter().any(stmt) || block.value.as_ref().is_some_and(|e| expr_writes(e, root))
+}
+
+fn written(p: &Place, root: Local) -> bool {
+    p.root == Root::Local(root) || place_writes(p, root)
+}
+
+fn place_writes(p: &Place, root: Local) -> bool {
+    let in_root = matches!(&p.root, Root::Value(e) if expr_writes(e, root));
+    in_root
+        || p.steps.iter().any(|s| match s {
+            Step::Field(_) => false,
+            Step::Item(e, _) | Step::Key(e, _) => expr_writes(e, root),
+            Step::Slice(a, b, _) => expr_writes(a, root) || expr_writes(b, root),
+        })
+}
+
+fn expr_writes(e: &Expr, root: Local) -> bool {
+    let any = |es: &[Expr]| es.iter().any(|e| expr_writes(e, root));
+    match &e.kind {
+        ExprKind::Interp(es, _)
+        | ExprKind::Record(_, es)
+        | ExprKind::List(es)
+        | ExprKind::Variant(_, es) => any(es),
+        ExprKind::Map(entries) => {
+            (entries.iter()).any(|(k, v)| expr_writes(k, root) || expr_writes(v, root))
+        }
+        ExprKind::Place(p) => place_writes(p, root),
+        ExprKind::Unary(_, x) => expr_writes(x, root),
+        ExprKind::Binary(_, x, y) => expr_writes(x, root) || expr_writes(y, root),
+        ExprKind::Call(callee, args, _) => {
+            let callee = matches!(callee, Callee::Value(f) if expr_writes(f, root));
+            callee
+                || args.iter().any(|a| match a {
+                    Arg::Value(e) => expr_writes(e, root),
+                    Arg::Inout(p) => written(p, root),
+                })
+        }
+        ExprKind::If(c, then, otherwise) => {
+            expr_writes(c, root)
+                || writes(then, root)
+                || otherwise.as_ref().is_some_and(|b| writes(b, root))
+        }
+        ExprKind::Match(subject, arms) => {
+            expr_writes(subject, root) || arms.iter().any(|a| writes(&a.body, root))
+        }
+        ExprKind::Root(b) => writes(b, root),
+        ExprKind::Element(_, es, b, _) => any(es) || b.as_ref().is_some_and(|b| writes(b, root)),
+        ExprKind::Child(c) => {
+            c.key.as_ref().is_some_and(|k| expr_writes(k, root)) || expr_writes(&c.node, root)
+        }
+        ExprKind::Int(_)
+        | ExprKind::Float(_)
+        | ExprKind::Bool(_)
+        | ExprKind::Str(_)
+        | ExprKind::Hole(_)
+        | ExprKind::FnValue(_)
+        | ExprKind::Placeholder(_) => false,
     }
 }

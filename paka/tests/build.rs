@@ -303,3 +303,49 @@ fn line_feed_in_output_path_keeps_one_line() {
     assert_tool_error(&out, LIGHT, "clang-failed");
     assert_eq!(out.stderr.iter().filter(|&&b| b == b'\n').count(), 1);
 }
+
+const FOREIGN_CALL: &str = concat!(
+    env!("CARGO_MANIFEST_DIR"),
+    "/../tests/conformance/apps/foreign_call"
+);
+
+/// Relative source and output paths are read from the working directory, and a granted foreign
+/// declaration's host lands beside the output there.
+#[test]
+fn relative_paths_build_from_another_directory() {
+    build_runtime();
+    let dir = Scratch::new("relative");
+    fs::create_dir_all(dir.path("work/bin")).unwrap();
+    fs::create_dir(dir.path("src")).unwrap();
+    fs::copy(LIGHT, dir.path("src/light.paka")).unwrap();
+    fs::copy(
+        format!("{FOREIGN_CALL}/main.paka"),
+        dir.path("src/calc.paka"),
+    )
+    .unwrap();
+    for file in ["calc.c", "calc.h"] {
+        fs::copy(
+            format!("{FOREIGN_CALL}/files/{file}"),
+            dir.path(&format!("src/{file}")),
+        )
+        .unwrap();
+    }
+    let want = fs::read_to_string(format!("{FOREIGN_CALL}/stdout")).unwrap();
+    for (source, output, stdout) in [
+        ("../src/light.paka", "light", "let there be light\n"),
+        ("../src/calc.paka", "bin/calc", &want),
+    ] {
+        let build = Command::new(PAKA)
+            .args(["build", source, "-o", output])
+            .current_dir(dir.path("work"))
+            .env("XDG_CACHE_HOME", dir.path("cache"))
+            .output()
+            .unwrap();
+        assert_eq!(build.status.code(), Some(0), "{source}: {build:?}");
+        let run = Command::new(dir.path("work").join(output))
+            .output()
+            .unwrap();
+        assert_eq!(String::from_utf8_lossy(&run.stdout), stdout, "{source}");
+    }
+    assert!(dir.path("work/bin/calc.Calc").is_file());
+}
