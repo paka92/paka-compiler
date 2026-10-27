@@ -128,12 +128,9 @@ define i32 @main() {{
 }
 
 /// The IR text of an app the M1 view cannot hold, on the entry of docs/abi/m1.md sections 13
-/// and 14; `None` for one granted foreign effects, or what the back end cannot build.
+/// and 14; `None` for what the back end cannot build.
 pub fn app(core: &mut Program) -> Option<String> {
     let app = core.app.as_ref()?;
-    if !app.foreign.is_empty() {
-        return None;
-    }
     let (entry, name) = match app.view {
         Some(_) => (VISUAL, "paka_rt1_visual"),
         None => (APP, "paka_rt1_app"),

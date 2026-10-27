@@ -8,14 +8,14 @@ enum Msg { Start, Got(n: Int), Failed(why: String) }
 
 fn update(m: Msg) -> List<Effect<Msg>> {
   match m {
-    Start => [Add(1, then: Got, or: Failed)]
+    Start => [Print("before"), Add(1, then: Got, or: Failed), Print("after")]
     Got(n) => [Print("got {n}"), Exit]
     Failed(why) => [Print(why), Exit]
   }
 }
 
-app errors {
+app apps {
   start: Start
   update: update
-  grants: [Console, Sum]
+  grants: [Console]
 }

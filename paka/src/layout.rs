@@ -6,7 +6,7 @@
 //! `Option` or `Result`, is a box. Every field on such a cycle reaches its own type, so each cycle
 //! holds a box and every size is finite.
 
-use crate::core_form::{Program, Ty, Type};
+use crate::core_form::{Program, Ty, Type, plain};
 use paka_rt::abi::dev::map::STRING_KEY;
 use paka_rt::abi::dev::records::{Part, Spec};
 pub use paka_rt::abi::table::{ALIGN, CHARS, CONSTANT, Header, LIST, STRING};
@@ -77,10 +77,29 @@ impl Layouts {
                 _ => None,
             })
             .collect();
+        let crossing: Vec<Type> = (0..p.foreign.len())
+            .flat_map(|k| {
+                let f = p.crossing(k);
+                f.params
+                    .iter()
+                    .chain(&f.result)
+                    .map(|&t| plain(t))
+                    .collect::<Vec<_>>()
+            })
+            .collect();
+        for t in crossing {
+            p.ty(t);
+        }
         for m in effects {
             let string = p.ty(Type::String);
             p.ty(Type::Int);
             p.ty(Type::Fn(vec![string], Some(m)));
+            for k in 0..p.foreign.len() {
+                if let Some(r) = p.crossing(k).result {
+                    let r = p.ty(plain(r));
+                    p.ty(Type::Fn(vec![r], Some(m)));
+                }
+            }
         }
         let p = &*p;
         let boxed = (0..p.types.len())
@@ -252,16 +271,27 @@ fn alternatives(p: &Program, ty: Ty) -> Alternatives {
             let answer = find(Type::Fn(vec![string], Some(msg)));
             let s = (string, false);
             let f = (answer, false);
-            (
-                true,
-                vec![
-                    vec![s],
-                    vec![s, f, f],
-                    vec![s, s, (msg, true), f],
-                    vec![],
-                    vec![(int, false)],
-                ],
-            )
+            let mut alts = vec![
+                vec![s],
+                vec![s, f, f],
+                vec![s, s, (msg, true), f],
+                vec![],
+                vec![(int, false)],
+            ];
+            // A foreign effect's arguments, then `then`: a function of its result, or the message
+            // boxed when it has none.
+            alts.extend((0..p.foreign.len()).map(|k| {
+                let c = p.crossing(k);
+                let mut fields: Vec<_> =
+                    c.params.iter().map(|&t| (find(plain(t)), false)).collect();
+                fields.push(match c.result {
+                    Some(r) => (find(Type::Fn(vec![find(plain(r))], Some(msg))), false),
+                    None => (msg, true),
+                });
+                fields.push(f);
+                fields
+            }));
+            (true, alts)
         }
         ref t => unreachable!("no alternatives in {t:?}"),
     }

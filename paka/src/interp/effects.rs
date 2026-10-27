@@ -81,16 +81,18 @@ fn call(
     let effect = &core.foreign[position(*id).expect("an effect index")];
     let library = &core.libraries[effect.library];
     if !app.foreign.contains(&library.name) {
-        let (name, grant) = (&effect.name, &library.name);
-        let why = format!("effect {name} refused: grant {grant} is missing");
-        return Err((3, format!("{}: {why}\n", app.name)));
+        return Err(paka_rt::foreign::refused(
+            &app.name,
+            &effect.name,
+            &library.name,
+        ));
     }
     let Some(hosts) = hosts else {
         return Ok(None);
     };
     let args: Vec<_> = args.iter().map(plain).collect();
     Ok(Some(
-        match hosts.call(effect.library, library, effect.number, &args) {
+        match foreign::call(hosts, effect.library, library, effect.number, &args) {
             Ok(Some(result)) => Queued::Answer(answer_fn(then), value(result)),
             Ok(None) => Queued::Message(mem::take(then)),
             Err(reason) => Queued::Answer(*or, Value::Str(reason.into())),

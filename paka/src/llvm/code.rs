@@ -12,7 +12,8 @@
 use super::constant;
 use crate::core_form::{
     Arg, Arith, Arm, Bin, Block, Callee, Cmp, Compound, Effect, Expr, ExprKind, FloatArith, Fn,
-    FnRef, Grant, Local, Place, Program, Root, Site, Step, Stmt, Tag, Ty, Type, Un, Walk,
+    FnRef, Grant, Local, Place, Plain, Program, Root, Site, Step, Stmt, Tag, Ty, Type, Un, Walk,
+    foreign_effect,
 };
 use paka::builtins::ROWS;
 use paka::layout::{self, Layouts};
@@ -85,6 +86,8 @@ pub fn lower_app(core: &mut Program) -> Option<String> {
         defines += &module.function(f, None)?;
     }
     module.dispatched.extend(answer);
+    let results = paka::emit::answers(core);
+    module.dispatched.extend(results.iter().map(|&(_, t)| t));
     let args = ["ptr %a", "ptr %b", "ptr %c"];
     let handler = args[..update.params.len() + usize::from(update.result.is_some())].join(", ");
     let view = match app.view {
@@ -149,7 +152,15 @@ pub fn lower_app(core: &mut Program) -> Option<String> {
         Some(text) => format!("ptr @types, i64 {}", text.len()),
         None => "ptr null, i64 0".into(),
     });
+    let table = paka_rt::foreign::table(&paka::foreign::functions(core));
+    words.push(match table.is_empty() {
+        true => "ptr null, i64 0".into(),
+        false => format!("ptr @foreign, i64 {}", table.len()),
+    });
     let mut code = constant("name", &app.name);
+    if !table.is_empty() {
+        code += &constant("foreign", &table);
+    }
     if !fields.is_empty() {
         code += &constant("fields", &fields);
     }
@@ -160,12 +171,16 @@ pub fn lower_app(core: &mut Program) -> Option<String> {
         Some(t) => format!("%v = call i32 @v{t}(i64 %id, ptr %a, ptr %b)\n  ret i32 %v"),
         None => "ret i32 1".into(),
     };
+    let (cases, results) = results
+        .iter()
+        .map(|&(r, t)| result(r, t))
+        .unzip::<_, _, String, String>();
     code += &format!(
-        "@app = private constant {{ ptr, i64, ptr, i64, i64, ptr, i64, ptr, i64, i64, ptr, i64, ptr, i64, ptr, i64 }} {{ {} }}
+        "@app = private constant {{ ptr, i64, ptr, i64, i64, ptr, i64, ptr, i64, i64, ptr, i64, ptr, i64, ptr, i64, ptr, i64 }} {{ {} }}
 
 define internal i32 @app.call(i64 %id, ptr %a, ptr %b, ptr %c) {{
 entry:
-  switch i64 %id, label %answer [ i64 -1, label %handler i64 -2, label %state i64 -3, label %view ]
+  switch i64 %id, label %answer [ i64 -1, label %handler i64 -2, label %state i64 -3, label %view{cases} ]{results}
 handler:
   %h = call i32 @p_{}({handler})
   ret i32 %h
@@ -185,6 +200,32 @@ answer:
         },
     );
     Some(code + &defines + &rest)
+}
+
+/// The `@app.call` switch case and block for answer function `%a`, of type `t`, applied to the
+/// foreign result of kind `r` at `%b` (ABI section 13): the id is -4 for `Int`, -5 for `Float`
+/// and -6 for `Bool`.
+fn result(r: Plain, t: Ty) -> (String, String) {
+    let k = r as usize;
+    let (word, ty) = match r {
+        Plain::Int => (format!("%x{k} = load i64, ptr %b"), "i64"),
+        Plain::Float => (format!("%x{k} = load double, ptr %b"), "double"),
+        Plain::Bool => (
+            format!("%w{k} = load i64, ptr %b\n  %x{k} = trunc i64 %w{k} to i1"),
+            "i1",
+        ),
+        Plain::String => unreachable!("a result is never a String"),
+    };
+    let case = format!(" i64 {}, label %result{k}", -4 - k as i64);
+    let block = format!(
+        "
+result{k}:
+  {word}
+  %f{k} = ptrtoint ptr %a to i64
+  %r{k} = call i32 @v{t}(i64 %f{k}, {ty} %x{k}, ptr %c)
+  ret i32 %r{k}"
+    );
+    (case, block)
 }
 
 /// The grants word of ABI section 13: bit 0 `Console`, bit 1 `ReadFiles`, bit 2 `WriteFiles`.
@@ -319,8 +360,8 @@ impl<'a> Module<'a> {
         Some(defines + &code)
     }
 
-    /// The tag of a variant: its position, `Some` and `Ok` first. No run loop performs a
-    /// foreign effect.
+    /// The tag of a variant: its position, `Some` and `Ok` first; a foreign effect's depends on
+    /// its fields (`foreign_effect`).
     fn alternative(&self, tag: &Tag) -> Option<usize> {
         match tag {
             Tag::User(_, i) => Some(*i),
@@ -940,6 +981,10 @@ impl Body<'_, '_> {
                 self.get(t, &at)
             }
             ExprKind::Record(_, fields) => self.construct(e.ty?, None, fields)?,
+            ExprKind::Variant(Tag::Effect(Effect::Foreign), fields) if !self.module.m1 => {
+                let (alt, fields) = foreign_effect(fields);
+                self.construct(e.ty?, Some(alt), fields)?
+            }
             ExprKind::Variant(tag, fields) => {
                 self.construct(e.ty?, Some(self.module.alternative(tag)?), fields)?
             }

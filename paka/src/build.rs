@@ -1,5 +1,6 @@
 //! `paka build`: emits the IR and has clang compile and link it with the runtime
-//! (docs/abi/m1.md section 9).
+//! (docs/abi/m1.md section 9), and puts the host of each granted foreign declaration beside the
+//! executable (section 13).
 
 use crate::core_form::Program;
 use crate::diagnostic::Diagnostic;
@@ -31,7 +32,7 @@ const SYSTEM_LIBS: [&str; 7] = [
 /// Writes the executable for `core` to `output`; `path` is the source path for diagnostics.
 pub fn build(path: &str, core: &mut Program, output: &OsStr) -> Result<(), Diagnostic> {
     let text = llvm::ir(core).ok_or_else(|| {
-        let message = "the back end builds only apps without foreign effects";
+        let message = "the back end does not build this program yet";
         Diagnostic::tool(path, "unsupported-form", message)
     })?;
     let broken = llvm::lint::lint(&text);
@@ -67,7 +68,23 @@ pub fn build(path: &str, core: &mut Program, output: &OsStr) -> Result<(), Diagn
         .map_err(write_failed)
         .and_then(|()| link(path, &ir, &runtime, output));
     let _ = fs::remove_file(&ir);
-    result
+    result.map(|()| hosts(core, output))
+}
+
+/// Puts the host of each granted declaration of `core` beside `output` as `<output>.<name>`; one
+/// that does not build is left out, so its calls answer `no host`.
+fn hosts(core: &Program, output: &OsStr) {
+    let granted = core.app.as_ref().map(|a| &a.foreign);
+    for library in core.libraries.iter() {
+        if granted.is_some_and(|g| g.contains(&library.name)) {
+            let mut beside = output.to_os_string();
+            beside.push(format!(".{}", library.name));
+            let _ = fs::remove_file(&beside);
+            if let Some(host) = paka::foreign::host(library) {
+                let _ = fs::copy(host, beside);
+            }
+        }
+    }
 }
 
 fn link(path: &str, ir: &Path, runtime: &Path, output: &OsStr) -> Result<(), Diagnostic> {

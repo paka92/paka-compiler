@@ -367,7 +367,7 @@ pub(super) fn alternative(tag: &Tag) -> Result<usize, Refusal> {
         Tag::User(_, i) => Ok(*i),
         Tag::Some | Tag::Ok => Ok(0),
         Tag::None | Tag::Err => Ok(1),
-        Tag::Effect(Effect::Foreign) => Err("a foreign effect runs only in the interpreter".into()),
+        Tag::Effect(Effect::Foreign) => Err("a foreign effect is not matched".into()),
         Tag::Effect(e) => Ok(*e as usize),
     }
 }

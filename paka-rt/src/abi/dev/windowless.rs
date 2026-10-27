@@ -6,8 +6,8 @@
 //! made since it began.
 
 use super::app::{
-    App, Call, Queued, Stopped, Words, addr, answer, close, copy, effects, release, start_message,
-    state, status, update, words,
+    App, Call, Hosts, Queued, Stopped, Words, addr, answer, close, copy, effects, release, result,
+    start_message, state, status, update, words,
 };
 use super::view::{self, Drawing};
 use super::{Context, Trap, until};
@@ -36,6 +36,8 @@ pub struct Windowless<'a, W> {
     code: Code<'a>,
     app: &'a App<'a>,
     world: &'a mut W,
+    /// The foreign hosts, which outlive a swap.
+    hosts: Hosts,
     state: Words,
     queue: VecDeque<Queued>,
     /// The tree last drawn: one error node if the first view run trapped.
@@ -60,6 +62,7 @@ impl<'a, W: World> Windowless<'a, W> {
             code,
             app,
             world,
+            hosts: Hosts::default(),
             state: vec![],
             queue: VecDeque::new(),
             drawing: Drawing::default(),
@@ -220,7 +223,13 @@ impl<'a, W: World> Windowless<'a, W> {
                 return Ok(false);
             }
         };
-        match effects(self.ctx, self.app, list, self.world, &mut self.queue) {
+        match effects(
+            self.ctx,
+            self.app,
+            list,
+            (self.world, &mut self.hosts),
+            &mut self.queue,
+        ) {
             Ok(None) => Ok(true),
             Ok(Some(end)) => Err(Ok(end)),
             Err(stopped) => Err(Err(stopped)),
@@ -237,6 +246,13 @@ impl<'a, W: World> Windowless<'a, W> {
         let (mut owned, at) = match next {
             Queued::Message(m) => (Some(m), 0),
             Queued::Answer(f, text) => (Some(self.answer(f, &text)?), 0),
+            Queued::Result(f, kind, word) => {
+                let code = &mut self.code;
+                (
+                    Some(result(self.ctx, self.app, code.call, f, kind, word)?),
+                    0,
+                )
+            }
             Queued::Event(event) => match route(&mut self.drawing.root, &event) {
                 None => return Ok(None),
                 Some(Sent::Click(on)) => (None, on.at),

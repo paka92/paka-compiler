@@ -4,8 +4,9 @@
 
 use crate::builtins::ROWS;
 use crate::core_form::{
-    Arg, Arith, Bin, Block, Callee, Cmp, Compound, EnumId, Expr, ExprKind, Field, FloatArith, Fn,
-    FnRef, Local, Param, Place, Program, Root, Site, Stmt, Tag, Ty, Type, Un, Walk,
+    Arg, Arith, Bin, Block, Callee, Cmp, Compound, Effect, EnumId, Expr, ExprKind, Field,
+    FloatArith, Fn, FnRef, Local, Param, Place, Plain, Program, Root, Site, Stmt, Tag, Ty, Type,
+    Un, Walk, foreign_effect, plain,
 };
 use crate::layout::Layouts;
 use crate::owners::Owners;
@@ -90,11 +91,13 @@ impl Emitter {
             None => p.def(def),
             Some(k) => {
                 let c = constructors(p);
+                let (e, a) = (equalities(p), answers(p));
                 made = match k.checked_sub(c.len()) {
                     None => constructor(p, c[k]),
-                    Some(i) => equalities(p)
-                        .get(i)
-                        .map_or_else(|| state(p), |&t| equality(p, t)),
+                    Some(i) if i < e.len() => equality(p, e[i]),
+                    Some(i) => a
+                        .get(i - e.len())
+                        .map_or_else(|| state(p), |&(_, f)| answer(p, f)),
                 };
                 &made
             }
@@ -163,11 +166,29 @@ fn equality_slot(p: &Program, t: Ty) -> Option<usize> {
     Some(p.fns.len() + p.examples.len() + constructors(p).len() + at)
 }
 
-/// The slot ids before the type records: functions, examples, constructors, equalities, then
-/// the app's state.
+/// The kinds of result the program's foreign effects give, each with the type of the app's
+/// function that answers one: each has a definition, `answer`.
+pub fn answers(p: &Program) -> Vec<(Plain, Ty)> {
+    let Some(app) = &p.app else { return vec![] };
+    let msg = p.fns[app.update].params.last().map(|q| q.ty);
+    let find = |t: &Type| p.types.iter().position(|known| known == t);
+    let given = |r| (0..p.foreign.len()).any(|k| p.crossing(k).result == Some(r));
+    let typed = |r| Some((r, find(&Type::Fn(vec![find(&plain(r))?], msg))?));
+    let kinds = [Plain::Int, Plain::Float, Plain::Bool].into_iter();
+    kinds.filter(|&r| given(r)).filter_map(typed).collect()
+}
+
+/// The slot id of the definition that answers a foreign effect's result of kind `r`.
+pub fn answer_slot(p: &Program, r: Plain) -> Option<usize> {
+    let at = answers(p).iter().position(|&(known, _)| known == r)?;
+    Some(p.fns.len() + p.examples.len() + constructors(p).len() + equalities(p).len() + at)
+}
+
+/// The slot ids before the type records: functions, examples, constructors, equalities,
+/// answers, then the app's state.
 pub fn definitions(p: &Program) -> usize {
     let state = p.app.as_ref().is_some_and(|a| a.state.is_some());
-    let made = constructors(p).len() + equalities(p).len();
+    let made = constructors(p).len() + equalities(p).len() + answers(p).len();
     p.fns.len() + p.examples.len() + made + usize::from(state)
 }
 
@@ -221,6 +242,45 @@ fn equality(p: &Program, t: Ty) -> Fn {
         params: vec![param.clone(), param],
         locals: vec![t, t],
         result: bool,
+        body: Block {
+            stmts: vec![],
+            value: Some(Box::new(value)),
+        },
+        claims: vec![],
+    }
+}
+
+/// `fn answer(f: fn(T) -> Msg, inout x: T) -> Msg { f(x) }` for type `f`: the run loop passes
+/// a foreign effect's result by its place, a whole word of any type.
+fn answer(p: &Program, f: Ty) -> Fn {
+    let Type::Fn(params, msg) = &p.types[f] else {
+        unreachable!("an answer is a function");
+    };
+    let t = params[0];
+    let local = |l, ty| Expr {
+        ty: Some(ty),
+        kind: ExprKind::Place(Place {
+            root: Root::Local(l),
+            steps: vec![],
+        }),
+    };
+    let callee = Callee::Value(Box::new(local(0, f)));
+    let value = Expr {
+        ty: *msg,
+        kind: ExprKind::Call(callee, vec![Arg::Value(local(1, t))], 0),
+    };
+    Fn {
+        name: "answer".into(),
+        site: 0,
+        params: vec![
+            Param {
+                ty: f,
+                inout: false,
+            },
+            Param { ty: t, inout: true },
+        ],
+        locals: vec![f, t],
+        result: *msg,
         body: Block {
             stmts: vec![],
             value: Some(Box::new(value)),
@@ -770,6 +830,10 @@ impl<'a> Gen<'a> {
             ExprKind::Map(entries) => self.map(ty(e), entries)?,
             ExprKind::Place(place) => self.read(place)?,
             ExprKind::Record(_, fields) => return self.construct(ty(e), 0, fields),
+            ExprKind::Variant(Tag::Effect(Effect::Foreign), fields) => {
+                let (alternative, fields) = foreign_effect(fields);
+                return self.construct(ty(e), alternative, fields);
+            }
             ExprKind::Variant(tag, fields) => {
                 return self.construct(ty(e), values::alternative(tag)?, fields);
             }

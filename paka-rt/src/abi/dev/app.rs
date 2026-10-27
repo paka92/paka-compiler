@@ -7,13 +7,17 @@ use super::records::{rt_copy, rt_drop};
 use super::words::{TextWords, as_str, new_text};
 use super::{Context, MEMORY, Trap};
 use crate::effects::{self, Effect, End, Grant, Next, World};
-use crate::ops::Int;
+use crate::foreign::{self, Finder, Function, Kind, Plain, Value};
+use crate::ops::{Float, Int};
 use crate::route::Event;
 use std::collections::{BTreeSet, VecDeque};
+use std::path::PathBuf;
 use std::ptr;
 
-/// An Effect's words: the tag, then the largest payload, `WriteFile`'s (M4-05 section 8).
-const EFFECT: u64 = 11 * 8;
+/// The words of a built-in Effect's largest payload, `WriteFile`'s (M4-05 section 8).
+const PAYLOAD: u64 = 10;
+/// The built-in Effects; a foreign effect's tag follows them.
+const BUILT_IN: u64 = 5;
 
 /// Calls definition `id` with argument words, `out` last when it has a result; its status.
 pub type Call<'a> = dyn FnMut(&mut Context, usize, &[u64]) -> i32 + 'a;
@@ -35,7 +39,17 @@ pub struct App<'a> {
     pub effects: Option<u64>,
     /// The view's slot id, if the app is visual.
     pub view: Option<usize>,
+    /// The foreign effects, by tag after the built-in ones.
+    pub foreign: &'a [Function],
+    /// The host of a foreign effect's declaration, if it has one.
+    pub host: &'a Finder,
+    /// By result kind, what `call` takes to answer a foreign result: an answer function, the
+    /// result's place and the message's place.
+    pub answers: [Option<usize>; 3],
 }
+
+/// The hosts of a run, each keyed by the executable it was started from.
+pub type Hosts = foreign::Hosts<Option<PathBuf>>;
 
 /// Why a run stopped before its end: a trap, recorded in the context, or the interrupt.
 #[derive(Clone, Copy, Debug, PartialEq)]
@@ -50,6 +64,8 @@ pub(super) type Words = Vec<u64>;
 pub(super) enum Queued {
     Message(Words),
     Answer(u64, String),
+    /// An answer function and a foreign result's word.
+    Result(u64, Kind, u64),
     Event(Event),
 }
 
@@ -65,6 +81,7 @@ pub fn serve(
     let mut state = state(ctx, app, call)?;
     let tag = app.start.expect("a headless app has a start");
     let mut queue = VecDeque::from([Queued::Message(start_message(ctx, app, tag, start)?)]);
+    let mut hosts = Hosts::default();
     let end = loop {
         let Some(next) = queue.pop_front() else {
             break (3, format!("{}: ended without Exit\n", app.name));
@@ -72,10 +89,19 @@ pub fn serve(
         let mut message = match next {
             Queued::Message(m) => m,
             Queued::Answer(f, text) => answer(ctx, app, call, f, &text)?,
+            Queued::Result(f, kind, word) => result(ctx, app, call, f, kind, word)?,
             Queued::Event(_) => unreachable!("a headless app has no events"),
         };
         let at = addr(&mut message);
-        let ended = handle(ctx, app, call, world, &mut state, at, &mut queue);
+        let ended = handle(
+            ctx,
+            app,
+            call,
+            (world, &mut hosts),
+            &mut state,
+            at,
+            &mut queue,
+        );
         release(ctx, app.message.0, &mut message);
         if let Some(end) = ended? {
             break end;
@@ -103,7 +129,7 @@ fn handle(
     ctx: &mut Context,
     app: &App,
     call: &mut Call,
-    world: &mut impl World,
+    world: (&mut impl World, &mut Hosts),
     state: &mut Words,
     message: u64,
     queue: &mut VecDeque<Queued>,
@@ -139,7 +165,7 @@ pub(super) fn effects(
     ctx: &mut Context,
     app: &App,
     mut list: [u64; 3],
-    world: &mut impl World,
+    world: (&mut impl World, &mut Hosts),
     queue: &mut VecDeque<Queued>,
 ) -> Result<Option<End>, Stopped> {
     let ended = perform(ctx, app, list, world, queue);
@@ -197,18 +223,51 @@ pub(super) fn answer(
     Ok(message)
 }
 
+/// The message answer function `f` makes of a foreign result of `kind`, `word`.
+pub(super) fn result(
+    ctx: &mut Context,
+    app: &App,
+    call: &mut Call,
+    f: u64,
+    kind: Kind,
+    word: u64,
+) -> Result<Words, Stopped> {
+    let mut given = [word];
+    let mut message = words(app.message.1);
+    let answer = app.answers[kind as usize].expect("an answer for each result kind");
+    status(call(
+        ctx,
+        answer,
+        &[f, addr(&mut given), addr(&mut message)],
+    ))?;
+    Ok(message)
+}
+
 /// Performs the effects of `list` in order, queueing the answers; the end one brings, if any.
 fn perform(
     ctx: &mut Context,
     app: &App,
     [items, len, _]: [u64; 3],
-    world: &mut impl World,
+    (world, hosts): (&mut impl World, &mut Hosts),
     queue: &mut VecDeque<Queued>,
 ) -> Result<Option<End>, Stopped> {
+    let payload = |f: &Function| f.params.iter().map(|p| p.words()).sum::<u64>() + 2;
+    let size = 8 * (1 + app.foreign.iter().map(payload).fold(PAYLOAD, u64::max));
     for i in 0..len {
         // SAFETY: item `i` of the `List[Effect[Msg]]` the handler wrote, which lives until the
         // loop drops it after this call.
-        let effect = unsafe { decode(items + i * EFFECT) };
+        let effect = match unsafe { decode(items + i * size, app.foreign) } {
+            Decoded::Effect(effect) => effect,
+            Decoded::Foreign(f, args, then, or) => {
+                if !f.granted {
+                    return Ok(Some(foreign::refused(app.name, &f.name, &f.grant)));
+                }
+                if !world.drops() {
+                    queue.push_back(call_foreign(ctx, app, hosts, f, &args, then, or)?);
+                }
+                continue;
+            }
+        };
         match effects::perform(app.name, app.grants, effect, world) {
             Ok(Some(Next::Message(boxed))) => {
                 queue.push_back(Queued::Message(copy(ctx, app.message, boxed)?))
@@ -221,24 +280,74 @@ fn perform(
     Ok(None)
 }
 
-/// The effect at `at`: answer functions as slot ids, a message as its box's address.
+/// Calls foreign effect `f` with `args` through its declaration's host: what `then` answers, or
+/// `or` with the reason the call failed.
+fn call_foreign(
+    ctx: &mut Context,
+    app: &App,
+    hosts: &mut Hosts,
+    f: &Function,
+    args: &[Value],
+    then: u64,
+    or: u64,
+) -> Result<Queued, Stopped> {
+    let exe = (app.host)(f);
+    let result = f.result.map(Plain::kind);
+    let called = hosts.call((f.library, &exe), || exe.clone(), f.number, args, result);
+    Ok(match called {
+        Ok(Some(Value::Int(n))) => Queued::Result(then, Kind::Int, n as u64),
+        Ok(Some(Value::Float(x))) => Queued::Result(then, Kind::Float, x.bits()),
+        Ok(Some(Value::Bool(b))) => Queued::Result(then, Kind::Bool, b.into()),
+        Ok(Some(Value::String(_))) => unreachable!("a result is never a String"),
+        Ok(None) => Queued::Message(copy(ctx, app.message, then)?),
+        Err(why) => Queued::Answer(or, why.into()),
+    })
+}
+
+/// An effect as its words give it: built in, or a foreign effect with its arguments and its
+/// `then` and `or`.
+enum Decoded<'a> {
+    Effect(Effect<'a, u64, u64>),
+    Foreign(&'a Function, Vec<Value<'a>>, u64, u64),
+}
+
+/// The effect at `at`, a foreign one of `foreign`: answer functions as slot ids, a message as
+/// its box's address.
 ///
 /// # Safety
 ///
-/// `at` holds an Effect's words, whose Strings stay live and unchanged while it is used.
-unsafe fn decode<'a>(at: u64) -> Effect<'a, u64, u64> {
+/// `at` holds an Effect's words, a foreign one's as `foreign` gives them, whose Strings stay
+/// live and unchanged while it is used.
+unsafe fn decode<'a>(at: u64, foreign: &'a [Function]) -> Decoded<'a> {
     // SAFETY: the caller vouches for the words; each field sits where M4-05 section 8 puts it.
     let word = |i: u64| unsafe { *ptr::with_exposed_provenance::<u64>((at + 8 * i) as usize) };
     // SAFETY: as above; the word holds a String's words.
     let text = |i: u64| unsafe { as_str(at + 8 * i) };
-    match word(0) {
+    let effect = match word(0) {
         0 => Effect::Print(text(1)),
         1 => Effect::ReadFile(text(1), word(5), word(6)),
         2 => Effect::WriteFile(text(1), text(5), word(9), word(10)),
         3 => Effect::Exit,
         4 => Effect::ExitWith(Int::new(word(1) as i64)),
-        tag => unreachable!("an Effect's tag is {tag}"),
-    }
+        tag => {
+            let f = foreign.get((tag - BUILT_IN) as usize);
+            let f = f.unwrap_or_else(|| unreachable!("an Effect's tag is {tag}"));
+            let mut at = 1;
+            let mut arg = |p: Plain| {
+                let i = at;
+                at += p.words();
+                match p {
+                    Plain::Int => Value::Int(word(i) as i64),
+                    Plain::Float => Value::Float(Float::from_bits(word(i))),
+                    Plain::Bool => Value::Bool(word(i) != 0),
+                    Plain::String => Value::String(text(i)),
+                }
+            };
+            let args = f.params.iter().map(|&p| arg(p)).collect();
+            return Decoded::Foreign(f, args, word(at), word(at + 1));
+        }
+    };
+    Decoded::Effect(effect)
 }
 
 /// A copy of the value at `from`, owning new blocks.

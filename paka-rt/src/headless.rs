@@ -6,8 +6,11 @@ use crate::abi::dev::windowless::{Code, Windowless};
 use crate::abi::dev::{Context, MEMORY, Trap};
 use crate::abi::heap::lend;
 use crate::abi::shown::Shapes;
-use crate::abi::{App, HANDLER, NO_START, STATE, Trapped, Typed, VIEW, peek_trap, take_trap};
+use crate::abi::{
+    ANSWER, App, HANDLER, NO_START, STATE, Trapped, Typed, VIEW, peek_trap, take_trap,
+};
 use crate::effects::{Dropped, End, Grant, Host, World, arguments};
+use crate::foreign::{self, Function};
 use crate::route::Event;
 use crate::rt::{Fd1, INTERNAL_ERROR, STOPPED, on_runner};
 use crate::tree::{self, Node};
@@ -16,6 +19,7 @@ use std::collections::BTreeSet;
 use std::ffi::OsString;
 use std::io::{self, Write};
 use std::panic::{AssertUnwindSafe, catch_unwind};
+use std::path::PathBuf;
 use std::ptr;
 use std::sync::mpsc;
 
@@ -52,6 +56,13 @@ fn served(name: &str, app: &App, args: &[OsString], draw: Option<Draw>) -> End {
     let Some(Ok(types)) = app.types.bytes().map(str::from_utf8) else {
         return internal(name, "bad types");
     };
+    let Some(table) = app
+        .foreign
+        .bytes()
+        .and_then(|t| foreign::functions(str::from_utf8(t).ok()?))
+    else {
+        return internal(name, "bad foreign table");
+    };
     let fields: Vec<&str> = fields.split(", ").filter(|f| !f.is_empty()).collect();
     let replay = app.visual != 0 && args == ["--paka-replay"];
     let start = match arguments(name, &fields, if replay { &[] } else { args }) {
@@ -72,6 +83,9 @@ fn served(name: &str, app: &App, args: &[OsString], draw: Option<Draw>) -> End {
         message: typed(&app.message),
         effects: (!app.effects.is_null()).then(|| app.effects.expose_provenance() as u64),
         view: (app.visual != 0).then_some(VIEW as usize),
+        foreign: &table,
+        host: &beside,
+        answers: [0, 1, 2].map(|kind| Some((ANSWER - kind) as usize)),
     };
     on_runner(|| {
         let mut ctx = Context::new(u64::MAX);
@@ -102,6 +116,15 @@ fn served(name: &str, app: &App, args: &[OsString], draw: Option<Draw>) -> End {
             Err(Stopped::Time) => internal(name, "a call returned a non-zero status"),
         }
     })
+}
+
+/// The host of `f`'s declaration, which a released program carries beside its binary: the
+/// binary's file name, a dot and the declaration's name.
+fn beside(f: &Function) -> Option<PathBuf> {
+    let exe = std::env::current_exe().ok()?;
+    let mut name = exe.file_name()?.to_os_string();
+    name.push(format!(".{}", f.grant));
+    Some(exe.with_file_name(name))
 }
 
 /// Runs a visual app (ABI section 14): with `--paka-replay`, on the events of standard input;

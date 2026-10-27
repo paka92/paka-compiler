@@ -747,7 +747,6 @@ construct (the target `c.shape.w`, the operand or write `&xs`).
 | `unexpected-token` | `unexpected_token` | 4:12 | spec/m1.md §10; M2-02 §5: `;` |
 | `unexpected-inout-mark` | `unexpected_inout_mark` | 5:11 | spec/m1.md §10; M2-05 §5 |
 | `nesting-too-deep` | `nesting_too_deep` | 4:66 | spec/m1.md §10; M2-02 §5; `tests/cases/parse/nesting_too_deep` |
-| `unsupported-form` | `unsupported_form` | via `build`, no position | spec/m1.md §10 (build, no position) |
 | `duplicate-name` | `duplicate_name` | 3:6 | spec/m1.md §10; `tests/cases/check/duplicate_enum` |
 | `duplicate-local` | `duplicate_local` | 5:7 | spec/m1.md §10; M2-02 §5 |
 | `no-app` | `no_app` | via `run`, no position | spec/m1.md §10 (no position) |
@@ -818,8 +817,8 @@ Not in the table, since a program cannot reach them in a file:
 | `old-value-use` | a migrate is not a program file; tested in paka/tests/migrate.rs (M5-07 §2) |
 
 `unused-name` is a warning and has no kind; its cases are under "Warnings: `unused-name`" in
-the apps/ part. `unsupported-form` is temporary (spec/m1.md §10): drop its case when the back end
-builds the core form.
+the apps/ part. `unsupported-form` (spec/m1.md §10) has no case: since M7-15 the back end builds
+every case, and the kind stays for a program it cannot lower, such as one whose frame is too big.
 
 ### types/ M2-02: records, enums, names
 

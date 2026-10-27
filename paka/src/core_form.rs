@@ -2,6 +2,7 @@
 //! evaluation order and trap points; the headings there match the types here.
 
 pub use paka_rt::effects::Grant;
+pub use paka_rt::foreign::Plain;
 use paka_rt::ops::{Float, Int};
 use std::collections::BTreeSet;
 use std::path::PathBuf;
@@ -62,16 +63,40 @@ pub struct CFunction {
     pub result: Option<Plain>,
 }
 
-/// A type that crosses to C (M7-02 section 1.3).
-#[derive(Clone, Copy, Debug, PartialEq)]
-pub enum Plain {
-    Int,
-    Float,
-    Bool,
-    String,
+/// The type of a crossing type.
+pub fn plain(t: Plain) -> Type {
+    match t {
+        Plain::Int => Type::Int,
+        Plain::Float => Type::Float,
+        Plain::Bool => Type::Bool,
+        Plain::String => Type::String,
+    }
+}
+
+/// A foreign effect's alternative in the layout of `Effect`, after the built-in ones, and its
+/// fields after its index.
+#[allow(clippy::disallowed_methods)] // the index is the lowerer's, never a program's value
+pub fn foreign_effect(fields: &[Expr]) -> (usize, &[Expr]) {
+    let [
+        Expr {
+            kind: ExprKind::Int(id),
+            ..
+        },
+        fields @ ..,
+    ] = fields
+    else {
+        unreachable!("a foreign effect starts with its index");
+    };
+    (Effect::Foreign as usize + id.get() as usize, fields)
 }
 
 impl Program {
+    /// The C function of foreign effect `k`.
+    pub fn crossing(&self, k: usize) -> &CFunction {
+        let f = &self.foreign[k];
+        &self.libraries[f.library].functions[f.number]
+    }
+
     /// The number of `t`, added on first use; equal types share one number.
     pub fn ty(&mut self, t: Type) -> Ty {
         match self.types.iter().position(|known| *known == t) {

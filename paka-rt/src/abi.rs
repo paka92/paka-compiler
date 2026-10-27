@@ -256,6 +256,8 @@ pub type Call = extern "C" fn(id: u64, a: *mut u8, b: *mut u8, c: *mut u8) -> i3
 pub const HANDLER: u64 = u64::MAX;
 pub const STATE: u64 = u64::MAX - 1;
 pub const VIEW: u64 = u64::MAX - 2;
+/// The first of the answer functions for a foreign result, one per kind (section 13).
+pub const ANSWER: u64 = u64::MAX - 3;
 /// The start word of an app with no start message.
 pub const NO_START: u64 = u64::MAX;
 
@@ -287,9 +289,11 @@ pub struct App {
     pub visual: u64,
     /// What a drawn message is shown by (section 14).
     pub types: Str,
+    /// The foreign effects' table (section 13), empty without any.
+    pub foreign: Str,
 }
 
-const _: () = assert!(size_of::<App>() == 16 * 8 && align_of::<App>() == 8);
+const _: () = assert!(size_of::<App>() == 18 * 8 && align_of::<App>() == 8);
 
 /// The entry of a headless app's `main` (ABI section 13).
 ///

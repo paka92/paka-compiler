@@ -36,6 +36,10 @@ pub trait World {
     fn read(&mut self, path: &str) -> Result<String, Reason>;
     /// Creates or replaces the file.
     fn write(&mut self, path: &str, text: &str) -> Result<(), Reason>;
+    /// Whether granted foreign effects are dropped rather than performed.
+    fn drops(&self) -> bool {
+        false
+    }
 }
 
 /// An effect with its fields: `F` is an answer function, `M` a message.
@@ -199,6 +203,10 @@ impl World for Dropped {
 
     fn write(&mut self, _: &str, _: &str) -> Result<(), Reason> {
         Ok(())
+    }
+
+    fn drops(&self) -> bool {
+        true
     }
 }
 

@@ -91,7 +91,11 @@ impl Shown<'_> {
                     Type::Enum(e) => (p.enums[e].variants[tag].name.as_str(), usize::MAX),
                     Type::Option(_) => (["None", "Some"][tag], usize::MAX),
                     Type::Result(..) => (["Ok", "Err"][tag], usize::MAX),
-                    _ => EFFECTS[tag],
+                    _ => EFFECTS.get(tag).copied().unwrap_or_else(|| {
+                        let fields = self.l.get(t).alternatives[tag].len();
+                        let foreign = &p.foreign[tag - EFFECTS.len()];
+                        (foreign.name.as_str(), fields - LABELS.len())
+                    }),
                 };
                 let places = &self.l.get(t).alternatives[tag];
                 if places.is_empty() {

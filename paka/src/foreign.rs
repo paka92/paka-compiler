@@ -3,57 +3,75 @@
 //! copies of its named files in an empty directory. A run starts each declaration's host at its
 //! first call and keeps it (section 2).
 
-mod pipe;
-
-pub use pipe::{Failure, Host, Kind, Value};
+pub use paka_rt::foreign::{Failure, Host, Kind, LIMIT, Value};
 
 use crate::ast::{ForeignLine, Type};
-use crate::core_form::{CFunction, Library, Plain};
+use crate::core_form::{CFunction, Library, Plain, Program};
 use crate::hash::hex;
 use crate::sha256::sha256;
 use crate::{clang, results};
+use paka_rt::effects::Reason;
+use paka_rt::foreign;
 use std::fmt::Write;
 use std::path::{Path, PathBuf};
 use std::process::{Command, Stdio};
+use std::sync::Mutex;
 use std::sync::atomic::{AtomicUsize, Ordering};
-use std::time::Duration;
 use std::{env, fs, process};
 
 const HOST: &str = include_str!("foreign/host.c");
-/// How long a call may take before its host is killed.
-pub const LIMIT: Duration = Duration::from_secs(10);
 
-/// The hosts of one run, by declaration, each with the declaration it was built from.
-#[derive(Default)]
-pub struct Hosts(Vec<Option<(Library, Host)>>);
+/// The hosts of an interpreter run, each keyed by the declaration it was built from.
+pub type Hosts = foreign::Hosts<Library>;
 
-impl Hosts {
-    /// Calls function `number` of declaration `at`, `library`, with `args`: its result, or the
-    /// reason it failed. A host that failed is dropped, so the next call starts a fresh one.
-    pub fn call(
-        &mut self,
-        at: usize,
-        library: &Library,
-        number: usize,
-        args: &[Value],
-    ) -> Result<Option<Value<'static>>, &'static str> {
-        if self.0.len() <= at {
-            self.0.resize_with(at + 1, || None);
+/// Calls function `number` of declaration `at`, `library`, with `args`: its result, or the
+/// reason it failed.
+pub fn call(
+    hosts: &mut Hosts,
+    at: usize,
+    library: &Library,
+    number: usize,
+    args: &[Value],
+) -> Result<Option<Value<'static>>, Reason> {
+    let result = library.functions[number].result.map(Plain::kind);
+    hosts.call((at, library), || host(library), number, args, result)
+}
+
+/// The host of `library` in the host cache, built on a miss.
+pub fn host(library: &Library) -> Option<PathBuf> {
+    cached(library, &cache_dir()).ok()
+}
+
+/// The foreign effects of `p` as compiled code's run loops take them, by effect index.
+pub fn functions(p: &Program) -> Vec<foreign::Function> {
+    let granted = |grant| p.app.as_ref().is_some_and(|a| a.foreign.contains(grant));
+    let function = |(k, f): (usize, &crate::core_form::Foreign)| {
+        let (c, grant) = (p.crossing(k), &p.libraries[f.library].name);
+        foreign::Function {
+            name: f.name.clone(),
+            grant: grant.clone(),
+            granted: granted(grant),
+            library: f.library,
+            number: f.number,
+            params: c.params.clone(),
+            result: c.result,
         }
-        let slot = &mut self.0[at];
-        if slot.as_ref().is_none_or(|(built, _)| built != library) {
-            *slot = None;
-            let exe = cached(library, &cache_dir()).map_err(|_| "no host")?;
-            let host = Host::start(&exe, LIMIT).map_err(|_| "no host")?;
-            *slot = Some((library.clone(), host));
+    };
+    p.foreign.iter().enumerate().map(function).collect()
+}
+
+/// The host of a function of `libraries` in the host cache, each kept once found.
+pub fn finder(
+    libraries: Vec<Library>,
+) -> impl Fn(&foreign::Function) -> Option<PathBuf> + Send + Sync {
+    let found = Mutex::new(vec![None; libraries.len()]);
+    move |f| {
+        let mut found = found.lock().unwrap_or_else(|e| e.into_inner());
+        let at = &mut found[f.library];
+        if at.is_none() {
+            *at = host(&libraries[f.library]);
         }
-        let (_, host) = slot.as_mut().expect("started");
-        let result = library.functions[number].result.map(kind);
-        let answer = host.call(number as u32, args, result);
-        if answer.is_err() {
-            *slot = None;
-        }
-        answer.map_err(|f| f.reason())
+        at.clone()
     }
 }
 
@@ -238,16 +256,6 @@ fn c_type(t: Plain) -> (&'static str, &'static str) {
         Plain::Float => ("double", "float"),
         Plain::Bool => ("bool", "bool"),
         Plain::String => ("paka_str", "str"),
-    }
-}
-
-/// The pipe's kind of a result; a result is never a String.
-fn kind(t: Plain) -> Kind {
-    match t {
-        Plain::Int => Kind::Int,
-        Plain::Float => Kind::Float,
-        Plain::Bool => Kind::Bool,
-        Plain::String => unreachable!("a String result does not cross; the checker refuses it"),
     }
 }
 

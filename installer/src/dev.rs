@@ -3,7 +3,7 @@
 
 use crate::{Loader, Slots};
 use paka::alone::{Names, relower};
-use paka::core_form::{FnId, Program, Type};
+use paka::core_form::{FnId, Plain, Program, Type};
 use paka::emit::{Cache, Emitter, show};
 use paka::hash::Hash;
 use paka::layout::Layouts;
@@ -15,6 +15,7 @@ use paka_rt::abi::dev::view::{self, Drawing};
 use paka_rt::abi::dev::windowless::{Code, Windowless};
 use paka_rt::abi::dev::{Context, HOLE, Trap, on_runner, until};
 use paka_rt::effects::{End, World};
+use paka_rt::foreign::{Finder, Function};
 use paka_rt::route::Event;
 use std::ffi::OsString;
 use std::ptr;
@@ -30,6 +31,9 @@ pub struct Dev {
     /// Each type's record address, 0 when it owns nothing.
     pub records: Vec<u64>,
     pub keys: Vec<Hash>,
+    /// The installed program's foreign effects and how their hosts are found.
+    foreign: Vec<Function>,
+    host: Box<Finder>,
     /// The installed program's files, and its definitions by name.
     files: Vec<(OsString, Vec<u8>)>,
     names: Names,
@@ -46,6 +50,8 @@ impl Default for Dev {
             layouts: Layouts::default(),
             records: vec![],
             keys: vec![],
+            foreign: vec![],
+            host: Box::new(|_| None),
             files: vec![],
             names: Names::default(),
         }
@@ -105,6 +111,8 @@ impl Dev {
         let records = Box::leak(Box::new(Records::new(&layouts.specs())));
         let addresses: Vec<u64> = (0..p.types.len()).map(|t| records.address(t)).collect();
         self.install(&keys, &addresses)?;
+        self.foreign = paka::foreign::functions(&p);
+        self.host = Box::new(paka::foreign::finder(p.libraries.clone()));
         (self.program, self.layouts, self.records, self.keys) = (p, layouts, addresses, keys);
         (self.files, self.names) = (vec![], Names::default());
         Ok(())
@@ -344,6 +352,9 @@ impl Dev {
             message: typed(msg),
             effects: update.result.map(|t| self.records[t]),
             view: a.view,
+            foreign: &self.foreign,
+            host: &*self.host,
+            answers: [Plain::Int, Plain::Float, Plain::Bool].map(|k| paka::emit::answer_slot(p, k)),
         };
         let start = paka_rt::effects::arguments(&a.name, &names, args)?;
         Ok((app, start))

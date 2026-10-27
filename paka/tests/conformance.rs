@@ -42,12 +42,15 @@ const ENVIRONMENT: &[&str] = &[
     "runtime-missing",
 ];
 
-/// Kinds of a migrate, which is no program file; paka/tests/migrate.rs tests them.
-const MIGRATE: &[&str] = &[
+/// Kinds no program file reaches: a migrate's, which paka/tests/migrate.rs tests, and
+/// `unsupported-form`, as the back end builds every case since M7-15 and refuses only a program
+/// it cannot lower, such as one whose frame is too big.
+const UNREACHED: &[&str] = &[
     "bad-migrate-signature",
     "migrate-needs-reset",
     "effect-in-migrate",
     "old-value-use",
+    "unsupported-form",
 ];
 
 fn read(dir: &Path, name: &str) -> Option<Vec<u8>> {
@@ -428,7 +431,7 @@ fn every_error_kind_has_a_case() {
         .filter(|k| {
             !covered.contains(*k)
                 && !ENVIRONMENT.contains(&k.as_str())
-                && !MIGRATE.contains(&k.as_str())
+                && !UNREACHED.contains(&k.as_str())
         })
         .collect();
     let unknown: Vec<_> = covered.iter().filter(|k| !kinds.contains(k)).collect();
