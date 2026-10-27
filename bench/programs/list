@@ -1,6 +1,7 @@
 # The benchmark programs of docs/decisions/M6-02.md section 1.3, each `<name>/main.{paka,rs,cpp}`.
-# `<name> <kind>` per line; integer kernels also build checked Rust. A `_wrap` program is the
-# wrapping twin of the checked one before it; mix is wrapping only.
+# `<name> <kind> [text]` per line; integer kernels also build checked Rust, and `text` passes the
+# path of the runner's ASCII text as the one argument. A `_wrap` program is the wrapping twin of
+# the checked one before it; mix is wrapping only.
 # A Float result r is printed as r times the scale below, the fraction dropped:
 # saxpy_dot 10^3, matmul 10^6, stencil 10^9, nbody 10^12.
 saxpy_dot float
@@ -12,3 +13,7 @@ sieve_wrap integer
 collatz integer
 collatz_wrap integer
 mix integer
+expr_parse pointer text
+binary_trees pointer
+bfs pointer
+word_count pointer text

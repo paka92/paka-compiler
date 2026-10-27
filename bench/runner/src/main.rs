@@ -2,9 +2,11 @@
 //!
 //! `paka-bench run <programs> <results>` builds each program `<programs>/list` names in Paka, Rust
 //! and C++, refuses one whose checksums differ, times every binary pinned to one CPU and writes
-//! the machine facts, medians, spread and every raw time to `<results>`.
+//! the machine facts, medians, spread and every raw time to `<results>`. A program listed with
+//! `text` gets the path of the text `text::make` writes as its one argument.
 
 mod machine;
+mod text;
 mod tools;
 
 use std::env;
@@ -63,7 +65,18 @@ fn run(programs: &Path, results: &Path, paka: PathBuf) -> Result<(), String> {
     let cpu = machine::pinned_cpu();
     let dir = Scratch::new()?;
     let mut text = header(&tools, programs, cpu);
-    for (name, kind) in &list {
+    let input = dir.0.join("text");
+    if list.iter().any(|(_, _, takes)| *takes) {
+        let made = text::make();
+        fs::write(&input, &made).map_err(|e| format!("cannot write {}: {e}", input.display()))?;
+        text += &format!("input text {} bytes\n", made.len());
+    }
+    for (name, kind, takes) in &list {
+        let args = if *takes {
+            vec![input.as_path()]
+        } else {
+            vec![]
+        };
         let source = programs.join(name);
         let bins = LANGS
             .into_iter()
@@ -74,23 +87,30 @@ fn run(programs: &Path, results: &Path, paka: PathBuf) -> Result<(), String> {
             })
             .collect::<Result<Vec<_>, _>>()?;
         text += &format!("{name} kind {kind}\n");
-        text += &program(name, &bins, cpu)?;
+        text += &program(name, &bins, cpu, &args)?;
+        bins.iter().for_each(|(_, bin)| drop(fs::remove_file(bin)));
     }
     fs::write(results, text).map_err(|e| format!("cannot write {}: {e}", results.display()))
 }
 
-/// The `<name> <kind>` lines of `<programs>/list`, kind as in M6-02 section 1.3; `#` starts a
-/// comment line.
-fn read_list(programs: &Path) -> Result<Vec<(String, String)>, String> {
+/// The `<name> <kind> [text]` lines of `<programs>/list`, kind as in M6-02 section 1.3; `#`
+/// starts a comment line.
+fn read_list(programs: &Path) -> Result<Vec<(String, String, bool)>, String> {
     let path = programs.join("list");
     let text = fs::read_to_string(&path).map_err(|e| format!("{}: {e}", path.display()))?;
     let lines = text.lines().map(str::trim);
     lines
         .filter(|l| !l.is_empty() && !l.starts_with('#'))
         .map(|l| match l.split_whitespace().collect::<Vec<_>>()[..] {
-            [name, kind @ ("float" | "integer" | "pointer")] => Ok((name.into(), kind.into())),
+            [
+                name,
+                kind @ ("float" | "integer" | "pointer"),
+                ref text @ ..,
+            ] if text.is_empty() || text == ["text"] => {
+                Ok((name.into(), kind.into(), !text.is_empty()))
+            }
             _ => Err(format!(
-                "{}: {l:?} is not `<name> float|integer|pointer`",
+                "{}: {l:?} is not `<name> float|integer|pointer [text]`",
                 path.display()
             )),
         })
@@ -114,11 +134,16 @@ fn header(tools: &Toolchain, programs: &Path, cpu: usize) -> String {
 
 /// The warm-up agrees on the checksum, then rounds run every binary in turn; a noisy attempt
 /// is rerun once. The last attempt's medians are the result.
-fn program(name: &str, bins: &[(Lang, PathBuf)], cpu: usize) -> Result<String, String> {
-    let checksum = agree(name, bins, cpu)?;
+fn program(
+    name: &str,
+    bins: &[(Lang, PathBuf)],
+    cpu: usize,
+    args: &[&Path],
+) -> Result<String, String> {
+    let checksum = agree(name, bins, cpu, args)?;
     let mut text = format!("{name} checksum {checksum}\n");
     for attempt in 1..=2 {
-        let times = rounds(bins, cpu, &checksum)?;
+        let times = rounds(bins, cpu, args, &checksum)?;
         for ((lang, _), t) in bins.iter().zip(&times) {
             let raw: Vec<_> = t.iter().map(|x| format!("{x:.6}")).collect();
             text += &format!(
@@ -137,10 +162,15 @@ fn program(name: &str, bins: &[(Lang, PathBuf)], cpu: usize) -> Result<String, S
 }
 
 /// The one Int line every binary prints, refused unless all agree.
-fn agree(name: &str, bins: &[(Lang, PathBuf)], cpu: usize) -> Result<String, String> {
+fn agree(
+    name: &str,
+    bins: &[(Lang, PathBuf)],
+    cpu: usize,
+    args: &[&Path],
+) -> Result<String, String> {
     let outs = bins
         .iter()
-        .map(|(_, bin)| time(bin, cpu).map(|(_, out)| out))
+        .map(|(_, bin)| time(bin, cpu, args).map(|(_, out)| out))
         .collect::<Result<Vec<_>, _>>()?;
     let first = &outs[0];
     if first.parse::<i64>().is_ok() && outs.iter().all(|o| o == first) {
@@ -158,11 +188,16 @@ fn agree(name: &str, bins: &[(Lang, PathBuf)], cpu: usize) -> Result<String, Str
 }
 
 /// Seconds per run, one list per binary.
-fn rounds(bins: &[(Lang, PathBuf)], cpu: usize, checksum: &str) -> Result<Vec<Vec<f64>>, String> {
+fn rounds(
+    bins: &[(Lang, PathBuf)],
+    cpu: usize,
+    args: &[&Path],
+    checksum: &str,
+) -> Result<Vec<Vec<f64>>, String> {
     let mut times = vec![Vec::with_capacity(ROUNDS); bins.len()];
     for _ in 0..ROUNDS {
         for ((_, bin), t) in bins.iter().zip(&mut times) {
-            let (took, out) = time(bin, cpu)?;
+            let (took, out) = time(bin, cpu, args)?;
             if out != checksum {
                 return Err(format!("{} printed {out:?}, not {checksum}", bin.display()));
             }
@@ -172,13 +207,14 @@ fn rounds(bins: &[(Lang, PathBuf)], cpu: usize, checksum: &str) -> Result<Vec<Ve
     Ok(times)
 }
 
-/// Runs `bin` pinned to `cpu`, timed from start to exit; returns its trimmed standard output.
-fn time(bin: &Path, cpu: usize) -> Result<(Duration, String), String> {
+/// Runs `bin args` pinned to `cpu`, timed from start to exit; returns its trimmed standard output.
+fn time(bin: &Path, cpu: usize, args: &[&Path]) -> Result<(Duration, String), String> {
     let start = Instant::now();
     let out = Command::new("taskset")
         .arg("-c")
         .arg(cpu.to_string())
         .arg(bin)
+        .args(args)
         .stdin(Stdio::null())
         .output()
         .map_err(|e| format!("cannot run taskset: {e}"))?;
@@ -332,11 +368,16 @@ mod tests {
     #[test]
     fn a_bad_list_line_is_refused() {
         let dir = Scratch::new().unwrap();
-        fs::write(dir.0.join("list"), "# c\nsieve integer\nstencil vector\n").unwrap();
+        let list = "# c\nsieve integer\nword_count pointer text\nstencil vector\n";
+        fs::write(dir.0.join("list"), list).unwrap();
         let e = read_list(&dir.0).unwrap_err();
         assert!(
-            e.ends_with("\"stencil vector\" is not `<name> float|integer|pointer`"),
+            e.ends_with("\"stencil vector\" is not `<name> float|integer|pointer [text]`"),
             "{e}"
         );
+        fs::write(dir.0.join("list"), &list[..list.len() - 15]).unwrap();
+        let got = read_list(&dir.0).unwrap();
+        assert_eq!(got[1], ("word_count".into(), "pointer".into(), true));
+        assert!(!got[0].2);
     }
 }

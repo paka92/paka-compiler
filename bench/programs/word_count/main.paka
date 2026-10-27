@@ -1,0 +1,30 @@
+// Count the words of the text in a map, repeated; each count is added as it grows.
+
+enum Msg { Start(path: String), Loaded(text: String), Failed(why: String) }
+
+fn update(m: Msg) -> List<Effect<Msg>> {
+  match m {
+    Start(path) => [ReadFile(path, then: Loaded, or: Failed)]
+    Loaded(text) => {
+      let ws = words(text)
+      var total = 0
+      for r in 0..<20 {
+        var counts: Map<String, Int> = [:]
+        for w in ws {
+          let c = unwrap_or(get(counts, w), 0) + 1
+          counts[w] = c
+          total += c
+        }
+        total += len(counts)
+      }
+      [Print("{total}"), Exit]
+    }
+    Failed(why) => [Print("cannot read the text: {why}"), ExitWith(20)]
+  }
+}
+
+app word_count {
+  start: Start
+  update: update
+  grants: [ReadFiles, Console]
+}
