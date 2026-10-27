@@ -1,0 +1,58 @@
+// The to-do sample of tests/cases/examples/sample_todo without its examples, for the dev against
+// release frame times (docs/decisions/M6-02.md section 3, item 6).
+
+type Todo { id: Int, title: String, done: Bool = false }
+
+type Todos { draft: String = "", items: List<Todo> = [] }
+
+enum Msg { Draft(text: String), Add, Toggle(id: Int) }
+
+fn update(s: inout Todos, m: Msg) {
+  match m {
+    Draft(text) => s.draft = text
+    Add         => add_item(&s)
+    Toggle(id)  => toggle(&s, id)
+  }
+}
+
+fn add_item(s: inout Todos) {
+  append(&s.items, Todo { id: len(s.items) + 1, title: s.draft })
+  s.draft = ""
+}
+
+fn toggle(s: inout Todos, id: Int) {
+  for i in 0..<len(s.items) {
+    if s.items[i].id == id {
+      s.items[i].done = !s.items[i].done
+    }
+  }
+}
+
+fn mark(done: Bool) -> String {
+  if done { "[x]" } else { "[ ]" }
+}
+
+view todo_row(t: Todo) -> View<Msg> {
+  Row(gap: 8) {
+    Button(mark(t.done), on: Toggle(t.id))
+    Text(t.title)
+  }
+}
+
+view todo_view(s: Todos) -> View<Msg> {
+  Col(gap: 8) {
+    Input(s.draft, on_change: Draft, key: "new")
+    Button("Add", on: Add)
+    if len(s.items) == 0 { Text("Nothing to do") }
+    for t in s.items {
+      todo_row(t, key: t.id)
+    }
+  }
+}
+
+app todo {
+  state:  Todos
+  update: update
+  view:   todo_view
+  grants: []
+}

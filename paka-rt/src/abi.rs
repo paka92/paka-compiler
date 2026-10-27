@@ -17,7 +17,7 @@ use std::{ptr, slice};
 
 pub mod dev;
 pub mod heap;
-pub(crate) mod measure;
+pub mod measure;
 pub(crate) mod shown;
 pub mod table;
 

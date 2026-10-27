@@ -11,9 +11,7 @@ use crate::abi::{
 };
 use crate::effects::{Dropped, End, Grant, Host, World, arguments};
 use crate::foreign::{self, Function};
-use crate::route::Event;
 use crate::rt::{Fd1, INTERNAL_ERROR, STOPPED, on_runner};
-use crate::tree::{self, Node};
 use paka_gui::window::Window;
 use std::collections::BTreeSet;
 use std::ffi::OsString;
@@ -147,10 +145,10 @@ pub fn drawn(
         at: &at,
     };
     if replay {
-        return replayed(
-            app.name,
-            Windowless::start(ctx, code, app, start, &mut Dropped),
-        );
+        let mut dropped = Dropped;
+        let mut ui = Windowless::start(ctx, code, app, start, &mut dropped);
+        let lines = io::stdin().lines().map(Result::unwrap_or_default);
+        return ui.replay(lines, &mut io::stdout().lock(), |t| report(app.name, t));
     }
     let mut world = Host(Fd1::default());
     let mut ui = Windowless::start(ctx, code, app, start, &mut world);
@@ -181,56 +179,31 @@ fn windowed<W: World>(name: &str, ui: &mut Windowless<W>) -> Option<Result<End, 
     let on_close = move || drop(closer.send(None));
     let on_input = move |event| drop(input.send(Some(event)));
     let window = Window::open(name, &ui.drawing.root, on_close, on_input)?;
-    let mut seen = report(name, ui, 0);
+    let mut seen = reported(name, ui, 0);
     while ui.end.is_none() {
         let Ok(Some(event)) = events.recv() else {
             return Some(Ok((0, String::new())));
         };
         ui.send([event]);
-        seen = report(name, ui, seen);
+        seen = reported(name, ui, seen);
         window.show(&ui.drawing.root);
     }
     ui.end.clone()
 }
 
-/// Runs `ui` on standard input's lines, each `click PATH`, as `--paka-replay` does (M7-03),
-/// writing its tree text, then an empty line, after the launch and after each action.
-fn replayed<W: World>(name: &str, mut ui: Windowless<W>) -> Result<End, Stopped> {
-    let mut out = io::stdout().lock();
-    let mut lines = io::stdin().lines();
-    let mut seen = 0;
-    loop {
-        seen = report(name, &ui, seen);
-        if let Some(end) = &ui.end {
-            return end.clone();
-        }
-        let _ = writeln!(out, "{}", ui.drawing.root);
-        let Some(line) = lines.next() else {
-            return Ok((0, String::new()));
-        };
-        let line = line.unwrap_or_default();
-        let Some(event) = clicked(&ui.drawing.root, &line) else {
-            return Ok((2, format!("{name}: not a replay action: {line}\n")));
-        };
-        ui.send([event]);
-    }
-}
-
-/// The click a replay line names, if its path reaches a node of `root`.
-fn clicked<M>(root: &Node<M>, line: &str) -> Option<Event> {
-    let path = tree::path(line.strip_prefix("click ")?)?;
-    let kind = root.at(&path)?.kind();
-    Some(Event::Click(path, kind))
-}
-
 /// Writes the line of the last trap `ui` kept past its first `seen` to standard error; the count
 /// it keeps now.
-fn report<W>(name: &str, ui: &Windowless<W>, seen: usize) -> usize {
+fn reported<W>(name: &str, ui: &Windowless<W>, seen: usize) -> usize {
     if let Some(trap) = ui.traps.get(seen..).and_then(<[Trap]>::last) {
-        let (_, line) = trapped(name, take_trap(), trap.kind);
-        let _ = io::stderr().write_all(line.as_bytes());
+        report(name, trap);
     }
     ui.traps.len()
+}
+
+/// Writes the line of `trap` to standard error.
+fn report(name: &str, trap: &Trap) {
+    let (_, line) = trapped(name, take_trap(), trap.kind);
+    let _ = io::stderr().write_all(line.as_bytes());
 }
 
 /// The grants of `word`'s bits, or `None` when an unknown bit is set.

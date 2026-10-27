@@ -11,10 +11,12 @@ use super::app::{
 };
 use super::view::{self, Drawing};
 use super::{Context, Trap, until};
+use crate::abi::measure::{self, Frame, Timed};
 use crate::effects::{End, World};
 use crate::route::{Event, Sent, focused, route};
 use crate::tree::{self, Node};
 use std::collections::VecDeque;
+use std::io::Write;
 use std::mem;
 use std::sync::atomic::Ordering;
 use std::time::Duration;
@@ -71,6 +73,9 @@ impl<'a, W: World> Windowless<'a, W> {
         };
         let launched = ui.launch(start);
         ui.ended(launched);
+        if measure::ON {
+            measure::lay_out(&ui.drawing.root);
+        }
         ui
     }
 
@@ -164,6 +169,39 @@ impl<'a, W: World> Windowless<'a, W> {
         ran
     }
 
+    /// Plays `lines`, each `click PATH`, as `--paka-replay` does (M7-03): writes the tree text,
+    /// then an empty line, to `out` after the launch and after each action, and hands `report`
+    /// the last trap each kept. The end, or status 2 at a line that is no such click.
+    pub fn replay(
+        &mut self,
+        lines: impl IntoIterator<Item = String>,
+        out: &mut impl Write,
+        mut report: impl FnMut(&Trap),
+    ) -> Result<End, Stopped> {
+        let mut lines = lines.into_iter();
+        let mut seen = 0;
+        loop {
+            if let Some(trap) = self.traps.get(seen..).and_then(<[Trap]>::last) {
+                report(trap);
+            }
+            seen = self.traps.len();
+            if let Some(end) = &self.end {
+                return end.clone();
+            }
+            let _ = writeln!(out, "{}", self.drawing.root);
+            let Some(line) = lines.next() else {
+                return Ok((0, String::new()));
+            };
+            let Some(event) = clicked(&self.drawing.root, &line) else {
+                return Ok((
+                    2,
+                    format!("{}: not a replay action: {line}\n", self.app.name),
+                ));
+            };
+            self.send([event]);
+        }
+    }
+
     fn ended(&mut self, done: Result<(), Ended>) {
         if let Err(end) = done {
             self.end = Some(end);
@@ -194,6 +232,7 @@ impl<'a, W: World> Windowless<'a, W> {
 
     /// One turn: the message, `update`, its effects, the view; a key's cursor follows last.
     fn turn(&mut self, next: Queued) -> Result<(), Ended> {
+        let frame = Frame::start();
         let mut typed = None;
         if !self.handle(next, &mut typed)? {
             return Ok(());
@@ -204,6 +243,10 @@ impl<'a, W: World> Windowless<'a, W> {
         {
             edit.follow(&before, text, Some(cursor));
         }
+        if measure::ON {
+            measure::lay_out(&self.drawing.root);
+        }
+        frame.end();
         Ok(())
     }
 
@@ -243,6 +286,7 @@ impl<'a, W: World> Windowless<'a, W> {
         next: Queued,
         typed: &mut Option<(String, usize)>,
     ) -> Result<Option<[u64; 3]>, Stopped> {
+        let mut handler = None;
         let (mut owned, at) = match next {
             Queued::Message(m) => (Some(m), 0),
             Queued::Answer(f, text) => (Some(self.answer(f, &text)?), 0),
@@ -255,7 +299,10 @@ impl<'a, W: World> Windowless<'a, W> {
             }
             Queued::Event(event) => match route(&mut self.drawing.root, &event) {
                 None => return Ok(None),
-                Some(Sent::Click(on)) => (None, on.at),
+                Some(Sent::Click(on)) => {
+                    handler = measure::ON.then(|| measure::handler(&on.text));
+                    (None, on.at)
+                }
                 Some(Sent::Change(on, change)) => {
                     let at = on.at;
                     let f = self.drawing.word(at);
@@ -268,8 +315,13 @@ impl<'a, W: World> Windowless<'a, W> {
             Some(m) => addr(m),
             None => self.drawing.address(at),
         };
-        let ran = self.copy_state().and_then(|mut state| {
-            let list = update(self.ctx, self.app, self.code.call, &mut state, message)?;
+        let copied = {
+            let _timed = handler.map(Timed::state);
+            self.copy_state()
+        };
+        let ran = copied.and_then(|mut state| {
+            let call = &mut timed(self.code.call);
+            let list = update(self.ctx, self.app, call, &mut state, message)?;
             Ok((state, list))
         });
         if let Some(mut m) = owned {
@@ -301,7 +353,8 @@ impl<'a, W: World> Windowless<'a, W> {
             None => vec![],
         };
         let code = &mut self.code;
-        match view::draw(self.ctx, code.call, view, &args, code.show) {
+        let drawn = view::draw(self.ctx, &mut timed(code.call), view, &args, code.show);
+        match drawn {
             Ok(mut drawing) => {
                 tree::keep(&self.drawing.root, &mut drawing.root);
                 mem::replace(&mut self.drawing, drawing).release(self.ctx);
@@ -330,6 +383,21 @@ impl<'a, W: World> Windowless<'a, W> {
         if let Some((_, record, _)) = self.app.state {
             release(self.ctx, record, &mut self.state);
         }
+    }
+}
+
+/// The click a replay line names, if its path reaches a node of `root`.
+fn clicked<M>(root: &Node<M>, line: &str) -> Option<Event> {
+    let path = tree::path(line.strip_prefix("click ")?)?;
+    let kind = root.at(&path)?.kind();
+    Some(Event::Click(path, kind))
+}
+
+/// `call`, each call of compiled code timed in a measure build.
+fn timed<'c>(call: &'c mut Call<'_>) -> impl FnMut(&mut Context, usize, &[u64]) -> i32 + 'c {
+    move |ctx, id, args| {
+        let _timed = Timed::code();
+        call(ctx, id, args)
     }
 }
 

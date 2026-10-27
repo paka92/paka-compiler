@@ -2230,11 +2230,13 @@ or merged during review. Ids with a letter were added during review.
 
 ### M6-31 · L3 · Measure handler state-copy cost and dev-mode slowdown on a visual app
 
+- status: done
 - needs: M6-02, M6-18, M6-27
 - flags: native-only
 - done when: The runner reports copy time per handler for the agreed state sizes, and dev versus release frame times for the agreed visual app.
 - why this level: Timing inside the runtime and windowless app runs; measurement overhead must stay out of results.
 - note: Per M6-02: the three state sizes and two handlers, the committed to-do script, both ratios.
+- note: Done: `paka-bench ui <apps> <results> <normal-tools>` runs bench/ui/list with no window, replaying clicks. The copy apps (bench/ui/copy_*, a `List<Int>` of 1,000, 100,000 and 10,000,000 items) take 10,000 clicks per handler, `Field` writing one small field and `Item` one list item, and report the state copy in ns per handler. The to-do app plays bench/ui/todo/script (add 1,000 items, tick each) in dev, through the new `paka-dev-replay`, and in release, over 10 rounds after a warm-up, and reports the per-frame time in Paka code (update and view) and in the whole frame, layout at the default window width included, with both dev/release ratios; drawing to a screen is not timed. Every measured run follows a normal run that printed the same trees. The `measure` runtime adds a `state copy <handler>` line per clicked handler and a `frames` line; each interval loses the clock's own cost, measured once at start. Headless replay moved into `Windowless::replay`, shared by release and dev.
 
 ### M6-32 · L2 · Run the agreed set and publish numbers beside the paper's expectations
 

@@ -1,0 +1,8 @@
+# The visual apps of docs/decisions/M6-02.md section 3, items 5 and 6, each `<name>/main.paka`,
+# run with no window on clicks. `<name> copy` clicks each handler button 10,000 times, a run per
+# handler: `#0` Field writes one small field, `#1` Item one list item. `<name> frames` plays the
+# committed `<name>/script` in dev and in release.
+copy_1000 copy
+copy_100000 copy
+copy_10000000 copy
+todo frames

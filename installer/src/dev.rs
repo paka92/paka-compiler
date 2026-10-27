@@ -14,10 +14,11 @@ use paka_rt::abi::dev::records::Records;
 use paka_rt::abi::dev::view::{self, Drawing};
 use paka_rt::abi::dev::windowless::{Code, Windowless};
 use paka_rt::abi::dev::{Context, HOLE, Trap, on_runner, until};
-use paka_rt::effects::{End, World};
+use paka_rt::effects::{Dropped, End, World};
 use paka_rt::foreign::{Finder, Function};
 use paka_rt::route::Event;
 use std::ffi::OsString;
+use std::io::Write;
 use std::ptr;
 use std::time::Duration;
 
@@ -234,6 +235,35 @@ impl Dev {
         events: Vec<Event>,
     ) -> Played {
         self.played(args, world, cap, limit, events, None)
+    }
+
+    /// Runs the visual app with no window and its effects dropped on the clicks of `lines`, as a
+    /// release binary's `--paka-replay` does (M7-03), writing its trees to `out` and its trap
+    /// reports to `err`; its end, a trap that ends it as status 3.
+    pub fn replay(
+        &self,
+        lines: impl Iterator<Item = String> + Send,
+        out: &mut (impl Write + Send),
+        err: &mut (impl Write + Send),
+    ) -> End {
+        let (app, start) = match self.app(&[]) {
+            Ok(started) => started,
+            Err(end) => return end,
+        };
+        on_runner(u64::MAX, |ctx| {
+            let mut calls = calls(self);
+            let mut dropped = Dropped;
+            let ended = {
+                let mut ui = Windowless::start(ctx, calls.code(), &app, &start, &mut dropped);
+                let report = |t: &Trap| drop(err.write_all(self.report(t).as_bytes()));
+                ui.replay(lines, out, report)
+            };
+            match ended {
+                Ok(end) => end,
+                Err(Stopped::Trap) => (3, self.report(&ctx.trap)),
+                Err(Stopped::Time) => (3, "stopped\n".into()),
+            }
+        })
     }
 
     /// `play`, then `queued` waits while the run moves onto `next`'s code between turns as `how`

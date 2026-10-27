@@ -4,10 +4,13 @@
 //! and C++, refuses one whose checksums differ, times every binary pinned to one CPU and writes
 //! the machine facts, medians, spread and every raw time to `<results>`. A program listed with
 //! `text` gets the path of the text `text::make` writes as its one argument.
+//!
+//! `paka-bench ui <apps> <results> <normal-tools>` gives the visual-app costs; see `ui`.
 
 mod machine;
 mod text;
 mod tools;
+mod ui;
 
 use std::env;
 use std::fs;
@@ -25,16 +28,17 @@ const LANGS: [Lang; 4] = [Lang::Paka, Lang::Rust, Lang::RustChecked, Lang::Cpp];
 
 fn main() -> ExitCode {
     let args: Vec<String> = env::args().skip(1).collect();
-    let [command, programs, results] = &args[..] else {
-        return usage();
-    };
-    if command != "run" {
-        return usage();
-    }
-    let paka = env::current_exe()
-        .map(|exe| exe.with_file_name("paka"))
-        .unwrap_or_default();
-    match idle().and_then(|()| run(Path::new(programs), Path::new(results), paka)) {
+    let exe = env::current_exe().unwrap_or_default();
+    let here = exe.parent().unwrap_or(Path::new("")).to_path_buf();
+    let ran =
+        match &args[..] {
+            [command, programs, results] if command == "run" => idle()
+                .and_then(|()| run(Path::new(programs), Path::new(results), here.join("paka"))),
+            [command, apps, results, normal] if command == "ui" => idle()
+                .and_then(|()| ui::run(Path::new(apps), Path::new(results), here, normal.into())),
+            _ => return usage(),
+        };
+    match ran {
         Ok(()) => ExitCode::SUCCESS,
         Err(e) => {
             eprintln!("paka-bench: {e}");
@@ -45,6 +49,7 @@ fn main() -> ExitCode {
 
 fn usage() -> ExitCode {
     eprintln!("usage: paka-bench run <programs-dir> <results-file>");
+    eprintln!("       paka-bench ui <apps-dir> <results-file> <normal-tools-dir>");
     ExitCode::from(2)
 }
 

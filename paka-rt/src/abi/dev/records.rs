@@ -113,7 +113,7 @@ pub unsafe extern "sysv64" fn rt_copy(
     from: u64,
     to: u64,
 ) -> i32 {
-    let _timed = Timed::start();
+    let _timed = Timed::copy();
     let (from, to) = (at(from), at(to));
     // SAFETY: the caller vouches for the record and both places; a record starts with the size.
     unsafe { ptr::copy_nonoverlapping(from, to, *at::<u64>(record) as usize) };

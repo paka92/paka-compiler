@@ -4,7 +4,7 @@ use std::ffi::OsStr;
 use std::path::{Path, PathBuf};
 use std::process::{Command, Output, Stdio};
 
-const CLANG_PIN: &str = include_str!("../../../paka/clang-version");
+pub const CLANG_PIN: &str = include_str!("../../../paka/clang-version");
 const TOOLCHAIN: &str = include_str!("../../../rust-toolchain.toml");
 
 const RUST: [&str; 8] = [
