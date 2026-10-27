@@ -1,0 +1,19 @@
+enum Msg { Start }
+
+fn put(xs: inout List<Int>, k: inout String) {
+  append(&xs, len(k))
+  k = "b"
+}
+
+fn update(msg: Msg) -> List<Effect<Msg>> {
+  var m: Map<String, List<Int>> = ["a": [1], "b": [2]]
+  var k = "a"
+  put(&m[k], &k)
+  [Print("done"), Exit]
+}
+
+app ownership {
+  start: Start
+  update: update
+  grants: [Console]
+}

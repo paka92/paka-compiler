@@ -17,12 +17,14 @@ pub(super) enum Span {
     Items(usize, usize),
 }
 
-/// A read-only place argument of a call whose operands are being evaluated.
+/// A read-only place argument of a call whose operands are being evaluated; a register holds it
+/// when `held`, so it overlaps nothing.
 struct Read {
     depth: usize,
     local: Local,
     spans: Vec<Span>,
     call: Site,
+    held: bool,
 }
 
 #[derive(Default)]
@@ -30,6 +32,8 @@ pub struct Detector {
     reads: Vec<Read>,
     /// The site of each flagged call, in run order.
     pub flagged: Vec<Site>,
+    /// The calls that took an inout together with another argument from its local (M6-22).
+    pub shared: u64,
 }
 
 impl Detector {
@@ -37,17 +41,17 @@ impl Detector {
         self.reads.len()
     }
 
-    /// Notes a read-only place argument of the call at `call`, unless a register holds it.
+    /// Notes a read-only place argument of the call at `call`.
     pub(super) fn read(&mut self, depth: usize, local: Local, path: &[Idx], v: &Value, call: Site) {
-        if !held_in_register(v) {
-            let spans = spans(path);
-            self.reads.push(Read {
-                depth,
-                local,
-                spans,
-                call,
-            });
-        }
+        let held = held_in_register(v);
+        let spans = if held { vec![] } else { spans(path) };
+        self.reads.push(Read {
+            depth,
+            local,
+            spans,
+            call,
+            held,
+        });
     }
 
     /// The call at `site` starts with `given`, its reads past `base`: flags it when an inout
@@ -69,8 +73,13 @@ impl Detector {
             .collect();
         let inouts = || taken.iter().filter(|(inout, ..)| *inout);
         let own = &self.reads[base..];
-        let read =
-            inouts().any(|(_, l, s)| own.iter().any(|r| r.local == *l && overlap(s, &r.spans)));
+        let read = inouts().any(|(_, l, s)| {
+            (own.iter()).any(|r| !r.held && r.local == *l && overlap(s, &r.spans))
+        });
+        let shared = inouts().any(|(_, l, _)| {
+            own.iter().any(|r| r.local == *l) || taken.iter().filter(|t| t.1 == *l).count() > 1
+        });
+        self.shared += u64::from(shared);
         let twice = taken.iter().enumerate().any(|(n, (_, l, s))| {
             taken[n + 1..]
                 .iter()
@@ -89,7 +98,8 @@ impl Detector {
     /// Flags each call in the frame at `depth` whose read-only argument the write overlaps.
     pub(super) fn wrote(&mut self, depth: usize, local: Local, spans: &[Span]) {
         let hit = (self.reads.iter())
-            .filter(|r| r.depth == depth && r.local == local && overlap(spans, &r.spans))
+            .filter(|r| !r.held && r.depth == depth && r.local == local)
+            .filter(|r| overlap(spans, &r.spans))
             .map(|r| r.call);
         self.flagged.extend(hit);
     }

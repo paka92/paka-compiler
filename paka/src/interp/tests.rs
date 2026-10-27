@@ -3,7 +3,7 @@
 
 use super::effects::Host;
 use super::value::{Entries, Items, Key, Value, equals};
-use super::{on_big_stack, run, run_watched};
+use super::{Detector, on_big_stack, run, run_watched};
 use crate::builtins::{self, ROWS};
 use crate::core_form::{
     App, Arg, Arith, Arm, Bin, Block, Callee, Cmp, Compound, Effect, Enum, Expr, ExprKind, Field,
@@ -1490,9 +1490,9 @@ fn detector_fns() -> Vec<Func> {
     ]
 }
 
-/// The call sites the detector flags when `calls` run after `world` and a list of lists in
-/// local 5, and what the run says.
-fn watched(calls: Vec<Stmt>) -> (Vec<usize>, Out, Program) {
+/// The detector after `calls` run after `world` and a list of lists in local 5, and what the run
+/// says.
+fn watched(calls: Vec<Stmt>) -> (Detector, Out, Program) {
     let mut stmts = world();
     stmts.push(Stmt::Let(
         5,
@@ -1501,17 +1501,17 @@ fn watched(calls: Vec<Stmt>) -> (Vec<usize>, Out, Program) {
     stmts.extend(calls);
     let p = plain(detector_fns(), stmts, at(1, vec![item(0)]));
     let (mut out, mut err) = (vec![], vec![]);
-    let (status, flagged) = run_watched(&p, &[], &mut Host(&mut out), &mut err);
+    let (status, detector) = run_watched(&p, &[], &mut Host(&mut out), &mut err);
     let text = |bytes| String::from_utf8(bytes).unwrap();
-    (flagged, (text(out), text(err), status), p)
+    (detector, (text(out), text(err), status), p)
 }
 
-/// The same for a run that succeeds, and says the same with the detector off.
+/// The sites flagged in a run that succeeds, and says the same with the detector off.
 fn flagged(calls: Vec<Stmt>) -> Vec<usize> {
-    let (flagged, said, p) = watched(calls);
+    let (detector, said, p) = watched(calls);
     assert_eq!(said.1, "");
     assert_eq!(said, go(&p));
-    flagged
+    detector.flagged
 }
 
 #[test]
@@ -1556,8 +1556,8 @@ fn two_overlapping_places_a_call_takes_are_flagged_and_end_the_run() {
         call_at(OUTER, late, vec![value(var(1)), io(1, vec![item(0)])]),
     ];
     for (n, case) in cases.into_iter().enumerate() {
-        let (flagged, said, _) = watched(vec![case]);
-        assert_eq!(flagged, [OUTER], "case {n}");
+        let (detector, said, _) = watched(vec![case]);
+        assert_eq!(detector.flagged, [OUTER], "case {n}");
         let internal = "light: internal error: a call takes overlapping places\n";
         assert_eq!(said, (String::new(), internal.into(), 4), "case {n}");
     }
@@ -1565,8 +1565,21 @@ fn two_overlapping_places_a_call_takes_are_flagged_and_end_the_run() {
 
 #[test]
 fn arguments_apart_at_run_time_are_not_flagged() {
+    for case in apart() {
+        assert_eq!(flagged(vec![case]), [] as [usize; 0]);
+    }
+}
+
+#[test]
+fn calls_that_take_two_arguments_from_one_local_are_counted() {
+    let (detector, ..) = watched(apart());
+    assert_eq!(detector.shared, 6);
+}
+
+/// Calls whose arguments are apart, all but one with two from one local.
+fn apart() -> Vec<Stmt> {
     let (two, both) = (0, 1);
-    let cases = [
+    vec![
         call_at(
             OUTER,
             two,
@@ -1598,10 +1611,7 @@ fn arguments_apart_at_run_time_are_not_flagged() {
             both,
             vec![io(2, vec![key(text("a"))]), io(2, vec![key(text("b"))])],
         ),
-    ];
-    for case in cases {
-        assert_eq!(flagged(vec![case]), [] as [usize; 0]);
-    }
+    ]
 }
 
 #[test]

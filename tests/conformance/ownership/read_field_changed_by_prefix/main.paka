@@ -1,0 +1,26 @@
+enum Msg { Start }
+
+type Pair { left: List<Int> = [], right: List<Int> = [] }
+
+fn clear(p: inout Pair) -> List<Int> {
+  p.left = []
+  p.right
+}
+
+fn merge(a: List<Int>, b: List<Int>) -> List<Int> {
+  var out = a
+  for x in b { append(&out, x) }
+  out
+}
+
+fn update(msg: Msg) -> List<Effect<Msg>> {
+  var p = Pair { left: [1], right: [2] }
+  let both = merge(p.left, clear(&p))
+  [Print("done"), Exit]
+}
+
+app ownership {
+  start: Start
+  update: update
+  grants: [Console]
+}

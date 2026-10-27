@@ -10,6 +10,8 @@ use crate::ast::{self, Block, Def, Expr, ExprKind as K, Pos, Program};
 use crate::diagnostic::Diagnostic;
 use crate::resolve::Resolved;
 use crate::sig::{Defs, Item, Node, Sig, Table, Ty, Types};
+#[cfg(test)]
+pub(crate) use own::RULE_A_OFF;
 use std::collections::{BTreeMap, BTreeSet};
 use text::{float_fix, named, render};
 

@@ -1,0 +1,19 @@
+enum Msg { Start }
+
+type Slot { count: Int = 0, maybe: Option<Int> = None }
+
+fn fill(s: inout Slot, m: Option<Int>) {
+  s.maybe = m
+}
+
+fn update(msg: Msg) -> List<Effect<Msg>> {
+  var s = Slot { maybe: Some(1) }
+  fill(&s, s.maybe)
+  [Print("done"), Exit]
+}
+
+app ownership {
+  start: Start
+  update: update
+  grants: [Console]
+}

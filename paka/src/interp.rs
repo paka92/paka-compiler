@@ -7,8 +7,8 @@ use crate::foreign::Hosts;
 use crate::results::{Cache, Entry};
 use crate::source::in_file;
 use effects::{End, Host, Queued, World, perform};
-pub use eval::Left;
-use eval::{Detector, Done, Kind, Machine, Stop, Trap};
+pub use eval::{Detector, Left};
+use eval::{Done, Kind, Machine, Stop, Trap};
 use paka_rt::route::Event;
 use paka_rt::tree::Node;
 use show::show;
@@ -26,6 +26,8 @@ mod effects;
 mod eval;
 mod generic;
 mod number;
+#[cfg(test)]
+mod overlap_run;
 mod show;
 #[cfg(test)]
 mod tests;
@@ -70,14 +72,14 @@ pub fn run_in(
     start(core, args, world, err, false).0
 }
 
-/// The same with the run-time overlap detector on (M6-22a); also the site of each call it
-/// flagged, in run order.
+/// The same with the run-time overlap detector on (M6-22a); also the detector, which holds the
+/// site of each call it flagged.
 pub fn run_watched(
     core: &Program,
     args: &[OsString],
     world: &mut (impl World + Send),
     err: &mut impl Write,
-) -> (u8, Vec<Site>) {
+) -> (u8, Detector) {
     start(core, args, world, err, true)
 }
 
@@ -87,14 +89,14 @@ fn start(
     world: &mut (impl World + Send),
     err: &mut impl Write,
     watch: bool,
-) -> (u8, Vec<Site>) {
+) -> (u8, Detector) {
     let app = core.app.as_ref().expect("a program with an app");
-    let ((status, line), flagged) = match start_message(core, app, headless(app), args) {
+    let ((status, line), detector) = match start_message(core, app, headless(app), args) {
         Ok(start) => serve(core, app, start, world, watch),
-        Err(stop) => (stop, vec![]),
+        Err(stop) => (stop, Detector::default()),
     };
     let _ = err.write_all(line.as_bytes());
-    (status, flagged)
+    (status, detector)
 }
 
 /// Variant `start` with its fields filled from the arguments, or the usage line.
@@ -115,8 +117,8 @@ fn serve(
     start: Value,
     world: &mut (impl World + Send),
     watch: bool,
-) -> (End, Vec<Site>) {
-    let (run, flagged) = guest(core, app, watch, |machine| {
+) -> (End, Detector) {
+    let (run, detector) = guest(core, app, watch, |machine| {
         let mut state = machine.state(app)?;
         let mut queue = VecDeque::from([Queued::Message(start)]);
         let mut hosts = Hosts::default();
@@ -135,30 +137,30 @@ fn serve(
         }
         Ok((3, format!("{}: ended without Exit\n", app.name)))
     });
-    (run.unwrap_or_else(|end| end), flagged)
+    (run.unwrap_or_else(|end| end), detector)
 }
 
 /// Runs `f` on a machine with room for the deepest call chain, with the detector on when
-/// `watch`; a trap or fault ends the run. Also the calls the detector flagged.
+/// `watch`; a trap or fault ends the run. Also the detector, empty when off.
 fn guest<T: Send>(
     core: &Program,
     app: &App,
     watch: bool,
     f: impl FnOnce(&mut Machine) -> Done<T> + Send,
-) -> (Result<T, End>, Vec<Site>) {
+) -> (Result<T, End>, Detector) {
     let run = on_big_stack(|| {
         let mut machine = Machine::new(core);
         machine.detector = watch.then(Detector::default);
         let done = f(&mut machine);
-        (
-            done,
-            machine.detector.map(|d| d.flagged).unwrap_or_default(),
-        )
+        (done, machine.detector.unwrap_or_default())
     });
     match run {
-        Ok((Ok(done), flagged)) => (Ok(done), flagged),
-        Ok((Err(stop), flagged)) => (Err(ended(core, app, stop)), flagged),
-        Err(reason) => (Err(ended(core, app, Stop::Internal(reason))), vec![]),
+        Ok((Ok(done), detector)) => (Ok(done), detector),
+        Ok((Err(stop), detector)) => (Err(ended(core, app, stop)), detector),
+        Err(reason) => (
+            Err(ended(core, app, Stop::Internal(reason))),
+            Detector::default(),
+        ),
     }
 }
 

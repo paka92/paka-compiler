@@ -271,7 +271,13 @@ impl Gen {
 
     fn inline_if(&mut self, fx: &mut Fx, ty: &Ty, depth: u32) -> String {
         let cond = self.typed(fx, &Ty::Bool, depth);
-        let mut out = format!("(if {cond} {{ {} }}", self.expr(fx, ty, depth));
+        // With overlaps the first branch fixes the type, so a hole in another is never left to
+        // infer; `program` keeps its seeds' programs (M6-21).
+        let first = match self.overlaps {
+            true => self.anchored(fx, ty, depth),
+            false => self.expr(fx, ty, depth),
+        };
+        let mut out = format!("(if {cond} {{ {first} }}");
         if self.rng.chance(3) {
             let cond = self.typed(fx, &Ty::Bool, depth);
             out += &format!(" else if {cond} {{ {} }}", self.expr(fx, ty, depth));

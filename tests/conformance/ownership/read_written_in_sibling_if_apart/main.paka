@@ -1,0 +1,22 @@
+enum Msg { Start }
+
+type Pair { left: List<Int> = [], right: List<Int> = [] }
+
+fn merge(a: List<Int>, n: Int) -> Int {
+  len(a) + n
+}
+
+fn update(msg: Msg) -> List<Effect<Msg>> {
+  var p = Pair { left: [1], right: [2] }
+  let n = merge(p.left, if len(p.left) > 0 {
+    p.right = []
+    1
+  } else { 0 })
+  [Print("{n} {len(p.right)}"), Exit]
+}
+
+app ownership {
+  start: Start
+  update: update
+  grants: [Console]
+}

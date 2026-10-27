@@ -336,14 +336,15 @@ impl Gen {
         fx.locals[root].hidden = true;
         let text = match &ty {
             Ty::List(t) => match self.rng.below(10) {
-                0 | 1 => format!("append(&{place}, {})", self.anchored(fx, t, 2)),
+                0 | 1 => format!("append(&{place}, {})", self.item(fx, root, &place, t)),
                 2 => {
-                    let more = self.with_leaf(fx, &ty);
+                    let more = self.beside(fx, &[(root, place.clone())], &ty);
+                    let more = more.unwrap_or_else(|| self.with_leaf(fx, &ty));
                     format!("extend(&{place}, {more})")
                 }
                 3 => format!(
                     "insert(&{place}, {}, at: {})",
-                    self.anchored(fx, t, 2),
+                    self.item(fx, root, &place, t),
                     self.rng.below(2)
                 ),
                 4 => format!("swap(&{place}, 0, {})", self.rng.below(2)),
@@ -401,10 +402,12 @@ impl Gen {
         let mut args = vec![];
         let mut inout = places.iter();
         for (ty, by_ref) in params.iter().filter(|_| ready) {
-            args.push(match by_ref {
-                true => format!("&{}", inout.next().unwrap().1),
-                false => self.typed(fx, ty, 2),
-            });
+            if *by_ref {
+                args.push(format!("&{}", inout.next().unwrap().1));
+                continue;
+            }
+            let near = self.beside(fx, &places, ty);
+            args.push(near.unwrap_or_else(|| self.typed(fx, ty, 2)));
         }
         places
             .iter()
@@ -425,6 +428,46 @@ impl Gen {
         })
     }
 
+    /// In a program with overlaps, an argument of type `ty` beside one of the `&` places, a part
+    /// of its local: any part, or, as often, one M2-05 accepts (an Int, Float, Bool or function
+    /// value anywhere in it, else a part apart at a field); a List part is sometimes sliced.
+    pub(crate) fn beside(
+        &mut self,
+        fx: &mut Fx,
+        places: &[(usize, String)],
+        ty: &Ty,
+    ) -> Option<String> {
+        if !self.overlaps || places.is_empty() {
+            return None;
+        }
+        let (root, place) = &places[self.rng.below(places.len())];
+        let (root, l) = (*root, &fx.locals[*root]);
+        let own = &place[l.name.len()..];
+        let any = self.rng.chance(2) || matches!(ty, Ty::Int | Ty::Float | Ty::Bool | Ty::Fn(..));
+        let mut found = vec![];
+        for (path, t) in self.paths(&l.ty, 2) {
+            if t != *ty || !(any || apart(own, &path)) {
+                continue;
+            }
+            let read = format!("{}{path}", l.name);
+            if matches!(t, Ty::List(_)) {
+                found.push(format!("{read}[0..<min(1, len({read}))]"));
+            }
+            found.push(read);
+        }
+        if found.is_empty() {
+            return None;
+        }
+        fx.reads.push(root);
+        Some(found.swap_remove(self.rng.below(found.len())))
+    }
+
+    /// The item `append` or `insert` puts into `&place`.
+    fn item(&mut self, fx: &mut Fx, root: usize, place: &str, ty: &Ty) -> String {
+        let near = self.beside(fx, &[(root, place.to_string())], ty);
+        near.unwrap_or_else(|| self.anchored(fx, ty, 2))
+    }
+
     /// `if c {`, a `return`, `break` or `continue`, `}`.
     fn guard(&mut self, fx: &mut Fx) -> Option<String> {
         let exit = match (fx.loops > 0, self.rng.below(3)) {
@@ -443,4 +486,26 @@ impl Gen {
         let p = fx.pad(0);
         Some(format!("if {cond} {{\n{p}  {exit}\n{p}}}"))
     }
+}
+
+/// Whether two paths below one local part at two different fields before any index step
+/// (M2-05 section 1.3).
+fn apart(a: &str, b: &str) -> bool {
+    for (x, y) in steps(a).into_iter().zip(steps(b)) {
+        if !x.starts_with('.') || !y.starts_with('.') {
+            return false;
+        }
+        if x != y {
+            return true;
+        }
+    }
+    false
+}
+
+/// The steps of a path such as `.x0[0]["a"]`.
+fn steps(path: &str) -> Vec<&str> {
+    let starts: Vec<usize> = (path.match_indices(['.', '[']).map(|(i, _)| i))
+        .chain([path.len()])
+        .collect();
+    starts.windows(2).map(|w| &path[w[0]..w[1]]).collect()
 }

@@ -26,8 +26,19 @@ const LEAF: u64 = 40;
 
 /// The program of `seed`, as source text.
 pub fn program(seed: u64) -> String {
+    generate(seed, false)
+}
+
+/// The same for the overlap run (M6-22): calls often pass an `&` argument together with another
+/// part of its local, apart from it or not; the checker must refuse each where they overlap.
+pub fn program_with_overlaps(seed: u64) -> String {
+    generate(seed, true)
+}
+
+fn generate(seed: u64, overlaps: bool) -> String {
     Gen {
         rng: Rng(seed),
+        overlaps,
         records: vec![],
         enums: vec![],
         fns: vec![],
@@ -64,6 +75,8 @@ impl Rng {
 
 struct Gen {
     rng: Rng,
+    /// Whether arguments beside an `&` place come from its local (`program_with_overlaps`).
+    overlaps: bool,
     records: Vec<Record>,
     enums: Vec<Enum>,
     fns: Vec<Func>,
@@ -286,6 +299,16 @@ impl Gen {
             let inout = !matches!(ty, Ty::Fn(..)) && self.rng.chance(4);
             params.push((ty, inout));
         }
+        // With overlaps, other parameters mostly take a part of an inout's type, so a call can pass
+        // both from one value.
+        let first = params.iter().find(|p| p.1 && self.overlaps);
+        if let Some(parts) = first.map(|p| self.paths(&p.0, 2)) {
+            for p in params.iter_mut().filter(|p| !p.1) {
+                if !self.rng.chance(4) {
+                    p.0 = parts[self.rng.below(parts.len())].1.clone();
+                }
+            }
+        }
         let result = match params.iter().any(|p| p.1) && self.rng.chance(3) {
             true => None,
             false => Some(self.ty(2, true)),
@@ -356,18 +379,27 @@ impl Gen {
             if !fx.charge(self.fns[i].cost) {
                 continue;
             }
-            let (mut args, mut shown) = (vec![], vec![]);
+            // With overlaps, an inout's local is bound, hidden, while the later arguments are made.
+            let (mut args, mut shown, mut roots) = (vec![], vec![], vec![]);
+            let bound = fx.locals.len();
             for (ty, inout) in self.fns[i].params.clone() {
-                let arg = self.expr(&mut fx, &ty, 2);
-                if inout {
-                    let name = fx.fresh();
-                    lines += &format!("  var {name}: {ty} = {arg}\n");
-                    args.push(format!("&{name}"));
-                    shown.push((name, ty));
-                } else {
-                    args.push(arg);
+                if !inout {
+                    let near = self.beside(&mut fx, &roots, &ty);
+                    args.push(near.unwrap_or_else(|| self.expr(&mut fx, &ty, 2)));
+                    continue;
                 }
+                let arg = self.expr(&mut fx, &ty, 2);
+                let name = fx.fresh();
+                lines += &format!("  var {name}: {ty} = {arg}\n");
+                args.push(format!("&{name}"));
+                if self.overlaps {
+                    fx.bind(name.clone(), ty.clone(), false);
+                    fx.locals.last_mut().unwrap().hidden = true;
+                    roots.push((fx.locals.len() - 1, name.clone()));
+                }
+                shown.push((name, ty));
             }
+            fx.locals.truncate(bound);
             let call = format!("f{i}({})", args.join(", "));
             match self.fns[i].result.clone() {
                 Some(ty) => {

@@ -22,6 +22,12 @@ const OVERLAP: &str = "inout-overlap";
 const READ: &str = "changed-while-read";
 const WALKED: &str = "changed-while-walked";
 
+#[cfg(test)]
+thread_local! {
+    /// Switches Rule A off on this thread, so a test can show the overlap run fail (M6-22).
+    pub(crate) static RULE_A_OFF: std::cell::Cell<bool> = const { std::cell::Cell::new(false) };
+}
+
 #[derive(Clone, Copy)]
 /// One step below a root: a field, or an index or slice with its base and its index.
 enum Step<'x> {
@@ -304,12 +310,29 @@ impl Cx<'_, '_> {
                 let K::Call(f, args) = &e.kind else {
                     return None;
                 };
-                let writes = args.iter().filter_map(|a| match &a.value.kind {
-                    K::Inout(x) => Some((self.rooted(x)?, span(&a.value))),
-                    _ => None,
-                });
-                writes.fold(self.inout_overlap(f, args), |found, (place, at)| {
-                    earliest(found, self.wrote(frames, &place, at, &|| render(e)))
+                let writes = args
+                    .iter()
+                    .enumerate()
+                    .filter_map(|(j, a)| match &a.value.kind {
+                        K::Inout(x) => Some((j, self.rooted(x)?, span(&a.value))),
+                        _ => None,
+                    });
+                // Rule B within the call itself: a String key of one `&` place, written by another.
+                let keys = OnceCell::new();
+                let keys = || {
+                    keys.get_or_init(|| {
+                        let mut reads = self.operand_reads(e);
+                        reads.values_mut().for_each(|r| r.retain(|r| r.key));
+                        reads
+                    })
+                };
+                writes.fold(self.inout_overlap(f, args), |found, (j, place, at)| {
+                    let mark = || render(&args[j].value);
+                    let own = self.changed_while_read(keys(), e, j, &place, &mark);
+                    earliest(
+                        earliest(found, own),
+                        self.wrote(frames, &place, at, &|| render(e)),
+                    )
                 })
             }
             Part::Stmt(s) => {
@@ -339,7 +362,10 @@ impl Cx<'_, '_> {
         (frames.iter().rev()).fold(None, |found, frame| {
             let inside = frame.next - 1;
             let d = match frame.part {
-                Part::Expr(e) => self.changed_while_read(frame, e, inside, place, by),
+                Part::Expr(e) => {
+                    let reads = frame.reads.get_or_init(|| self.operand_reads(e));
+                    self.changed_while_read(reads, e, inside, place, by)
+                }
                 Part::Stmt(Stmt {
                     kind: S::For { name, list, .. },
                     ..
@@ -353,13 +379,12 @@ impl Cx<'_, '_> {
     /// Rule B: an operand of `e` other than the one at `inside` that reads what is written.
     fn changed_while_read<'x>(
         &self,
-        frame: &Frame<'x>,
+        reads: &Reads<'x>,
         e: &'x Expr<'x>,
         inside: usize,
         place: &Place,
         by: &dyn Fn() -> String,
     ) -> Option<Diagnostic> {
-        let reads = frame.reads.get_or_init(|| self.operand_reads(e));
         let hit = (reads.get(&place.root)?.iter())
             .find(|r| r.operand != inside && overlap(&r.place, place))?;
         let (read, f) = (hit.place.e, reader(e));
@@ -395,6 +420,10 @@ impl Cx<'_, '_> {
 
     /// Rule A: the first operand that overlaps an earlier one where either is an `&` place.
     fn inout_overlap(&self, f: &Expr, args: &[Arg]) -> Option<Diagnostic> {
+        #[cfg(test)]
+        if RULE_A_OFF.get() {
+            return None;
+        }
         if !args.iter().any(|a| matches!(a.value.kind, K::Inout(_))) {
             return None;
         }
