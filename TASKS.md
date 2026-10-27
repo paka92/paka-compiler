@@ -2153,6 +2153,7 @@ or merged during review. Ids with a letter were added during review.
 - done when: Owner signs a written decision citing the suite's results, the exact attribute placement and the plan if a hole appears later.
 - why this level: Turns a checker rule into undefined behaviour if wrong; a trust decision only the owner can take.
 - note: Process: one evidence report and one reviewer told to break it, then the owner; not three proposals. If the owner declines, M6-24 is dropped.
+- note: A draft proposal is in docs/decisions/M6-23.md, awaiting the owner: `noalias` on the inout and read-only pointer parameters of user functions, signed by the hash of the overlap rules; stencil 5.0 s to 1.15 s with it added by hand.
 
 ### M6-24 · L4 · Emit the no-overlap promise on inout parameters as signed
 
