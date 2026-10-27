@@ -6,6 +6,7 @@ mod llvm;
 mod vectors;
 
 use core_form::Program;
+use llvm::Checks;
 use paka::diagnostic::Diagnostic;
 use paka::results::Cache;
 use paka::serve::serve;
@@ -29,9 +30,18 @@ const USAGE: &str = "usage: paka run <path> [argument...]\n       paka build <pa
 fn main() -> ExitCode {
     let args: Vec<_> = env::args_os().skip(1).collect();
     let words: Vec<_> = args.iter().map(|a| a.to_str()).collect();
-    let (file, output) = match words[..] {
-        [Some("run"), _, ..] => (&args[1], None),
-        [Some("build"), _, Some("-o"), _] => (&args[1], Some(&args[3])),
+    let (file, output, checks) = match words[..] {
+        [Some("run"), _, ..] => (&args[1], None, Checks::All),
+        [Some("build"), _, Some("-o"), _] => (&args[1], Some(&args[3]), Checks::All),
+        // A measurement-only build (M6-30), which only a `measure` compiler makes.
+        [
+            Some("build"),
+            _,
+            Some("--omit"),
+            Some("bounds"),
+            Some("-o"),
+            _,
+        ] if cfg!(feature = "measure") => (&args[1], Some(&args[5]), Checks::NoBounds),
         [Some("check"), _] => return check_file(&args[1], false),
         [Some("check"), _, Some("--json")] => return check_file(&args[1], true),
         [Some("examples"), _] => return examples_file(&args[1]),
@@ -61,7 +71,7 @@ fn main() -> ExitCode {
             }
             Ok(1)
         }
-        Some(output) => build::build(path, &mut core, output).map(|()| 0),
+        Some(output) => build::build(path, &mut core, output, checks).map(|()| 0),
     });
     match result {
         Ok(status) => ExitCode::from(status),

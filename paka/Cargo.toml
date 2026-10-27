@@ -6,6 +6,10 @@ edition = "2024"
 [lints.rust]
 unsafe_code = "forbid"
 
+[features]
+# Measurement-only builds (M6-30), never shipped: `paka build --omit bounds` and a timed runtime.
+measure = ["paka-rt/measure"]
+
 [dependencies]
 paka-json = { path = "../json" }
 paka-rt = { path = "../paka-rt" }

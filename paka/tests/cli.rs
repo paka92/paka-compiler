@@ -30,6 +30,13 @@ fn bad_arguments_print_usage_and_exit_2() {
     assert_usage(&["check", "a.paka", "b.paka"]);
 }
 
+/// The measurement-only switch (M6-30) is a usage error to the normal compiler.
+#[cfg(not(feature = "measure"))]
+#[test]
+fn the_normal_compiler_refuses_omit() {
+    assert_usage(&["build", "a.paka", "--omit", "bounds", "-o", "out"]);
+}
+
 fn assert_unreadable(args: &[&str], path: &str) {
     let out = paka(args);
     assert_eq!(out.status.code(), Some(1), "args {args:?}");

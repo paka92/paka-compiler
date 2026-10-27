@@ -2216,6 +2216,7 @@ or merged during review. Ids with a letter were added during review.
 
 ### M6-30 · L3 · Add measurement-only builds that each omit one check family
 
+- status: done
 - needs: M6-02, M6-19
 - flags: native-only
 - done when: Only a compiler built with the `measure` feature accepts the switch; the normal compiler rejects it; such binaries print a warning banner on standard error. For the one family M6-02 names, bounds checks, a hand-written fixture built with the switch has none of those checks in its optimized IR; without the switch, IR for the conformance suite is byte-identical to the normal compiler's.
@@ -2223,6 +2224,7 @@ or merged during review. Ids with a letter were added during review.
 - note: Measures bounds checks and copies in place of reference-count updates and handle checks (docs/decisions/M2-10.md).
 - note: Per M6-01: a measurement build keeps the promises that rested on the dropped checks, so it is valid only on inputs the normal build ran without a trap.
 - note: Per M6-02: runs count only after a clean normal run with the same checksum. The `measure` runtime also times the copy routine: owned-tree copies in expr_parse, binary_trees and bfs, and the state copy for M6-31.
+- note: Done: the cargo feature `measure` on paka adds `paka build <path> --omit bounds -o <output>`, which drops the List item and slice checks (and those of `swap` and `remove_at`); the pop, insert, count, shift, String and Map checks stay. It pulls in paka-rt's `measure` feature, whose runtime prints a banner on standard error and, at exit, the total time and call count of the copy routine over the whole run; per-handler timing is left to M6-31, and the bench runner does not read the line yet. Reference-count and handle checks are not built (M2-10), so they have no switch. paka/tests/measure.rs checks the fixture, the banner and, against the normal compiler named by `PAKA_NORMAL_BUILD`, conformance IR identity.
 
 ### M6-31 · L3 · Measure handler state-copy cost and dev-mode slowdown on a visual app
 

@@ -19,7 +19,7 @@ pub fn tokens(text: &str) -> usize {
 
 pub const LIGHT: &str = concat!(env!("CARGO_MANIFEST_DIR"), "/../examples/light.paka");
 
-/// Builds `libpaka_rt.a` beside the `paka` binary under test. The profile and target directory
+/// Builds `libpaka_rt.a` beside the `paka` binary under test, with that binary's `measure` feature. The profile and target directory
 /// are read off that binary's path, so `cargo test` and `cargo test --release` each get their own.
 /// Once per test binary: parallel tests wait on the one nested cargo run.
 pub fn build_runtime() {
@@ -38,6 +38,9 @@ pub fn build_runtime() {
         cargo.arg(profile_dir.parent().unwrap());
         if profile_dir.ends_with("release") {
             cargo.arg("--release");
+        }
+        if cfg!(feature = "measure") {
+            cargo.args(["--features", "measure"]);
         }
         assert!(cargo.status().unwrap().success(), "building paka-rt failed");
     });

@@ -9,7 +9,7 @@
 //! what is dropped where, follows the dev back end (`owned`); Strings go through the runtime
 //! (`text`).
 
-use super::constant;
+use super::{Checks, constant};
 use crate::core_form::{
     Arg, Arith, Arm, Bin, Block, Callee, Cmp, Compound, Effect, Expr, ExprKind, FloatArith, Fn,
     FnRef, Grant, Local, Place, Plain, Program, Root, Site, Step, Stmt, Tag, Ty, Type, Un, Walk,
@@ -42,10 +42,15 @@ const MAX_FRAME: usize = 256 << 10;
 /// they need; `None` when any of it is beyond this lowering. With `computed`, the body builds the
 /// effect list `update` ends in and returns; otherwise it leaves an open block for the constant
 /// list to be stored.
-pub fn lower(core: &mut Program, update: usize, computed: bool) -> Option<(String, String)> {
+pub fn lower(
+    core: &mut Program,
+    update: usize,
+    computed: bool,
+    checks: Checks,
+) -> Option<(String, String)> {
     let layouts = Layouts::new(core);
     let core = &*core;
-    let mut module = Module::new(core, layouts, true);
+    let mut module = Module::new(core, layouts, true, checks);
     module.seen.insert(update);
     let body = module.function(&core.fns[update], Some(computed))?;
     Some((body, module.rest(core.fns[update].site)?))
@@ -54,10 +59,13 @@ pub fn lower(core: &mut Program, update: usize, computed: bool) -> Option<(Strin
 /// The IR of an app beyond the M1 view (ABI sections 13 and 14): every function its handler,
 /// state and view reach, `@app.call`, and the `@app` constant its entry takes; `None` when any of
 /// it is beyond this lowering.
-pub fn lower_app(core: &mut Program) -> Option<String> {
+pub fn lower_app(core: &mut Program, checks: Checks) -> Option<String> {
     let layouts = Layouts::new(core);
     let core = &*core;
-    let (app, mut module) = (core.app.as_ref()?, Module::new(core, layouts, false));
+    let (app, mut module) = (
+        core.app.as_ref()?,
+        Module::new(core, layouts, false, checks),
+    );
     let update = &core.fns[app.update];
     let msg = update.params.last()?.ty;
     let string = core.types.iter().position(|t| *t == Type::String);
@@ -265,10 +273,11 @@ struct Module<'a> {
     sorts: BTreeSet<(Ty, Option<Ty>)>,
     /// For the M1 run loop, which performs `Print` and `Exit` only.
     m1: bool,
+    checks: Checks,
 }
 
 impl<'a> Module<'a> {
-    fn new(core: &'a Program, layouts: Layouts, m1: bool) -> Module<'a> {
+    fn new(core: &'a Program, layouts: Layouts, m1: bool, checks: Checks) -> Module<'a> {
         let mut held: Vec<bool> = (core.types.iter())
             .map(|t| {
                 matches!(
@@ -319,6 +328,7 @@ impl<'a> Module<'a> {
             dispatched: BTreeSet::new(),
             sorts: BTreeSet::new(),
             m1,
+            checks,
         }
     }
 

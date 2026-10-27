@@ -6,5 +6,9 @@ edition = "2024"
 [lib]
 crate-type = ["staticlib", "rlib"]
 
+[features]
+# Times the copy routine and prints a banner (M6-30); never shipped.
+measure = []
+
 [dependencies]
 paka-gui = { path = "../gui" }

@@ -1,7 +1,7 @@
 //! Lists: literals, items and slices with their bounds checks inline, walks and searches. Each
 //! List owns its block, so an item is written in place.
 
-use super::Body;
+use super::{Body, Checks};
 use crate::core_form::{Block, Expr, Local, Site, Ty, Type};
 use paka_rt::abi::table::{CONSTANT, LIST};
 
@@ -53,8 +53,10 @@ impl Body<'_, '_> {
     /// The address of item `i` of the List at `at` of type `t`, after the bounds check.
     pub(super) fn item(&mut self, at: &str, t: Ty, i: &str, site: Site) -> String {
         let (ptr, len) = self.words(at);
-        let outside = self.op(format!("icmp uge i64 {i}, {len}"));
-        self.check(&outside, "out_of_bounds", site);
+        if self.module.checks == Checks::All {
+            let outside = self.op(format!("icmp uge i64 {i}, {len}"));
+            self.check(&outside, "out_of_bounds", site);
+        }
         self.nth(&ptr, self.item_ty(t), i)
     }
 
@@ -62,10 +64,12 @@ impl Body<'_, '_> {
     /// check. It owns nothing: taking it copies it.
     pub(super) fn slice(&mut self, at: &str, t: Ty, a: &str, b: &str, site: Site) -> String {
         let (ptr, len) = self.words(at);
-        let reversed = self.op(format!("icmp ugt i64 {a}, {b}"));
-        let past = self.op(format!("icmp ugt i64 {b}, {len}"));
-        let outside = self.op(format!("or i1 {reversed}, {past}"));
-        self.check(&outside, "out_of_bounds", site);
+        if self.module.checks == Checks::All {
+            let reversed = self.op(format!("icmp ugt i64 {a}, {b}"));
+            let past = self.op(format!("icmp ugt i64 {b}, {len}"));
+            let outside = self.op(format!("or i1 {reversed}, {past}"));
+            self.check(&outside, "out_of_bounds", site);
+        }
         let from = self.nth(&ptr, self.item_ty(t), a);
         let count = self.op(format!("sub i64 {b}, {a}"));
         self.list_words(t, &from, &count, &CONSTANT.to_string())

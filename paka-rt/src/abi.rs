@@ -17,6 +17,7 @@ use std::{ptr, slice};
 
 pub mod dev;
 pub mod heap;
+pub(crate) mod measure;
 pub(crate) mod shown;
 pub mod table;
 
@@ -245,7 +246,7 @@ pub unsafe extern "C" fn paka_rt1_run(
     // SAFETY: the caller promises that `name` and `name_len` are an ABI string, which is what
     // `from_raw` asks for.
     let name = unsafe { Str::from_raw(name, name_len) };
-    run(name, update, start, grants)
+    measure::around(|| run(name, update, start, grants))
 }
 
 /// What runs an app's compiled code (ABI sections 13 and 14): the handler for `id` `HANDLER`,
@@ -305,7 +306,7 @@ const _: () = assert!(size_of::<App>() == 18 * 8 && align_of::<App>() == 8);
 #[unsafe(no_mangle)]
 pub unsafe extern "C" fn paka_rt1_app(app: &App) -> i32 {
     ignore_signals();
-    run_app(app, None)
+    measure::around(|| run_app(app, None))
 }
 
 /// The entry of a visual app's `main` (ABI section 14), the only path to its window.
@@ -317,7 +318,7 @@ pub unsafe extern "C" fn paka_rt1_app(app: &App) -> i32 {
 #[unsafe(no_mangle)]
 pub unsafe extern "C" fn paka_rt1_visual(app: &App) -> i32 {
     ignore_signals();
-    run_app(app, Some(drawn))
+    measure::around(|| run_app(app, Some(drawn)))
 }
 
 /// The lowest stack address compiled code may reach before it traps `stack`; 0 turns the check

@@ -1,7 +1,7 @@
 //! Views built for release (M6-18a): their first tree as the interpreter draws it, with no display.
 //! Each test links the IR with the runtime itself, so that a test can plant a fault in the IR.
 
-use super::{app, lint};
+use super::{Checks, app, lint};
 use paka::interp::Windowless;
 use paka::source::Source;
 use paka_rt::effects::Host;
@@ -95,7 +95,7 @@ fn runtime() -> PathBuf {
 /// Builds `text` with its IR passed through `plant`, in a folder of its own named `name`, and
 /// runs it: its status, standard output and standard error.
 fn release(name: &str, text: &str, plant: fn(String) -> String) -> (Option<i32>, String, String) {
-    let ir = plant(app(&mut checked(text)).expect("the back end builds the app"));
+    let ir = plant(app(&mut checked(text), Checks::All).expect("the back end builds the app"));
     assert_eq!(lint::lint(&ir), Vec::<String>::new());
     let dir = env::temp_dir().join(format!("paka-view-{name}-{}", std::process::id()));
     fs::create_dir_all(&dir).unwrap();

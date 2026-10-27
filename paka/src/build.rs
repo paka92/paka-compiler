@@ -4,7 +4,7 @@
 
 use crate::core_form::Program;
 use crate::diagnostic::Diagnostic;
-use crate::llvm;
+use crate::llvm::{self, Checks};
 use paka::clang;
 use std::env;
 use std::ffi::OsStr;
@@ -29,9 +29,15 @@ const SYSTEM_LIBS: [&str; 7] = [
     "-lc",
 ];
 
-/// Writes the executable for `core` to `output`; `path` is the source path for diagnostics.
-pub fn build(path: &str, core: &mut Program, output: &OsStr) -> Result<(), Diagnostic> {
-    let text = llvm::ir(core).ok_or_else(|| {
+/// Writes the executable for `core` to `output` with `checks`; `path` is the source path for
+/// diagnostics.
+pub fn build(
+    path: &str,
+    core: &mut Program,
+    output: &OsStr,
+    checks: Checks,
+) -> Result<(), Diagnostic> {
+    let text = llvm::ir(core, checks).ok_or_else(|| {
         let message = "the back end does not build this program yet";
         Diagnostic::tool(path, "unsupported-form", message)
     })?;

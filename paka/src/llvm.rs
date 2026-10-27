@@ -9,6 +9,14 @@ pub mod lint;
 #[cfg(test)]
 mod views;
 
+/// The checks the IR has: all of them, or, in a measurement-only build (M6-30), all but those of
+/// List items and slices.
+#[derive(Clone, Copy, Debug, PartialEq)]
+pub enum Checks {
+    All,
+    NoBounds,
+}
+
 /// What the back end builds: an `update` whose body gives a list of effects, after statements
 /// that may call other functions.
 #[derive(Debug, PartialEq)]
@@ -36,7 +44,7 @@ pub enum Effect {
 }
 
 /// The M1 view of `core`, or `None` when it holds what the back end cannot build.
-pub fn view(core: &mut Program) -> Option<M1> {
+pub fn view(core: &mut Program, checks: Checks) -> Option<M1> {
     let app = core.app.as_ref()?;
     let (start, id) = (app.start?, app.update);
     let update = &core.fns[id];
@@ -53,7 +61,7 @@ pub fn view(core: &mut Program) -> Option<M1> {
         ExprKind::List(items) => items.iter().map(effect).collect::<Option<Vec<_>>>(),
         _ => None,
     };
-    let (body, code) = code::lower(core, id, literal.is_none())?;
+    let (body, code) = code::lower(core, id, literal.is_none(), checks)?;
     let (app, update) = (core.app.as_ref()?, &core.fns[id]);
     Some(M1 {
         app: app.name.clone(),
@@ -129,13 +137,13 @@ define i32 @main() {{
 
 /// The IR text of an app the M1 view cannot hold, on the entry of docs/abi/m1.md sections 13
 /// and 14; `None` for what the back end cannot build.
-pub fn app(core: &mut Program) -> Option<String> {
+pub fn app(core: &mut Program, checks: Checks) -> Option<String> {
     let app = core.app.as_ref()?;
     let (entry, name) = match app.view {
         Some(_) => (VISUAL, "paka_rt1_visual"),
         None => (APP, "paka_rt1_app"),
     };
-    let code = code::lower_app(core)?;
+    let code = code::lower_app(core, checks)?;
     Some(format!(
         "target triple = \"x86_64-pc-linux-gnu\"
 
@@ -151,10 +159,10 @@ define i32 @main() {{
 }
 
 /// The IR text of `core`: the M1 view's when it holds the program, else the headless app's.
-pub fn ir(core: &mut Program) -> Option<String> {
-    match view(core) {
+pub fn ir(core: &mut Program, checks: Checks) -> Option<String> {
+    match view(core, checks) {
         Some(view) => Some(emit(&view)),
-        None => app(core),
+        None => app(core, checks),
     }
 }
 
@@ -215,6 +223,7 @@ mod tests {
             )
             .ok()?
             .0,
+            Checks::All,
         )
     }
 
@@ -301,7 +310,7 @@ app light {
             body: String::new(),
             code: String::new(),
         };
-        assert_eq!(view(&mut lowered(LIGHT)), Some(by_hand));
+        assert_eq!(view(&mut lowered(LIGHT), Checks::All), Some(by_hand));
     }
 
     #[test]
@@ -325,17 +334,17 @@ app light {
         none.app = None;
         let payload = lowered(&LIGHT.replace("Start }", "Start(path: String) }"));
         for mut core in [state, statement, computed, none, payload] {
-            assert_eq!(view(&mut core), None);
+            assert_eq!(view(&mut core, Checks::All), None);
         }
     }
 
     #[test]
     fn grants_beyond_console_do_not_change_the_view() {
         let mut core = lowered(LIGHT);
-        let plain = view(&mut core);
+        let plain = view(&mut core, Checks::All);
         core.app.as_mut().unwrap().grants.insert(Grant::ReadFiles);
         assert!(plain.is_some());
-        assert_eq!(view(&mut core), plain);
+        assert_eq!(view(&mut core, Checks::All), plain);
     }
 
     #[test]
@@ -443,7 +452,7 @@ app light {
             fields.join(", "),
             values.join(", ")
         );
-        let ir = emit(&view(&mut lowered(&source)).unwrap());
+        let ir = emit(&view(&mut lowered(&source), Checks::All).unwrap());
         assert_eq!(lint::lint(&ir), Vec::<String>::new());
         assert_eq!(clang_accepts(&ir), Ok(()));
         let defines: Vec<_> = ir.split("\ndefine internal i32 @p_").skip(2).collect();
@@ -483,7 +492,7 @@ app a {
   grants: [Console]
 }
 ";
-        let ir = emit(&view(&mut lowered(source)).unwrap());
+        let ir = emit(&view(&mut lowered(source), Checks::All).unwrap());
         assert_eq!(lint::lint(&ir), Vec::<String>::new());
         let optimized = optimized(&ir);
         let calls = optimized
@@ -558,7 +567,7 @@ app a {
             .filter_map(|line| line.strip_prefix("fn ")?.split('(').next())
             .filter(|name| *name != "update")
             .collect();
-        let mut ir = ir(&mut lowered(loops)).unwrap();
+        let mut ir = ir(&mut lowered(loops), Checks::All).unwrap();
         assert_eq!(lint::lint(&ir), Vec::<String>::new());
         // Kept external, each kernel is optimized for any input, not folded into `update`.
         for k in &kernels {
@@ -602,7 +611,8 @@ app a {
                     .0
                     .into_iter()
                     .for_each(|k| *found.entry(k).or_insert(0) += 1);
-                let ir = ir(&mut core).unwrap_or_else(|| panic!("seed {seed} is refused"));
+                let ir =
+                    ir(&mut core, Checks::All).unwrap_or_else(|| panic!("seed {seed} is refused"));
                 assert_eq!(lint::lint(&ir), Vec::<String>::new(), "seed {seed}");
             }
             found
