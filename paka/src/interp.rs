@@ -1,30 +1,43 @@
 //! The reference interpreter: runs the core form (docs/core.md) and performs the effects the
 //! handler returns (spec/m1.md section 9, M2-15).
 
-use crate::core_form::{App, Field, Program, Type};
+use crate::core_form::{App, Field, FnId, Program, Type};
 use crate::core_form::{Fn as Func, Site};
+use crate::foreign::Hosts;
+use crate::results::{Cache, Entry};
 use crate::source::in_file;
 use effects::{End, Host, Queued, World, perform};
+pub use eval::{Detector, Left};
 use eval::{Done, Kind, Machine, Stop, Trap};
+use paka_rt::route::Event;
+use paka_rt::tree::Node;
 use show::show;
 use std::any::Any;
-use std::collections::VecDeque;
+use std::collections::{BTreeSet, VecDeque};
 use std::ffi::OsString;
 use std::io::Write;
 use std::sync::Once;
 use std::{panic, thread};
-use value::{Items, Value};
+use value::{Items, Message, Value};
+pub use windowless::Windowless;
 
 mod builtin;
 mod effects;
 mod eval;
 mod generic;
 mod number;
+#[cfg(test)]
+mod overlap_run;
 mod show;
 #[cfg(test)]
 mod tests;
 mod text;
 mod value;
+#[cfg(test)]
+mod view_tests;
+mod windowless;
+#[cfg(test)]
+mod windowless_tests;
 #[cfg(test)]
 mod world_tests;
 
@@ -56,83 +69,112 @@ pub fn run_in(
     world: &mut (impl World + Send),
     err: &mut impl Write,
 ) -> u8 {
-    let app = core.app.as_ref().expect("a program with an app");
-    let (status, line) = match start_message(core, app, args) {
-        Ok(start) => serve(core, app, start, world),
-        Err(stop) => stop,
-    };
-    let _ = err.write_all(line.as_bytes());
-    status
+    start(core, args, world, err, false).0
 }
 
-/// The start variant with its fields filled from the arguments, or the usage line.
-fn start_message(core: &Program, app: &App, args: &[OsString]) -> Result<Value, End> {
-    let fields = start_fields(core, app);
-    let usage = |line: String| (2, format!("{}: {line}\n", app.name));
-    if args.len() != fields.len() {
-        let plural = if fields.len() == 1 { "" } else { "s" };
-        let names: Vec<_> = fields.iter().map(|f| f.name.as_str()).collect();
-        let names = if names.is_empty() {
-            String::new()
-        } else {
-            format!(" ({})", names.join(", "))
-        };
-        let (want, got) = (fields.len(), args.len());
-        return Err(usage(format!(
-            "expected {want} argument{plural}{names}, got {got}"
-        )));
-    }
-    let text = |(i, arg): (usize, &OsString)| match arg.to_str() {
-        Some(text) => Ok(Value::Str(text.into())),
-        None => Err(usage(format!("argument {} is not text", i + 1))),
+/// The same with the run-time overlap detector on (M6-22a); also the detector, which holds the
+/// site of each call it flagged.
+pub fn run_watched(
+    core: &Program,
+    args: &[OsString],
+    world: &mut (impl World + Send),
+    err: &mut impl Write,
+) -> (u8, Detector) {
+    start(core, args, world, err, true)
+}
+
+fn start(
+    core: &Program,
+    args: &[OsString],
+    world: &mut (impl World + Send),
+    err: &mut impl Write,
+    watch: bool,
+) -> (u8, Detector) {
+    let app = core.app.as_ref().expect("a program with an app");
+    let ((status, line), detector) = match start_message(core, app, headless(app), args) {
+        Ok(start) => serve(core, app, start, world, watch),
+        Err(stop) => (stop, Detector::default()),
     };
-    let items = args
-        .iter()
-        .enumerate()
-        .map(text)
-        .collect::<Result<_, _>>()?;
-    Ok(Value::Variant(app.start, Items(items)))
+    let _ = err.write_all(line.as_bytes());
+    (status, detector)
+}
+
+/// Variant `start` with its fields filled from the arguments, or the usage line.
+fn start_message(core: &Program, app: &App, start: usize, args: &[OsString]) -> Result<Value, End> {
+    let fields: Vec<_> = (start_fields(core, app, start).iter())
+        .map(|f| f.name.as_str())
+        .collect();
+    let texts = paka_rt::effects::arguments(&app.name, &fields, args)?;
+    let items = texts.into_iter().map(|t| Value::Str(t.into())).collect();
+    Ok(Value::Variant(start, Items(items)))
 }
 
 /// The message loop: the handler answers each message in turn and its effects are performed.
 /// The whole loop runs on one big-stack thread.
-fn serve(core: &Program, app: &App, start: Value, world: &mut (impl World + Send)) -> End {
-    let run = guest(core, app, |machine| {
+fn serve(
+    core: &Program,
+    app: &App,
+    start: Value,
+    world: &mut (impl World + Send),
+    watch: bool,
+) -> (End, Detector) {
+    let (run, detector) = guest(core, app, watch, |machine| {
         let mut state = machine.state(app)?;
         let mut queue = VecDeque::from([Queued::Message(start)]);
+        let mut hosts = Hosts::default();
         while let Some(next) = queue.pop_front() {
             let message = match next {
                 Queued::Message(message) => message,
                 Queued::Answer(f, arg) => machine.answer(f, arg)?,
+                Queued::Event(_) => unreachable!("a headless app has no events"),
             };
             let (mut effects, next) = machine.update(app, state, message)?;
             state = next;
-            if let Some(end) = perform(app, &mut effects, world, &mut queue) {
+            let end = perform(core, app, Some(&mut hosts), &mut effects, world, &mut queue);
+            if let Some(end) = end {
                 return Ok(end);
             }
         }
         Ok((3, format!("{}: ended without Exit\n", app.name)))
     });
-    run.unwrap_or_else(|end| end)
+    (run.unwrap_or_else(|end| end), detector)
 }
 
-/// Runs `f` on a machine with room for the deepest call chain; a trap or fault ends the run.
+/// Runs `f` on a machine with room for the deepest call chain, with the detector on when
+/// `watch`; a trap or fault ends the run. Also the detector, empty when off.
 fn guest<T: Send>(
     core: &Program,
     app: &App,
+    watch: bool,
     f: impl FnOnce(&mut Machine) -> Done<T> + Send,
-) -> Result<T, End> {
-    let internal = |reason: &str| (4, format!("{}: internal error: {reason}\n", app.name));
-    match on_big_stack(|| f(&mut Machine::new(core))) {
-        Ok(Ok(done)) => Ok(done),
-        Ok(Err(Stop::Trap(trap))) => Err((3, report(core, &app.name, &trap))),
-        Ok(Err(Stop::Internal(reason))) | Err(reason) => Err(internal(&reason)),
-        Ok(Err(_)) => unreachable!("a loop holds its break"),
+) -> (Result<T, End>, Detector) {
+    let run = on_big_stack(|| {
+        let mut machine = Machine::new(core);
+        machine.detector = watch.then(Detector::default);
+        let done = f(&mut machine);
+        (done, machine.detector.unwrap_or_default())
+    });
+    match run {
+        Ok((Ok(done), detector)) => (Ok(done), detector),
+        Ok((Err(stop), detector)) => (Err(ended(core, app, stop)), detector),
+        Err(reason) => (
+            Err(ended(core, app, Stop::Internal(reason))),
+            Detector::default(),
+        ),
+    }
+}
+
+/// The end a trap or a fault brings.
+fn ended(core: &Program, app: &App, stop: Stop) -> End {
+    match stop {
+        Stop::Trap(trap) => (3, report(core, &app.name, &trap)),
+        Stop::Internal(reason) => (4, format!("{}: internal error: {reason}\n", app.name)),
+        _ => unreachable!("a loop holds its break"),
     }
 }
 
 /// The fields of the start message's variant.
-fn start_fields<'a>(core: &'a Program, app: &App) -> &'a [Field] {
+fn start_fields<'a>(core: &'a Program, app: &App, start: usize) -> &'a [Field] {
     let message = core.fns[app.update]
         .params
         .last()
@@ -140,7 +182,12 @@ fn start_fields<'a>(core: &'a Program, app: &App) -> &'a [Field] {
     let Type::Enum(msg) = core.types[message.ty] else {
         unreachable!("the message is a user enum");
     };
-    &core.enums[msg].variants[app.start].fields
+    &core.enums[msg].variants[start].fields
+}
+
+/// The start variant of an app with no view, which always has one.
+fn headless(app: &App) -> usize {
+    app.start.expect("a headless app has a start")
 }
 
 /// Runs `f` on a thread with room for the deepest call chain; the reason if the thread cannot
@@ -205,20 +252,61 @@ fn help(trap: &Trap) -> String {
     format!("  {}\n  in {chain}{more}\n", &trap.detail[..cut])
 }
 
-/// Runs every example in name order and prints its status (M2-06 section 1.6); the status is 0
-/// when all pass, else 3.
-pub fn examples(core: &Program, out: &mut impl Write, err: &mut impl Write) -> u8 {
-    let mut order: Vec<_> = core.examples.iter().collect();
+/// The tree view `id` draws from `args` (M5-02); a trap or fault gives its message.
+pub fn draw(core: &Program, id: FnId, args: Vec<Value>) -> Result<Node<Message>, String> {
+    match on_big_stack(|| Machine::new(core).draw(id, args)) {
+        Ok(Ok(node)) => Ok(node),
+        Ok(Err(Stop::Trap(trap))) => {
+            let at = place(core, trap.site);
+            Err(format!("trap {} at {at}", trap.kind.name()))
+        }
+        Ok(Err(Stop::Internal(reason))) | Err(reason) => Err(format!("internal error: {reason}")),
+        Ok(Err(_)) => unreachable!("a loop holds its break"),
+    }
+}
+
+/// Runs UI example `f`: each action's events from its `ui_start` and what it left (M5-26).
+pub fn ui_log(core: &Program, f: &Func) -> Result<Vec<(Vec<Event>, Left)>, String> {
+    on_big_stack(|| {
+        let mut machine = Machine::new(core);
+        machine.ui_log = Some(vec![]);
+        match machine.example(f) {
+            Err(Stop::Internal(reason)) => Err(reason),
+            _ => Ok(machine.ui_log.unwrap_or_default()),
+        }
+    })?
+}
+
+/// Runs every example in name order, or takes its result from `cache`, and prints its status
+/// (M2-06 section 1.6) after its label: `human-owned` for a name in `owned`, else `agent-written`
+/// (M7-05). The status is 0 when all pass, else 3.
+pub fn examples(
+    core: &Program,
+    cache: &mut Cache,
+    owned: &BTreeSet<String>,
+    out: &mut impl Write,
+    err: &mut impl Write,
+) -> u8 {
+    let mut order: Vec<_> = core.examples.iter().chain(&core.ui_examples).collect();
     order.sort_by(|a, b| a.name.cmp(&b.name));
     let entries = on_big_stack(|| {
-        order
-            .iter()
-            .map(|f| entry(core, f))
+        (order.iter())
+            .map(|f| cache.result(&f.name, || entry(core, f)))
             .collect::<Result<Vec<_>, _>>()
     });
     match entries {
         Ok(Ok(entries)) => {
-            let text: String = entries.iter().map(|(_, text)| text.as_str()).collect();
+            let labelled = |(f, (_, text)): (&&Func, &Entry)| {
+                let label = match owned.contains(&f.name) {
+                    true => "human-owned",
+                    false => "agent-written",
+                };
+                match text.strip_prefix(&f.name) {
+                    Some(rest) => format!("{} {label}{rest}", f.name),
+                    None => text.clone(),
+                }
+            };
+            let text: String = order.iter().zip(&entries).map(labelled).collect();
             let _ = out.write_all(text.as_bytes());
             if entries.iter().all(|(passed, _)| *passed) {
                 0
@@ -233,10 +321,22 @@ pub fn examples(core: &Program, out: &mut impl Write, err: &mut impl Write) -> u
     }
 }
 
+/// Example `name` run fresh, as `paka examples` shows it; none when there is no such example.
+pub fn example(core: &Program, name: &str) -> Option<Result<Entry, String>> {
+    let f = (core.examples.iter().chain(&core.ui_examples)).find(|f| f.name == name)?;
+    Some(on_big_stack(|| entry(core, f)).and_then(|entry| entry))
+}
+
 /// Whether the example passed, and its entry; the reason if the interpreter faults.
 fn entry(core: &Program, f: &Func) -> Result<(bool, String), String> {
     let name = &f.name;
-    Ok(match Machine::new(core).example(f) {
+    let mut machine = Machine::new(core);
+    let done = machine.example(f);
+    Ok(match done {
+        Ok(_) if let Some((site, node)) = machine.broken => (
+            false,
+            format!("{name} fail at {}\n  {node}\n", place(core, site)),
+        ),
         Ok(None) => (true, format!("{name} pass\n")),
         Ok(Some(fail)) => {
             let mut text = format!("{name} fail at {}\n", place(core, f.claims[fail.claim]));
@@ -258,6 +358,7 @@ fn entry(core: &Program, f: &Func) -> Result<(bool, String), String> {
             };
             (false, text)
         }
+        Err(Stop::Ended(line)) => (false, format!("{name} trapped\n  {line}")),
         Err(Stop::Internal(reason)) => return Err(reason),
         Err(_) => unreachable!("a loop holds its break"),
     })

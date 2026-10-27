@@ -1,14 +1,25 @@
 //! The ABI of `docs/abi/m1.md`: its three shapes and their decoding, the exported entry and the
-//! SIGPIPE call. This is the crate's only unsafe code.
+//! SIGPIPE call; and, in `dev`, the dev runtime's allocator. This tree is the crate's only unsafe
+//! code.
 //!
 //! One invariant carries the safe decoders: a `Str`, `Effect` or `List` holds either a value its
-//! decoder refuses or a pointer to memory that is readable for the stated size, never written
-//! and never freed (ABI section 2, "Memory"). The fields are private, so such a value is made
+//! decoder refuses or a pointer to memory that is readable for the stated size and never written
+//! (ABI section 2, "Memory"). It is freed only once its effects are performed, if it is a block
+//! of the run's heap. The fields are private, so such a value is made
 //! only by a constructor here that takes a `'static` reference, by `Str::from_raw` under its
 //! contract, or by compiled code under the contract of `paka_rt1_run`.
 
-use crate::{Decoded, Refused, run};
+use crate::headless::drawn;
+use crate::{Decoded, Refused, run, run_app};
+use std::cell::Cell;
+use std::sync::atomic::AtomicU64;
 use std::{ptr, slice};
+
+pub mod dev;
+pub mod heap;
+pub mod measure;
+pub(crate) mod shown;
+pub mod table;
 
 /// The longest string: 2^63 - 1 bytes.
 const MAX_BYTES: u64 = i64::MAX.unsigned_abs();
@@ -67,6 +78,10 @@ pub struct List {
     ptr: *const Effect,
     count: u64,
 }
+
+// SAFETY: a List is only read through, at memory that lives for the whole process (section 2), so
+// the thread that called `update` may hand it to another.
+unsafe impl Send for List {}
 
 impl Str {
     /// # Safety
@@ -157,6 +172,16 @@ impl List {
         self.slice().ok_or(Refused::EffectList)
     }
 
+    /// Frees the list's block and its texts that are blocks of `heap`, once performed.
+    pub(crate) fn release(&self, heap: &mut dev::Heap) {
+        for effect in self.slice().unwrap_or_default() {
+            if effect.tag == PRINT && effect.len != 0 {
+                heap.release_live(effect.ptr.addr());
+            }
+        }
+        heap.release_live(self.ptr.addr());
+    }
+
     fn slice(&self) -> Option<&'static [Effect]> {
         if !self.ptr.is_aligned() {
             return None;
@@ -221,7 +246,126 @@ pub unsafe extern "C" fn paka_rt1_run(
     // SAFETY: the caller promises that `name` and `name_len` are an ABI string, which is what
     // `from_raw` asks for.
     let name = unsafe { Str::from_raw(name, name_len) };
-    run(name, update, start, grants)
+    measure::around(|| run(name, update, start, grants))
+}
+
+/// What runs an app's compiled code (ABI sections 13 and 14): the handler for `id` `HANDLER`,
+/// the state builder for `STATE`, the view for `VIEW`, otherwise answer function `id`, each on
+/// argument addresses.
+pub type Call = extern "C" fn(id: u64, a: *mut u8, b: *mut u8, c: *mut u8) -> i32;
+
+pub const HANDLER: u64 = u64::MAX;
+pub const STATE: u64 = u64::MAX - 1;
+pub const VIEW: u64 = u64::MAX - 2;
+/// The first of the answer functions for a foreign result, one per kind (section 13).
+pub const ANSWER: u64 = u64::MAX - 3;
+/// The start word of an app with no start message.
+pub const NO_START: u64 = u64::MAX;
+
+/// A type's record, null when it owns nothing, and its size in bytes.
+#[repr(C)]
+pub struct Typed {
+    pub record: *const u64,
+    pub size: u64,
+}
+
+/// An app as compiled code gives it (ABI sections 13 and 14).
+#[repr(C)]
+pub struct App {
+    pub name: Str,
+    pub call: Option<Call>,
+    /// Bit 0 is `Console`, bit 1 `ReadFiles`, bit 2 `WriteFiles`.
+    pub grants: u64,
+    /// The start variant's tag, or `NO_START`.
+    pub start: u64,
+    /// Its field names, joined by `, `.
+    pub fields: Str,
+    pub message: Typed,
+    /// 1 when the app has a state, of type `state`.
+    pub stateful: u64,
+    pub state: Typed,
+    /// The record of the handler's `List<Effect<Msg>>`; null when it returns none.
+    pub effects: *const u64,
+    /// 1 when the app has a view.
+    pub visual: u64,
+    /// What a drawn message is shown by (section 14).
+    pub types: Str,
+    /// The foreign effects' table (section 13), empty without any.
+    pub foreign: Str,
+}
+
+const _: () = assert!(size_of::<App>() == 18 * 8 && align_of::<App>() == 8);
+
+/// The entry of a headless app's `main` (ABI section 13).
+///
+/// # Safety
+///
+/// `app`'s strings are as ABI section 2 defines them, its records are M4-05 section 10's for its
+/// types, and `call` keeps section 13 for every call the run loop makes.
+// SAFETY: as for `paka_rt1_run`.
+#[unsafe(no_mangle)]
+pub unsafe extern "C" fn paka_rt1_app(app: &App) -> i32 {
+    ignore_signals();
+    measure::around(|| run_app(app, None))
+}
+
+/// The entry of a visual app's `main` (ABI section 14), the only path to its window.
+///
+/// # Safety
+///
+/// As for `paka_rt1_app`.
+// SAFETY: as for `paka_rt1_run`.
+#[unsafe(no_mangle)]
+pub unsafe extern "C" fn paka_rt1_visual(app: &App) -> i32 {
+    ignore_signals();
+    measure::around(|| run_app(app, Some(drawn)))
+}
+
+/// The lowest stack address compiled code may reach before it traps `stack`; 0 turns the check
+/// off. The runtime sets it on the thread that calls `update` (ABI section 5); compiled code only
+/// loads it.
+// SAFETY: as for `paka_rt1_run`.
+#[unsafe(no_mangle)]
+#[allow(non_upper_case_globals)]
+pub static paka_rt1_stack_limit: AtomicU64 = AtomicU64::new(0);
+
+/// A trap's kind, when the runtime found it, and its text.
+pub(crate) type Trapped = (&'static [u8], &'static [u8]);
+
+thread_local! {
+    /// The trap reported last; a refused text is `None`.
+    static TRAP: Cell<Option<Trapped>> = const { Cell::new(None) };
+}
+
+/// The entry compiled code calls on a trap, before it returns status 1 (ABI section 3).
+///
+/// # Safety
+///
+/// `text` and `len` are a string as ABI section 2 defines it.
+// SAFETY: as for `paka_rt1_run`.
+#[unsafe(no_mangle)]
+pub unsafe extern "C" fn paka_rt1_trap(text: *const u8, len: u64) {
+    // SAFETY: the caller promises an ABI string, which is what `from_raw` asks for.
+    record_trap(unsafe { Str::from_raw(text, len) }.bytes());
+}
+
+pub(crate) fn record_trap(text: Option<&'static [u8]>) {
+    record_kind(b"", text);
+}
+
+/// Records a trap whose text starts after its kind's words, `kind`.
+pub(crate) fn record_kind(kind: &'static [u8], text: Option<&'static [u8]>) {
+    let _ = TRAP.try_with(|t| t.set(text.map(|text| (kind, text))));
+}
+
+/// The trap recorded since the last call, if any.
+pub(crate) fn take_trap() -> Option<Trapped> {
+    TRAP.try_with(Cell::take).ok().flatten()
+}
+
+/// The trap recorded since the last call, if any, left recorded.
+pub(crate) fn peek_trap() -> Option<Trapped> {
+    TRAP.try_with(Cell::get).ok().flatten()
 }
 
 /// Test only: an effect holding these words. They must make a value the decoder refuses, or one

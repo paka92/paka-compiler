@@ -9,12 +9,18 @@
 mod fixed;
 mod float;
 mod int;
+mod sort;
 mod text;
 pub mod vectors;
 
 pub use float::Float;
 pub use int::Int;
-pub use text::Text;
+pub use paka_gui::tree::quoted;
+pub use sort::sorted;
+pub use text::{Text, white};
+
+/// The most bytes in a String, and the most items or entries in a List or Map.
+pub const CAP: usize = 16_777_216;
 
 /// The kinds of trap an operation can end in.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -23,6 +29,8 @@ pub enum Trap {
     DivideByZero,
     OutOfBounds,
     BadConversion,
+    /// A String, List or Map past `CAP`.
+    Memory,
 }
 
 impl Trap {
@@ -39,6 +47,7 @@ impl Trap {
             Trap::DivideByZero => "divide_by_zero",
             Trap::OutOfBounds => "out_of_bounds",
             Trap::BadConversion => "bad_conversion",
+            Trap::Memory => "memory",
         }
     }
 

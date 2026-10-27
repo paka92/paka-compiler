@@ -1,0 +1,74 @@
+// Loops whose bounds and overflow checks the optimizer proves away (M6-19). The off-by-one
+// twin of each, in tests/release_loops.rs, must still trap.
+
+enum Msg { Start }
+
+fn total(xs: List<Float>) -> Float {
+  var sum = 0.0
+  for i in 0..<len(xs) {
+    sum += xs[i]
+  }
+  sum
+}
+
+fn fill(n: Int) -> Int {
+  var xs = list_of(0, count: n)
+  for i in 0..<n {
+    xs[i] = i
+  }
+  len(xs)
+}
+
+fn walk(n: Int) -> Float {
+  let xs = list_of(1.5, count: n)
+  var sum = 0.0
+  var i = 0
+  while i < len(xs) {
+    sum += xs[i]
+    i += 1
+  }
+  sum
+}
+
+fn copy(n: Int) -> Float {
+  let xs = list_of(1.5, count: n)
+  var out = list_of(0.0, count: len(xs))
+  for i in 0..<len(xs) {
+    out[i] = xs[i]
+  }
+  out[0]
+}
+
+fn count(n: Int) -> Int {
+  let p = list_of(true, count: n)
+  var c = 0
+  for i in 2..<n {
+    if p[i] {
+      c = wrap_add(c, 1)
+    }
+  }
+  c
+}
+
+fn clear(n: Int) -> Int {
+  var p = list_of(true, count: n)
+  var c = 0
+  for i in 0..<n {
+    if p[i] {
+      c = wrap_add(c, 1)
+      p[i] = false
+    }
+  }
+  c
+}
+
+fn update(msg: Msg) -> List<Effect<Msg>> {
+  let t = total([1.5, 2.5]) + walk(4) + copy(4)
+  [Print("{to_int(t)} {fill(4)} {count(9)} {clear(9)}"), Exit]
+}
+
+app loops {
+  start: Start
+  update: update
+  grants: [Console]
+}

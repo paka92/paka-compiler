@@ -1,0 +1,37 @@
+Served program: shape/before. find by takes and gives (M4-19): a parameter type matches once, in
+any order; spacing does not matter and inout is not part of a type; only fn definitions match.
+
+> {"v":1,"id":1,"call":"find","takes":["String"],"gives":"Int"}
+< {"v":1,"id":1,"ok":true,"found":[{"name":"count_words","kind":"fn","sig":"fn count_words(text: String) -> Int","version":"8f37a8d7c74b"}],"more":0}
+> {"v":1,"id":2,"call":"find","takes":["String"]}
+< {"v":1,"id":2,"ok":true,"found":[{"name":"again","kind":"fn","sig":"fn again(text: String, times: Int) -> String","version":"af77ec8d622b"},{"name":"count_words","kind":"fn","sig":"fn count_words(text: String) -> Int","version":"8f37a8d7c74b"},{"name":"lookup","kind":"fn","sig":"fn lookup(m: Map<String, List<Int>>, key: String) -> Option<List<Int>>","version":"e1dcab7061ef"}],"more":0}
+> {"v":1,"id":3,"call":"find","takes":["Int","Int"]}
+< {"v":1,"id":3,"ok":true,"found":[{"name":"add","kind":"fn","sig":"fn add(a: Int, b: Int) -> Int","version":"7a2eb0c04010"}],"more":0}
+> {"v":1,"id":4,"call":"find","takes":["Int"],"gives":"Int"}
+< {"v":1,"id":4,"ok":true,"found":[{"name":"add","kind":"fn","sig":"fn add(a: Int, b: Int) -> Int","version":"7a2eb0c04010"},{"name":"apply","kind":"fn","sig":"fn apply(f: fn(Int) -> Int, x: Int) -> Int","version":"2e49fb5436ec"}],"more":0}
+> {"v":1,"id":5,"call":"find","gives":"Int"}
+< {"v":1,"id":5,"ok":true,"found":[{"name":"add","kind":"fn","sig":"fn add(a: Int, b: Int) -> Int","version":"7a2eb0c04010"},{"name":"apply","kind":"fn","sig":"fn apply(f: fn(Int) -> Int, x: Int) -> Int","version":"2e49fb5436ec"},{"name":"count_words","kind":"fn","sig":"fn count_words(text: String) -> Int","version":"8f37a8d7c74b"},{"name":"total","kind":"fn","sig":"fn total(xs: List<Int>) -> Int","version":"6b9bbfddf6f9"}],"more":0}
+> {"v":1,"id":6,"call":"find","takes":["Map<String,List<Int>>"]}
+< {"v":1,"id":6,"ok":true,"found":[{"name":"lookup","kind":"fn","sig":"fn lookup(m: Map<String, List<Int>>, key: String) -> Option<List<Int>>","version":"e1dcab7061ef"}],"more":0}
+> {"v":1,"id":7,"call":"find","takes":["fn(Int)->Int"]}
+< {"v":1,"id":7,"ok":true,"found":[{"name":"apply","kind":"fn","sig":"fn apply(f: fn(Int) -> Int, x: Int) -> Int","version":"2e49fb5436ec"}],"more":0}
+> {"v":1,"id":8,"call":"find","takes":["inout Int"]}
+< {"v":1,"id":8,"ok":false,"error":{"kind":"bad_request","message":"`takes` holds `inout Int`, which is not a type"}}
+> {"v":1,"id":9,"call":"find","takes":["Int"]}
+< {"v":1,"id":9,"ok":true,"found":[{"name":"add","kind":"fn","sig":"fn add(a: Int, b: Int) -> Int","version":"7a2eb0c04010"},{"name":"again","kind":"fn","sig":"fn again(text: String, times: Int) -> String","version":"af77ec8d622b"},{"name":"apply","kind":"fn","sig":"fn apply(f: fn(Int) -> Int, x: Int) -> Int","version":"2e49fb5436ec"},{"name":"bump","kind":"fn","sig":"fn bump(n: inout Int)","version":"a66ac85b0bd7"}],"more":0}
+> {"v":1,"id":10,"call":"find","gives":"Point"}
+< {"v":1,"id":10,"ok":true,"found":[{"name":"origin","kind":"fn","sig":"fn origin() -> Point","version":"8fd894126aa3"}],"more":0}
+> {"v":1,"id":11,"call":"find","takes":[]}
+< {"v":1,"id":11,"ok":true,"found":[{"name":"add","kind":"fn","sig":"fn add(a: Int, b: Int) -> Int","version":"7a2eb0c04010"},{"name":"again","kind":"fn","sig":"fn again(text: String, times: Int) -> String","version":"af77ec8d622b"},{"name":"apply","kind":"fn","sig":"fn apply(f: fn(Int) -> Int, x: Int) -> Int","version":"2e49fb5436ec"},{"name":"bump","kind":"fn","sig":"fn bump(n: inout Int)","version":"a66ac85b0bd7"},{"name":"count_words","kind":"fn","sig":"fn count_words(text: String) -> Int","version":"8f37a8d7c74b"},{"name":"lookup","kind":"fn","sig":"fn lookup(m: Map<String, List<Int>>, key: String) -> Option<List<Int>>","version":"e1dcab7061ef"},{"name":"origin","kind":"fn","sig":"fn origin() -> Point","version":"8fd894126aa3"},{"name":"total","kind":"fn","sig":"fn total(xs: List<Int>) -> Int","version":"6b9bbfddf6f9"}],"more":0}
+> {"v":1,"id":12,"call":"find","takes":["Int"],"name":"a*"}
+< {"v":1,"id":12,"ok":true,"found":[{"name":"add","kind":"fn","sig":"fn add(a: Int, b: Int) -> Int","version":"7a2eb0c04010"},{"name":"again","kind":"fn","sig":"fn again(text: String, times: Int) -> String","version":"af77ec8d622b"},{"name":"apply","kind":"fn","sig":"fn apply(f: fn(Int) -> Int, x: Int) -> Int","version":"2e49fb5436ec"}],"more":0}
+> {"v":1,"id":13,"call":"find","gives":"List<int>"}
+< {"v":1,"id":13,"ok":false,"error":{"kind":"bad_request","message":"`gives` holds `List<int>`, which is not a type"}}
+> {"v":1,"id":14,"call":"find","takes":["Int","Int","Int"]}
+< {"v":1,"id":14,"ok":true,"found":[],"more":0}
+> {"v":1,"id":15,"call":"find","gives":" Option< List<Int> >"}
+< {"v":1,"id":15,"ok":true,"found":[{"name":"lookup","kind":"fn","sig":"fn lookup(m: Map<String, List<Int>>, key: String) -> Option<List<Int>>","version":"e1dcab7061ef"}],"more":0}
+> {"v":1,"id":16,"call":"find","takes":["String"],"kind":"type"}
+< {"v":1,"id":16,"ok":true,"found":[],"more":0}
+> {"v":1,"id":17,"call":"find","takes":["Int) -> Int {}\nfn g(y: Int"]}
+< {"v":1,"id":17,"ok":false,"error":{"kind":"bad_request","message":"`takes` holds `Int) -> Int {}\nfn g(y: Int`, which is not a type"}}

@@ -1,1 +1,1 @@
-main.paka:10:3: error[unsupported-view]
+main.paka:10:11: error[unknown-name]

@@ -1,7 +1,7 @@
 # Paka language reference
 
-All of Paka is on this page. A block fenced as `paka` is a whole program that `paka check` accepts.
-Any other block is a fragment, refused code or tool output.
+All of Paka is on this page, except visual apps: `spec/screens.md`. A block fenced as `paka` is a
+whole program that `paka check` accepts. Any other block is a fragment, refused code or tool output.
 
 ## 1. A program
 
@@ -45,8 +45,8 @@ globals, references or shared data. Functions cannot see anything but their para
 - UTF-8. Non-ASCII characters only inside strings and comments. No tab, no carriage return.
 - Names are ASCII letters, digits and `_`, and start with a letter. Upper first letter: types,
   variants, effects, grants. Lower: functions, apps, examples, locals, parameters, fields, labels.
-- Keywords, never names: `app break continue else enum example false fn for if in inout let match
-  migrate return true type var view while`.
+- Keywords, never names: `app break continue else enum example false fn for foreign if in inout let
+  match migrate return true type var view while`.
 - `//` starts a comment that runs to the line end. No block comments.
 - A line break ends a statement. A line continues only inside an open `(` or `[`, after a line
   ending in `,` `=` `->` `=>` `|` `{` or a two-sided operator, or before a line starting with
@@ -483,7 +483,8 @@ An example is `example name { ... }`: statements, then one Bool expression. It t
 arguments, performs no effects and may not use `?`. Examples may call `update` on a `var` state
 and compare effect lists with `==`. They are checked with the program and run only by
 `paka examples`. Each gets one status: `pass` (true), `fail` (false), `trapped` (a trap) or
-`unfinished` (a hole reached).
+`unfinished` (a hole reached). Its line reads name, label, status; the label is `human-owned` when
+the signed approval store holds it, else `agent-written`.
 
 ## 12. Tools
 
@@ -493,12 +494,14 @@ and compare effect lists with `==`. They are checked with the program and run on
 | `paka run <path> [arguments]` | checks, then runs the app |
 | `paka examples <path>` | checks, then runs every example |
 | `paka build <path> -o <output>` | checks, then writes an executable |
+| `paka gate <tree> --base <tree> [--json]` | refuses a merge whose approvals differ or owned examples fail; lists each |
+| `paka approve <path>` | the owner's: signs approved changes |
 
-Exit status: 0 good; 1 an error in the program; 2 bad usage; 3 a trap, a stop or an example that
+Exit status: 0 good; 1 a program error; 2 bad usage; 3 a trap, a stop or an example that
 did not pass; 4 an internal error.
 
-`paka build` lists every hole, one line each; every other command reports the first error only,
-as one line. `paka check` adds one line per field:
+`paka build` lists every hole, one line each; the others report only the first error, as one
+line. `paka check` adds one line per field:
 
 ```
 main.paka:4:3: error[type-mismatch]: expected `List<Effect<Msg>>`, found `String`
@@ -512,3 +515,17 @@ main.paka:4:3: error[type-mismatch]: expected `List<Effect<Msg>>`, found `String
 A `fix:` line follows when the error knows its repair. With `--json` the same error is one object
 with the keys `kind`, `definition`, `message`, `file`, `start`, `end`, `line`, `column`, `text`,
 `expected`, `found`, `fix`. Lines and columns start at 1; columns count bytes.
+
+## 16. Foreign code
+
+```
+foreign Sum {
+  source: "sum.c"   // or library: "z"; beside the program
+  header: "sum.h"
+  Add(a: Int) -> Int = "add"
+}
+```
+
+Each line is an effect under grant `Sum`, answered like `ReadFile`; `then: Msg` with no result.
+Arguments: Int, Float, Bool, String; result: Int, Float, Bool. The owner approves the grant,
+declaration and files. For now it answers `or("no host")`.

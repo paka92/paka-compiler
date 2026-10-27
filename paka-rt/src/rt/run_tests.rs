@@ -1,7 +1,7 @@
 //! The run loop, driven by fake update functions and captured sinks. Nothing here is unsafe.
 
 use super::{Stop, buffer, run_with, stop};
-use crate::abi::{Effect, List, Update, effect_of_words};
+use crate::abi::{Effect, List, Update, effect_of_words, record_trap};
 use std::io::{self, ErrorKind, Write};
 use std::{fs, path::Path};
 
@@ -149,8 +149,8 @@ const CASES: [Case; 17] = [
     case("unused_definitions", light, 1),
 ];
 
-/// The cases the milestone 1 back end cannot build (a state, a start message with fields,
-/// `ExitWith`); the interpreter alone runs them.
+/// The cases beyond the M1 entry (a state, a start message with fields, `ExitWith`), built on
+/// the headless one (ABI section 13).
 const BEYOND: [&str; 10] = [
     "exit_with_computed_four",
     "exit_with_computed_high",
@@ -310,6 +310,22 @@ fn bad_grants_are_refused_before_update_is_called() {
 fn the_status_is_tested_before_the_list_header_is_read() {
     let reason = internal("update returned a non-zero status");
     assert_eq!(go(status_1_stores_nothing, 1), ("".into(), reason, 4));
+}
+
+extern "C" fn traps(_msg: u64, _out: &mut List) -> i32 {
+    record_trap(Some(b"overflow at main.paka:3:5"));
+    1
+}
+
+#[test]
+fn a_trap_is_reported_with_its_text_and_stops_with_3() {
+    let want = "light: trap overflow at main.paka:3:5\n";
+    assert_eq!(go(traps, 1), ("".into(), want.into(), 3));
+    assert_eq!(
+        go(status_1_stores_nothing, 1).2,
+        4,
+        "a trap is not kept for the next run"
+    );
 }
 
 #[test]

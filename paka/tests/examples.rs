@@ -1,9 +1,10 @@
-//! `paka examples`: the four statuses, written out by hand from M2-06 section 1.6.
+//! `paka examples`: the four statuses, written out by hand from M2-06 section 1.6, and those of
+//! UI examples (M5-06), run with no display.
 
 #[allow(dead_code)]
 mod common;
 
-use common::{PAKA, Scratch};
+use common::{EXAMPLE_CACHE, PAKA, Scratch};
 use std::fs;
 use std::process::Command;
 
@@ -13,6 +14,9 @@ fn examples(name: &str, source: &str) -> (String, String, Option<i32>) {
     fs::write(dir.path("main.paka"), source).unwrap();
     let out = Command::new(PAKA)
         .args(["examples", "main.paka"])
+        .env("XDG_CACHE_HOME", EXAMPLE_CACHE)
+        .env_remove("DISPLAY")
+        .env_remove("WAYLAND_DISPLAY")
         .current_dir(dir.path(""))
         .output()
         .unwrap();
@@ -62,15 +66,15 @@ example first_of_none {
 fn each_status_in_name_order() {
     let (out, err, status) = examples("counter", COUNTER);
     let expected = "\
-dec_from_two fail at main.paka:23:11
+dec_from_two agent-written fail at main.paka:23:11
   left: 1
   right: 2
-dec_stops_at_zero pass
-first_of_none trapped at main.paka:34:5
+dec_stops_at_zero agent-written pass
+first_of_none agent-written trapped at main.paka:34:5
   trap out_of_bounds
   index 0, length 0
   in example first_of_none
-inc_once unfinished at main.paka:8:22
+inc_once agent-written unfinished at main.paka:8:22
   ??step
   in update, called from example inc_once
 ";
@@ -88,10 +92,10 @@ fn all_passing_exits_0() {
         .replace("xs[0] == 0", "xs == []");
     let (out, err, status) = examples("passing", &fixed);
     let expected = "\
-dec_from_two pass
-dec_stops_at_zero pass
-first_of_none pass
-inc_once pass
+dec_from_two agent-written pass
+dec_stops_at_zero agent-written pass
+first_of_none agent-written pass
+inc_once agent-written pass
 ";
     assert_eq!(
         (out.as_str(), err.as_str(), status),
@@ -127,19 +131,19 @@ example texts { "a\n" != "a\n" }
 #[test]
 fn failed_claims_and_asserts() {
     let (out, err, status) = examples("forms", FORMS);
-    let expected = r#"asserts trapped at main.paka:5:3
+    let expected = r#"asserts agent-written trapped at main.paka:5:3
   trap assert
-chain fail at main.paka:9:29
+chain agent-written fail at main.paka:9:29
   left: 2
   right: 3
-plain fail at main.paka:11:17
-records fail at main.paka:13:36
+plain agent-written fail at main.paka:11:17
+records agent-written fail at main.paka:13:36
   left: P { x: 3, y: 4 }
   right: P { x: 3, y: 5 }
-shapes fail at main.paka:15:37
+shapes agent-written fail at main.paka:15:37
   left: [Circle(1.0), Dot]
   right: [Circle(2.5), Dot]
-texts fail at main.paka:17:23
+texts agent-written fail at main.paka:17:23
   left: "a\n"
   right: "a\n"
 "#;
@@ -158,4 +162,193 @@ fn a_program_that_does_not_check_prints_one_line_and_exits_1() {
         "{err}"
     );
     assert_eq!(err.lines().count(), 1);
+}
+
+/// GENESIS.md's counter with a placeholder under its buttons.
+const UI_COUNTER: &str = r##"type Counter { count: Int = 0 }
+
+enum Msg { Inc, Dec }
+
+fn update(s: inout Counter, m: Msg) {
+  match m {
+    Inc => s.count += 1
+    Dec => s.count = max(0, s.count - 1)
+  }
+}
+
+view counter_view(s: Counter) -> View<Msg> {
+  Col(gap: 8) {
+    Text("{s.count}")
+    Row(gap: 8) {
+      Button("-", on: Dec)
+      Button("+", on: Inc)
+    }
+    ??reset
+  }
+}
+
+app counter {
+  state:  Counter
+  update: update
+  view:   counter_view
+  grants: []
+}
+
+example inc_once {
+  var ui = ui_start(counter)
+  ui_click(&ui, "#1/#1")
+  ui_text(ui, "#0") == "1"
+}
+
+example dec_below_zero {
+  var ui = ui_start(counter)
+  ui_click(&ui, "#1/#0")
+  ui_text(ui, "#0") == "-1"
+}
+
+example reset_shown {
+  let ui = ui_start(counter)
+  ui_has(ui, "#2")
+}
+"##;
+
+#[test]
+fn ui_counter_examples_pass_fail_and_touch_a_placeholder() {
+    let (out, err, status) = examples("ui_counter", UI_COUNTER);
+    let expected = r#"dec_below_zero agent-written fail at main.paka:39:21
+  left: "0"
+  right: "-1"
+inc_once agent-written pass
+reset_shown agent-written unfinished at main.paka:44:3
+  ??reset
+  in example reset_shown
+"#;
+    assert_eq!(
+        (out.as_str(), err.as_str(), status),
+        (expected, "", Some(3))
+    );
+}
+
+const UI_ENDS: &str = r##"type S { text: String = "ab", n: Int = 0 }
+
+enum Msg { Edit(text: String), Dup, Say, Quit, Hang }
+
+fn update(s: inout S, m: Msg) -> List<Effect<Msg>> {
+  match m {
+    Edit(text) => {
+      s.text = text
+      []
+    }
+    Dup => {
+      s.n = 1
+      []
+    }
+    Say => [Print("hi")]
+    Quit => [Exit]
+    Hang => ??hang
+  }
+}
+
+view v(s: S) -> View<Msg> {
+  Col(gap: 0) {
+    Input(s.text, on_change: Edit, key: "in")
+    Button("dup", on: Dup)
+    Button("say", on: Say)
+    Button("quit", on: Quit)
+    Button("hang", on: Hang)
+    for i in 0..<s.n + 1 {
+      Text("x", key: 7)
+    }
+  }
+}
+
+app a {
+  state:  S
+  update: update
+  view:   v
+  grants: []
+}
+
+example typed_at_end {
+  var ui = ui_start(a)
+  ui_click(&ui, "'in'")
+  ui_type(&ui, "c\n")
+  ui_text(ui, "'in'") == "abc"
+}
+
+example duplicate_key {
+  var ui = ui_start(a)
+  ui_click(&ui, "#1")
+  true
+}
+
+example refused {
+  var ui = ui_start(a)
+  ui_click(&ui, "#2")
+  true
+}
+
+example after_exit {
+  var ui = ui_start(a)
+  ui_click(&ui, "#3")
+  let quit = ui_text(ui, "#3")
+  ui_click(&ui, "#3")
+  quit == "quit"
+}
+
+example hole_in_handler {
+  var ui = ui_start(a)
+  ui_click(&ui, "#4")
+  true
+}
+
+example no_focus {
+  var ui = ui_start(a)
+  ui_type(&ui, "c")
+  true
+}
+
+example click_on_text {
+  var ui = ui_start(a)
+  ui_click(&ui, "7")
+  true
+}
+"##;
+
+#[test]
+fn ui_examples_end_in_error_nodes_refusals_and_traps() {
+    let (out, err, status) = examples("ui_ends", UI_ENDS);
+    let expected = r#"after_exit agent-written trapped at main.paka:64:3
+  trap assert
+click_on_text agent-written trapped at main.paka:82:3
+  trap assert
+duplicate_key agent-written fail at main.paka:50:3
+  Error 7 "duplicate key 7: 2 children of Col"
+hole_in_handler agent-written unfinished at main.paka:17:13
+  ??hang
+  in update, called from example hole_in_handler
+no_focus agent-written trapped at main.paka:76:3
+  trap assert
+refused agent-written trapped
+  a: effect Print refused: grant Console is missing
+typed_at_end agent-written pass
+"#;
+    assert_eq!(
+        (out.as_str(), err.as_str(), status),
+        (expected, "", Some(3))
+    );
+}
+
+#[test]
+fn both_samples_check_clean() {
+    for sample in ["sample_counter", "sample_todo"] {
+        let file = format!(
+            "{}/../tests/cases/examples/{sample}/main.paka",
+            env!("CARGO_MANIFEST_DIR")
+        );
+        let out = Command::new(PAKA).args(["check", &file]).output().unwrap();
+        let err = String::from_utf8(out.stderr).unwrap();
+        assert_eq!(out.status.code(), Some(0), "{sample}: {err}");
+        assert!(!err.contains("error["), "{sample}: {err}");
+    }
 }

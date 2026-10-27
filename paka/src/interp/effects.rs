@@ -1,56 +1,40 @@
-//! The effects a handler returns, performed against a world (docs/decisions/M2-15.md sections
-//! 1.3 to 1.8): the grant check, the answers each effect queues and the end it may bring.
+//! The effects a handler returns, decoded from the interpreter's values and performed by the
+//! shared performer (`paka_rt::effects`, M4-05 section 3).
 
-use super::eval::CAP;
-use super::value::{FnKey, Value};
-use crate::core_form::{App, Effect, Grant};
+use super::value::{FnKey, Value, position};
+use crate::core_form::{App, Effect as Number, Program};
+use crate::foreign::{self, Hosts};
+use paka_rt::effects::{self, Effect, Next};
+use paka_rt::ops::Int;
+use paka_rt::route::Event;
 use std::collections::VecDeque;
-use std::fs::{self, File};
-use std::io::{self, ErrorKind, Read, Write};
 use std::mem;
-use std::os::unix::fs::OpenOptionsExt;
 
-const PRINT: usize = Effect::Print as usize;
-const READ_FILE: usize = Effect::ReadFile as usize;
-const WRITE_FILE: usize = Effect::WriteFile as usize;
-const EXIT: usize = Effect::Exit as usize;
-const EXIT_WITH: usize = Effect::ExitWith as usize;
+#[cfg(test)]
+pub use paka_rt::effects::Reason;
+pub use paka_rt::effects::{End, Host, World};
 
-/// `O_NONBLOCK`, which std does not name: a FIFO swapped in after the first look cannot block
-/// the open. Elsewhere the open is plain.
-#[cfg(target_os = "linux")]
-const NONBLOCK: i32 = 0o4000;
-#[cfg(not(target_os = "linux"))]
-const NONBLOCK: i32 = 0;
+const PRINT: usize = Number::Print as usize;
+const READ_FILE: usize = Number::ReadFile as usize;
+const WRITE_FILE: usize = Number::WriteFile as usize;
+const EXIT: usize = Number::Exit as usize;
+const EXIT_WITH: usize = Number::ExitWith as usize;
+const FOREIGN: usize = Number::Foreign as usize;
 
-/// The effects' names, by variant number.
-const NAMES: [&str; 5] = ["Print", "ReadFile", "WriteFile", "Exit", "ExitWith"];
-
-/// A status and the line that explains it; the line is empty when the program chose its end.
-pub type End = (u8, String);
-
-/// Why an effect failed, in the words a program is given.
-pub type Reason = &'static str;
-
-/// What an effect touches. The host is `Host`; tests bring a world in memory.
-pub trait World {
-    /// The text and a line feed, written whole.
-    fn print(&mut self, text: &str) -> Result<(), Reason>;
-    fn read(&mut self, path: &str) -> Result<String, Reason>;
-    /// Creates or replaces the file.
-    fn write(&mut self, path: &str, text: &str) -> Result<(), Reason>;
-}
-
-/// A message waiting its turn: given, or an answer whose function is applied at the front.
+/// A message waiting its turn: given, an answer whose function is applied at the front, or a
+/// visual app's event, worked out against the tree of its turn.
 pub enum Queued {
     Message(Value),
     Answer(FnKey, Value),
+    Event(Event),
 }
 
 /// Performs the effects in order, queueing the answers; `Some` when one ends the run, `None`
-/// after the last.
+/// after the last. Without `hosts`, as in a UI example, an allowed foreign effect is dropped.
 pub fn perform(
+    core: &Program,
     app: &App,
+    hosts: Option<&mut Hosts>,
     answer: &mut Value,
     world: &mut impl World,
     queue: &mut VecDeque<Queued>,
@@ -58,12 +42,24 @@ pub fn perform(
     let Value::List(effects) = answer else {
         unreachable!("a checked List");
     };
+    let mut hosts = hosts;
     for effect in &mut effects.0 {
         let Value::Variant(number, fields) = effect else {
             unreachable!("a checked Effect");
         };
-        match one(app, *number, &mut fields.0, world) {
-            Ok(Some(queued)) => queue.push_back(queued),
+        if *number == FOREIGN {
+            match call(core, app, hosts.as_deref_mut(), &mut fields.0) {
+                Ok(answer) => queue.extend(answer),
+                Err(end) => return Some(end),
+            }
+            continue;
+        }
+        let effect = decode(*number, &mut fields.0);
+        match effects::perform(&app.name, &app.grants, effect, world) {
+            Ok(Some(Next::Message(m))) => queue.push_back(Queued::Message(m)),
+            Ok(Some(Next::Answer(f, text))) => {
+                queue.push_back(Queued::Answer(f, Value::Str(text.into())))
+            }
             Ok(None) => {}
             Err(end) => return Some(end),
         }
@@ -71,199 +67,79 @@ pub fn perform(
     None
 }
 
-/// One effect: the answer it queues, if any, or the end it brings.
-fn one(
+/// A foreign effect: refused without its grant, else run by its declaration's host. The answer
+/// is `then` with the result, or `or` with the reason the call failed.
+fn call(
+    core: &Program,
     app: &App,
-    number: usize,
+    hosts: Option<&mut Hosts>,
     fields: &mut [Value],
-    world: &mut impl World,
 ) -> Result<Option<Queued>, End> {
-    let stop = |why: String| (3, format!("{}: {why}\n", app.name));
-    let name = NAMES[number];
-    if let Some((grant, needed)) = grant_for(number)
-        && !app.grants.contains(&grant)
-    {
-        return Err(stop(format!(
-            "effect {name} refused: grant {needed} is missing"
-        )));
+    let [Value::Int(id), args @ .., then, Value::Fn(or)] = fields else {
+        unreachable!("a checked foreign effect");
+    };
+    let effect = &core.foreign[position(*id).expect("an effect index")];
+    let library = &core.libraries[effect.library];
+    if !app.foreign.contains(&library.name) {
+        return Err(paka_rt::foreign::refused(
+            &app.name,
+            &effect.name,
+            &library.name,
+        ));
     }
-    let queued = match (number, fields) {
-        (EXIT, _) => return Err((0, String::new())),
-        (EXIT_WITH, [Value::Int(status)]) => return Err(ending(*status).unwrap_or_else(stop)),
-        (PRINT, [Value::Str(text)]) => {
-            let printed = world.print(text.as_str());
-            printed.map_err(|why| stop(format!("effect Print failed: {why}")))?;
-            return Ok(None);
-        }
+    let Some(hosts) = hosts else {
+        return Ok(None);
+    };
+    let args: Vec<_> = args.iter().map(plain).collect();
+    Ok(Some(
+        match foreign::call(hosts, effect.library, library, effect.number, &args) {
+            Ok(Some(result)) => Queued::Answer(answer_fn(then), value(result)),
+            Ok(None) => Queued::Message(mem::take(then)),
+            Err(reason) => Queued::Answer(*or, Value::Str(reason.into())),
+        },
+    ))
+}
+
+fn answer_fn(then: &Value) -> FnKey {
+    let Value::Fn(f) = then else {
+        unreachable!("a function with a result answers through a function");
+    };
+    *f
+}
+
+/// An argument as it crosses to C.
+#[allow(clippy::disallowed_methods)] // the value leaves Paka for the host
+fn plain(v: &Value) -> foreign::Value<'_> {
+    match v {
+        Value::Int(n) => foreign::Value::Int(n.get()),
+        Value::Float(x) => foreign::Value::Float(*x),
+        Value::Bool(b) => foreign::Value::Bool(*b),
+        Value::Str(t) => foreign::Value::String(t.as_str()),
+        _ => unreachable!("a checked plain type"),
+    }
+}
+
+fn value(result: foreign::Value) -> Value {
+    match result {
+        foreign::Value::Int(n) => Value::Int(Int::new(n)),
+        foreign::Value::Float(x) => Value::Float(x),
+        foreign::Value::Bool(b) => Value::Bool(b),
+        foreign::Value::String(_) => unreachable!("a result is never a String"),
+    }
+}
+
+/// Effect `number` with its fields.
+fn decode(number: usize, fields: &mut [Value]) -> Effect<'_, FnKey, Value> {
+    match (number, fields) {
+        (PRINT, [Value::Str(text)]) => Effect::Print(text.as_str()),
         (READ_FILE, [Value::Str(path), Value::Fn(then), Value::Fn(or)]) => {
-            match usable(path.as_str()).and_then(|path| world.read(path)) {
-                Ok(text) => Queued::Answer(*then, Value::Str(text.into())),
-                Err(why) => Queued::Answer(*or, Value::Str(why.into())),
-            }
+            Effect::ReadFile(path.as_str(), *then, *or)
         }
         (WRITE_FILE, [Value::Str(path), Value::Str(text), then, Value::Fn(or)]) => {
-            match usable(path.as_str()).and_then(|path| world.write(path, text.as_str())) {
-                Ok(()) => Queued::Message(mem::take(then)),
-                Err(why) => Queued::Answer(*or, Value::Str(why.into())),
-            }
+            Effect::WriteFile(path.as_str(), text.as_str(), mem::take(then), *or)
         }
+        (EXIT, _) => Effect::Exit,
+        (EXIT_WITH, [Value::Int(status)]) => Effect::ExitWith(*status),
         _ => unreachable!("a checked Effect"),
-    };
-    Ok(Some(queued))
-}
-
-/// The grant an effect needs and its name.
-fn grant_for(number: usize) -> Option<(Grant, &'static str)> {
-    match number {
-        PRINT => Some((Grant::Console, "Console")),
-        READ_FILE => Some((Grant::ReadFiles, "ReadFiles")),
-        WRITE_FILE => Some((Grant::WriteFiles, "WriteFiles")),
-        _ => None,
-    }
-}
-
-/// The end a status brings: 0 or 5 to 255 is the program's choice, any other is a stop.
-#[allow(clippy::disallowed_methods)] // the value leaves Paka as the process status
-fn ending(status: paka_rt::ops::Int) -> Result<End, String> {
-    match u8::try_from(status.get()) {
-        Ok(code @ (0 | 5..)) => Ok((code, String::new())),
-        _ => Err(format!(
-            "effect ExitWith failed: status {status} is not 0 or 5 to 255"
-        )),
-    }
-}
-
-/// The path, unless no file can have it: empty, or holding a zero byte.
-fn usable(path: &str) -> Result<&str, Reason> {
-    if path.is_empty() || path.contains('\0') {
-        return Err("failed");
-    }
-    Ok(path)
-}
-
-/// The host: descriptor 1 through `out`, and files by path, relative to the working directory.
-pub struct Host<W>(pub W);
-
-impl<W: Write> World for Host<W> {
-    fn print(&mut self, text: &str) -> Result<(), Reason> {
-        let line = format!("{text}\n");
-        self.0
-            .write_all(line.as_bytes())
-            .map_err(|e| match e.kind() {
-                ErrorKind::StorageFull | ErrorKind::QuotaExceeded => "no space left on device",
-                ErrorKind::BrokenPipe => "broken pipe",
-                _ => "write error",
-            })
-    }
-
-    /// The path's kind first, then the open, then the opened file's kind and size (M2-15 section
-    /// 1.7).
-    fn read(&mut self, path: &str) -> Result<String, Reason> {
-        if !fs::metadata(path).map_err(|e| file_reason(&e))?.is_file() {
-            return Err("not a file");
-        }
-        let open = File::options().read(true).custom_flags(NONBLOCK).open(path);
-        let file = open.map_err(|e| file_reason(&e))?;
-        let meta = file.metadata().map_err(|e| file_reason(&e))?;
-        if !meta.is_file() {
-            return Err("not a file");
-        }
-        if meta.len() > CAP as u64 {
-            return Err("failed");
-        }
-        let mut bytes = Vec::with_capacity(meta.len() as usize);
-        file.take(CAP as u64 + 1)
-            .read_to_end(&mut bytes)
-            .map_err(|e| file_reason(&e))?;
-        if bytes.len() > CAP {
-            return Err("failed");
-        }
-        String::from_utf8(bytes).map_err(|_| "not text")
-    }
-
-    fn write(&mut self, path: &str, text: &str) -> Result<(), Reason> {
-        fs::write(path, text).map_err(|e| file_reason(&e))
-    }
-}
-
-/// The reason a file operation's host error is given as.
-fn file_reason(e: &io::Error) -> Reason {
-    match e.kind() {
-        ErrorKind::NotFound | ErrorKind::NotADirectory => "not found",
-        ErrorKind::PermissionDenied => "no permission",
-        ErrorKind::IsADirectory => "not a file",
-        ErrorKind::StorageFull | ErrorKind::QuotaExceeded => "no space",
-        _ => "failed",
-    }
-}
-
-/// The host against real descriptors and files (docs/decisions/M2-15.md sections 1.6 and 1.7).
-#[cfg(test)]
-mod tests {
-    use super::*;
-    use std::os::unix::fs::PermissionsExt;
-    use std::path::PathBuf;
-
-    #[cfg(target_os = "linux")]
-    #[test]
-    fn a_print_to_a_full_device_is_no_space_left_on_device() {
-        let full = File::options().write(true).open("/dev/full").unwrap();
-        assert_eq!(Host(full).print("x"), Err("no space left on device"));
-    }
-
-    #[test]
-    fn a_print_to_a_closed_pipe_is_broken_pipe() {
-        let (reader, writer) = io::pipe().unwrap();
-        drop(reader);
-        assert_eq!(Host(writer).print("x"), Err("broken pipe"));
-    }
-
-    /// What a built program's write to a closed descriptor 1 meets: `EBADF`.
-    struct Closed;
-
-    impl Write for Closed {
-        fn write(&mut self, _: &[u8]) -> io::Result<usize> {
-            Err(io::Error::from_raw_os_error(9))
-        }
-
-        fn flush(&mut self) -> io::Result<()> {
-            Ok(())
-        }
-    }
-
-    #[test]
-    fn a_print_to_a_closed_descriptor_is_write_error() {
-        assert_eq!(Host(Closed).print("x"), Err("write error"));
-    }
-
-    /// A file one byte over the String limit, sparse, whose first byte is not UTF-8.
-    fn too_big(name: &str) -> PathBuf {
-        let path = std::env::temp_dir().join(format!("paka-host-{}-{name}", std::process::id()));
-        let mut file = File::create(&path).unwrap();
-        file.write_all(&[0xff]).unwrap();
-        file.set_len(CAP as u64 + 1).unwrap();
-        path
-    }
-
-    #[test]
-    fn a_file_over_the_limit_is_failed_before_it_is_decoded() {
-        let path = too_big("over");
-        let read = Host(io::sink()).read(path.to_str().unwrap());
-        fs::remove_file(&path).unwrap();
-        assert_eq!(read, Err("failed"));
-    }
-
-    #[test]
-    fn no_permission_comes_before_the_limit() {
-        let path = too_big("locked");
-        fs::set_permissions(&path, fs::Permissions::from_mode(0o000)).unwrap();
-        let ignored = File::open(&path).is_ok(); // a process that ignores permissions
-        let read = Host(io::sink()).read(path.to_str().unwrap());
-        fs::remove_file(&path).unwrap();
-        if ignored {
-            eprintln!("skipped: this process ignores file permissions");
-        } else {
-            assert_eq!(read, Err("no permission"));
-        }
     }
 }

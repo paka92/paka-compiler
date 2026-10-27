@@ -1,0 +1,14 @@
+answer_dropped agent-written pass
+error_node agent-written fail at main.paka:65:3
+  Error 7 "duplicate key 7: 2 children of Col"
+hangs agent-written unfinished at main.paka:15:13
+  ??hang
+  in update, called from example hangs
+quits agent-written pass
+refused agent-written trapped
+  a: effect Print refused: grant Console is missing
+typed agent-written pass
+view_traps agent-written trapped at main.paka:26:15
+  trap divide_by_zero
+  10 / 0
+  in v, called from example view_traps

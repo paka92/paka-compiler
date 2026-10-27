@@ -1,13 +1,13 @@
-t_call trapped at main.paka:1:36
+t_call agent-written trapped at main.paka:1:36
   trap out_of_bounds
   index 0, length 0
   in first, called from example t_call
-t_deep trapped at main.paka:3:37
+t_deep agent-written trapped at main.paka:3:37
   trap divide_by_zero
   1 / 0
   in ratio, called from example t_deep
-t_direct trapped at main.paka:8:22
+t_direct agent-written trapped at main.paka:8:22
   trap divide_by_zero
   1 / 0
   in example t_direct
-t_ok pass
+t_ok agent-written pass

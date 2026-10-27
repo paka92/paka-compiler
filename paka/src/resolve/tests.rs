@@ -325,6 +325,20 @@ fn every_built_in_name_is_taken() {
 }
 
 #[test]
+fn ui_names_are_taken_from_headless_programs() {
+    let elements = builtins::ELEMENTS.iter().map(|e| e.name);
+    for name in elements.chain(builtins::UI.iter().map(|&(_, row)| builtins::name(row))) {
+        let template = if name.starts_with(char::is_uppercase) {
+            "enum Msg { @ }"
+        } else {
+            "fn @() {}"
+        };
+        let d = rejection(&program(&[&template.replace('@', name)]));
+        assert_eq!(d.message, format!("{name} is a built-in; rename it"));
+    }
+}
+
+#[test]
 fn a_local_may_not_reuse_a_visible_name() {
     let cases: [(&[&str], usize, &str); 5] = [
         (&["  let total = 1"], 3, "let ^total"),
@@ -704,4 +718,45 @@ fn the_update_message_and_an_example_local_warn_and_underscore_never_does() {
             line("11:7", "unused", "e", "149..155"),
         ]
     );
+}
+
+#[test]
+fn a_foreign_declaration_keeps_its_shape() {
+    let decl = |line: &str| {
+        let lines = [
+            "foreign Sum {",
+            "  source: \"sum.c\"",
+            "  header: \"sum.h\"",
+            line,
+            "}",
+        ];
+        program(&lines)
+    };
+    assert!(errors(&decl("  Add(a: Int, b: String) -> Float = \"sum_add\"")).is_empty());
+    let cases = [
+        ("  header: \"two.h\"", "bad-foreign", "^header"),
+        ("  library: \"../lib\"", "bad-foreign", "\"^../lib"),
+        ("  Add(a: List<Int>) = \"add\"", "bad-foreign", "^List"),
+        ("  Add() -> String = \"add\"", "bad-foreign", "^String"),
+        ("  Add(a: Int) = \"9add\"", "bad-foreign", "\"^9add"),
+        (
+            "  Add(a: Int, a: Int) = \"add\"",
+            "duplicate-name",
+            "Int, ^a",
+        ),
+        ("  Add(then: Int) = \"add\"", "duplicate-name", "(^then"),
+    ];
+    for (line, code, pattern) in cases {
+        let src = decl(line);
+        assert_eq!(found(&src), [(code, at(&src, 4, pattern))], "{line}");
+    }
+    let bare = program(&["foreign Sum {", "  header: \"sum.h\"", "}"]);
+    assert_eq!(found(&bare), [("bad-foreign", (1, 9))]);
+    let taken = program(&[
+        "foreign Sum {",
+        "  header: \"sum.h\"",
+        "  Exit() = \"p\"",
+        "}",
+    ]);
+    assert_eq!(found(&taken)[0].0, "duplicate-name");
 }

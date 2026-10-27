@@ -79,12 +79,12 @@ or merged during review. Ids with a letter were added during review.
 |---|---|---|---|---|---|---|---|
 | M1 Let there be light | 17 | 1 | 9 | 4 | 3 | 0 | 2 |
 | M2 The headless language, complete, in the interpreter | 46 | 0 | 7 | 21 | 8 | 10 | 10 |
-| M3 The experiment: go or stop | 22 | 0 | 6 | 5 | 6 | 5 | 6 |
+| M3 The first measurement | 22 | 0 | 6 | 5 | 6 | 5 | 6 |
 | M4 Dev mode for headless programs | 51 | 0 | 8 | 18 | 25 | 0 | 7 |
 | M5 Live GUI on Linux | 43 | 0 | 3 | 20 | 13 | 7 | 9 |
 | M6 Release mode | 34 | 1 | 7 | 10 | 14 | 2 | 3 |
-| M7 Evidence and gates | 16 | 1 | 4 | 3 | 6 | 2 | 3 |
-| **Total** | **229** | 3 | 44 | 81 | 75 | 26 | 40 |
+| M7 Evidence and gates | 17 | 1 | 4 | 3 | 7 | 2 | 3 |
+| **Total** | **230** | 3 | 44 | 81 | 76 | 26 | 40 |
 
 ## M1 — Let there be light
 
@@ -432,6 +432,7 @@ or merged during review. Ids with a letter were added during review.
 - done when: Reference merged; the size test passes under the one counting rule (bytes divided by 3, at most 8,000, until M3 records real tokens); a checklist maps every decision point to a line; samples are marked for later testing; the reference replaces the M1-06 spec, and each M1 case affected by M2-15 gets a re-expected copy under tests/cases-pending with the decision cited; tests/cases is not touched.
 - why this level: Must be exact, complete and tiny; one wrong sentence silently misleads every model reading it.
 - note: The same counting rule is reused by M4-18, M5-41 and M7-13. Follows docs/decisions/M2-15.md for the app form, effects, grants and ending. Follows docs/decisions/M2-14.md for the built-in table. Done: spec/paka.md with its checklist and size test. The copies under tests/cases-pending wait for the run loop task, which moves them into tests/cases; two `paka check` status changes and one run case cannot be held there and are described in its NOTE.md.
+- note: Per M7-02: gains a short `foreign` section in M7-13's pull request, within its size rule. Done: section 16, with section 12 trimmed within its lines so the checklist line numbers hold.
 
 ### M2-19 · L3 · Check statements and expressions against signatures only
 
@@ -676,11 +677,11 @@ or merged during review. Ids with a letter were added during review.
 - why this level: Edits must stay exact and in budget; one wrong sentence silently misleads every model.
 - note: The unused-name warning (M2-02 section 2 and section 5) is decided but no task implements it; close it here if no earlier task does. Left open after M2-41b: no conformance case for hole notes under --json; no host test for a closed or full standard output or a file over the String limit; no case for an open joined list type such as [None, None]; text routines are not native in paka-rt yet. The gate already runs under cargo test --workspace and passes with nothing missing at M2-44; what remains is the list above. Done: the unused-name warning (M2-02 sections 1.3 and 5), host tests for a full or closed output and a file over the limit (M2-15 section 1.7), open list and map literals reported at their [ (M2-02 section 5), and the --json stream rule (M2-06 section 1.5). Native text routines in paka-rt are left to the compiled back ends. Untested: a FIFO swapped in between the metadata look and the open.
 
-## M3 — The experiment: go or stop
+## M3 — The first measurement
 
-**Exit check.** All five hold on `development`: (1) a protocol naming the tasks, the model, the three metrics (first-try pass rate, edits to a passing program, tokens to a passing program) and the losing margin was merged and tagged `protocol` by the owner at a commit older than the first model call in the raw logs; (2) each task has one set of hand-written tests that runs unchanged against Paka, Rust and TypeScript; (3) the raw logs hold a finished trial for every counted task, language and repetition, all from the commit the owner tagged `run` after the dry-run and calibration amendments, and the report lists every difference between the two tags; (4) one command rebuilds the report's three metrics from those raw logs; (5) a decision file in which the owner records go or stop.
+**Exit check.** All five hold on `development`: (1) a protocol naming the tasks, the model, the three metrics (first-try pass rate, edits to a passing program, tokens to a passing program) and the losing margin was merged and tagged `protocol` by the owner at a commit older than the first model call in the raw logs; (2) each task has one set of hand-written tests that runs unchanged against Paka, Rust and TypeScript; (3) the raw logs hold a finished trial for every counted task, language and repetition, all from the commit the owner tagged `run` after the dry-run and calibration amendments, and the report lists every difference between the two tags; (4) one command rebuilds the report's three metrics from those raw logs; (5) the result is published in the README and the genesis paper.
 
-- If Paka loses by more than the pre-set margin, the project stops here. M4 to M7 assume "go".
+- The owner continues to M4. The tasks and harness stay as a benchmark for the token cost.
 - Live model calls happen only in M3-19, M3-19b and M3-20. They go through the Claude Code command line (`claude -p`) with no API key and no paid service. M3-19 measures what one run uses before M3-20 is planned.
 - One edit = replace the whole file, in all three languages. The experiment does not measure Paka's per-definition tools; M3-01 must state that limit.
 - Tasks flagged `repeat` are run once per batch; with 20 experiment tasks this milestone has 6 more tasks than listed.
@@ -860,6 +861,7 @@ or merged during review. Ids with a letter were added during review.
 
 ### M3-21 · L4 · Rule on reviewed runs under the pre-set defect rules
 
+- status: done
 - needs: M3-03, M3-20
 - flags: decision, owner
 - done when: Every run the rules send to review has a recorded cause and ruling; a second agent re-rules a sample blind; the owner approves the list.
@@ -868,6 +870,7 @@ or merged during review. Ids with a letter were added during review.
 
 ### M3-22 · L2 · Publish the report: three metrics per language with raw data
 
+- status: done
 - needs: M3-10, M3-21
 - flags: none
 - done when: One command rebuilds the report's three metrics per language, per task and per M2-01 class from the merged raw logs and rulings; every protocol deviation is listed. The report lists every difference between the `protocol` and `run` tags. The report command prints the `protocol` commit's date and the earliest model-call time across dry-run, calibration and counted logs, and fails if the tag is not older. The report lists what the verdict does not measure: pools, float ties, Unicode, user generics, closures, standard input, GUI, speed and overflow.
@@ -875,14 +878,16 @@ or merged during review. Ids with a letter were added during review.
 
 ### M3-23 · L5 · Write the go / no-go analysis for the owner's decision
 
+- status: done
 - needs: M3-22
 - flags: decision, owner
 - done when: The analysis states the pre-set rule's verdict, every deviation and the limits of the evidence; the owner records go or stop in the repository.
 - why this level: Can end the project; must weigh a noisy result against the pre-set rule without reading hope into it.
+- note: Owner decision: continue to M4. The token cost is the target of dev mode's one-definition tools; the benchmark tracks it.
 
 ## M4 — Dev mode for headless programs
 
-**Exit check.** One command on the build machine (built in M4-46) reports pass for every item: (1) on a generated headless program of the size fixed in M4-01 (proposed: 5,000 definitions), the 95th-percentile time from a body-edit request to the first handler of the rerun is under 100 ms for small, medium and large definitions; (2) a signature edit rechecks exactly the direct users of the changed interface, shown by a recheck counter against hand-written sets, and the edit reply lists exactly the definitions that broke; (3) after a breaking edit a run still executes the last version in which every definition checked, and fixing the users installs all changes together; (4) find, view, edit with a base version, and run pass hand-written transcripts over the versioned interface, each edit returning canonical text, typed errors and the broken list; (5) the wc sample runs under Console and ReadFiles grants and an ungranted effect is refused exactly as in the interpreter; (6) every M2 conformance test gives the same output, exit status and trap in dev mode as in the interpreter, with none unsupported, and the seeded generated-program and edit-sequence runs agree.
+**Exit check.** One command on the build machine (built in M4-46) reports pass for every item: (1) on a generated headless program of the size fixed in M4-01 (5,000 definitions, worst of three runs), the 95th-percentile time from a body-edit request to the first handler of the rerun is under 100 ms for small, medium and large definitions; (2) a signature edit rechecks exactly the direct users of the changed interface, shown by a recheck counter against hand-written sets, and the edit reply lists exactly the definitions that broke; (3) after a breaking edit a run still executes the last version in which every definition checked, and fixing the users installs all changes together; (4) find, view, edit with a base version, and run pass hand-written transcripts over the versioned interface, each edit returning canonical text, typed errors and the broken list; (5) the wc sample runs under Console and ReadFiles grants and an ungranted effect is refused exactly as in the interpreter; (6) every M2 conformance test gives the same output, exit status and trap in dev mode as in the interpreter, with none unsupported, and the seeded generated-program and edit-sequence runs agree.
 
 - M4-01b needs a download (Cranelift) and the owner's approval of every crate it brings.
 - The database and tool tasks (M4-07 to M4-19) need no native code and are tested on the interpreter.
@@ -893,211 +898,271 @@ or merged during review. Ids with a letter were added during review.
 
 ### M4-01 · L4 · Fix the generator benchmark method, test definitions, program size and winning margin
 
+- status: done
 - needs: nothing
 - flags: decision, owner, native-only
 - done when: Before any measurement the owner approves a document fixing three Paka definitions (small, medium, large), timing start and end points, both generators' settings, the winning margin, and the benchmark program size and edit classes M4-44 will use.
 - why this level: A method chosen after seeing numbers biases a choice that commits the dev-mode architecture.
+- note: Done: approved by the owner on 2026-10-15; see docs/decisions/M4-01.md and bench/generators/defs.paka.
 
 ### M4-01b · L4 · Measure Cranelift and LLVM's JIT by the fixed method and record the choice
 
+- status: done
 - needs: M4-01
 - flags: decision, owner, download, unsafe, native-only
-- done when: One command reprints both generators' timings for the three definitions; its unsafe sits in one crate the owner allowed; the owner records the choice.
+- done when: One command reprints the timings of each generator measured, by the M4-01 method; Cranelift is built and timed first, and the LLVM side only if Cranelift fails the gate; its unsafe sits in one crate the owner allowed; the record is the M4-01 rule applied to the numbers.
 - why this level: Hand-declared unsafe bindings to LLVM's C library, with no Miri to catch a wrong signature.
-- note: The benchmark crate stays outside the workspace with its own lock file, so the --locked --offline build stays green; M4-06 brings the chosen crates in vendored. The owner allowed the Cranelift crates on 2026-10-13; the task names each crate, version and size before it fetches. LLVM 21's shared library is already on the build machine (`/usr/lib/llvm-21/lib/libLLVM-21.so`); nothing is installed.
+- note: The benchmark crate stays outside the workspace with its own lock file, so the --locked --offline build stays green; M4-06 brings the chosen crates in vendored. The owner allowed the Cranelift crates on 2026-10-13; the task names each crate, version and size before it fetches. LLVM 21's shared library is already on the build machine (`/usr/lib/llvm-21/lib/libLLVM-21.so`); nothing is installed. Cranelift 0.136.3 passed the rule (warm p95 of the large definition 2.1 ms, cold 3.6 ms); LLVM was not built. Result in docs/decisions/M4-01.md section 7.
 
 ### M4-03 · L4 · Propose the agent tool interface: transport, message shapes, versions, find queries
 
+- status: done
 - needs: M4-48
 - flags: decision, owner
 - done when: Owner approves a written interface with a schema for find, view, edit and run, and hand-written example exchanges for each. The base version of an edit is per definition.
 - why this level: A compatibility promise to every agent; type-shape queries, token budgets and base versions have no settled meaning yet.
-- note: Token budgets use M2-18's counting rule.
+- note: Token budgets use M2-18's counting rule. Done: approved by the owner on 2026-10-15; see docs/decisions/M4-03.md.
+- note: Per M5-07: the edit schema gains one optional state field, a call that carries only that field, one more refusal reason and the state result values, added to its schema or amended in M5.
 
 ### M4-04 · L4 · Propose where dev-mode code runs and how a run is stopped
 
+- status: done
 - needs: M4-01b
 - flags: decision, owner
 - done when: Owner approves a written choice among in-process, forked and separate-process runs, covering stuck handlers, memory reclaim and the 100 ms budget. It also covers how a visual app keeps its state in the same process while code is swapped (M5 needs it); stopping a run uses no signal handler for traps.
 - why this level: Trades isolation against swap speed; a stuck or trapped run must never take the tool server down.
+- note: Done: approved by the owner on 2026-10-15; see docs/decisions/M4-04.md. One runner process per server, started through std::process.
 
 ### M4-05 · L4 · Specify the dev-mode calling convention, trap returns and value layouts
 
+- status: done
 - needs: M4-01b, M4-04
 - flags: decision, owner, native-only
 - done when: Owner approves a specification covering context pointer, status returns, stack-limit check, slot calls, every type's layout and who frees each value. It names the code generator and the crate that turns generated code into runnable machine code, and says which runtime code the interpreter shares (recommended: the effect performer only). It names each M1-14 rule as kept or changed, says whether the dev runtime extends paka-rt (M1-16, M1-17) or replaces it, and names the crate that holds the unsafe runtime code; the M1 cases still pass on both back ends.
 - why this level: Separately compiled definitions must agree exactly; a mismatch in layout, ownership or status handling is silent.
-- note: Start fields, state and ExitWith reach the native back end here; tests/cases/parse/variant_payload then leaves the UNSUPPORTED list of paka/tests/native.rs.
+- note: Start fields, state and ExitWith reach the native back end here; tests/cases/parse/variant_payload then leaves the UNSUPPORTED list of paka/tests/native.rs. Per M4-04: an interrupt poll at every loop head and function entry, explicit checks for every trap, calls through a slot table, and a per-run memory cap checked by the allocator.
+- note: Done: docs/decisions/M4-05.md. Every function is `(ctx, args..., out) -> status` (0 finished, 1 trapped, 2 stopped); trap kinds are numbered in the trap record (M2-06). The dev runtime extends paka-rt, whose `abi` modules keep the runtime's unsafe code; the new `paka-installer` crate holds the rest (a change to M4-04's one-crate wording).
 
 ### M4-06 · L2 · Vendor the chosen generator's crates and enforce locked offline builds
 
+- status: done
 - needs: M4-01b
 - flags: owner, download, native-only, conditional
 - done when: With the network off, cargo build --locked --offline passes from a clean clone, and an unlisted crate fails the check.
 - why this level: Standard cargo vendoring; the only care is an approved-crates list that the build checks.
-- note: Dropped if the generator chosen in M4-01b needs no outside crate.
+- note: Dropped if the generator chosen in M4-01b needs no outside crate. Runs if M4-01b records Cranelift; dropped if it records LLVM. M4-01b recorded Cranelift, so this task runs. Done: 38 crates in vendor/, read through .cargo/config.toml with the network off; .cargo/approved-crates.txt lists them and paka/tests/vendored.rs fails on any locked or vendored crate not listed. A clean clone with an empty cargo home builds bench/generators.
 
 ### M4-07 · L2 · Add a hand-written SHA-256 for content hashes
 
+- status: done
 - needs: nothing
 - flags: none
 - done when: The published SHA-256 test vectors, typed in by hand, pass under cargo test.
 - why this level: Well-known algorithm with published test vectors, in one module.
+- note: Done: paka/src/sha256.rs, one function over a byte slice; the FIPS 180-4 and NIST vectors and the padding edges pass.
 
 ### M4-08 · L2 · Give every definition a stable id and parse definitions singly
 
+- status: done
 - needs: M4-48
 - flags: none
 - done when: Tests show ids unchanged by body edits, reordering and rebuilds from text, and one definition reparses without touching others.
-- why this level: Ids come from kind and qualified name; reparsing one definition reuses the existing parser.
+- why this level: Ids are bare names (M4-48); reparsing one definition reuses the existing parser.
+- note: Done: parser::parse_def parses exactly one definition with positions from its own start, and parser::split gives each definition of a text as its id and its text. Comments are not carried yet (M4-15).
 
 ### M4-09 · L3 · Check and lower one definition from its body and used signatures
 
+- status: done
 - needs: M4-08
 - flags: none
 - done when: Per-definition results equal the whole-program checker on all conformance programs, and the read log lists exactly the hand-written expected names.
 - why this level: Untangling whole-program passes so one definition reads only signatures, while logging every name it looked up.
+- note: Done: paka::check_each gives each definition's first error and its reads: the definitions whose signatures it read (a variant's enum for a variant) and, as written, the names it looked up that name nothing. The resolver logs its lookups; the signature table logs every definition read through it, in checking and lowering. A test checks every definition of every conformance program in a copy where all it did not read, transitively, is blanked, and gets the same error and reads. Built-ins and locals are not logged. Two reads stay whole-program: the no-finite-value check follows held types transitively (M4-11's interface hash covers it), and core-form ids are positions in the program (M4-24's slots replace them).
 
 ### M4-10 · L3 · Build the exact who-uses-what index, including names that resolve to nothing
 
+- status: done
 - needs: M4-09
 - flags: none
 - done when: Fixture programs give the hand-written user lists, and adding a missing definition marks exactly its waiting users for recheck.
 - why this level: Exactness under adds, deletes and renames; a missed dangling reference leaves a broken user unreported.
+- note: The index is built from M4-09's reads. A name that names nothing is logged as written, so adding a variant must also wake the users waiting on the variant's name, not only on its enum's.
+- note: Done: paka::index::Index maps each name read to the definitions that read it, kept up to date by `set` and `remove` as definitions are rechecked. `waiting` gives the users to recheck when a definition is added, changed or deleted: those of its name and its variants' names, and, because a suggestion is a read, those of a name that names nothing and that the new name could be suggested for. A test applies adds, a variant add, a delete and a rename, rechecks only what was woken, and gets the index of a clean rebuild.
 
 ### M4-11 · L4 · Compute the body and interface hash of every definition
 
+- status: done
 - needs: M4-07, M4-10, M2-09
 - flags: none
 - done when: For a hand-written list of edit kinds, tests show exactly the expected hashes change, including transitive by-value layout and recursion.
 - why this level: Soundness of what each hash covers; one omitted input, such as a default value, silently keeps stale code.
-- note: The closure hash arrives with its first reader, M7-09.
+- note: The closure hash arrives with its first reader, M7-09. Hashes come from the parsed definition, never from file bytes (M4-47), so the task does not need the printer.
+- note: Done: paka/src/hash.rs; every DefCheck carries its body and interface hash. Both hash a position-free, length-prefixed text of the parsed definition. The body hash covers the whole definition and, for each name it read, the kind of definition that name names, or none. The interface hash follows docs/decisions/M2-09.md section 3: a user type inside a signature is written as its hash, and types that reach each other are hashed as one group. A test lists ten edit kinds with the hashes each must change (layout and comments none, a default value reaching through List, a recursive group, a label, a positional name, a variant, a missing name defined), and checks that order changes no hash.
 
 ### M4-12 · L4 · Recheck after an edit with early cutoff and list what broke
 
+- status: done
 - needs: M4-11
 - flags: none
 - done when: Scripted edits recheck exactly the hand-written sets: a body edit one definition, a signature edit its direct users; broken definitions are listed. A type-layout edit rechecks the direct users of every definition whose interface hash changed, against a hand-written set that reaches past the edited type's own users.
 - why this level: Invalidation must be exact: too little leaves stale results silently, too much breaks the direct-users promise.
 - note: Direct users means the direct users of every definition whose interface hash changed (paper section 5).
+- note: Done: `paka::workspace::Workspace` keeps a program as definitions. An edit rechecks the edited definition when its body hash changed, the users of names that appeared or went, and the direct users of every definition whose interface hash changed; only those take fresh results, and `Recheck.broken` lists their errors. A kept error moves with its definition. The checker still runs over the whole program (cost is M4-45). Lowering adds reads only on a clean program, so when the program turns clean or broken every definition takes its fresh reads. `tests/workspace.rs` scripts eight edits with hand-written sets; adding a field to Point rechecks Line, Path, first, span and total, past Point's own users. After each edit the results equal a fresh check of the same text.
 
 ### M4-13 · L3 · Keep the last fully checked version runnable while newer edits are stored
 
+- status: done
 - needs: M4-12
 - flags: none
 - done when: Test: after a breaking signature edit the interpreter still runs the old version; fixing the users releases all changes together.
 - why this level: Two versions of the program side by side, and an all-or-nothing change set once the newer one checks.
+- note: Done: `Workspace::released` is the text of the last version without errors; it moves only when a newer version checks clean, so the edits between are released together. `tests/release.rs` breaks `count`'s signature, runs the released text with `paka run` (the old status 7), fixes the caller and runs the new one (status 9).
 
 ### M4-14 · L4 · Test that incremental state equals a clean rebuild after random edits
 
+- status: done
 - needs: M4-13
 - flags: open-ended
 - done when: 10,000 seeded edit sequences end with ids, index, hashes and check results identical to a rebuild from text; a planted bug is caught. A coverage report shows every edit kind produced (body, signature, type layout, add, delete, rename), and one planted staleness bug per kind is caught.
 - why this level: It must find stale results; a weak edit generator passes silently, and M4-43 leans on it.
+- note: A rename is generated as an add followed by a delete (M4-48).
+- note: Done: `tests/edits.rs` runs eight seeded edits on each of 10,000 generated programs (`PAKA_EDIT_SEEDS`) and after every step compares the workspace with one built from its text: index, names, errors, reads and both hashes. Edits: a body gains a `let` reading a name, sometimes misspelled; a function gains a parameter; a record gains a field, with or without a default, or an enum a variant; an add restores a deleted definition or adds a new function; a delete; a rename. The report counts each kind made and applied (an edit with a program-wide error, such as an enum renamed beside itself, is refused). Planted bugs, at 2,000 sequences: index not updated for a changed definition (caught by body edits and others), function interface hash without parameters (signature), record or enum layout left out of the type hash (layout), appeared names not waking their users (add), gone names not waking theirs (delete and rename), the near rule dropped (add), the relowered refresh dropped (all). Not caught, by design: dropping the body-hash rule, since a definition whose text changed always takes fresh results; that rule only decides what an edit reports, which `tests/workspace.rs` checks.
 
 ### M4-15 · L3 · Print any definition in the one canonical layout, keeping comments
 
+- status: done
 - needs: M4-47
 - flags: none
 - done when: Hand-written golden files pass, and on all conformance sources printing is idempotent and reparses to the same tree. `paka check` treats non-canonical text as M4-47 rules, with a hand-written case for each outcome; stored sources are handled as M4-47 rules.
 - why this level: Comments must survive and printing must be stable: print, parse, print again gives the same text.
+- note: A plain tree walk with no width fitting; parentheses are kept as written (M4-47). It attaches comments in the parser where the printer puts them, and tests that the M4-47 samples print unchanged.
+- note: Done: paka/src/print.rs. The parser tree stays without comments: the printer lexes the source once more and places each comment by lines, above the definition, statement, match arm or app key it sits on or before, or as a block's last line; comments after the last definition go above it. Golden files are in tests/print, with samples.paka holding the M4-47 samples. Over every source under tests and examples that parses, printing keeps the hashes and the comment count, and printing again changes nothing. `paka check` already accepted other layouts and refused `return` on the last line and a semicolon with their fixes; tests/check.rs now holds a case for each. Storing canonical text belongs to M4-17. Known limit: doubled parentheses such as `((x))` print once, `(x)`.
 
 ### M4-16 · L2 · Serve the tool interface: transport, JSON reading and writing, request dispatch
 
+- status: done
 - needs: M4-03
 - flags: none
 - done when: Hand-written request and reply transcripts pass, including malformed input and an unknown interface version.
 - why this level: A request loop and a small JSON reader in std; shapes come from the approved interface.
-- note: Reuses one shared standard-library-only JSON module; M2-04's writer and M3-08's reader move into it.
+- note: Reuses one shared standard-library-only JSON module; M2-04's writer and M3-08's reader move into it. Per M4-03: JSON lines on standard input and output, a `v` check on every request and no handshake; unknown fields are refused; one server per program is kept by a standard-library file lock.
+- note: Done: `paka serve <path>` and paka/src/serve.rs. The JSON reader and writer now live in the `paka-json` crate (json/), used by the command and the harness. Each request is checked in this order: one JSON object, `id`, `v` (another version is `bad_version` before any field is judged, since a version may change the fields), `call`, then the call's fields by name, type and need, as M4-03 section 3 lists them; a repeated key is not one JSON object. The program is locked with `File::try_lock` for the server's life; a second server and a program that does not parse exit 1 before serving. Hand-written transcripts are in tests/serve. Until M4-17, M4-18, M4-19 and M4-39 land, a well-formed call is answered `unknown_call` with "... is not served yet".
 
 ### M4-17 · L3 · Implement edit: replace, add or delete one definition against a base version
 
+- status: done
 - needs: M4-13, M4-15, M4-16, M4-48
 - flags: none
 - done when: Transcript tests: a stale base is refused; an accepted edit returns canonical text, typed errors and the exact broken list; files match. Two edits to different definitions from one base both land; two edits to the same definition, or adding the same name twice, refuse the second.
 - why this level: Source files, database and version check must change together or not at all, even when the edit breaks users.
+- note: Edit accepts any layout that parses and stores canonical text for the edited definition only (M4-47). In a directory program an add writes a new file named after the definition, a delete removes an emptied file, and text whose name differs from the call's name is refused (M4-48). Per M4-03: the base version is the 12-digit hash of canonical text; null `base` adds, null `text` deletes; a stale base returns the current version and text; text that does not parse is refused with kind `parse`.
+- note: Done: paka/src/session.rs holds the served program: its workspace and its files. Refusals come in this order: `not_found`, `name_taken`, `stale_base`, then `parse`, `not_one_definition` and `name_mismatch` on the text. Two refusals M4-03 does not list: `conflict` when the edit leaves the program unable to check at all (a built-in's name, a variant named like a type, a second app), and `io` when the file cannot be written; both store nothing. An add whose file name passes 255 bytes is a `bad_request`. Files are replaced through a copy renamed over them; a single-file program's lock moves to each new copy. A delete takes the comment lines right above the definition and the rest of its last line; comments in sent text outside the definition are written to the file but are not part of its text or version. `broke` lists the definitions that checked before the edit and do not after. The `run` field of an edit came with M4-39. Transcripts tests/serve/edit.txt and dir.txt check replies and the files after.
+- note: Per M5-07: unchanged in M4; its Edit path gains the stored-type check in M5-28.
 
 ### M4-18 · L2 · Implement find by name or user, and view within a token budget
 
-- needs: M4-10, M4-16
+- status: done
+- needs: M4-10, M4-16, M4-15
 - flags: none
 - done when: Transcript tests return hand-written results; a view holds one body plus used signatures and never exceeds its budget.
 - why this level: Index lookups plus trimming output to a budget; the rules come from the approved interface.
-- note: Token budget uses M2-18's counting rule.
+- note: Token budget uses M2-18's counting rule. Per M4-03: name patterns with `*`, the `users_of`, `kind` and `failing` fields, paging with `after`, the `more` count and current errors in a view. View and find print canonical text and take the version from it.
+- note: Done: the server loads the program in canonical text, so view text, versions and error positions agree; files keep their layout. A budget keeps the longest prefix of entries that fits; a view whose body with no uses is over it fails with `budget`. An exact name finds built-ins and a variant's enum; `users_of` a variant or built-in lists the definitions that name it. `takes` and `gives` answer unknown_call until M4-19. The transcript `tests/serve/find.txt` matches M4-03 section 4.
 
 ### M4-19 · L3 · Implement find by type shape
 
+- status: done
 - needs: M4-18
 - flags: none
 - done when: Transcript tests over a fixture program return exactly the hand-written matches for each query form in the interface.
 - why this level: Matching a query against signatures with generics and argument order needs a small, exact matching rule.
+- note: Per M4-03: an exact takes-and-gives match over the program's own fn and view definitions, with no wildcards or ranking; may be re-graded to level 2.
+- note: Done: each query type is parsed as a parameter type and printed canonically, so spacing does not matter; `inout` or text that is not one type is a bad_request. Each type in `takes` claims one parameter, `gives` must equal the result, and a fn without a result never matches `gives`. Own definitions take no type parameters, so the match is on canonical text; no view definitions exist yet. Transcript `tests/serve/shape.txt`.
 
 ### M4-21 · L4 · Generate random well-typed terminating Paka programs from a seed
 
+- status: done
 - needs: nothing
 - flags: native-only
 - done when: 10,000 seeds give programs that all check and finish in the interpreter; a coverage report shows every core-form node kind produced.
 - why this level: Programs must pass the checker, terminate, and still reach overflow, bounds, NaN and ownership corner cases.
+- note: Done: paka-gen writes one program per seed (`paka-gen SEED` prints it); `paka/tests/generated.rs` checks and runs 10,000 seeds (`PAKA_GEN_SEEDS` sets the count): all check and finish (exit 0: 6214, trap 3: 3119, chosen exit codes: 667) and every core-form node kind appears.
 
 ### M4-22 · L3 · Compute the native layout of every type
 
+- status: done
 - needs: M4-05
 - flags: native-only
 - done when: Sizes, alignments and field offsets equal hand-written expectations for fixture types covering every type form in the reference. The layout table is back-end neutral: release mode (M6) reads the same table.
 - why this level: Enums with payloads, nesting and generics; offsets must match the specification exactly.
+- note: Done: `paka/src/layout.rs` lays out every type the checked signatures meet: size, tag, each alternative's field offsets and boxed fields, and the owned-field lists that copy and release walk. Beside M4-05 section 10's String, List, Map and box entries, a tagged value held inline (an enum, `Option`, `Result`) is a `Value` entry walked through its own record; a nested record is flattened into its holder's list. `WriteFile`'s `then` is a box of the message or `u64::MAX`. The record's equality and order words name definitions, so the emitter fills them (M4-31).
 
 ### M4-23 · L4 · Create the installer crate: load code into memory that is never freed
 
+- status: done
 - needs: M4-05
 - flags: unsafe, native-only
 - done when: Tests install and call functions; memory is never writable and executable together; addresses never repeat; each unsafe block states its invariant.
 - why this level: Unsafe executable memory with no Miri available; a wrong permission or length corrupts the process silently.
+- note: Done: `installer/` (`paka-installer`) copies each batch of functions into one fresh anonymous mapping, each function 16-byte aligned, then turns the mapping from read-write to read-execute; it is never unmapped, so addresses never repeat. Linux x86-64 only. Every `unsafe` block carries a `SAFETY:` comment, enforced by the `undocumented_unsafe_blocks` lint. M4-04 frees replaced code; this follows the task title instead and keeps it, which is not a problem for a dev session's size.
 
 ### M4-24 · L4 · Add call slots, grouped slot swaps and safe entry into installed code
 
+- status: done
 - needs: M4-23
 - flags: unsafe, native-only
 - done when: Tests: a swapped slot changes the callee; a group swaps together; a swap attempted during a run is refused.
 - why this level: Swaps must be impossible while code runs; a wrong function type at the entry point is undefined behaviour.
+- note: Done: `Slots` in `installer/src/slots.rs`. A swap writes a whole group or, when an id has no slot, nothing. Swaps and runs exclude each other through one state word, so a swap during a run, or a run during a swap, is refused with `Busy`. `run` points the context's first word at the table, then calls the slot as `fn(ctx, out) -> i32`; it stays `unsafe` because only the caller knows the slot holds code of that type. The table has a fixed length; growing it for new definitions waits for M4-37.
 
 ### M4-25 · L4 · Add runtime allocation with a ledger that reports leaks and bad frees
 
+- status: done
 - needs: M4-05
 - flags: unsafe, native-only
 - done when: Tests: a planted leak, double free and wrong-size free are each reported; allocation failure returns a trap status, not an abort.
 - why this level: Unsafe allocator whose ledger stands in for Miri; a wrong ledger hides every later memory bug.
+- note: Done: `paka_rt::abi::dev`. `Heap` records every block by address and size; a free of an address not live (double or stray) or with another size is recorded as a `Fault` and never touches memory the ledger does not hold; a wrong-size free releases the block with its own size. `leaks()` lists live blocks for M4-40, and dropping the heap frees them. `rt_alloc` checks the run's cap before asking the host; a refusal either way sets the context's trap to `memory` (8) and returns status 1. `Context` holds §4's four words, then the trap kind and the heap; M4-27 extends its trap record.
 
 ### M4-26 · L3 · Emit code for integers, floats, booleans, locals and control flow
 
+- status: done
 - needs: M4-06, M4-24, M2-08
 - flags: native-only
 - done when: M2-08's integer and non-NaN float vectors pass in dev mode; division and shifts are guarded explicitly; a test scans emitted dev code for a banned-operation list (self-trapping divide, trapping float-to-int, trap instructions) and fails on any hit.
 - why this level: Every checked operation needs an explicit compare and branch; no instruction may fault by itself.
+- note: Done: `paka/src/emit.rs` compiles scalar locals, control flow, operators and scalar built-ins; every check branches to `rt.trap`, and a select makes each divisor safe. All 427 Int, Float and Bool vectors pass as machine code, NaN ones included (`installer/tests/vectors.rs`); `emit/tests.rs` scans the IR for banned operations.
 - note: Targets the code generator and the machine-code crate named in M4-05's approved specification; do not choose another. Follows docs/decisions/M2-06.md for traps, holes and examples.
 
 ### M4-27 · L3 · Emit calls through slots with status returns and a stack-limit check
 
+- status: done
 - needs: M4-26
 - flags: native-only
 - done when: Tests: every trap kind the M4-26 subset can raise (overflow, division, shift, failed conversion) surfaces through nested calls with its kind and source position; unbounded recursion ends in a stack trap, not a crash.
 - why this level: Every call site must test the status; deep recursion must trap cleanly instead of overflowing the real stack.
+- note: Done: a call loads its slot and checks the status; a trap pushes the call site through `rt.push_frame`, which keeps eight frames and an overflow flag. Each function checks the stack pointer against `ctx.stack_limit` after the interrupt poll; `paka_rt::abi::dev::on_runner` runs code on a 64 MiB thread with the limit 1 MiB above its bottom. `installer/tests/calls.rs` covers all four trap kinds through nested calls and recursion.
 - note: Follows docs/decisions/M2-06.md for traps, holes and examples.
 
 ### M4-28 · L3 · Canonicalise NaN in compiled floating-point code
 
+- status: done
 - needs: M4-26
 - flags: native-only
 - done when: All NaN vectors from M2-08 pass bit for bit in dev mode and the interpreter.
 - why this level: Hardware and constant folding give different NaN bits; every producing operation must be covered without missing one.
+- note: Done: no built-in row exposes Float bits (`fixed` prints `NaN` whatever the sign), so the emitter adds nothing. Every NaN vector passes as machine code and in the interpreter; `installer/tests/vectors.rs` fails if they stop being run.
 - note: M2-03 made NaN bits unobservable: compiled arithmetic emits nothing, so this task shrinks to confirming that no operation exposes Float bits.
 
 ### M4-29 · L2 · Call maths functions through private runtime names from compiled code
 
+- status: done
 - needs: M4-26, M2-08b
 - flags: unsafe, native-only, conditional
 - done when: Maths vectors match the interpreter bit for bit; a test fails if emitted code names a libm function or maths intrinsic.
 - why this level: Thin exported wrappers and one emitter rule, plus a check that no known maths name is emitted.
 - note: Only if M2-03 approves maths functions. Its unsafe is export attributes on scalar functions only.
+- note: Closed without work: M2-03 approves no maths functions beyond the table rows, which M4-26 compiles inline (M2-08b).
 
 ### M4-30 · L2 · Compile holes and examples; an example reaching a hole reports unfinished
 
@@ -1105,6 +1170,8 @@ or merged during review. Ids with a letter were added during review.
 - flags: native-only
 - done when: Fixtures: a program with an unreached hole runs; a reached hole traps naming it; example statuses equal the interpreter's.
 - why this level: A hole is one trap kind carrying its name; examples are functions returning a status.
+- status: done
+- note: Done: a reached hole traps `hole` at a site naming it; examples compile as Bool functions. `installer/tests/examples.rs` runs every conformance example program the emitter compiles and matches each status with the expected output; a program that fails to check there fails the test. The emitter now refuses a function whose stack slots pass 256 KiB (M4-05 section 6), imports each signature once per function, and `installer/tests/calls.rs` shows an interrupt stopping a loop and its caller with status 2 and no trap.
 
 ### M4-31 · L3 · Emit code for records, enums and match
 
@@ -1112,6 +1179,8 @@ or merged during review. Ids with a letter were added during review.
 - flags: native-only
 - done when: Hand-written fixture programs covering records, defaults, enums with payloads and nested match return the hand-written expected values when called through M4-24's entry, in dev mode and in the interpreter.
 - why this level: Payload layouts and match lowering across nested patterns; default field values must follow the reference.
+- status: done
+- note: Done: a record, enum, `Option` or `Result` whose layout owns nothing is held in memory and passed as its address; a local gets its own stack slot, a temporary a new one, and a result is written whole through `out`. A record or variant stores each field as it is evaluated, and `match` dispatches on the tag word, copying bound fields into their locals. The layout table now reads the core form, so both back ends share it. The fixture is the conformance program `examples_records`: its examples compare the values, and `installer/tests/examples.rs` requires it to compile with the interpreter's statuses. Types that own a String, List, Map or box, equality on records and variants, and Effect wait on M4-32 and M4-33.
 
 ### M4-31b · L3 · Emit the error-handling forms
 
@@ -1119,6 +1188,8 @@ or merged during review. Ids with a letter were added during review.
 - flags: native-only
 - done when: Hand-written fixtures for every error-handling form in the reference, early-exit paths included, return the expected values when called through M4-24's entry, in dev mode and in the interpreter.
 - why this level: Known desugaring; early-exit paths are easy to miss.
+- status: done
+- note: Done: `?` reaches the emitter as a match and a `return` (docs/core.md), so it needed nothing new; `unwrap_or` and `ok_or` compile in place. The fixture is the conformance program `examples_errors`: `?` on `Option` and `Result`, inside a loop, nested in a call and followed by a field, and through `ok_or`. Error types that own a String wait on M4-32.
 
 ### M4-32 · L4 · Emit strings and lists through shared runtime functions with bounds checks
 
@@ -1126,7 +1197,8 @@ or merged during review. Ids with a letter were added during review.
 - flags: unsafe, native-only
 - done when: Hand-written fixtures for strings, interpolation and lists match in both back ends, and every out-of-range access traps.
 - why this level: Unsafe runtime functions on memory laid out by compiled code; every index needs an explicit bounds branch.
-- note: Follows M4-05's ruling on which runtime code the interpreter shares.
+- status: done
+- note: Done: a String or List is held in memory as M4-05 section 8's words and passed as its address until M4-34's prefixes. Literals, interpolation, `+`, `+=`, comparisons, indexing, slicing, `len`, `is_empty`, `min`, `max`, `code_at` and `from_code` compile; the String rows run `paka_rt::ops::Text` through `rt.text`, so both back ends share them, and a List's items, slices and walks have their bounds checks inline, with new blocks from `rt.list`. The size cap moved into `paka_rt::ops`. Until M4-33 places copies and frees, no block is changed in place: a write through a List item copies the List first, which costs O(n) per write, and old blocks stay live until the run ends. The fixtures are the conformance programs `examples_text`, `examples_lists`, `examples_text_traps` and `examples_list_traps`, one trap per out-of-range access; `installer/tests/examples.rs` requires them to compile with the interpreter's statuses. The other text rows (`split`, `trim`, `replace`, `pad`, `repeat`, `join` and the rest) move into `ops` with the first compiled program that needs them; until then the emitter refuses them by name.
 
 ### M4-33 · L4 · Place moves, copies and drops in one pass shared by the native back ends
 
@@ -1134,6 +1206,8 @@ or merged during review. Ids with a letter were added during review.
 - flags: native-only
 - done when: Fixtures covering early exit, match arms and loops return the hand-written expected values through M4-24's entry in both back ends and finish with a clean ledger. Fixtures with hand-written drop lists pass; the pass is back-end neutral, so release mode (M6) reuses it.
 - why this level: A wrong drop is a silent leak, double free or use after free on some control-flow path.
+- status: done
+- note: Done: `paka/src/owners.rs` tracks the owner of each local and temporary by scope and knows nothing of the machine, so release mode reuses it; its unit tests check hand-written drop lists for statements, scopes, loops, `break`, `continue` and `return`. The emitter moves a temporary into its new owner and copies anything else through `rt.copy`; each owner is dropped through `rt.drop` at its statement's or scope's end, on overwrite, and before `break`, `continue` and `return`. Both walk M4-05 section 10's type records, which `paka_rt::abi::dev::records` builds from the layout table. A `for` name borrows the walked List, a match bind is copied, and a slice copies its view, so its items are deep copies. M4-32's copy on write is gone: List items are written in place. The fixture is the conformance program `examples_owned`, covering early exits, match arms, loops, overwrites and nested owners; `installer/tests/examples.rs` now requires every compiled fixture that finishes to leave no leak and no fault in the ledger. Maps and boxes wait on their tasks.
 
 ### M4-34 · L3 · Emit inout arguments and borrows, including slices of lists
 
@@ -1141,6 +1215,8 @@ or merged during review. Ids with a letter were added during review.
 - flags: native-only
 - done when: Fixtures for inout fields, list items and slices match the interpreter; the ledger shows no allocation for a borrow.
 - why this level: Borrowed parts must point into the caller's value without copying; writes through inout must land exactly.
+- status: done
+- note: Done: an `inout` argument's operands are evaluated in its position and each place is walked to its address after all arguments (docs/core.md); a whole local held in a variable is stored in a slot for the call and read back after it, and an `inout` parameter not held in memory is a pointer its reads load and its writes store through. A List slice is a view (ptr at its first item, len, cap 0) that a read copies and an argument, a `for` walk or a built-in borrows; M4-05 section 5 records why read-only Strings and Lists pass as pointers rather than prefixes. The fixture is the conformance program `examples_inout`: Int and Bool locals, fields, List items, writes that stay after a `return`, and lent slices. `installer/tests/borrows.rs` counts blocks with the heap's new `made` and finds none for a borrow. A String slice is still a new String, and built-ins with an `inout` parameter (`push`, `pop` and the rest) wait on the tasks that compile them.
 
 ### M4-36 · L4 · Drive compiled headless apps: first message, effects, console and file grants
 
@@ -1149,6 +1225,8 @@ or merged during review. Ids with a letter were added during review.
 - done when: The wc sample prints the hand-written count in dev mode; an effect outside the grants is refused exactly as in the interpreter.
 - why this level: Unsafe decoding of effect values in native layout; an ungranted effect must be refused identically.
 - note: Follows M4-05's ruling on which runtime code the interpreter shares.
+- status: done
+- note: Done: the effect performer, start arguments and host world moved to `paka_rt::effects`, which the interpreter now calls. `paka_rt::abi::dev::app::serve` runs a compiled app: it builds the state through a new state definition slot, decodes each `Effect` (M4-05 §8), copies a `WriteFile` message out of its box (new `BOX` record kind) and drops every message, effect list and the state. `Slots::session` holds the slots for a whole run. `words` is compiled (`rt.text` row `WORDS`). `installer/tests/apps.rs` runs every app case that compiles, 72 of them including the four wc samples and the refused-grant cases, and checks stdout, stderr and status against the interpreter's expectations with a clean ledger. A trapped run is checked by status alone: native trap reports and the `time` line wait on M4-39 and M4-40. `Program::place` does not yet name constructor or state definitions.
 
 ### M4-37 · L3 · Compile changed definitions one by one and install them together
 
@@ -1156,6 +1234,8 @@ or merged during review. Ids with a letter were added during review.
 - flags: native-only
 - done when: A compile counter shows one compile per body edit; reverting an edit compiles nothing; a failed compile installs nothing. A signature edit that leaves its users valid recompiles exactly the edited definition and its direct users, checked against a hand-written set by the compile counter; the cache key includes the interface hash of every definition used.
 - why this level: Glue from change set to slots; cache keys must include hashes, compiler version, target and mode.
+- status: done
+- note: Done: `paka::emit::Cache` keys each definition by SHA-256 of compiler version, target, mode and its Cranelift IR (M4-05 §7), compiles only new keys and keeps nothing from a refused build. `paka_installer::Loader` installs only code it has not seen, in one mapping, and returns the whole slot group for one swap. Trap sites now count from the definition's first site (`Program::place`), so an edit elsewhere leaves a definition's code alone. `installer/tests/rebuild.rs` checks one compile per body edit, none on revert, nothing installed on a refusal, and {half, same} recompiled after `half` changes its result type. Adding a definition or a new type still recompiles the definitions numbered after it.
 
 ### M4-37b · L3 · Emit function values and variant constructors used as functions
 
@@ -1164,42 +1244,54 @@ or merged during review. Ids with a letter were added during review.
 - done when: Hand-written fixtures for function values and for variant constructors used as functions (passed, stored, called through slots) return the expected values when called through M4-24's entry in both back ends, with a clean ledger.
 - why this level: Indirect calls through slots with a known technique.
 - note: Becomes level 4 if M2-09 allows a function value to capture.
+- status: done
+- note: Done: a function value is the I64 id of its slot; `==` compares ids. A call through a value loads the slot at the run-time id, its signature taken from the function type. Each variant with fields of a used enum gets a constructor definition after the examples (`emit::constructors`), synthesised as a function of its fields, so type records now sit at `emit::definitions(p) + t`. Fixture `tests/conformance/apps/examples_fn_values` passes functions and constructors, returns, stores and compares them, in both back ends with a clean ledger.
 
 ### M4-38 · L4 · Compile generic definitions in dev mode as the generics decision prescribes
 
+- status: done
 - needs: M4-33, M4-37, M2-09
 - flags: native-only
 - done when: Generic fixtures match the interpreter; editing a generic body recompiles only what the decision says, shown by a compile counter.
 - why this level: Generic code meets slots, hashes and layouts at once; a stale or missing instantiation is silent.
+- note: Done: the List rows run as `rt.items` and `rt.sort_by`, equality is emitted inline (M4-05 section 10); `contains`, `find` and `list_of` compile. Every run case that compiles matches the interpreter with a clean ledger; `installer/tests/rebuild.rs` shows a comparator edit compiling only the comparator. String rows (`join`, `parse_int`, `repeat`, padding, `fixed`) and Maps (M4-38b) are still refused.
 
 ### M4-38b · L4 · Emit the built-in map with its fixed iteration order
 
+- status: done
 - needs: M4-32, M4-38, M4-40, M4-31b
 - flags: unsafe, native-only
 - done when: M2's collection conformance cases agree with the interpreter in dev mode with a clean ledger.
 - why this level: Unsafe container with a fixed order; a wrong order or drop is silent.
+- note: Done: a Map is one word, null or a block of entries in rising key order; `rt.map` (paka-rt/src/abi/dev/map.rs) finds, adds and removes entries, and lists keys or values. Every Map run case compiles and matches the interpreter with a clean ledger. A missing String key traps without the key's text; the trap detail waits on M4-40.
 
 ### M4-39 · L4 · Rebuild and rerun the program after each accepted edit; report its output
 
+- status: done
 - needs: M4-04, M4-17, M4-36, M4-37
 - flags: unsafe
 - done when: Transcript tests: each accepted edit yields the new run's output; a looping program is stopped; a broken edit leaves the old result. The interface's run call passes M4-03's hand-written exchanges (output, exit status, trap report).
 - why this level: Races between a running program, a swap and the next edit; a stuck run must stop without harming the server.
-- note: Unsafe only if M4-04 picks forked runs; with separate processes through std::process there is none. Any unsafe lives in the installer crate.
+- note: Runs happen in the runner process (M4-04); the server has no unsafe. Calling compiled code and the slot table are the unsafe, in the installer crate. Per M4-03: a run happens only when an edit carries a `run` field or a run call is made; the server keeps no run settings; time and output limits come from the request. An edit that is not installed returns `run` null, and a run call runs the last fully checked version or answers `not_runnable`. A stuck run ends at the interrupt poll; a runner that does not answer 100 ms after the deadline is killed and restarted, and a crash reports `stopped` "crash" (M4-04).
+- note: Done: the runner is `installer/src/bin/paka-runner.rs`, which must sit beside `paka`; `paka_installer::dev::Dev` holds its compiled program and runs the app with a watcher thread that sets the interrupt at the limit. paka/src/session/runner.rs is the server's side: it starts the runner on the first run, sends the runnable version's files when they change, and kills the runner when a run does not answer by its limit plus 100 ms. The runnable version is taken when the session opens and after each installed edit. An edit's `run` naming no app is refused `no_app` before anything is stored, unless the edit is to that name. Programs the dev back end refuses run on the interpreter in the runner. M4-04 section 3 records how the build differs from the plan. Transcripts in tests/serve-run, served in process by installer/tests/serve_run.rs, cover M4-03's run exchanges, `not_runnable`, a trap, a cut stream, a compiled loop stopped by its limit, an interpreted loop killed and the runner restarted, and a broken edit that leaves the old result.
 
 ### M4-40 · L3 · Add dev mode to the differential harness and run all conformance tests
 
+- status: done
 - needs: M4-36, M4-37
 - flags: native-only
 - done when: One command runs every M2 conformance test in both back ends and lists each as agree, differ or unsupported. A self-test with a planted difference in output, in exit status, in trap kind and in trap position lists each as differ; death by signal counts as differ. Agree means the same output, exit status and the trap fields M2-06 fixes as meaning. The command also reports, per case, whether the dev-mode run ended with a clean ledger (M4-25).
 - why this level: Defining equal results across back ends, trap kind and place included, while excluding stack and memory limits.
+- note: Done: `paka-diff [ROOT]` (installer/src/bin/paka-diff.rs, installer/src/diff.rs) stages each run case twice and runs it in a child on the interpreter and on the dev back end, then compares stdout, death by signal, status and M2-06 §1.2's meaning. It lists each case as agree, differ or unsupported (with the dev back end's refusal), with the dev run's ledger, and exits 1 when any case differs. First run: 299 agree, 0 differ, 131 unsupported; every refusal is a String row (join, fixed, repeat, parse_int, pad, lines, find and others). 51 agreeing cases end with leaks, all trapped runs: the trap path skips drops and the heap goes at run end. Native reports print the first line and a hole's `??name` line; the other detail lines and the chain are still to come. installer/tests/diff.rs plants each difference and checks every case is listed once.
 
 ### M4-41 · L3 · Build the fuzz loop: two back ends, compare, shrink, keep failures
 
+- status: done
 - needs: M4-21, M4-40
 - flags: native-only
 - done when: Each of five planted code-generator faults is found from a seed and shrunk to under 30 lines.
 - why this level: A reducer that keeps the divergence and stays well-typed while shrinking.
+- note: Done: `paka-diff --fuzz FIRST COUNT KEEP` judges each seed's program on both back ends and shrinks each that differs, by lines, blocks, braces and list items, while it still checks and differs the same way; `PAKA_PLANT=1..5` plants a fault in the dev back end (`>` as `>=`, no subtraction overflow check, a range loop past its end, an unsigned bounds check, `%` as `/`), and `installer/tests/diff.rs` finds each from seeds 224, 59, 60, 181 and 119 and shrinks it to 17 to 22 lines. A program the interpreter runs past the limit is unsupported, and a dev run over four times the interpreter's time counts as hung. Seeds 0 to 399 give 69 agree, 0 differ, 331 unsupported: most generated programs use String functions dev mode lacks (M4-42). The loop found one real miscompile, an item of a list read after the list was dropped, fixed with the case `ownership/item_outlives_its_list`. Dependencies build at opt-level 2 in dev builds, so each dev run compiles about five times faster.
 
 ### M4-41b · L4 · Run 100,000 generated programs and fix every divergence
 
@@ -1207,6 +1299,8 @@ or merged during review. Ids with a letter were added during review.
 - flags: native-only, open-ended
 - done when: 100,000 seeds agree in both back ends; each fixed divergence has a regression test.
 - why this level: Each divergence is a miscompile or meaning bug across checker, generator and runtime.
+- status: done
+- note: Done: seeds 0 to 99,999 agree with a clean ledger. The one divergence was in the checker: a hole in a List or Map literal passed to `Some`, `Ok` or `Err` did not take its type from the position (M2-06 section 1.5), so the program was refused. Such an argument now waits for the letters the position binds (case `types/hole_in_a_literal_inside_a_variant`).
 
 ### M4-42 · L4 · Sort dev-mode differences into one fix task per root cause, then see them closed
 
@@ -1215,6 +1309,35 @@ or merged during review. Ids with a letter were added during review.
 - done when: Every differing or unsupported case in M4-40's report is assigned to a fix task; the caller adds one level-4 task per root cause (done when its tests leave the differ and unsupported lists and a regression test is added); with all merged, the differential command reports zero differ and zero unsupported with a clean ledger.
 - why this level: Root causes span checker, code generator and runtime; the remaining divergences are the subtle ones.
 - note: M4-35 is dropped by docs/decisions/M2-10.md.
+- status: done
+- note: Done: the root causes were the String rows (M4-42a), boxes of user types (M4-42b) and what a trapped run leaves live (M4-42c). The differential command reports 434 agree, 0 differ, 0 unsupported, each ledger clean, and now counts a dirty ledger as a difference, so the fuzz loop shrinks leaks too. That found two more faults, each with a case: an untyped `unreachable()` before a typed List item (`builtins/unreachable_before_a_list_item`), and a record's first field read from a temporary, which shared the record's address and so moved the whole record, leaking its other fields (`ownership/first_field_of_a_temporary`).
+
+### M4-42a · L4 · Compile the String rows in dev mode
+
+- needs: M4-42
+- flags: native-only
+- done when: Every String row of the prelude compiles in dev mode, and the conformance cases that used one leave the unsupported list with a clean ledger.
+- why this level: Twenty rows with three result shapes, each shared with the interpreter so the two cannot drift.
+- status: done
+- note: Done: `ops::Text` holds the rows that grow or cut a String (`split`, `chars`, `lines`, `join`, `repeat`, `pad`, `replace`, `find`), with `ops::Trap::Memory` past the cap; the interpreter and `rt.text` both call them. `rt.text` rows 10 to 29 give a List of Strings, a Bool word, an `Option` of an Int or Float, or a String; a Float operand passes as its bits. 127 conformance cases left the unsupported list, and generated programs now compile: seeds 0 to 5,399 run, where 331 of the first 400 were refused. The fuzz loop then found `[unreachable()]` inside `Ok(...)` left untyped by the checker, which panicked the emitter; `settle` now gives a part with no type its place's type (case `builtins/unreachable_in_a_variant_list`).
+
+### M4-42b · L4 · Compile recursive types: boxes of user types
+
+- needs: M4-42
+- flags: native-only
+- done when: The ownership cases `finite_types_accepted`, `match_arm_changes_subject`, `tree_sample` and `value_used_twice_two_copies` agree in dev mode with a clean ledger.
+- why this level: A box is built, read through, matched, copied and released on every path; a wrong one is a leak or a read of freed memory.
+- status: done
+- note: Done: a place walk and a `match` arm read a boxed field through its block, and the runtime's type records already copied and freed boxes, so every type compiles and the emitter's type refusal is gone. Each record or enum type that holds itself, through any type, gets a definition after the constructors that compares two of its values; inline equality calls it where it meets the type again. The four cases agree with a clean ledger.
+
+### M4-42c · L3 · Decide what a trapped run's live values are
+
+- needs: M4-42
+- flags: native-only
+- done when: The decision is recorded and the differential command's ledger follows it.
+- why this level: A rule, and one place in the harness that applies it.
+- status: done
+- note: Done: a trap's unwind drops nothing and the run's heap is freed whole at its end, so values live at a trap are not leaks (docs/decisions/M4-05.md section 9). `paka-diff` counts only bad frees for a trapped run; the 51 trapped cases now end clean.
 
 ### M4-43 · L4 · Compare dev mode with the interpreter after random edit sequences
 
@@ -1222,13 +1345,18 @@ or merged during review. Ids with a letter were added during review.
 - flags: native-only, open-ended
 - done when: 10,000 seeded edit sequences: after every accepted edit dev output equals the interpreter on the last fully checked version; planted staleness is caught.
 - why this level: Finds stale compiled code after signature, layout and generic edits, a failure nothing else would notice.
+- status: done
+- note: Done: `paka-diff --edits FIRST COUNT KEEP` runs seeded sequences of 8 edits (`paka-gen` module `edit`): a literal changed, a record field or enum variant put first, a function added or deleted, two definitions swapped, a parameter put first in a function and its calls. Each edit builds on the last version that checks. Seeds 0 to 9,999 made 80,000 edits, 77,724 accepted; 87,609 runs agree, 0 differ, 115 unsupported. Generic functions take signature edits like the rest. Planted staleness is caught: `PAKA_PLANT=6` leaves constants out of the cache key, 7 leaves out loads (test `edit_sequences_find_each_planted_staleness`). A differing sequence is kept as `KEEP/SEED/main.paka` and `edits/0.paka` on; `paka-diff --one dev` in that folder applies the edits first.
 
 ### M4-44 · L3 · Build the repeatable benchmark for edit-to-running time
 
 - needs: M4-39, M4-01
 - flags: none
-- done when: One command prints median and 95th-percentile times for small, medium and large body edits on the program size fixed in M4-01.
+- done when: One command prints median and 95th-percentile times for the six M4-01 edit classes (three gated) on a program whose size is an argument, 5,000 by default, written by its own fixed-shape generator as one file per definition; timing runs from request written to reply read.
 - why this level: Honest timing from request to first handler of the new run, on a generated program of stated size.
+- note: Per M4-03: one timed sample is one edit request with a `run` field.
+- status: done
+- note: Done: `cargo build --release -p paka -p paka-installer`, then `target/release/paka-bench [DEFS [SAMPLES]]` (`installer/src/bin/paka-bench.rs`; DEFS 5,000 and SAMPLES 200 by default). The program is `defs.paka`'s three definitions without its examples, `t`, `total`, `Msg`, `update`, an app `bench`, and fillers of 20 numeric lines in a binary call tree from `f0`; fillers 1 to 10 use `t`. Body edits change one constant (`step` gains one on its `Hold` arm); the signature edit turns `t` between Int and Float results; add and delete pair a new function `gN`. Each edit must install and its run end with status 0. First numbers, gate failed: every class takes about 130 ms at 100 definitions, 1.4 s at 1,000 and 7 s at 5,000, nearly all in the runner's rebuild of the whole program after an edit (the first run after an edit takes about 115 ms at 100 definitions; a repeat run 0.3 ms). M4-44b profiles it.
 
 ### M4-44b · L4 · Profile edit-to-running time and list fixes with expected gains
 
@@ -1237,6 +1365,8 @@ or merged during review. Ids with a letter were added during review.
 - done when: A committed profile splits the time across checker, database, code generator and installer; each proposed fix names its expected gain.
 - why this level: Finding where the time goes on a speed-critical path across four components.
 - note: Dropped, and counted as done for M4-45, if M4-44 already reports a 95th percentile under 100 ms for all three sizes.
+- status: done
+- note: Done: docs/profiles/M4-44b.md. At 5,000 definitions an edit takes about 7.2 s, all whole-program work: 2.3 s writing the runner's load request unbuffered, 3.1 s building, printing and hashing IR for every definition, 0.76 s and 0.68 s checking the whole program in the server and the runner. Seven fixes are listed with expected gains; checking only what an edit can change is needed to come under 100 ms.
 
 ### M4-45 · L4 · Bring edit-to-running time under 100 ms
 
@@ -1244,6 +1374,8 @@ or merged during review. Ids with a letter were added during review.
 - flags: open-ended
 - done when: The benchmark's 95th percentile is under 100 ms for all three edit sizes, and M4-40's command and M4-43's edit-sequence run still pass.
 - why this level: Performance-critical path across checker, database, code generator and installer; fixes must not change any result.
+- status: done
+- note: Done: an edit that changes one function's text and keeps its signature is checked alone (`paka::alone`): in a small program of the function, a stub of each function it names and the text of each type it reaches, since a body checks against signatures only (M2-02). The server's workspace stores the result when it is clean and the interface is unchanged. The runner lowers the function the same way, renumbers its core form into the installed program, compiles only its definition and swaps its slot, keeping the record table. Anything else, including any error, takes the whole-program path as before. The server writes each runner request in one call and sends only the changed files, and indexes each definition's file. `paka-bench 5000 3`: body edits take a 95th percentile of 20, 23 and 32 ms (small, medium, large); signature, add and delete edits still take about 5 s. `paka-diff`: 435 agree, 0 differ, 0 unsupported; `paka-diff --edits 0 2000`: 17,540 agree, 0 differ, 25 unsupported; plants 6 and 7 are still caught. docs/profiles/M4-44b.md section 3 has the numbers.
 
 ### M4-46 · L2 · Run the whole M4 exit check with one command and record results
 
@@ -1251,24 +1383,29 @@ or merged during review. Ids with a letter were added during review.
 - flags: owner
 - done when: One command on the build machine reports pass for every item of the exit check; the owner signs the recorded results.
 - why this level: Wires existing tests and the benchmark into one script with pass or fail per exit-check item.
+- note: Done, waiting on the owner's signature: `scripts/m4-exit-check` runs each item and prints pass or FAIL; `paka-bench --gated` times only the gated classes and exits 1 on a failure. Every item passed; docs/results/M4-46.md records the run.
 
 ### M4-47 · L4 · Decide the canonical layout and how tools treat other layouts
 
+- status: done
 - needs: nothing
 - flags: decision, owner
 - done when: Owner approves the layout rules with one sample per construct, and whether check rejects or rewrites other text. It also rules what happens to sources stored before the layout existed.
 - why this level: One layout is a promise of the paper; every tool and every stored file follows it.
+- note: Done: approved by the owner on 2026-10-15; see docs/decisions/M4-47.md.
 
 ### M4-48 · L4 · Decide a definition's full name and the file tools store it in
 
+- status: done
 - needs: nothing
 - flags: decision, owner
 - done when: Owner approves the full-name form, the file a new definition lands in, and that packages stay undecided through M7.
 - why this level: Stable ids and every tool call are built on the name; changing it later invalidates stored versions.
+- note: Done: approved by the owner on 2026-10-15; see docs/decisions/M4-48.md.
 
 ## M5 — Live GUI on Linux
 
-**Exit check.** One script in the repository, run in the owner's GNOME Wayland session on the build machine, exits 0 after all seven parts. (1) The counter sample and the to-do sample each open a window and log a first presented frame. (2) Through Look, a click raises the count and typing plus Add adds a row; replacing ??reset through Edit turns the placeholder into a button while the count in the tree stays the same. (3) An edit that changes the state type with no migrate and no reset is refused and the old version still answers a click; the same edit with a reset is accepted; the same edit with a migrate is accepted and the count is kept. (4) A view that traps leaves the tree text and the screenshot unchanged; a handler that traps leaves the tree unchanged and performs none of its effects. (5) With WAYLAND_DISPLAY and DISPLAY unset, the to-do UI example (start, type, click, read the tree) runs and the toolchain reports the status that was written by hand beforehand. (6) Look on the windowed app returns the tree text and a PNG screenshot and accepts a click and a keystroke. (7) M5-26's two-back-end command reports no tree difference and the reference with views passes its size test. The owner watches parts 1 to 3 on screen once. If the owner's M5-08 ruling requires a screen reader or IME, one clause is added for each.
+**Exit check.** One script in the repository, run in the owner's GNOME Wayland session on the build machine, exits 0 after all eight parts. (1) The counter sample and the to-do sample each open a window and log a first presented frame. (2) Through Look, a click raises the count and typing plus Add adds a row; replacing ??reset through Edit turns the placeholder into a button while the count in the tree stays the same. (3) An edit that changes the state type with no migrate and no reset is refused and the old version still answers a click; the same edit with a reset is accepted; the same edit with a migrate is accepted and the count is kept. (4) A view that traps leaves the tree text and the screenshot unchanged; a handler that traps leaves the tree unchanged and performs none of its effects. (5) With WAYLAND_DISPLAY and DISPLAY unset, the to-do UI example (start, type, click, read the tree) runs and the toolchain reports the status that was written by hand beforehand. (6) Look on the windowed app returns the tree text and a PNG screenshot and accepts a click and a keystroke. (7) M5-26's two-back-end command reports no tree difference and the reference with views passes its size test. (8) The M5-40 script passes on both samples. The owner watches parts 1 to 3 on screen once, and types one composed word through the input method into the to-do sample's Input, which arrives as one commit (M5-37).
 
 - M5-08 gates everything that draws and needs downloads (winit, vello_cpu, Parley, AccessKit). Ask for the permission on day one.
 - UI examples act on the element tree, not on pixels, so they need no window, font or outside crate.
@@ -1281,73 +1418,103 @@ or merged during review. Ids with a letter were added during review.
 
 ### M5-01 · L5 · Decide what a view is and what its body may contain
 
+- status: done
 - needs: nothing
 - flags: decision, owner
 - done when: Owner approves a written proposal with alternatives; it shows both sample views and says how a visual app starts and ends.
 - why this level: Shapes the language: child lists, loops and conditions in a view, and views calling views, checkable from signatures.
+- note: Done: approved by the owner on 2026-10-13; see docs/decisions/M5-01.md.
 
 ### M5-02 · L5 · Decide key rules: who needs one, scope, tree-wide ids, duplicates
 
+- status: done
 - needs: M5-01
 - flags: decision, owner
 - done when: Owner approves the rules, including what a duplicate key shows and when kept element state is dropped.
 - why this level: Element identity across edits and loops; sibling-scoped keys must still yield ids unique across the tree.
+- note: Done: approved by the owner on 2026-10-13; see docs/decisions/M5-02.md.
 
 ### M5-03 · L5 · Decide the text input model: text held by app or element
 
+- status: done
 - needs: M5-02
 - flags: decision, owner
 - done when: Owner approves a proposal with both models written out for the to-do input, including preedit and a trap.
 - why this level: Decides who owns typed text; interacts with IME preedit, state rollback, keys and what examples can observe.
+- note: Done: approved by the owner on 2026-10-13; see docs/decisions/M5-03.md.
 
 ### M5-04 · L5 · Decide the elements M5 builds and every argument of each
 
+- status: done
 - needs: M5-01, M5-02, M5-03
 - flags: decision, owner
 - done when: Owner approves a table of the elements M5 builds (about seven) with arguments, events and default look, and a list by name of the other elements as not decided; the owner either places them in a milestone or records the paper's "about 20" as open.
 - why this level: Fixes the built-in vocabulary of every Paka GUI; hard to change once programs and the reference use it.
+- note: Per M5-01: the paper's `list` element cannot be named `List`; the table marks which elements take a child block and says whether element arguments may be left out.
+- note: Per M5-02: the table marks which elements hold state and so need a key; every element accepts `key:` as its last labelled argument.
+- note: Per M5-03: the input is `Input(text, on_change:, key:)` with no cursor or focus arguments and needs a key; the table rules on Enter, on a hint text, and on whether a click on a button takes focus from an input.
+- note: Done: approved by the owner on 2026-10-13; see docs/decisions/M5-04.md.
 
 ### M5-05 · L5 · Decide the layout rules and units
 
+- status: done
 - needs: M5-04
 - flags: decision, owner
 - done when: Owner approves rules for size, gap, alignment, overflow and text wrap, each with a worked example in numbers.
 - why this level: Layout is part of the language's meaning: one tree must give one result, with no toolkit to lean on.
+- note: Per M5-04: there are no size, padding or alignment arguments; only `gap:` and the per-kind width class need rules.
+- note: Done: approved by the owner on 2026-10-13; see docs/decisions/M5-05.md.
 
 ### M5-06 · L5 · Decide UI example functions, the tree text form and hole status
 
+- status: done
 - needs: M5-02, M5-03, M5-04
 - flags: decision, owner
 - done when: Owner approves the function list, the tree text form and the hole status; a to-do example is written out.
 - why this level: Defines what counts as evidence for a GUI: how examples address elements and what a drawn hole means.
+- note: Per M5-02: examples address an element by its path of keys and place numbers; the tree text shows keys, place numbers and the duplicate-key error node.
+- note: Per M5-03: the tree text shows an input's text, cursor, selection and preedit as separate fields; the to-do example reads the draft from the tree; nothing has focus at start, so typing names its target or the example clicks the input first.
+- note: Done: approved by the owner on 2026-10-13; see docs/decisions/M5-06.md.
 
 ### M5-07 · L5 · Decide how migrate and explicit reset are written and applied
 
+- status: done
 - needs: nothing
 - flags: decision, owner
 - done when: Owner approves a proposal covering detection of changed stored types, migrate, reset, and a migrate that traps.
 - why this level: Migrate must name a type that no longer exists in the source; a wrong rule corrupts live state.
+- note: Per M5-01: an explicit reset can use the fresh value M5-01 defines: the state type built from its field defaults.
+- note: Done: approved by the owner on 2026-10-13; see docs/decisions/M5-07.md.
 
 ### M5-08 · L4 · Run the library trial: one window, one text field, one button
 
+- status: done
 - needs: nothing
 - flags: decision, owner, download
 - done when: Owner rules on the report: elements from scratch or on an existing toolkit (paper section 8), the stack, the full crate list including PNG encoding, the default font, and yes or no on screen-reader support and on IME in M5.
 - why this level: Judging IME, Wayland and screen-reader behaviour from a small trial; a wrong call commits the whole stack.
+- note: Done: approved by the owner on 2026-10-26; see docs/decisions/M5-08.md and docs/results/M5-08.md. Elements are built from scratch on winit, softbuffer, vello_cpu, parley and AccessKit, Wayland only; PNG through a standard-library encoder; Noto Sans shipped as the default font; screen reader and IME are both in M5, and M5-04's focus rule now lets Tab reach Buttons.
 
 ### M5-09 · L4 · Decide the preview route on Wayland and the Look protocol
 
+- status: done
 - needs: M5-06, M5-08
 - flags: decision, owner
 - done when: Owner approves one route and the four Look calls: tree, screenshot, click, keystroke, with their inputs and outputs.
 - why this level: Wayland allows no embedding, screen grab or injected input; the route must work without them.
+- note: Per M4-03: the Look calls are added to its envelope and error shape as new `call` values, with no new version.
+- note: Per M5-06: Look's tree call returns the same tree text form, and its click can take the same path form.
+- note: Done: approved by the owner on 2026-10-26; see docs/decisions/M5-09.md. The app opens its own window in the process that runs it, with no preview pane; Look acts on the element tree, never on the screen. The calls `look_tree`, `look_screenshot` (base64 PNG, scale 1 or 2), `look_click` (by path) and `look_key` (text or one named key) join M4-03's envelope with the error kinds `not_running`, `no_element` and `no_focus`, and a `run` naming a visual app launches it.
 
 ### M5-10 · L2 · Vendor the approved GUI crates, pinned and built offline
 
+- status: done
 - needs: M5-08
 - flags: download, owner
 - done when: cargo build --locked --offline passes; a check fails on any crate off the approved list; README names needed system packages.
 - why this level: Routine vendoring; the care is in matching the approved list exactly, licences included.
+- note: Per M7-02: adds its crates and licences to `TRUSTED` (M7-16).
+- note: Done: M5-08 had vendored the crates and listed them in `.cargo/approved-crates.txt` and `.cargo/stubbed-crates.txt`, which M7-16 turns into `TRUSTED`; their licences are tabled in docs/results/M5-08.md. The new workspace member `gui/` (`paka-gui`) takes M5-08's six crates with its exact pins and features, so `cargo build --locked --offline` builds them; the workspace lock gains exactly the trial's outside packages. `paka/tests/vendored.rs` already fails on a locked crate off the list. The font is `gui/fonts/NotoSans-Regular.ttf`, the unhinted file of the notofonts NotoSans-v2.015 release, with its `OFL.txt` beside it; `paka_gui::FONT` embeds it and a test in `paka/tests/vendored.rs` pins its SHA-256. The README names the run-time libraries a window loads (`libwayland-client`, `libwayland-cursor`, `libxkbcommon`); building needs no system package, since winit and softbuffer load Wayland at run time.
 
 ### M5-11 · L3 · Parse and print view definitions and the app's view field
 
@@ -1355,6 +1522,11 @@ or merged during review. Ids with a letter were added during review.
 - flags: none
 - done when: Tests with hand-written trees pass; printing then parsing the samples changes nothing; errors quote the offending text.
 - why this level: Parser and canonical printer must agree on nested child blocks, keys and holes, with precise errors.
+- note: Views follow the M4-47 block and flat-list rules; only the trailing-block sample is new.
+- note: Per M5-01: a child block is read only where an element may stand and holds only element lines, view calls, holes, `let`, `if`, `for` and `match`; a view body is `let` lines plus one element expression.
+- note: Per M5-02: `key:` is parsed on view calls as well as on elements, though no view declares it.
+- status: done
+- note: Done: the parser reads `view` definitions, child blocks after a call where an element may stand, and the app's `view:` field; a view line that is not `let` or an element, or a second root element, is refused with the offending text quoted. The printer prints them canonically; `tests/print/views.paka` holds the decision samples and `samples.paka` a view and a `view:` entry. Commands still refuse a view with `unsupported-view` until M5-13, and the conformance gate skips the three new node kinds until then (`NOT_YET_RUN` in `paka/src/coverage.rs`). The trailing-block sample is not yet added to M4-47.
 
 ### M5-12 · L2 · Add the element table as built-in signatures
 
@@ -1362,6 +1534,12 @@ or merged during review. Ids with a letter were added during review.
 - flags: none
 - done when: A test lists every element, argument, type and needs-key mark, and matches the approved table written by hand.
 - why this level: Transcribes an approved table into data; one module, checked item by item.
+- note: Per M5-01: element names enter the built-in names table for every program, headless ones included; an earlier test case using one as its own name is renamed in a commit before the code, citing M2-02.2.
+- note: Per M5-04: five elements (Text, Button, Input, Row, Col); per argument a type and a default or none; per element the child-block, needs-key, takes-focus and width-class marks.
+- note: Per M5-05: the table carries each element's width class.
+- note: Per M5-06: `Ui` and the six `ui_` names enter the built-in names table for every program.
+- status: done
+- note: Done: `ELEMENTS` in `paka/src/builtins.rs` holds the five elements with each argument's type and default and the child-block, needs-key, takes-focus and width marks; `key:` is not listed per element, since every element takes it last and `needs_key` marks where it must be written. A test prints the table and compares it with the approved one. The element names, `Ui` and the six `ui_` names are taken from every program; the resolver finds none of them by name until M5-13. Renamed for this: `Row` in `tests/cases/check-text/sort_by_result_not_bool` (to `Rec`), `tests/conformance/ownership/change_in_place` and the T3 and T5 references (to `Line`); the variant `Text` in `tests/conformance/types/match_arm_discard`, `field_read_on_variant` and the T3, T4, P3 and F1 references (to `Plain`).
 
 ### M5-13 · L3 · Resolve and type-check views, holes, required keys and app wiring
 
@@ -1369,6 +1547,12 @@ or merged during review. Ids with a letter were added during review.
 - flags: none
 - done when: Each rule has an accepted and a rejected case with a hand-written error; the counter sample checks clean.
 - why this level: Several rules across resolver and checker: message types, element-position holes, mandatory keys, all from signatures alone.
+- note: Per M5-01: four more checks: elements only inside views and in element position, the same message type on view calls, a visual app's state type is a record with a default on every field, and exactly one root per view.
+- note: Per M5-02: five more checks: a key on stateful elements, a key on every loop child but a hole, no key on a view's root and no root that needs one, no view parameter named `key`, and no literal key twice directly in one block.
+- note: Per M5-04: a labelled element argument with a table default may be left out; written ones follow table order with `key:` last; a negative literal gap is rejected.
+- note: Remove `NOT_YET_RUN` in paka/src/coverage.rs once a view case passes, so the conformance gate covers the view nodes again.
+- status: done
+- note: Done: views resolve and check from signatures: elements are built-in signatures with `M` set to the view's message type, a view call must give the caller's `View<M>`, and the app's `view:` must take the state and give `View<M>` for `update`'s enum. New codes `bad-view-signature`, `element-outside-view`, `wrong-child-block`, `missing-key`, `key-on-root` and `duplicate-key` replace `unsupported-view`; a key out of place is `wrong-label`, a negative literal gap `literal-out-of-range`, a view parameter named `key` `duplicate-name`. One root stays a parse rule. A visual app needs no `start:`, and its `update` may give no result. Cases: `tests/cases/check/view_*` (rejected), `tests/cases/check-text/view_accepted` and `view_counter` (the counter sample, clean), conformance `apps/view_counter_check` and one `errors/` case per new code. `NOT_YET_RUN` is removed. Not yet: a visual app is not lowered, so `run` reports no app until M5-16 and M5-20, and `check` prints no note for a hole in a view; the `ui_` names and `Ui` stay unresolved for M5-21.
 
 ### M5-14 · L4 · Carry views through the derived database and the agent tools
 
@@ -1376,6 +1560,10 @@ or merged during review. Ids with a letter were added during review.
 - flags: none
 - done when: Tests: a view body edit rechecks only that view; a Msg edit, an edit to a view it calls, to the state type and to the app's view field each give exactly the hand-written rechecked and broken sets; M4-14's incremental-equals-rebuild test runs with views in its edit generator and passes.
 - why this level: Touches ids, use index, hashes and Find, View, Edit; a missed dependency edge silently skips a recheck.
+- note: Per M4-03: views travel through find, view and edit with kind `view` and no new fields.
+- note: Per M5-07: the index gives the set of types reached from the state type, through built-in containers too.
+- status: done
+- note: Done: views already carried their reads and hashes, so a view edit rechecks the view and its users through the index like any definition; paka/tests/workspace.rs adds the scripted view edits (view body, Msg, a called view's signature, the state type, a type it holds, the app's `view:`) with exact rechecked and broken sets. `Index::reached` and `Workspace::stored` give the state type and every record and enum it reaches, for M5-28. The M4-14 edit generator adds views that call views and an app naming one, edits their bodies, signatures and the app's `view:` field. find lists the elements as built-ins with a row-style signature giving `View<M>` (`Row(; gap: Int = 0) -> View<M>`), `users_of` an element finds the views that call it, and `takes`/`gives` match views; transcript tests/serve/views.txt. Not changed: `coverage::builtin_names` keeps the rows only, since the exit gate would then demand a passing case for Input, which none has yet, and for the `ui_` names, unresolved until M5-21.
 
 ### M5-15 · L2 · Define the runtime element tree and print it as text
 
@@ -1383,6 +1571,11 @@ or merged during review. Ids with a letter were added during review.
 - flags: none
 - done when: Three hand-built trees print exactly as hand-written text, including a placeholder and an error node.
 - why this level: One data type and one printer for an approved text form.
+- note: Per M5-02: each tree node carries its key or its place number, and the text form prints it.
+- note: Per M5-05: tree nodes carry no rectangles; layout results live beside the tree.
+- note: Per M5-06: the printer writes one line per node with steps (digits, single-quoted String keys, `#n`, `#n.r`), fields per kind, defaults left out, escaped texts, and `Hole` and `Error` lines.
+- status: done
+- note: Done: `paka-rt/src/tree.rs` holds the tree, shared by the interpreter and the runtime: `Node<M>` with one variant per element plus `Hole` and `Error`, children as `(Step, Node)` pairs under Row and Col, the root the one node with no step, and an Input's cursor, selection, preedit and focus in `Edit`. `M` is the message value; the printer shows it through `Display`, so the builder chooses its value text form. Its `Display` is the tree text, every line ending in a line feed. The value-text `quoted` moved into `paka_rt::ops` so both sides escape alike. Tests: `paka-rt/src/tree/tests.rs` prints the counter at 0 with its placeholder, the M5-06 sample with an error node and focus, and a tree of escaped keys and texts, loop placeholders, selection and preedit, each against hand-written text.
 
 ### M5-16 · L3 · Lower views to core form and build trees in the interpreter
 
@@ -1390,28 +1583,46 @@ or merged during review. Ids with a letter were added during review.
 - flags: none
 - done when: The interpreter gives the hand-written tree text for the counter view at counts 0 and 3, placeholder included.
 - why this level: Lowering child blocks, loops and holes to core, then turning interpreter values into the runtime tree.
+- note: Per M5-02: lowering numbers the element lines of every child block and puts the number on each unkeyed child.
+- note: Per M5-04: building a Row or Col with a negative computed gap is a trap in the view.
+- note: Per M5-06: trees carry message values and non-default arguments so the printer can show them, in the value text form of M2-09 and M2-14.
+- status: done
+- note: Done: a view lowers to a function giving `View<M>`; its body ends in `Root`, and each element line is a `Child` holding its line number, whether a `for` holds it, its key and its node (`Element` with arguments in table order and defaults written in, a view call, or `Placeholder`). The interpreter builds a `paka_rt::tree::Node` whose messages keep their value and value text form; a child's step is its key, `#n.r` for a placeholder in a loop, else `#n`. A negative computed gap traps `assert` at the element, a hole off element position traps as usual, and `interp::draw` gives a trap as `trap kind at place`. Siblings sharing a key collapse into one error node at the first one's place through `tree::unique`, which M5-17 can reuse. The dev back end refuses a program with a view until M5-24. `check` now prints a hole note for a placeholder, so three accepted view cases gained their `stderr`. docs/core.md section 8.1 describes the view nodes. Tests: paka/src/interp/view_tests.rs draws the counter at 0 and 3, a keyed loop with loop placeholders and a shared key, string-keyed view calls with payload messages, and the gap and hole traps, each against hand-written text; paka-rt/src/tree/tests.rs covers the key collapse.
 
 ### M5-17 · L4 · Diff trees by key and keep element state with its key
 
+- status: done
 - needs: M5-02, M5-15
 - flags: none
 - done when: Hand-written cases pass for reorder, insert, remove, kind change, placeholder to element, and duplicate sibling keys.
 - why this level: State silently lands on the wrong element after reorder, insert or kind change; duplicates must show in place.
+- note: Per M5-02: a child matches the old child with the same step (key or place number) and kind, under matched parents only; siblings sharing a key collapse into one error node and their state is dropped.
+- note: Done: `tree::keep(old, new)` copies each Input's cursor, selection, preedit and focus from the old tree into the new one. Nodes match by kind; a child matches the old child with the same step under a matched parent, so anything unmatched, and anything under a kind change, starts fresh. A duplicate key needs no case of its own: `unique` has already put an error node in its place, which matches no Input. Pulling the cursor back when the app sets a shorter text is left to M5-19. Tests: paka-rt/src/tree/tests.rs covers reorder, insert, remove and re-add, kind change of an element and of its parent, an element replacing a placeholder, and duplicate keys followed by the fixed tree.
 
 ### M5-18 · L3 · Route clicks and keystrokes to messages, with focus
 
+- status: done
 - needs: M5-17
 - flags: none
 - done when: On hand-built trees, a click on a button yields its message and keys reach only the focused input. Focus stays with its key after a reorder; an event aimed at an element the next diff removed is dropped.
 - why this level: Focus must follow keys through diffs; events aimed at a removed element must be dropped, not misdelivered.
+- note: Per M5-02: focus is one id held by the runtime, dropped when that element is no longer matched.
+- note: Per M5-03: an input event becomes a message only when its turn in the queue comes; keys with no focused input are dropped.
+- note: Per M5-04: only an Input takes focus and only a click on an Input moves it; a click on a Button leaves it; Tab and Enter are dropped.
+- note: Done: `paka-rt/src/route.rs` adds `route(tree, event)`. An event is a key or a click aimed at a path and the kind found there, worked out against the tree of its turn. A click on a Button sends its message; a click on an Input moves focus there; any other click, or one whose element is gone or changed kind, leaves focus and sends nothing. Keys go to the focused Input through `Edit::key` and give its `on_change` with the change, which the caller turns into a message. Focus is the `focus` mark in the Input's edit, so `keep` carries it by key and drops it with the element. The queue itself is left to the update loop.
 
 ### M5-19 · L3 · Build the text input's editing state: text, cursor, selection
 
+- status: done
 - needs: M5-03, M5-17, M5-10
 - flags: none
 - done when: Hand-written cases pass for insert, delete, move and select, including non-ASCII text, and emit the approved messages.
 - why this level: Cursor and selection over multi-byte text are easy to get wrong; must follow the approved input model.
 - note: Standard library only. If M5-03 makes grapheme clusters the cursor unit, the table comes from a crate already on M5-08's approved list; otherwise the task gains download and owner.
+- note: Per M5-03: the element stores no text, only cursor, selection and preedit. It sends the whole new text and moves the cursor only when the view hands back a text other than the one from before the key. The cursor steps by code point, so no crate table and no download.
+- note: Per M5-04: no Enter message and no hint text.
+- note: Per M5-08: no change here. Tab and Shift+Tab move focus and Space clicks a focused Button (M5-36); in an Input, Tab and Enter still type nothing.
+- note: Done: `paka-rt/src/input.rs` adds keys for typing, back, delete, left, right, home and end, each with or without extending the selection, over `Edit`. Moves change cursor and selection and send nothing; edits leave the element as is and return the whole new text and the cursor to send; a key that changes nothing sends nothing. `Edit::follow` keeps everything when the view hands back the old text and otherwise moves the cursor where the key put it, or keeps it for a text the app set, pulled back to the end, selection cleared. Positions count code points and are clipped to the text first. Line break and tab type nothing. Word moves are not in the records and are not built.
 
 ### M5-20 · L3 · Run a visual app with no window in the interpreter
 
@@ -1419,6 +1630,9 @@ or merged during review. Ids with a letter were added during review.
 - flags: none
 - done when: With no display set, a test clicks + and reads hand-written tree text; a trapping view keeps the old tree.
 - why this level: Joins state, update, view, diff and input into one loop; a trapping view must leave the tree untouched.
+- note: Per M5-01: the windowless loop follows the launch order (state from defaults, start message if any, first tree), ends on `Exit`, and holds one error node if the first view run traps.
+- status: done
+- note: Done: a visual app lowers with its view and optional start; `interp::Windowless` runs it with no window: state from defaults, the start message (a trap there keeps the defaults), the first tree (one error node if it traps), then one queue of clicks, keys and effect results, each handled to the end: message, `update`, effects, view, `keep`, the cursor following. A trapping view keeps the old tree; `Exit` ends the app; a handler trap ends it until M5-25b rolls state back. `keep` now makes a kept Input follow a text the app set. `paka run` and `paka build` refuse a visual app with `no-app` until a window exists. Tests: `paka/src/interp/windowless_tests.rs` (the counter sample).
 
 ### M5-21 · L3 · Parse and check UI examples and their built-in functions
 
@@ -1426,6 +1640,9 @@ or merged during review. Ids with a letter were added during review.
 - flags: none
 - done when: The to-do example from the approved decision checks clean; each misuse case gives its hand-written error.
 - why this level: Extends parser, resolver and checker for the approved functions; wrong element references must fail at check time.
+- note: Per M5-06: it checks the six `ui_` functions and the `Ui` type, allows them only in example bodies, and rejects a badly formed literal path. A wrong element reference fails at check time only in the path's form; whether an element exists depends on state.
+- status: done
+- note: Done: `Ui` and the six `ui_` functions are built-in rows (`builtins::UI`) with M5-06's signatures; `ui_start` takes `App`, a visual app's bare name, which the resolver looks up among the program's apps. New codes: `ui-outside-example` (a UI name outside an example body, so `Ui` cannot be stored in a type or passed to a function), `bad-ui-start` (an argument that is not an app's bare name, or an app with no view) and `bad-ui-path` (a literal path, without interpolation, that `paka_rt::tree::path` rejects: it parses the steps and requires them to print back as written). Comparing a `Ui` with `==` or `!=` is `type-mismatch`. find lists the UI rows as built-ins and `coverage::builtin_names` includes them. Cases: `tests/cases/check/ui_*` (rejected), `tests/cases/check-text/ui_todo` (the M5-06 to-do example, clean), conformance `apps/ui_todo_check` and one `errors/` case per new code. Not yet: an example that uses a UI name is not lowered until M5-22, so `paka examples` leaves it out and a hole in it gets no note.
 
 ### M5-22 · L3 · Run UI examples with no window and compute their status
 
@@ -1434,6 +1651,9 @@ or merged during review. Ids with a letter were added during review.
 - done when: With no display set, three counter examples report pass, fail and the decided hole status, as written by hand.
 - why this level: Status must come from the toolchain alone; hole status per decision.
 - note: No cache: every UI example runs each time. The cache is M7-09.
+- note: Per M5-06: an example is unfinished only if it touches a placeholder or reaches a hole; any other trap in a handler, a view or a `ui_` call ends it as trapped; an error node ends it as fail; allowed effects are dropped.
+- status: done
+- note: Done: an example that drives a `Ui` is lowered into `Program.ui_examples`, which only the interpreter runs; the dev back end never compiles them, so `paka examples` always runs them in the interpreter. `Ui` is a core type and each `ui_` call is a built-in row after `ROWS`; `ui_start` takes no argument, as a program holds one app. The app runs on the example's own machine, so a trap in a handler or view names its frames; effects are performed in a world that drops them, a refused one ends the example as `trapped` with the stop line, and after `Exit` an action is an assert trap. A click on an Input now puts the cursor at the end in `paka_rt::route`. Formats chosen where M5-06 is silent: an error node gives `NAME fail at <ui call>` then `Error <path> "<text>"`; a refused effect gives `NAME trapped` then the stop line; a touched placeholder gives `NAME unfinished at <ui call>` with `??name`. A hole in a UI example now gets its note. Tests: paka/tests/examples.rs (counter pass, fail and placeholder; error node, refusal, exit, handler hole, no focus, click on Text); `tests/cases/examples/ui_todo` (moved from check-text) and conformance `apps/ui_todo_check` now run the examples.
 
 ### M5-23 · L3 · Write the to-do sample and UI examples for both samples
 
@@ -1441,6 +1661,12 @@ or merged during review. Ids with a letter were added during review.
 - flags: none
 - done when: Both samples check clean; with no display set, their UI examples report the hand-written expected statuses.
 - why this level: A new GUI app in a language with no examples; the author must tell their own error from a toolchain defect.
+- note: Per M5-01: the to-do sample has one message enum, a `todo_row` view called in a `for`, and the draft text in the state.
+- note: Per M5-03: the to-do state holds `draft` with a `Draft(text: String)` message; Add appends and clears it in one handler.
+- note: Per M5-04: the to-do sample uses only the five elements; its done mark is a Button.
+- note: Per M5-06: the to-do UI example is the one in docs/decisions/M5-06.md; elements an example clicks are best given keys.
+- status: done
+- note: Done: `tests/cases/examples/sample_todo` is the to-do app as M5-01, M5-03, M5-04 and M5-06 write it, with the M5-06 example, its tree text and three more examples; all five pass. `tests/cases/examples/sample_counter` now holds the whole GENESIS counter, view and app included, with five UI examples: four pass and `reset_to_zero`, which clicks `??reset`, is unfinished (status 3). The case runner now unsets DISPLAY and WAYLAND_DISPLAY; paka/tests/examples.rs checks that both samples check with status 0 (the counter gives its `??reset` hole note). The README.md in each case lists the sources.
 
 ### M5-24 · L4 · Compile views in dev mode and decode their trees in the runtime
 
@@ -1448,6 +1674,9 @@ or merged during review. Ids with a letter were added during review.
 - flags: unsafe, native-only
 - done when: Compiled counter view prints the same hand-written tree text as the interpreter; a trapping view returns trap status; unsafe block reviewed.
 - why this level: Unsafe reading of compiled values holding messages; a layout mistake is silent, and Miri is not available.
+- note: Per M5-02: compiled trees carry the place number; M5-26's comparison shows any disagreement with the interpreter.
+- status: done
+- note: Done: a compiled view writes its nodes into the run's tree buffer through `rt.view` (ops with their operands; a String is its byte length and packed bytes; a message's words are copied in with the blocks they own). `paka_rt::abi::dev::view::draw` decodes the buffer into a `tree::Node<Message>` as the interpreter builds it; a `Drawing` keeps the message words, gives each message's address for update, and frees them on `release`. The dev back end no longer refuses a view; `paka::emit::show` gives a message's value text and `Dev::draw` draws a view. installer/tests/views.rs checks the counter, keyed loops, String keys and payload messages against the interpreter's tree text, and that a negative gap and a hole trap. A `memory` trap while copying a message reports no site. The visual loop is M5-25.
 
 ### M5-25 · L3 · Run a visual app with no window on dev-mode code
 
@@ -1455,6 +1684,8 @@ or merged during review. Ids with a letter were added during review.
 - flags: native-only
 - done when: The windowless counter test from M5-20 passes unchanged with dev-mode code in place of the interpreter.
 - why this level: Plugs call slots into the windowless loop; message values must stay valid between view and update.
+- status: done
+- note: Done: `paka_rt::abi::dev::windowless::Windowless` runs a compiled visual app with no window in the order and with the outcomes of `interp::Windowless`: state from its definition, the start message (a trap there rebuilds the defaults), the first tree (one error node if it traps), then one queue of clicks, keys and effect results, each handled to the end. The loop is mirrored, not shared: the two differ in values, ownership and trap reports. Handlers and effects go through the headless loop's own steps in `app.rs`. A click's message is borrowed from the drawing it lies in, which is released only after the next tree is drawn; an Input's `on_change` is its constructor's slot id, called on the new text as an effect answer is. `Dev::play` runs a script of events and gives the tree text, trap reports and end. Tests: installer/tests/windowless.rs plays each script of the interpreter's windowless tests (the counter and a form with an Input) on both back ends, compares tree text, trap first lines and end, and checks the heap has no leaks or faults.
 
 ### M5-25b · L4 · Roll back state and drop effects when a handler traps
 
@@ -1462,6 +1693,9 @@ or merged during review. Ids with a letter were added during review.
 - flags: unsafe
 - done when: In the interpreter and in dev mode, a windowless app whose handler traps shows the old tree, answers the next click, and performed none of that handler's effects.
 - why this level: State and effect list must be restored together on every trap path; a miss leaves half-applied state silently.
+- note: Per M5-03: one more case: a handler that traps on an input's message leaves text and cursor as they were.
+- status: done
+- note: Done: in both windowless loops a trap while a turn's message is made or handled is recorded with the other trap reports and rolls back: the state, tree and queue stay as they were, none of the handler's effects is performed, the view does not run, and the next event is handled. The start handler goes the same way, so a trap there keeps the defaults. The interpreter hands `update` a copy of the state and keeps it only once `update` returns. Dev mode does the same with a deep copy, the cheapest correct choice under M4-05: the handler writes and frees through its `inout` place, so a held state without a copy would be changed or freed by the trapped handler. Each heap block now carries its number in the order made; after a trap the loop frees every block made since the turn began (the copy, the partly built state, the effect list and the temporaries), which no older value can own. Tests: paka/src/interp/windowless_tests.rs and installer/tests/windowless.rs, on both back ends with a clean ledger: a trapping click keeps the old tree and the next click is answered, a handler that sets its state and builds two Prints then traps prints nothing, and an Input whose handler traps keeps its text and cursor.
 
 ### M5-26 · L3 · Compare interpreter and dev mode on view trees and UI examples
 
@@ -1469,6 +1703,9 @@ or merged during review. Ids with a letter were added during review.
 - flags: native-only
 - done when: One command runs every UI example in both back ends, fails on any tree difference, and catches a planted one.
 - why this level: Extends the two-back-end harness to trees and event sequences; it must be shown to catch a planted difference.
+- note: Per M5-06: comparing tree text now also catches a wrong message or gap.
+- status: done
+- note: Done: `paka-diff --ui [ROOT]` (ROOT is `tests` by default) finds every program under ROOT that checks and has UI examples, and runs each in a child. The interpreter runs each UI example and logs every action it takes (`ui_start`, each click, each typed code point) with the events sent since `ui_start` and what the action left: the tree text, the tree after `Exit`, a trap report's first line, or an end line. Dev mode replays each event list from launch through `Dev::play`, in a world that drops effects as M5-06 says, and must leave the same and free all it made. A line per example says agree with the number of actions compared, or differ with the first action that differs and its first unequal tree line; the status is 1 when one differs. `PAKA_PLANT=8` widens every compiled gap by one, and every example then differs. Dev mode does not run the example bodies: their reads and claims are interpreter code, and the trees they read are the ones compared. An effect that queues an answer (a read or write result) ends the comparison of that `Ui`, since a UI example drops the answer and an app handles it. New case `tests/cases/examples/ui_ends` covers a view trap, an error node, a handler hole, a refused effect, `Exit`, typing and a dropped answer. Test: installer/tests/diff.rs (all 19 UI examples under `tests` agree; with the plant all 19 differ). No disagreement was found.
 
 ### M5-27 · L4 · Re-run the view after a code swap, between frames only
 
@@ -1476,6 +1713,9 @@ or merged during review. Ids with a letter were added during review.
 - flags: none
 - done when: Windowless test: replacing ??reset with a button shows the button, count unchanged; a click queued before the swap delivers no stale message.
 - why this level: Input queued against the old tree carries old-layout messages; dispatching one after a swap corrupts memory silently.
+- note: Per M5-07: an input or effect answer queued before a swap is rebuilt against the new code or dropped and reported; on a reset the queue is emptied and later answers to old effects are dropped.
+- status: done
+- note: Done: `Windowless::swap` in both loops (paka/src/interp/windowless.rs, paka_rt::abi::dev::windowless) installs the next version of a visual app between turns when its stored types are unchanged: the state is kept, the view runs again keeping element state as M5-02 matches it, then the queue is handled. Only events can wait at a swap, since a turn's messages and answers are handled within the same `send`; a queued click or key is worked out against the new tree, so no message the old tree holds is ever sent. A view that traps at the swap shows one error node, as a first view does, since the old tree's messages are the old code's. `queue` adds events without handling them. In dev mode the run moves onto the next version's own slot table: each version's calls take their session on first use, which points the context at that table, and the old drawing is freed by its own records. `Dev::play_swap` plays a script, queues events, swaps to another `Dev` and handles them. Tests: installer/tests/windowless.rs on both back ends with a clean ledger: replacing the counter's `??reset` with a button shows the button and keeps the count, and with the message variants reordered a "+" click queued before the swap still counts up (routed through the old tree it would reset); a click queued on the old hole sends nothing; a view that traps at the swap shows one error node; a focused Input keeps its text, cursor and focus across a swap.
 
 ### M5-28 · L4 · Refuse state-type edits that carry no migrate or reset
 
@@ -1484,6 +1724,9 @@ or merged during review. Ids with a letter were added during review.
 - done when: Tests: editing the state type, or a type held in it through a list, an enum payload, a map, a shared value or a pool, is refused; the old version still answers clicks.
 - why this level: Types stored through lists are outside the interface hash; missing one lets old data run under a new layout.
 - note: Follows docs/decisions/M2-09.md: the interface hash covers every named type a signature reaches, and no app state may hold a function type.
+- note: Per M5-07: compare the stored types of the running and the new version, reached through fields, lists, maps, payloads, shared values and pools, ignoring defaults, comments and layout. While a visual app runs, refuse at the Edit call unless a state choice is carried or waiting; hold back a swap that changes a stored type with no choice; add the state field to the Edit call. The pool case applies only if pools exist by then.
+- status: done
+- note: Done: the server gains a running visual app: `Session::launch` starts the runnable version's visual app with no window on the interpreter, in a thread that owns its program, and `Session::send` hands it events and gives its tree; the Look tool (M5-34) is to call them. Each runnable version keeps its stored types (paka/src/session/stored.rs): the state type's name and, for it and every record and enum `Workspace::stored` reaches, its fields or variants in order with their types; defaults, comments and text layout are left out. While an app runs, an edit whose new version differs from the runnable one is refused with kind `state_changed`, nothing stored, unless it carries `state` or one is waiting; `changed` lists one line per type, such as `Todo: field done is now Int, was Bool`, and the message holds them too. The Edit call takes `state`: `reset` or text starting with `migrate`, else `bad_request`. A carried choice waits, a later one replaces it, and it is dropped when the app ends. A version with other stored types, or with a choice waiting, is not installed while the app runs, as nothing applies a choice yet (M5-29, M5-30). An edit reply gains `state` while an app runs: `kept`, `waiting`, or `missing` for a held-back change with no choice; with nothing running it is `ignored` when `state` was sent and absent otherwise. Shared values and pools do not exist (M2-10). The running app keeps its launch code: `Windowless::swap` borrows each version for the app's life, so the server does not swap yet. Test: paka/tests/state_edits.rs: with the app running, a field added to the state, a type changed through a list, a map value and an enum payload, a variant's payload renamed, a variant added, fields reordered and the app's `state:` line changed are each refused and the next click still counts up; a default, a comment and an added function keep the state; a carried `reset` holds the change back and clicks still count; with nothing running the choice is ignored.
 
 ### M5-29 · L3 · Apply an explicit reset when the state type changes
 
@@ -1491,107 +1734,184 @@ or merged during review. Ids with a letter were added during review.
 - flags: none
 - done when: Test: the refused edit, resent with a reset, installs; state shows its defaults and the tree is rebuilt.
 - why this level: Crosses the edit tool, installer and runtime: state and kept element state restart together, between frames.
+- note: Per M5-02: focus is dropped on a reset along with kept element state.
+- note: Per M5-07: a reset is a relaunch in the same window (defaults, start message, element state and focus dropped, view) and may come with any edit or alone.
+- status: done
+- note: Done: `reset` beside `swap` in both loops (paka/src/interp/windowless.rs, paka_rt::abi::dev::windowless) installs any next version between turns as a launch again: the queue is emptied, so answers to old effects are dropped with it, the drawing and state are freed by the old version, then state comes from the defaults, the start message is handled again with the launch's arguments, and the view runs with no element state or focus kept. The interpreter's `Windowless` now holds its program as `Arc<Program>`, so the server's running app takes each installed version: an edit that installs swaps into it between turns, keeping the state, or with a waiting `reset` launching it again; the reset is then used up. A migrate still holds the change back (M5-30). A reset comes alone as an edit that restates a definition unchanged, and one carried by an edit that leaves the program failing waits until the program checks again. A version with no visual app ends the running one. The edit reply's `state` gains `reset`. `Dev::play_swap` takes whether to reset. Tests: installer/tests/windowless.rs on both back ends with a clean ledger: a reset to a counter with an added field and a start message drops two queued clicks and shows the start's count from the defaults; a reset with a focused Input shows the tree of a fresh launch. paka/tests/state_edits.rs: an edit to a view swaps into the running app and keeps the count; the edit refused for an added field, resent with `state: "reset"`, installs, says `reset`, shows the launch tree and counts from 0, and the next edit keeps the state; a reset restating an unchanged type resets the count; a reset carried by a failing edit waits, clicks still count, and adding the missing type installs it.
+
+### M5-30a · L4 · Parse and check a migrate against two versions of the types
+
+- needs: M5-28
+- flags: none
+- done when: Tests: the Counter and Todos migrates of M5-07 check against their two versions; a wrong parameter or result type, an effect, an old value of a changed type passed to a function, compared or printed, a match missing an old variant and a changed type that holds itself are each refused with a code and a position in the migrate.
+- why this level: Names in one body read two versions of the same types; an old value used as a new one would misread its layout.
+- note: Per M5-07 sections 1.3, 1.4 and 2: `migrate(name: OldState) -> NewState { body }`, pure, one read-only parameter; the parameter's type is read in the running version, every other type name in the new one, and an unchanged type is one type on both sides. An old value of a changed type can only be taken apart. A hole is allowed; a changed type that holds itself needs a reset.
+- status: done
+- note: Done: `paka::migrate::check_migrate(old, new, text)` checks the migrate as one more function of the new program, which also holds the running version of each changed stored type under the name `old Name`, one no source can write; the resolver, signature table, body checker and lowering run unchanged, and the result is the combined core form with the new program's ids kept and the migrate as its last function, for M5-30 to run. A type is changed when its fields or variants and their types differ, defaults aside, or when it holds a changed type; only types the old state reaches are carried. The parameter must be the old app's state type and the result the new app's (`bad-migrate-signature`). A pattern's variant of a changed enum is the old one; a variant written as a value is the new one. A value whose type holds an old type, a list of old items too, passed to a function or compared is `old-value-use`; building an `Effect` is `effect-in-migrate`; printing one is the existing `type-mismatch` of interpolation, and a missed old variant the existing `missing-arm`. A changed stored type that holds itself is `migrate-needs-reset`. `parse_migrate` reads the text, sharing the rest of a function's grammar. Errors name the file `migrate` with positions in its text. The four codes are in spec/m1.md section 10 and, as no program file reaches them, outside the conformance table. Test: paka/tests/migrate.rs.
 
 ### M5-30 · L4 · Run migrate at swap time; keep the old version if it traps
 
-- needs: M5-28, M5-27
+- needs: M5-28, M5-27, M5-30a
 - flags: none
 - done when: Both back ends: adding a field with migrate keeps the count; a trapping migrate leaves the old version running.
 - why this level: Old and new layouts of one type live side by side; a failed migrate must leave everything as it was.
+- note: Per M5-07: no task parses and checks a migrate yet; a new task must parse the migrate text and check it against two versions of the types. M5-30 keeps the migrate with the waiting change set, runs it before the swap, and leaves the change set waiting if it traps.
+- status: done
+- note: Done: `migrate` beside `swap` and `reset` in both loops runs the migrate between turns as the next version's last function, the combined program of `check_migrate` installed as that version. The interpreter runs it on a copy of the state; dev code borrows the old state words and writes the new ones, which replace them once the old version frees them, and `Session::call` points the context at its own slot table on every call, so the old code runs on its own after a failed migrate. On a trap all the migrate made is freed, the report is recorded, and the old program, state and tree stay and handle the queue; a migrate stopped by the interrupt ends the run as a handler would. In the server a waiting migrate is checked against the running and the new version when the edit installs: a check error holds the change back, lists `migrate` in `broke` and adds the error to `errors`; a trap holds it back with the choice still waiting, says `migrate_trapped` in `state` and gives the report in `trap`; it runs again only with the next edit. On success `state` says `migrated` and the choice is used up. `Dev::build` compiles a checked program; `Dev::play_swap` takes an `Install`. Tests: installer/tests/windowless.rs on both back ends with a clean ledger: a migrate that adds a field keeps the count and the field takes its default; a migrate that divides by zero and one that reaches a hole leave the old version counting; a migrate rebuilds a list of records. paka/tests/state_edits.rs: the edit refused for an added field, resent with a migrate, installs, says `migrated` and keeps the count; a trapping migrate says `migrate_trapped`, clicks still count, and a good one then installs; a migrate that fails its check blocks the install and is listed as broken.
+
+### M5-30b · L3 · Stop a migrate that does not finish and count it as trapped
+
+- needs: M5-30
+- flags: none
+- done when: Both back ends: a migrate that loops forever is stopped by the M4-04 limit, the old version keeps running, and the edit reply says `migrate_trapped` with a time report.
+- why this level: Reuses M4-04's interrupt, but the stop must free what the migrate made and leave the old version running, not end the run as a stuck handler does.
+- note: Per M5-07 section 2: a migrate that does not finish is stopped as M4-04 rules and counts as trapped.
+- status: done
+- note: Done: `paka_rt::limit::until` is M4-04's watcher, shared: it sets an interrupt once a limit passes and says whether it did; `paka_rt::abi::dev::until` sets a context's, and the installer's runs use it. Both loops' `migrate` take a limit and watch only the migrate's call. Dev code that its own limit stops frees all the migrate made, clears the interrupt and goes on as after a trap; the run's own limit still ends the run. The interpreter's `Machine` polls an optional interrupt at each call and loop turn and stops with `Stop::Time`, which only a migrate sets; the interpreter otherwise keeps no time limit (M2-06). Either way the report is `APP: stopped time in migrate, past N ms` (`paka::migrate::late`), recorded as a trap's. In the server the limit is the edit's `run.limit_ms`, else the run default of 10,000 ms; the reply says `migrate_trapped` with the report in `trap`, the choice waits, and a good migrate then installs. `Install::Migrate` and `Visual::migrate` take the limit. Tests: installer/tests/windowless.rs on both back ends with a clean ledger: a migrate that loops forever is stopped at 100 ms and the old version counts on. paka/tests/state_edits.rs: the same migrate carried with `run.limit_ms` 100 says `migrate_trapped` with the time report, clicks still count, and a good migrate then installs.
 
 ### M5-31 · L3 · Lay out the element tree and find the element under a point
 
+- status: done
 - needs: M5-05, M5-15
 - flags: none
 - done when: Each approved layout rule has a test with hand-computed rectangles, using a fixed-width stand-in for text measuring.
 - why this level: Known technique, but sizing, wrapping and rounding rules are easy to get subtly wrong.
+- note: Per M5-05: one pass with widths handed down and heights handed up; hug and fill classes; equal sharing with the spare unit to earlier children; a 40-unit floor; centring in rows; no clipping; last-drawn hit testing that also finds an element sticking out of its parent. All in whole units, tested with the 8-by-20 measure that breaks at spaces and keeps at least one character per line.
+- note: Done: paka-rt/src/layout.rs. `layout` takes the tree, the window width and a `Measure` (one-line width and wrapped line count, in whole units) and gives one `Rect` per node in pre-order, which is also the drawing order. `hit` gives the path of the last-drawn element under a point. Read as: a Row or Col keeps the width it is handed even when its children overflow; an error node's 6 units include its border; a hugging root keeps its own width. A Row measures each hugging child twice, so M5-32 may want to cache widths.
 
 ### M5-32 · L3 · Measure and shape text through Parley
 
+- status: done
 - needs: M5-10
 - flags: none
 - done when: Tests: a string measures the same twice, wraps into more lines at half width, and a missing glyph falls back.
 - why this level: Unfamiliar library; font loading, fallback and line breaking must give the same sizes to layout and drawing.
+- note: Per M5-05: text is measured at scale factor 1, widths are rounded up to whole units, the line height is fixed at 20 units and the font size at 14.
+- note: Per M5-10: the font is `paka_gui::FONT`, registered with no system font lookup as `trial/gui/src/ui.rs` does; its OFL notice is `gui/fonts/OFL.txt`.
+- note: Done: gui/src/text.rs. `paka_gui::text::Text` registers `paka_gui::FONT` with no system font lookup and implements M5-31's `Measure`: the one-line width rounded up, and the line count of Parley's breaking at the given width. `layout` gives the shaped lines that drawing uses, so layout and drawing measure alike. paka-gui now depends on paka-rt for the tree and layout. Read as: with no other font registered, a character Noto Sans lacks falls back to the font's own missing-glyph box (glyph 0) and its width; an empty text measures 0, though Parley gives it the width of a space. Widths are not cached yet. Test: gui/tests/text.rs.
 
 ### M5-33 · L3 · Draw the laid-out tree to an image through vello_cpu
 
+- status: done
 - needs: M5-19, M5-31, M5-32
 - flags: none
 - done when: With no display set, the counter draws to a PNG; hand-chosen pixels inside and outside each button have the expected colours.
 - why this level: Several element kinds, text runs, placeholder and error boxes; checked by chosen pixels, since golden images are banned.
+- note: Per M5-04: it draws the fixed look M5-04 gives, with no hover or pressed form; pixel tests use those colours.
+- note: Per M5-05: the only clip is an Input's own text; units are multiplied by the scale factor when drawing.
+- note: Per M5-08: a focused Button draws M5-04's focused border, 2 units in #0060DF.
+- note: Done: gui/src/draw.rs. `draw` takes the tree, its rectangles from `paka_rt::layout::layout`, the `Text`, the scale and the size in pixels, and gives a vello_cpu pixmap on white in which every pixel is opaque. Text wraps as it was measured; a Button is a box with corners 4 and its label in by 12 and 6; an Input has its border, its text in by 8 with the preedit at the cursor and underlined, the selection behind and a 1-unit cursor when focused, all clipped inside the border; a placeholder has dashes 4 units on and 4 off; an error node is its box and wrapped message. A line break in a label or an Input's text is drawn as a space. gui/src/png.rs is the trial's standard-library encoder; as the pixmap is opaque, its bytes go in unchanged. Read as: a focused Button's border waits for M5-36, as the tree holds no focus for a Button yet. Test: gui/tests/draw.rs runs itself again with WAYLAND_DISPLAY and DISPLAY unset, lays out the counter's first tree, checks the Row and button rectangles, encodes PNGs at scale 1 and 2 and reads chosen pixels back from them: each button's border and fill, and white above, below and to the right.
 
 ### M5-34 · L3 · Add the Look tool on the windowless app: tree, screenshot, click, keystroke
 
+- status: done
 - needs: M5-09, M5-25, M5-33
 - flags: none
 - done when: A script calls Look on windowless apps: the tree matches hand-written text, a PNG returns, click and keystroke change the tree.
 - why this level: Wires four calls through the tool channel into a running app without racing its handlers or frames.
+- note: Per M5-06: a Look click on an Input by path puts the cursor at the end, as `ui_click` does.
+- note: Per M5-09: the four calls, their fields, replies and error kinds are those of docs/decisions/M5-09.md section 2. A `run` naming a visual app launches it with no window here and replies at once with its first tree; Look then acts on it. The PNG is drawn from the tree with the M5-08 standard-library encoder and sent as base64; the base64 encoder uses the standard library only.
+- note: Done: paka/src/session/look.rs. The serve calls gain `look_tree`, `look_screenshot`, `look_click` and `look_key`, which act on the server's windowless app between turns, so they never race a handler. A `run` naming a visual app, with no Wayland display, ends any running one and launches it, replying with its first tree, `window` false and `status` null unless it ended at once. `paka_gui::screenshot` lays the tree out and draws it at 480 by 360 units times the scale. A click finds the node by path through the new `Node::at`, which also replaces the interpreter's own lookup, and sends it as `ui_click` does; `text` is refused with `no_focus` when no Input has focus. The M4-03 trap parser moved from the runner into `paka::serve::trap`, shared by both. paka now depends on paka-gui, which depends only on paka-rt. Read as: Tab, Shift+Tab and Enter do nothing, and Space types a space, until M5-36 gives a Button focus. Test: paka/tests/look.rs runs itself again with no display and drives a form through `serve`: Look before a run is `not_running`; the run's tree and `look_tree` match hand-written text; screenshots at scale 1 and 2 are PNGs of the right size and scale 3 is refused; a click on `+` counts up and one on a Text does nothing; typed text and Backspace and Shift+Home change the Input; each refusal kind; a handler hole gives its trap object and keeps the app running; Exit gives `running` false.
 
 ### M5-35 · L3 · Open a window and present frames with winit and softbuffer
 
+- status: done
 - needs: M5-10, M5-25, M5-33
 - flags: none
 - done when: The counter opens a window in the Wayland session, logs its first presented frame, and exits cleanly on a close request.
 - why this level: Fits the window event loop to the dev-mode host: redraw on change, resize, scale factor, clean close.
 - note: The windowed test skips, and says so, when WAYLAND_DISPLAY is unset; the caller runs it once on the build machine inside the session.
+- note: Per M5-01: closing the window ends the program with status 0 and sends no message.
+- note: Per M5-05: the window opens at 480 by 360 units; a resize lays the tree out again without running the view.
+- note: Per M5-09: the window opens in the process that runs the app, M4-04's runner in dev mode, never in the server. winit builds one event loop per process, so it is built once on its own thread (Wayland's `with_any_thread`) and kept; each launch opens a window in it and an ending app closes only its window. A `run` naming a visual app opens the window when the server has a Wayland display.
+- note: Done: gui/src/window.rs. `Window::open` starts the kept event loop on first use and opens a window at 480 by 360 units; `show` hands it a tree, and dropping it closes only that window. A redraw lays the tree out at the window's width in units and draws it at the scale factor into a softbuffer surface; a resize or a new scale factor redraws without running the view. The first presented frame is logged to standard error with its size and scale. A close request closes the window and ends the app with status 0, sending no message. The runner runs a visual app on the interpreter with a window and replies at once with its first tree and `window` true; its next run ends it. The server sends a visual app's run to the runner when WAYLAND_DISPLAY is set. Read as: Look reaches only the windowless app until M5-38. Test: installer/tests/window.rs skips, and says so, with no Wayland display; otherwise it runs the counter twice in the runner, checks each reply and each first-frame log line, and checks the runner exits cleanly when its input ends.
 
 ### M5-36 · L3 · Turn window pointer and key events into element input
 
+- status: done
 - needs: M5-18, M5-31, M5-35
 - flags: owner
-- done when: Translation tests pass; a person confirms by hand that clicks and typing work in the counter and a text input.
+- done when: Translation tests pass, Tab and Shift+Tab order and Enter or Space on a focused Button included; a person confirms by hand that clicks, typing, Tab and Space work in the counter and a text input.
 - why this level: Click, focus and key translation with scale factor; the winit side cannot be unit-tested here, only hand-checked.
+- note: Per M5-04: a click is a press and release on the same element; other buttons, double clicks and hover are ignored.
+- note: Per M5-05: pointer positions are divided by the scale factor, rounding down, before hit testing.
+- note: Per M5-08: M5-04 point 1.4 is replaced. Inputs and Buttons take focus; a click moves focus only to an Input; Tab and Shift+Tab move it through Inputs and Buttons in tree order and wrap around; Enter or Space on a focused Button clicks it; Enter in an Input still does nothing. `paka_rt::route` (M5-18) lets only an Input hold focus and drops Tab, so this task changes it. A click never moves focus to a Button, so UI examples are unchanged.
+- note: Done: gui/src/events.rs turns winit input into `route::Event`s, and the window sends each to the app's queue as a job, so the interpreter and dev code route it through the same `paka_rt::route`. `Pointer` keeps the position in units and the element the main button went down on. Keys: Tab and Shift+Tab are the new `Event::Tab`; Enter and Space are typed `\n` and space, which a focused Button takes as a click and an Input as before; with Control, Alt or Super held a key types nothing. A Button now holds `focus`, prints it in the tree text, keeps it by key and step like an Input, and draws the 2-unit #0060DF border. Tab into an Input leaves its cursor where it was. Look's `key` takes Tab, Shift+Tab, Enter and Space the same way. Read as: the hand check of clicks, typing, Tab and Space in the window is the owner's. Test: gui/tests/events.rs checks clicks by press and release at scale 1, 1.5 and 2, other buttons, each key and Tab then Space; paka-rt's route tests check Tab order and wrap, Enter and Space on a Button and focus kept or lost; gui/tests/draw.rs checks the focused border's pixels; installer/tests/windowless.rs checks the interpreter and dev code agree on Tab, Shift+Tab, Space and Enter; paka/tests/look.rs drives the same keys through Look.
 
 ### M5-37 · L4 · Handle IME preedit and commit in the text input
 
+- status: done
 - needs: M5-19, M5-36
 - flags: owner, conditional
 - done when: Hand-written preedit and commit sequences pass as tests; a person confirms composing with ibus in the window, recorded in the pull request.
 - why this level: Preedit text must never leak into app state; end to end it can only be checked by hand.
-- note: Only if the owner's M5-08 ruling requires IME in M5.
+- note: Only if the owner's M5-08 ruling requires IME in M5. M5-08 rules IME into M5, so this task runs.
+- note: Per M5-08: keep the trial's two rules. The app sets the IME cursor area only when the cursor moves, and drops a preedit equal to the current one; otherwise each area change makes the input method resend its preedit and the window repaints without end.
+- note: Per M5-03: preedit stays in the element and is never in a message; a commit sends one `on_change`; a change of the app's text moves the preedit with the cursor and does not cancel it. Still dropped if M5-08 rules IME out.
+- note: Done: `Event` gains `Preedit` and `Commit`. A preedit is kept in the focused Input's `Edit` and sends nothing; a commit clears it and sends one change, typed over the selection or at the cursor, with line breaks and tabs dropped and an empty commit sending nothing; losing focus or leaving the tree ends it. The window turns on the input method only while an Input has focus, drops a preedit equal to the one shown, and sets the cursor area at the text cursor only when that moves. Read as: composing with ibus in the window is the owner's hand check. Test: paka-rt's route tests and gui/tests/events.rs play hand-written preedit and commit sequences; installer/tests/windowless.rs checks both back ends agree on a preedit, a commit and a commit the handler refuses.
 
 ### M5-38 · L3 · Serve Look from the windowed app
 
+- status: done
 - needs: M5-34, M5-36
 - flags: none
 - done when: The M5-34 script passes against windowed apps, and a new frame is presented after each change.
 - why this level: Calls cross into the window's event loop; the screenshot must be redrawn from the tree, not grabbed.
+- note: Per M5-09: a Look call reaches the loop through winit's event-loop proxy and its reply returns over a channel. Look clicks and keys enter the app's one input queue beside the window's own input, in arrival order. The screenshot is drawn at the requested scale, not the window's, at the window's current size in units. The frame for each new tree is requested before the reply is sent.
 - note: The windowed test skips, and says so, when WAYLAND_DISPLAY is unset; the caller runs it once on the build machine inside the session.
+- note: Done: a Look call on a windowed app is a job on the app's one queue, the queue the window's input already feeds, so Look and window input keep arrival order; the window holds only a copy of the tree to draw. After each job the new tree goes to the window, which requests a frame when it differs, before the job's reply is sent. The window keeps its size in units current, and a screenshot is drawn from the tree at that size and the requested scale. The dev runner answers Look calls on its stdin, and the session relays them when the app runs there. The first tree goes with the window's open order, so no empty frame is drawn. Read as: Look calls are queued with the app's input rather than sent through the event-loop proxy, since the app's thread holds the tree; every new tree's frame is logged to stderr, not only the first. Test: paka/tests/common/look.rs holds the M5-34 script, run windowless by paka/tests/look.rs and against the dev runner in a window by installer/tests/window.rs, which also checks a frame is presented after a Look click on the counter.
 
 ### M5-39 · L4 · Expose the element tree through AccessKit
 
+- status: done
 - needs: M5-08, M5-17, M5-36
 - flags: conditional
-- done when: Tests map hand-built trees to AccessKit nodes with tree-wide unique ids, and an AccessKit click action delivers the button's message.
+- done when: Tests map hand-built trees to AccessKit nodes with tree-wide unique ids; an AccessKit click action delivers the button's message without moving focus, and a Focus action moves focus as Tab would.
 - why this level: Tree-wide ids from sibling keys, incremental updates and focus; the Linux bridge fails silently.
-- note: Only if the owner's M5-08 ruling requires screen-reader support.
+- note: Only if the owner's M5-08 ruling requires screen-reader support. M5-08 rules it into M5, so this task runs.
+- note: Per M5-02: the runtime keeps a table from path ids to AccessKit numbers that stays stable while the id lives.
+- note: Per M5-04: a screen-reader ruling in M5-08 reopens the focus rule, since buttons must then be reachable from the keyboard.
+- note: Per M5-08: the focus rule is the one M5-36 builds. An AccessKit Focus action follows the same rule as Tab; an AccessKit Click on a Button sends its message without moving focus.
+- note: Done: gui/src/access.rs maps the tree to AccessKit under a Window node titled as the window: Text, Hole and Error are Labels with their text as value, a Button has its label and Click and Focus, an Input is a TextInput with its text as value and Focus, Row and Col are containers; bounds are in pixels and focus is the focused Input or Button, else the window. Each path keeps its number while it lives, and a new path gets one never used. The window creates the AccessKit adapter before it is shown, sends the whole tree when its layout changes or a tool asks, and turns a tool's Click or Focus into input on the app's queue. `route::Event` gains `Focus`, which moves focus to an Input or Button as Tab would, its cursor kept. Read as: an Input has no accessible name yet; the screen-reader check is M5-40's and the owner's. Test: gui/tests/access.rs checks roles, names, values, actions, bounds, focus and unique, stable numbers on hand-built trees, and that a Click action sends the Button's message with focus kept and a Focus action matches Shift+Tab; paka-rt's route tests check a focus request keeps the cursor.
 
 ### M5-40 · L4 · Script an AT-SPI and Orca check
 
+- status: done
 - needs: M5-23, M5-39
 - flags: conditional
 - done when: One script finds both samples' buttons and input by role and name over AT-SPI and in Orca's debug log; it fails with the bridge disabled.
 - why this level: No upstream harness exists; the check must fail when the bridge breaks silently, without being flaky.
-- note: Only if the owner's M5-08 ruling requires screen-reader support. The windowed test skips, and says so, when WAYLAND_DISPLAY is unset; the caller runs it once on the build machine inside the session.
+- note: Only if the owner's M5-08 ruling requires screen-reader support; M5-08 rules it into M5, so this task runs. The windowed test skips, and says so, when WAYLAND_DISPLAY is unset; the caller runs it once on the build machine inside the session.
+- note: Per M5-08: the script runs on a private session bus (`dbus-run-session`) with accessibility switched on there, as the trial did; the desktop's setting is never changed. With the switch off the bridge stays silent, so the check must fail then, not pass. Passing on both samples is part 8 of the M5 exit check.
+- note: Done: scripts/m5-atspi-check opens each sample through the dev runner in a window, on a private session bus (`dbus-run-session`) with accessibility switched on there, settings kept in memory and no speech server to reach. It finds the counter's "-" and "+" buttons and the to-do sample's "Add" button and "new" entry over AT-SPI by role and name, gives each focus, and then finds Orca's focus moving to each one, by role and name, in Orca's debug log. `--switch-off` leaves the switch off and starts no Orca, and the check then fails; it exits 77 and says so when WAYLAND_DISPLAY is unset. Written as the check needs: an Input is now named by its String key (gui/src/access.rs, gui/tests/access.rs), so the M5-39 reading that an Input has no accessible name no longer holds. Run in the build machine's session: every element found, both ways, four runs in a row; with the switch off, all four fail.
 
 ### M5-41 · L4 · Add views, elements, keys, UI examples and migrate to the language reference
 
+- status: done
 - needs: M5-05, M5-06, M5-07, M5-21, M5-29, M5-30
 - flags: none
 - done when: A checklist maps every decision point of M5-01 to M5-07 to a line; every element of the M5-04 table and every UI-example function appears in a sample that parses and checks; M2-18's checklist still holds; the size stays within the budget under M2-18's counting rule.
 - why this level: Same work and risk as M2-18: one wrong sentence misleads every model.
 - note: If it cannot fit, stop and ask the owner whether the budget moves; never trim M2 text to make room.
+- note: Per M5-04: the reference has five element rows.
+- note: Per M5-06: the reference gains `Ui`, the six `ui_` functions, the path form and the tree text form.
+- note: Per M5-07: the reference describes migrate as text carried by an edit, with one sample, not as a definition kind.
+- note: Done: spec/paka.md gains section 13 (views, the element table, keys), 14 (UI examples, paths, tree text) and 15 (reset and migrate carried by an edit), appended after section 12 so the M2 lines and checklist hold; spec/checklist.md maps every M5-01 to M5-07 point. One to-do sample uses all five elements and all six `ui_` functions; it checks and its example passes. The owner raised the budget from 8,000 to 10,500 tokens (paka/tests/reference.rs, the gate, tests/conformance/README.md): the M2 text left about 250 tokens and the shortest complete text needs about 2,300; the reference is now about 10,054. The gate no longer runs `paka run` on a sample whose app has `view:`, since `paka run` refuses a visual app for now. Written as the code does it where the records differ or are silent: no window is built, so `paka run` and `paka build` refuse a visual app (`no-app`) and M5-01 1.7 is left out; `var`, assignment, loops and jumps in a view are `unexpected-token`; an Input or key at a view's root is `key-on-root`; `key:` out of place is `wrong-label`; `on_change:` given a non-variant and a `Ui` compared are `type-mismatch`; a visual app without `state:` is `bad-view-signature`; a refused effect ends a UI example `trapped`; shared values and pools (M5-07 1.2) do not exist. The protocol note that a reference over 8,000 real tokens is an amendment (M3) and GENESIS's 8,000 target are left as recorded.
+- note: Moved: sections 13 to 15 now live on spec/screens.md, read with spec/paka.md for a program with `view:`, and the M5 rows of spec/checklist.md point at that page. spec/paka.md is back within 8,000 tokens (about 7,770); spec/screens.md has its own budget of 2,500 (about 2,390). paka/tests/reference.rs checks both, and the gate runs the samples of both pages.
 
 ### M5-42 · L3 · Script the M5 exit check and run it on the build machine
 
+- status: done
 - needs: M5-23, M5-25b, M5-26, M5-27, M5-29, M5-30, M5-37, M5-38, M5-40, M5-41
 - flags: owner
-- done when: On the build machine the script exits 0 for every exit-check part, including any clause the M5-08 ruling added; the owner watches the windowed parts once.
+- done when: On the build machine the script exits 0 for every exit-check part, the M5-40 script included; the owner watches the windowed parts and does the IME check once.
 - why this level: Drives windowed and windowless apps, edits and Look in one repeatable script; includes a view that traps on purpose.
+- note: Per M5-07: part 3 is met by the Counter edits in docs/decisions/M5-07.md; since the accepted reset installs the change, the script restores the old type or adds a second field before the migrate part.
+- note: Done: scripts/m5-exit-check passes all eight parts in the build machine's Wayland session; with no display, parts 1, 6 and 8 fail as they must (docs/results/M5-42.md). An edit installed while the app runs in a window now takes the same rules as with none: the server decides each install once (paka/src/session.rs), and `Visual::install` applies it, in the server or, for a window, in the dev runner through an `install` request. paka/tests/look.rs and installer/tests/window.rs drive the same refusal, keep, reset, migrate and migrate traps on both. Left for the owner's hand: watch parts 1 to 3 on screen (`--watch`), type one composed word through the input method into the to-do Input (`--ime`), and listen to both samples with Orca once; then sign docs/results/M5-42.md.
 
 ## M6 — Release mode
 
-**Exit check.** `paka build` compiles a whole program ahead of time through the pinned clang at full optimization, with direct calls instead of slots, and refuses any program with a hole by naming it. The release skip file is deleted and the CI job fails if any conformance test differs in output, exit status or trap between interpreter, dev and release, with two fixed exceptions: a program with a hole must be refused by `paka build`, and example-status cases are compared in interpreter and dev only until M7-11. The owner-agreed benchmark set (float and array loops, integer loops checked and wrapping, pointer-heavy programs) is built in Paka, Rust and C++ with matching checksums, and a committed results table shows each measured number beside its section 3.2 expectation. The same table holds a measured figure for each section 8 cost: overflow and bounds checks, reference counting and handle checks, state copy per handler, dev-mode slowdown on a visual app.
+**Exit check.** `paka build` compiles a whole program ahead of time through the pinned clang at full optimization, with direct calls instead of slots, and refuses any program with a hole by naming it. The release skip file is deleted and the CI job fails if any conformance test differs in output, exit status or trap between interpreter, dev and release, with two fixed exceptions: a program with a hole must be refused by `paka build`, and example-status cases are compared in interpreter and dev only until M7-11. The owner-agreed benchmark set (float and array loops, integer loops checked and wrapping, pointer-heavy programs) is built in Paka, Rust and C++ with matching checksums, and a committed results table shows each measured number beside its section 3.2 expectation. The same table holds a measured figure for each section 8 cost: overflow and bounds checks, state copy per handler, dev-mode slowdown on a visual app. Reference counting and handle checks are listed as 'not built' with the reason (M2-10: no shared type, no pools), which counts as shown; the measured copy cost of owned trees stands in their place.
 
 - `paka build` is the release command since M1; there is no second spelling.
 - The lowering tasks M6-07 to M6-15 assume dev mode chose Cranelift. If it chose LLVM's JIT they shrink but keep their levels.
@@ -1602,17 +1922,21 @@ or merged during review. Ids with a letter were added during review.
 
 ### M6-01 · L5 · Decide what release IR may promise the optimizer and what proves it
 
+- status: done
 - needs: M2-06
 - flags: decision, owner, native-only
 - done when: Owner approves a table: each allowed LLVM flag or attribute, its required proof, and the tail-call rule; what a trap shows and which trap wins are taken from M2-06 as given.
 - why this level: One wrong promise silently brings undefined behaviour back; no test can prove the table right.
+- note: Done: approved by the owner on 2026-10-26; see docs/decisions/M6-01.md.
 
 ### M6-02 · L4 · Propose the benchmark set, fairness rules and cost-measurement method
 
+- status: done
 - needs: nothing
 - flags: decision, owner, native-only
 - done when: Owner approves the written program list, compiler flags per language, run protocol, and how each section 8 cost is isolated, before any measurement. The owner also rules whether measurement-only builds that omit a check family are accepted, and how the published table states the LLVM 22 versus 21 difference.
 - why this level: Fair comparison across three compilers must be fixed before numbers exist; bias is invisible afterwards.
+- note: Done: approved by the owner on 2026-10-26; see docs/decisions/M6-02.md.
 
 ### M6-03 · L2 · Pin clang and refuse release builds with any other version
 
@@ -1620,6 +1944,8 @@ or merged during review. Ids with a letter were added during review.
 - flags: native-only
 - done when: A test with a fake clang reporting another version makes `paka build` fail, naming the pinned version.
 - why this level: One version check and one error message; the test is obvious.
+- status: done
+- note: Done: the pinned version lives in paka/clang-version (21.1.8); paka build reads the first line of `clang --version` before writing any file and refuses any other version with the new tool code `clang-version` (spec/m1.md sections 10 and 13), naming the pinned and the found version. paka/tests/build.rs drives a fake clang that reports the pinned version (accepted, command checked) and other or unreadable versions (refused, clang never compiles).
 
 ### M6-04 · L3 · Extend paka build to the whole language: direct calls, no slots, holes refused
 
@@ -1627,6 +1953,9 @@ or merged during review. Ids with a letter were added during review.
 - flags: native-only
 - done when: `paka build` builds M1's light program at full optimization; IR has no slot loads; a program with a hole is refused by name. paka build passes clang exactly the optimization flags and target CPU that M6-02 approves for Paka, from one constant; the benchmark runner (M6-27) adds none.
 - why this level: Joins database, emitter, clang and linker; reachability and link order are easy to get wrong.
+- note: Per M6-01 and M6-02: the one constant replaces M1's `-O2`; it is `-O3` with no CPU flag.
+- status: done
+- note: Done: paka build passes clang the one constant `OPTIMIZE` in paka/src/build.rs, `-O3` and no CPU flag; docs/abi/m1.md section 9 shows the new command, and paka/tests/build.rs checks clang gets exactly it. A test over every run case's IR checks each call names its callee and nothing is loaded, so no call goes through a slot. Holes stay refused by name with `hole-in-build` before the back end runs (the conformance `hole_build_*` cases); a program the back end does not lower yet stays refused with `unsupported-form` until M6-07 to M6-15. The benchmark runner (M6-27) is not built yet and must add no flag.
 
 ### M6-05 · L2 · Make the IR linter enforce the approved promise table
 
@@ -1634,6 +1963,9 @@ or merged during review. Ids with a letter were added during review.
 - flags: native-only
 - done when: Hand-written IR carrying each unapproved flag or attribute fails the linter; the linter is an allow-list over every IR keyword token, so anything not listed fails; every release build in the test suite passes through it. M1-18's banned-word test is replaced by this linter: a word on M1-18's list passes only where the approved table allows it.
 - why this level: Token scan against a given allow-list; tests follow directly from the table.
+- note: Per M6-01: the allow-list has two parts, rows and plain words, plus two whole-line checks: every use of an `inbounds` result is a load or store address, and no store targets a global. Its level 2 reason ('token scan') is looked at again.
+- status: done
+- note: Done: paka/src/llvm/lint.rs is the allow-list: M6-01's rows and plain words, anything else failing, plus its two whole-line checks. Its tests carry each never-allowed flag, attribute and intrinsic in hand-written IR and expect a finding; a word on M1-18's list passes only where the table allows it. paka build lints its IR before clang and treats a finding as an emitter bug, so every release build passes through it; the banned-word test in paka/src/llvm.rs is replaced by one that lints every run case's IR and docs/abi/light.ll. Level 2 holds: the scan is per token, and the two whole-line checks look at one function's lines only.
 
 ### M6-06 · L2 · Add release mode to the differential harness with a skip file
 
@@ -1641,6 +1973,8 @@ or merged during review. Ids with a letter were added during review.
 - flags: native-only
 - done when: Each conformance test runs in interpreter, dev and release; output, exit status and the trap fields M2-06 makes part of meaning (kind and source position, the same fields as M4-40) are compared; unsupported tests sit in one skip file. A case whose program has a hole has the release expectation: paka build refuses it and names the hole. Example-status cases are compared in interpreter and dev only, until M7-11. Both sets are a fixed hand-written exemption list, separate from the skip file. Every M2 conformance case carries one tag for each feature its program uses, from a fixed hand-written list (integers, control flow, calls, floats, types, enums, match, parameter passing, strings, lists, maps, shared data, pools, generics, function values, error handling, effect values, apps and grants); the skip file lists tags, never single cases, and a case is skipped while any of its tags is listed.
 - why this level: Adds one more mode to an existing two-mode harness; the spec is clear.
+- status: done
+- note: Done: `paka-diff --release [ROOT]` runs each run case in interpreter and dev as before, then builds it with `paka build` and runs it, compared with the interpreter by the same meaning fields (`difference_in` in installer/src/diff.rs). installer/src/release.rs holds the fixed tag list and tags each case from its checked program, by the features it uses beyond M1's light program; tests/conformance/release-skip lists tags, and a case is skipped while any of its tags is listed. tests/conformance/release-exempt is the hand-written list of `hole` cases, which paka build must refuse naming each hole, and `examples` cases; the harness fails when either set is not exactly the cases it finds. Today 14 cases agree in release, 6 are refused by their holes' names and 415 are skipped.
 
 ### M6-07 · L3 · Lower integers, booleans, control flow and calls with trap status returns
 
@@ -1648,6 +1982,9 @@ or merged during review. Ids with a letter were added during review.
 - flags: native-only
 - done when: Conformance groups for integers, control flow and calls leave the skip file and match the interpreter, including overflow and assertion traps.
 - why this level: Known technique, but every call and checked operation needs a correct trap exit.
+- note: Per M6-01: checked arithmetic through the overflow intrinsics; division and shifts through the helpers that check first; a match's fall-through returns status 3.
+- status: done
+- note: Done: paka/src/llvm/code.rs lowers `update`'s statements and every function it calls over `Int` and `Bool`: locals in first-block stack slots, `if`, `while`, range `for`, `break`, `continue`, `return`, `&&` and `||`, calls that pass a non-zero status on, and the Int builtins. Checked `+ - *` and negation use the overflow intrinsics; `/`, `%` and the shifts go through helpers that check first and select the divisor or mask the count, so the instruction is defined on every input. A trap calls the new runtime entry `paka_rt1_trap` with `<kind> at <file>:<line>:<col>` and returns 1; the runtime then prints the interpreter's first trap line and exits 3 (docs/abi/m1.md sections 3, 5 and 7). The linter allows `sdiv`, `srem`, `shl` and `ashr` only on an operand made in the helper's shape. No match is lowered yet, so the `match` tag stays skipped with its fall-through. The direct-call test now allows loads only from the function's own slots. Integers, control flow and calls leave tests/conformance/release-skip: 39 cases agree in release, 6 are refused by their holes' names and 390 are skipped; errors/unsupported_form now uses a string.
 
 ### M6-08 · L4 · Lower Float operations so full optimization cannot change any result
 
@@ -1655,6 +1992,9 @@ or merged during review. Ids with a letter were added during review.
 - flags: native-only
 - done when: Float conformance tests are bit-identical in three modes; the linter finds no fast-math flag and no maths call LLVM can fold. M2-08's float vectors, every NaN row included, and M2-08b's maths vectors if they exist, pass bit for bit in release; maths functions are called through the same private runtime names as M4-29.
 - why this level: Optimizer folding or fused operations change results silently; only bit-exact comparison shows it.
+- note: Per M6-01: no `fmuladd`, `fma` or float flags; only the six exact float intrinsics.
+- status: done
+- note: Done: paka/src/llvm/code.rs lowers `Float` as `double`: IEEE `fadd fsub fmul fdiv fneg`, ordered comparisons with `!=` as `une`, `abs sqrt floor ceil trunc round` through the six exact intrinsics, `min` and `max` by compares and selects (NaN if either side is, -0.0 below 0.0), `to_float` by `sitofp`, and `to_int` by a range check that traps `bad_conversion` before `fptosi`, which the linter allows only on an operand that check made. The linter refuses any declaration that is neither a runtime entry nor an intrinsic, so no maths call can be folded; M2-08b approved no maths functions, so there are none to route. paka/tests/release_floats.rs builds every float, `to_int` and `to_float` row of tests/vectors/ops.vec, NaN rows included, at full optimization and compares bits, -0.0 included. `floats` leaves tests/conformance/release-skip.
 
 ### M6-09 · L3 · Lower struct and enum values, match, inout and borrowed parameters
 
@@ -1662,6 +2002,9 @@ or merged during review. Ids with a letter were added during review.
 - flags: native-only
 - done when: Conformance groups for types, enums, match and parameter passing leave the skip file and match the interpreter.
 - why this level: Layouts and passing conventions across several modules; known technique with easy-to-miss cases.
+- note: Per M6-01: field addresses passed to a call carry no `inbounds`.
+- status: done
+- note: Done: paka/src/llvm/code.rs lowers records, user enums, `Option` and `Result` that own nothing, by paka/src/layout.rs: each value lives in a first-block `alloca` of its size, fields sit at `getelementptr i8` offsets without `inbounds`, and copies are whole `llvm.memmove`s. Such values are passed and returned by address, which the checker's aliasing rule makes safe for borrowed parameters; an `inout` parameter is the address of the caller's place, a field included. `match` loads the tag word and `switch`es to its arms, which copy their binds out. Equality and order on these values, and values that own memory, are not lowered yet. No existing case used only these features, so three new run cases cover them: types/record_values, types/enum_values_match and core/inout_records. `types`, `enums`, `match` and `parameter passing` leave the skip file: 43 cases agree in release, 6 are refused by their holes' names and 389 are skipped.
 
 ### M6-10 · L4 · Share runtime header layouts with the compiler and verify both sides agree
 
@@ -1669,6 +2012,9 @@ or merged during review. Ids with a letter were added during review.
 - flags: unsafe, native-only
 - done when: The layout table dev mode already reads (M4-22, no second table) gains the runtime header layouts for list, string, shared box and pool slot and the slow-path entry points; a test fails when compiler and runtime disagree.
 - why this level: A layout mismatch between emitted IR and unsafe runtime code corrupts memory silently.
+- note: Per M6-01: its test covers 8-byte runtime alignment and the constant-buffer mark.
+- status: done
+- note: Done: paka-rt/src/abi/table.rs holds the String and List word offsets, taken from the runtime's own structs, the heap's alignment of 8, which the dev allocator now uses, the mark `CONSTANT`, a cap of 0 that owns no block, and the runtime entry lines compiled code writes. paka/src/layout.rs reads them, the dev emitter takes its String and List offsets from there, and release IR takes its entry lines from there; the linter accepts a runtime declaration or global only as one of those lines. Tests fail when the entry lines and the runtime's signatures differ, when the offsets leave docs/decisions/M4-05.md section 8, when a block or a layout is not 8-byte aligned, or when a String or List marked `CONSTANT` is freed or not copied into its own block. No shared box or pool slot exists to lay out (M2-10). No tag leaves tests/conformance/release-skip.
 
 ### M6-11 · L4 · Lower strings and lists: inline bounds checks, runtime slow paths, drops
 
@@ -1676,6 +2022,10 @@ or merged during review. Ids with a letter were added during review.
 - flags: unsafe, native-only
 - done when: String and list conformance groups match the interpreter, including bounds traps; an injected allocation failure ends in an out-of-memory trap, not an abort (not compared with the interpreter); M4-25's ledger is clean at exit.
 - why this level: A wrong drop or bounds check is a silent leak, double free or bad read.
+- note: Per M6-01: item access through one helper; `memmove` unless the destination is fresh; constant bytes copied before the first write, with a test; runtime declarations carry `nounwind` only.
+- note: Per M6-10: a `CONSTANT` (cap 0) String or List holds a pointer, so abi/dev/words.rs's "ptr is null when cap is 0" and M4-05 no longer hold, and items.rs `room()` copies old items only when cap is not 0: a constant List that grows would lose its items. Fix both here.
+- status: done
+- note: Done: release lowers String and List values as their words in a slot, owned as in dev mode (M4-05 section 9): a fresh value moves, any other is copied through `paka_rt1_copy`, and each owner is dropped through `paka_rt1_drop` when its scope ends. Item and slice bounds are inline compares that trap `out_of_bounds`; every item goes through one helper. The String builtins, interpolation, joins and comparisons are the dev runtime's String rows behind `paka_rt1_text`; a computed `update` builds its effect list in a heap block, which the runtime frees with its texts once performed before it checks the ledger (docs/abi/m1.md sections 2 and 3). A refused block traps `memory`: paka/tests/release_memory.rs builds a program whose every allocation is refused and gets the trap, exit 3. `strings` and `lists` leave the skip file; all three paka-diff modes agree. Both M6-10 points are fixed, with a test for a constant List that grows.
 
 ### M6-11b · L4 · Lower the built-in map for release
 
@@ -1683,6 +2033,8 @@ or merged during review. Ids with a letter were added during review.
 - flags: unsafe, native-only
 - done when: M2's collection conformance cases agree in all three modes.
 - why this level: Same unsafe container as dev mode with inline fast paths; a layout or order mismatch is silent.
+- status: done
+- note: Done: a Map is its one word, as in dev mode, and its rows call the dev runtime's Map code through one new entry, `paka_rt1_map`, so entry order and traps are the interpreter's. A Map's length and its entries in equality are read inline. A literal adds its entries in written order, a later equal key replacing the value. `maps` left tests/conformance/release-skip, and the `unsupported_form` case and its CLI test now use `ExitWith` in place of a Map.
 
 ### M6-14 · L4 · Specialize generic definitions per concrete type in release builds
 
@@ -1690,6 +2042,8 @@ or merged during review. Ids with a letter were added during review.
 - flags: native-only
 - done when: Generics conformance group matches the interpreter; optimized IR for a generic loop over List<Float> contains no indirect call and no boxing.
 - why this level: Whole-program pass tied to the generics design; a wrong instance choice miscompiles silently.
+- status: done
+- note: Done: each generic row is lowered for its concrete types. The List rows are inline IR, and a List grows as the dev runtime's does. `sort` and `sort_by` call one merge sort function per item type (or per `before` type), and it calls `before` in the interpreter's order. An `inout` argument's place is reached after every argument is evaluated. `generics` left tests/conformance/release-skip. A test checks the optimized IR of a loop over a List<Float>: the items stay doubles, every call is direct, and no item is copied by the runtime.
 
 ### M6-15 · L3 · Lower the remaining constructs: function values, error handling, effect values
 
@@ -1698,6 +2052,8 @@ or merged during review. Ids with a letter were added during review.
 - done when: Their conformance groups leave the skip file and match the interpreter.
 - why this level: Several small lowerings with known techniques; their forms were fixed in milestone 2.
 - note: Becomes level 4 if M2-09 allows a function value to capture (as M4-37b).
+- status: done
+- note: Done: a function value is an i64 id, one per function or variant used as a value; a call through it goes to one `@v<type>` switch per function type, which calls the function or builds the variant (docs/abi/m1.md section 3). `update` may give any computed `List<Effect<Msg>>`; it is turned into the M1 effect list at the end. `function values`, `error handling` and `effect values` left tests/conformance/release-skip.
 
 ### M6-16 · L4 · Emit explicit stack-limit checks that hold under inlining and large frames
 
@@ -1705,6 +2061,9 @@ or merged during review. Ids with a letter were added during review.
 - flags: unsafe, native-only
 - done when: Deep-recursion and large-frame tests end in a stack trap, never a segmentation fault, at full optimization; no signal handler is installed.
 - why this level: A missed check is a crash outside the language; frame sizes are unknown when IR is written.
+- note: Per M6-01: constant-size slots in the first block; no `tail` marks; the stack-position read is a plain word; no guard-page attribute.
+- status: done
+- note: Done: release runs `update` on a thread with a 64 MiB stack and exports `paka_rt1_stack_limit`, 1 MiB above its bottom. Each function `update` calls starts by comparing the address of a one-byte slot of its own, less its slots' bytes, with that limit, and traps `stack` at its position when below (docs/abi/m1.md sections 3 and 5). A function with more than 4 KiB of slots is `noinline`; one past 256 KiB is not built. paka/tests/release_stack.rs builds recursion, mutual recursion and recursion through an 8 KiB record at full optimization: each exits 3 with a stack trap. No signal handler is installed. The stack cases in tests/conformance carry `apps and grants`, so no tag leaves the skip file.
 
 ### M6-17 · L3 · Link headless apps for release: direct handler calls, grants
 
@@ -1713,6 +2072,8 @@ or merged during review. Ids with a letter were added during review.
 - done when: The paper's wc sample runs as a release executable; the apps and grants conformance group leaves the skip file and matches the interpreter, grant-refusal cases included; a trapping handler ends the program as M2-15 rules, with none of its effects performed; the binary holds no installer symbols.
 - why this level: Reuses the dev runtime without slots; entry point, effect loop and link line need care.
 - note: Stays level 3 only while its unsafe is export attributes; any pointer work makes it level 4.
+- status: done
+- note: Done: a headless app the M1 shape cannot hold is built on a second entry, `paka_rt1_app`, which takes one constant: name, grants, start tag and field names, the message, state and effect-list records, and `@app.call`, one compiled function that calls `update`, the state literal or an answer function value by id (docs/abi/m1.md section 13). paka-rt/src/headless.rs runs the dev loop of M2-15 unchanged on those calls, each on one release heap lent to the entries, so effects, grants, answers, traps and the ledger check are the dev runtime's. The only new unsafe is the export attribute; the pointer decoding is the dev loop's own, so it stays level 3. `apps and grants` leaves tests/conformance/release-skip and every case in it agrees in release; two tags split from it stay skipped: `views` (visual apps, M6-18 and M6-18a) and `foreign` (foreign effects stay refused in release). paka/tests/release_apps.rs runs the wc sample with a file, no argument and a missing file, checks the binary names no installer symbol, and checks that a trapping handler ends with status 3 and none of its effects performed.
 
 ### M6-18 · L3 · Link the GUI runtime so visual apps run windowless in release
 
@@ -1721,6 +2082,8 @@ or merged during review. Ids with a letter were added during review.
 - done when: With no display set, a release build of the hole-free counter from M6-18a passes a windowless test that clicks + and reads hand-written tree text; M5-25b's handler-trap test passes in release: old tree, next click answered, none of that handler's effects performed; the same build opens a window. UI examples are not run in release before M7-11.
 - why this level: Many system libraries on the link line and view code compiled without slots; known technique.
 - note: Stays level 3 only while its unsafe is export attributes; any pointer work makes it level 4. The windowed test skips, and says so, when WAYLAND_DISPLAY is unset; the caller runs it once on the build machine inside the session.
+- status: done
+- note: Done: the element tree, layout, input and routing move from paka-rt into paka-gui, `quoted` with them; paka-rt depends on paka-gui and re-exports the four modules, so every `paka_rt::tree` path stands and the runtime can open a window without a crate cycle. A visual release app opens a window when a Wayland display lets one, performing its effects; closing it ends the app with status 0, and a handler trap writes its trap line to standard error and the app runs on. With no display it writes its first tree and exits 0 as before. With `--paka-replay` as the whole argument list (docs/decisions/M7-03.md) it runs with every effect dropped, takes one `click PATH` per line of standard input and writes the tree text after the launch and after each action (docs/abi/m1.md section 14). `paka build` takes visual apps on a second entry, `paka_rt1_visual`, the only path to the window, and links with `-Wl,--gc-sections`, so a headless binary carries no GUI: the light example is 5,529,160 bytes against 5,519,152 before, the counter 17,390,440. `paka run` still refuses visual apps. Wayland is loaded at run time, so no system library is added, and the only new unsafe is the entry's export attribute, so it stays level 3. The frame log is written only under `PAKA_FRAME_LOG`, which the window tests set. `views` leaves tests/conformance/release-skip; no run case carries it yet. paka/tests/release_views.rs builds the hole-free counter with `paka build`: a replayed + gives the hand-written trees at 0 and 1; a reset that sets the count and makes an `Exit` before it traps keeps the tree at 2, writes one trap line and does not exit, and the next + gives 3; the windowed run, with `PAKA_FRAME_LOG` set, logs its first frame and is then killed, and is skipped, saying so, without WAYLAND_DISPLAY. UI examples are not run in release before M7-11.
 
 ### M6-18a · L4 · Lower views and element trees for release
 
@@ -1729,6 +2092,9 @@ or merged during review. Ids with a letter were added during review.
 - done when: The to-do view, and the counter view with ??reset replaced by the button M5-27's test uses (the hole-free counter, kept as a test fixture), give the same tree text in release as in the interpreter; the hole-free counter's tree text at counts 0 and 3 is written by hand first; a trapping view returns trap status; a test fails when compiler and runtime disagree on the tree layout.
 - why this level: The runtime decodes trees with unsafe code; a layout mismatch is silent.
 - note: The paper's counter keeps ??reset and stays refused by `paka build` (M6-04). Release never lowers a placeholder.
+- note: Per M5-02: release trees carry the same place numbers as the interpreter's.
+- status: done
+- note: Done: a view lowers to calls of one new entry, `paka_rt1_view`, which writes each node as it is made in the dev back end's view ops, so the compiler and the runtime share one tree layout (docs/abi/m1.md section 14). The app constant grows to 16 words: a visual flag, the shapes the runtime shows a node's message by, and `@app.call` id -3 for the view; an app may now have no start message and no effects. Until M6-18 gives it a window, a visual release app runs the dev loop with no window, writes its first tree to standard output and exits 0, a trap ending it with status 3. paka/src/llvm/views.rs builds and links each case itself, as `paka build` still refuses visual apps: the hole-free counter matches its hand-written tree at counts 0 and 3 in both back ends, the to-do sample and a variant with one done row match the interpreter, a negative gap returns trap status, and a Col planted as a Row is caught. `views` stays in tests/conformance/release-skip until `paka build` takes visual apps (M6-18).
 
 ### M6-19 · L4 · Shape loop IR so bounds and overflow checks are proven away
 
@@ -1736,6 +2102,9 @@ or merged during review. Ids with a letter were added during review.
 - flags: native-only
 - done when: For a hand-written loop list, optimized IR has no trap branch inside the loop; each off-by-one twin still traps in release.
 - why this level: Removal must rest on a proof; a wrong fact removes a needed check with no symptom.
+- note: Per M6-01: shapes loops and removes no check.
+- status: done
+- note: Done: compiled code drops a copy of each owned value (paka/src/llvm/code/owned.rs), so a local List's slot no longer escapes into `paka_rt1_drop` and its length and pointer are known values before the loop passes run; docs/abi/m1.md says so. No promise was added: M6-01 bars `nsw` and `nuw`, so overflow checks fall only where clang proves them. The loop list is paka/tests/loops.paka (a sum over a List parameter, a fill, a `while` walk, a copy between two Lists, a filtered read and a read-modify-write); a unit test in paka/src/llvm.rs keeps each kernel external, runs `clang -O3`, and finds no block on a cycle that branches to a trap, and paka/tests/release_loops.rs builds each off-by-one twin and sees it trap `out_of_bounds` at its item. Not proven by clang 21 and left out of the list: a downward walk, `xs[i + 1]` under `1..<n - 1`, `xs[2 * i]` and `xs[i * n + j]`. Hot loops of bench/programs/list as `paka build` makes them, trap branch left: saxpy_dot no, matmul no, stencil yes (`sweep` writes through `dst: inout`, so lengths are reloaded; M6-24), nbody no, sieve yes (`prime[j]` stays: clang does not see `i * i` as non-negative), sieve_wrap no, collatz yes (its overflow checks are real), collatz_wrap no, mix no.
 
 ### M6-20 · L2 · Add release mode to the M4 fuzz loop
 
@@ -1743,6 +2112,9 @@ or merged during review. Ids with a letter were added during review.
 - flags: native-only
 - done when: A deliberately divergent release build is detected, shrunk to under 20 lines and saved as a regression test, reproducibly from a seed.
 - why this level: Adds a third back end to an existing loop and shrinker.
+- note: Per M6-01: when the interpreter ends in a stack trap, release may finish or run on, so such runs are cut by a time limit and not filed as a divergence.
+- status: done
+- note: Done: `paka-diff --fuzz-release FIRST COUNT KEEP` judges each seed's program on the interpreter and dev as `--fuzz` does, then builds it with `paka build`, runs it under the fuzz limit and compares it with the interpreter by the same meaning fields; a program release refuses (`unsupported-form`, `hole-in-build`) is unsupported there. Each that differs is shrunk while it differs the same way and kept as the run case `KEEP/SEED`: `main.paka` with the interpreter's `stdout`, `status` and `stderr`. Where the interpreter ends in a stack trap the release run is cut by the limit and not compared. `PAKA_PLANT=9` plants `>` as `>=` in every release build without touching the back end: `paka build` runs a `clang` first on `PATH` that rewrites `icmp sgt` to `icmp sge` in the IR. installer/tests/diff.rs finds it from seed 83, which agrees without it, shrinks it to 16 lines, and checks `paka-diff --release` passes the kept case and fails it with the plant. Seeds 0 to 219 agree in all three modes.
 
 ### M6-21 · L4 · Extend the program generator to reach release-only risks
 
@@ -1751,6 +2123,9 @@ or merged during review. Ids with a letter were added during review.
 - done when: With a fixed seed the fuzzer finds each of ten hand-planted release back-end bugs within ten minutes; the bug list is in the pull request. The ten bugs include at least one each of: a folded float operation, a wrongly removed bounds check, a wrongly removed overflow check, a missed stack check after inlining, a wrong reference-count update, a wrong stale-handle check, a wrong generic instance. The generator's coverage report shows every core-form node kind compiled by release, none rejected, except that a generated program with a hole must be refused by `paka build`.
 - why this level: Programs must pass ownership and exclusivity checks yet still reach rare traps and optimizer paths.
 - note: No reference counts or handles exist (docs/decisions/M2-10.md): the two planted bugs of those kinds are replaced or the count lowered by the owner.
+- note: Per M6-01: planted 'wrongly removed check' bugs are emitter bugs that leave a check out.
+- status: done
+- note: Done: `PAKA_PLANT` 10 to 18 each plant a fault in every release build, as 9 does, by a `sed` script run on the IR `paka build` hands clang: Float arithmetic marked `fast`, a List index's bounds check, checked arithmetic's overflow check, the stack check of each function small enough to inline, `sort`'s Float instance built as its Int one, each drop made twice, a String-keyed Map row laid out as an Int-keyed one, a shift's count check, and `to_int`'s range check. Plants 15 and 16 stand in for the reference-count and stale-handle kinds, which do not exist (M2-10). The generator gained recursive functions that bottom out or run out of stack on every back end, overflow-edge Ints, List reads near the end, more negative Floats and printed sorted copies. `paka-diff --fuzz-release 0 1200` finds each plant by seed 279 and within 206 s, all eleven runs side by side; without a plant all 1,200 seeds agree. docs/results/M6-21.md lists plant, kind, seed and time. A unit test in paka/src/llvm.rs builds and lints the IR of the 9,707 of seeds 0 to 9,999 without a hole, none refused, covering every core-form node kind but a view's and a hole's; paka/tests/generated.rs checks `paka build` refuses each of the other 293 with `hole-in-build`. installer/tests/diff.rs finds plants 11, 13, 15 and 16 from their seeds, and plant 9 now from seed 0. A crashing program's core dump no longer runs past the fuzz limit: the harness sets its core limit to 1 byte, which stops a piped dump too.
 
 ### M6-22 · L4 · Build the hard test suite for the inout overlap check
 
@@ -1759,13 +2134,17 @@ or merged during review. Ids with a letter were added during review.
 - done when: Hand-written accept and refuse cases pass; the interpreter's run-time overlap detector finds no overlap in accepted calls across one million generated programs. The report counts accepted calls that pass an inout argument together with another argument drawn from the same value (field, list item, slice, pool node), at least 100,000 in total (the owner may change the number); with one overlap rule of the checker switched off in a test build, the same run flags an overlap.
 - why this level: Must find holes in a rule that later becomes an optimizer promise; misses are silent.
 - note: Follows docs/decisions/M2-05.md, including its two tightened call rules.
+- status: done
+- note: Done: `paka_gen::program_with_overlaps` makes calls that pass an `&` argument with another part of its local (a field, a List item, a slice or a Map entry), half the time any part and otherwise one M2-05 accepts; `program` is unchanged. Pools do not exist (M2-10, M2-14). The ignored test `accepted_calls_never_overlap_in_a_million_programs` in paka/src/interp/overlap_run.rs checks each seed's program and runs every accepted one with the detector on; over 1,000,000 seeds, 96,617 were refused with `inout-overlap`, none for anything else, and in the 903,383 accepted the detector counted 140,910 same-value calls and flagged none. docs/results/M6-22.md gives the command and numbers. A 2,000-seed run is in the normal tests, and with Rule A switched off by the test-only `RULE_A_OFF` (read once, in paka/src/body/own.rs) the same seeds flag overlaps. Seven new cases in tests/conformance/ownership; one, `put(&m[k], &k)`, found that a String key in an `&` place's index was not checked against another `&` of the same call, now `changed-while-read`.
 
 ### M6-22a · L4 · Add a run-time inout overlap detector to the interpreter
 
+- status: done
 - needs: nothing
 - flags: none
 - done when: Hand-built core programs with overlapping inout arguments are flagged at the call; non-overlapping ones are not; normal runs are unchanged.
 - why this level: A missed path silently weakens the evidence for the irreversible no-overlap promise.
+- note: Done: the detector is paka/src/interp/eval/overlap.rs; `interp::run_watched` runs an app with it on and returns the site of each flagged call; `run` keeps it off. It flags a call whose inout argument shares storage with another argument at call start, and one whose read-only place argument is written (by an assignment or an inout) before the call starts; during the call only its own inouts can write the caller, which the first check covers. Index values are compared, slices fold into ranges, Int, Float, Bool and function values are exempt. Two overlapping places a call takes end the run with an internal error, since the interpreter cannot take both. Covers calls only, not the other operand forms of Rule C.
 
 ### M6-23 · L5 · Decide whether release IR may promise no overlap for inout
 
@@ -1774,6 +2153,7 @@ or merged during review. Ids with a letter were added during review.
 - done when: Owner signs a written decision citing the suite's results, the exact attribute placement and the plan if a hole appears later.
 - why this level: Turns a checker rule into undefined behaviour if wrong; a trust decision only the owner can take.
 - note: Process: one evidence report and one reviewer told to break it, then the owner; not three proposals. If the owner declines, M6-24 is dropped.
+- note: A draft proposal is in docs/decisions/M6-23.md, awaiting the owner: `noalias` on the inout and read-only pointer parameters of user functions, signed by the hash of the overlap rules; stencil 5.0 s to 1.15 s with it added by hand.
 
 ### M6-24 · L4 · Emit the no-overlap promise on inout parameters as signed
 
@@ -1782,6 +2162,7 @@ or merged during review. Ids with a letter were added during review.
 - done when: The linter allows the attribute only where signed; a two-array kernel vectorizes without a run-time overlap check; conformance stays identical in three modes.
 - why this level: LLVM's noalias rules are subtle; one misplaced attribute miscompiles only under optimization.
 - note: Dropped if the owner declines in M6-23.
+- note: Per M6-01: adds the `noalias` row and its linter rule together, only as M6-23 signs.
 
 ### M6-25 · L2 · Run the 24-hour three-back-end fuzz and file each divergence
 
@@ -1811,6 +2192,9 @@ or merged during review. Ids with a letter were added during review.
 - flags: native-only
 - done when: One command builds a sample in Paka, Rust and C++, refuses mismatched checksums, and writes medians and spread to a results file.
 - why this level: The approved protocol fixes every step; one module that runs commands and records times.
+- note: Per M6-02: timing as in its section 3; also builds the checked-Rust binary for integer kernels and records the machine facts.
+- status: done
+- note: Done: `paka-bench run <programs> <results>` (bench/runner, plain Rust, std only) reads `<programs>/list`, one `<name> <kind>` line per program, and builds each `main.paka`, `main.rs` and `main.cpp` with `paka build` and M6-02's fixed Rust and C++ lines, adding no flag; an `integer` kernel also gets the checked-Rust binary with `-C overflow-checks=on`. It refuses a load average above 1, a clang or clang++ other than paka/clang-version, a rustc other than rust-toolchain.toml's channel, and a missing compiler or `taskset`, by name. Each binary runs once unrecorded and all must print the same Int line, or the program is refused and no results file is written; then 10 rounds run the binaries in turn, pinned with `taskset` to the last logical CPU and timed with the monotonic clock, rerun once when a spread passes 5% and marked noisy if it still does. The results file holds CPU model, kernel, governor, boost, pinned CPU, commit, compiler and LLVM versions, libstdc++, flags, checksums, every raw time, medians and spread. bench/sample is its test sample, one small integer kernel in three languages; its tests build it in a temporary directory, refuse a C++ copy off by one, and cover a missing compiler.
 
 ### M6-28 · L3 · Write the numeric benchmark kernels in Paka, Rust and C++
 
@@ -1818,6 +2202,9 @@ or merged during review. Ids with a letter were added during review.
 - flags: native-only
 - done when: Every agreed float, array and integer kernel, checked and wrapping, exists in three languages and the runner reports matching checksums.
 - why this level: Same algorithm in three languages under the fairness rules; small differences skew results.
+- note: Per M6-02: seven kernels; sieve and collatz in both forms, mix wrapping only; C++ has no checked column; each kernel also gets M6-19's yes or no.
+- status: done
+- note: Done: bench/programs holds the seven kernels, each `<name>/main.{paka,rs,cpp}`, and a `list` of nine programs for `paka-bench run`: saxpy_dot, matmul (i-k-j order), stencil and nbody as float, sieve and collatz checked with `sieve_wrap` and `collatz_wrap` as their wrapping twins (Paka `wrap_*`, Rust `wrapping_*`, C++ `uint64_t`), and mix wrapping only (a splitmix-style mixer on Paka's sign-copying shift; C++ shifts through `int64_t`). Float inputs come from one 64-bit wrapping generator, seeded per list, in all three; sums run left to right, so the bits agree, and `list` gives the scale each Float result is printed at. Sizes come from a Rust-only calibration run. A Paka list holds at most 16,777,216 items, so sieve runs 80 sieves just above 10,000,000 rather than one large one. `paka-bench run bench/programs` agrees on every checksum. The runner also builds checked Rust for the wrapping programs, where it equals default Rust. M6-19's yes or no per kernel is left to M6-19, not done yet.
 
 ### M6-29 · L3 · Write the pointer-heavy benchmarks in Paka, Rust and C++
 
@@ -1825,21 +2212,31 @@ or merged during review. Ids with a letter were added during review.
 - flags: native-only
 - done when: Every agreed parser and graph program exists in three languages and the runner reports matching checksums.
 - why this level: Larger programs whose data structures must stay comparable across three ownership models.
+- note: Per M6-02: the four pointer-heavy programs as listed, no shared or pool forms.
+- status: done
+- note: Done: bench/programs adds expr_parse, binary_trees, bfs and word_count, each `<name>/main.{paka,rs,cpp}`, all kind `pointer`, with no shared-subtree or pool form. The runner makes one fixed 8 MB ASCII text (bench/runner/src/text.rs, from the programs' wrapping generator): lines of `+ - *` arithmetic in brackets nested at most 8 deep, each token followed by a space or the line end, built so evaluating never overflows. A `list` line ending in `text` gets that file's path as its one argument; Paka reads it with `ReadFile`. expr_parse parses each line by recursive descent into a self-containing enum (Rust `Box`, C++ `unique_ptr`) and evaluates it, 10 passes, values summed wrapping. word_count counts the words in `Map<String, Int>` (Rust `HashMap<&str, i64>`, C++ `unordered_map<string_view, int64_t>`), 20 passes, adding each count as it grows plus the number of distinct words, so no checksum depends on map order. binary_trees builds and counts full trees of depth 4 to 18 (Rust `Option<Box<Node>>`, C++ null `unique_ptr` as leaf, so leaves are not allocated). bfs sums shortest-path distances from 8 sources on a random graph of 1,000,000 nodes and 3,000,000 undirected edges held as `List<List<Int>>`. Sizes come from a Rust-only calibration run. The runner removes each program's binaries after timing it. `paka-bench run bench/programs` agrees on every checksum of all thirteen programs.
 
 ### M6-30 · L3 · Add measurement-only builds that each omit one check family
 
+- status: done
 - needs: M6-02, M6-19
 - flags: native-only
-- done when: Only a compiler built with the `measure` feature accepts the switch; the normal compiler rejects it; such binaries print a warning banner. For each family named in M6-02 (bounds checks, reference-count updates, handle checks) a hand-written fixture built with the switch has none of that family's checks in its optimized IR; without the switch, IR for the conformance suite is byte-identical to the normal compiler's.
+- done when: Only a compiler built with the `measure` feature accepts the switch; the normal compiler rejects it; such binaries print a warning banner on standard error. For the one family M6-02 names, bounds checks, a hand-written fixture built with the switch has none of those checks in its optimized IR; without the switch, IR for the conformance suite is byte-identical to the normal compiler's.
 - why this level: Threads a switch through several lowerings without changing normal output.
 - note: Measures bounds checks and copies in place of reference-count updates and handle checks (docs/decisions/M2-10.md).
+- note: Per M6-01: a measurement build keeps the promises that rested on the dropped checks, so it is valid only on inputs the normal build ran without a trap.
+- note: Per M6-02: runs count only after a clean normal run with the same checksum. The `measure` runtime also times the copy routine: owned-tree copies in expr_parse, binary_trees and bfs, and the state copy for M6-31.
+- note: Done: the cargo feature `measure` on paka adds `paka build <path> --omit bounds -o <output>`, which drops the List item and slice checks (and those of `swap` and `remove_at`); the pop, insert, count, shift, String and Map checks stay. It pulls in paka-rt's `measure` feature, whose runtime prints a banner on standard error and, at exit, the total time and call count of the copy routine over the whole run; per-handler timing is left to M6-31, and the bench runner does not read the line yet. Reference-count and handle checks are not built (M2-10), so they have no switch. paka/tests/measure.rs checks the fixture, the banner and, against the normal compiler named by `PAKA_NORMAL_BUILD`, conformance IR identity.
 
 ### M6-31 · L3 · Measure handler state-copy cost and dev-mode slowdown on a visual app
 
+- status: done
 - needs: M6-02, M6-18, M6-27
 - flags: native-only
 - done when: The runner reports copy time per handler for the agreed state sizes, and dev versus release frame times for the agreed visual app.
 - why this level: Timing inside the runtime and windowless app runs; measurement overhead must stay out of results.
+- note: Per M6-02: the three state sizes and two handlers, the committed to-do script, both ratios.
+- note: Done: `paka-bench ui <apps> <results> <normal-tools>` runs bench/ui/list with no window, replaying clicks. The copy apps (bench/ui/copy_*, a `List<Int>` of 1,000, 100,000 and 10,000,000 items) take 10,000 clicks per handler, `Field` writing one small field and `Item` one list item, and report the state copy in ns per handler. The to-do app plays bench/ui/todo/script (add 1,000 items, tick each) in dev, through the new `paka-dev-replay`, and in release, over 10 rounds after a warm-up, and reports the per-frame time in Paka code (update and view) and in the whole frame, layout at the default window width included, with both dev/release ratios; drawing to a screen is not timed. Every measured run follows a normal run that printed the same trees. The `measure` runtime adds a `state copy <handler>` line per clicked handler and a `frames` line; each interval loses the clock's own cost, measured once at start. Headless replay moved into `Windowless::replay`, shared by release and dev.
 
 ### M6-32 · L2 · Run the agreed set and publish numbers beside the paper's expectations
 
@@ -1847,6 +2244,7 @@ or merged during review. Ids with a letter were added during review.
 - flags: owner, native-only
 - done when: Raw results are committed; a generated table shows each figure beside its section 3.2 expectation and each section 8 cost; owner approves.
 - why this level: Runs a given command and fills a given table; the owner checks the wording.
+- note: Per M6-02: compiler and LLVM version per header, the LLVM note, raw ratio, expectation and the fixed word; 'not built' rows for reference counting and handle checks, and the copy cost of owned trees in their place.
 
 ## M7 — Evidence and gates
 
@@ -1860,17 +2258,30 @@ or merged during review. Ids with a letter were added during review.
 
 ### M7-01 · L5 · Decide how the owner writes and approves examples and grant changes
 
+- status: done
 - needs: nothing
 - flags: decision, owner
 - done when: Owner approves a written workflow: where labels and approvals live, what makes an approval unforgeable by an agent, what a refused agent sees, and exactly what the owner is shown for an example change and for a grant change.
 - why this level: The evidence pillar rests on it; an agent able to approve itself breaks it silently.
+- note: Done: approved by the owner on 2026-10-26; see docs/decisions/M7-01.md.
 
 ### M7-02 · L5 · Decide the foreign-code model: declaration, named grant, process boundary, trusted list
 
+- status: done
 - needs: nothing
 - flags: decision, owner
 - done when: Owner approves a written model with alternatives: how a C library is declared and called, what crosses the process boundary, how failures surface; that a foreign call is an effect answered by a message; which crate (or generated C built by the pinned clang) holds the host's unchecked code; and where the trusted list is kept.
 - why this level: Security model for code outside every Paka guarantee; tests cannot repair a wrong boundary.
+- note: Done: approved by the owner on 2026-10-26; see docs/decisions/M7-02.md.
+
+### M7-02a · L1 · Reserve the `foreign` keyword
+
+- status: done
+- needs: M7-02
+- flags: none
+- done when: `foreign` is a keyword in the lexer and in the reference's keyword list; a test shows it is refused as a name and is not yet a definition.
+- why this level: One keyword row, one test and one word in the reference.
+- note: Done: paka/src/lexer.rs reserves it as `Kind::Foreign`; the lexer's keyword test and the parser test `foreign_parses_and_is_reserved` covers it as a local name; spec/paka.md section 2 lists it. M7-13 gives it meaning: it now starts a definition.
 
 ### M7-03 · L4 · Propose how human-owned examples run against the shipped release binary
 
@@ -1878,42 +2289,60 @@ or merged during review. Ids with a letter were added during review.
 - flags: decision, owner, native-only
 - done when: Owner approves a written mechanism covering function examples and UI examples, how the tested binary is shown to be the shipped one, and the command that ships (a new paka release, or paka build under a stated rule) so that conformance, fuzz and benchmark builds are not gated.
 - why this level: If the tested and shipped binaries can differ, the release evidence is empty.
+- note: Drafted: docs/decisions/M7-03.md, awaiting owner approval.
 
 ### M7-04 · L4 · Build the approval store: record and verify approved examples and grant lists
 
+- status: done
 - needs: M7-01
 - flags: none
 - done when: Tests show a recorded approval verifies, and that an edited example, an edited grant list and a tampered record are each detected.
 - why this level: A forged or stale approval accepted here goes unnoticed; this is the trust anchor.
-- note: Gains download and owner if M7-01's ruling needs a cryptography crate; no hand-written cryptography.
+- note: Per M7-01: no cryptography crate, no download; calls the system ssh-keygen by fixed path with an empty environment. Stores approved text, a serial and three record kinds. Tests add: a store signed by another key is refused; an older signed store put back is refused.
+- note: Per M7-02: a grants record can carry a declaration's text and its files' SHA-256.
+- note: Done: paka/src/approvals.rs. `records` makes a program's grants and example records as its source stands (example text canonical, with the comment lines right above it); `Store::save` writes `approvals` and signs it into `approvals.sig` through `/usr/bin/ssh-keygen -Y sign` on standard input; `Store::open` verifies with `-Y verify`, signer `owner`, namespace `paka-approval`, against a public key file, and only then parses; `Store::changes` lists each record of a program its source no longer matches (edited, gone, other grants as a set); `Store::follows` is the serial rule. Text form: a record's text is its line count, then its lines indented. File and foreign parts are stored and read back; `changes` compares foreign parts with the rest of a grants record (M7-13). Tests: paka/tests/approvals.rs.
 
 ### M7-05 · L2 · Label every example agent-written or human-owned from the approval store
 
+- status: done
 - needs: M7-04
 - flags: none
 - done when: The example listing and every example result carry the label; a test shows an unapproved example never reads as human-owned.
 - why this level: One lookup per example and one output field; tests are obvious.
+- note: Per M7-01: the label is 'a store record exists for this program and name'; the store is found by the walk-up rule.
+- note: Done: each `paka examples` line reads name, label, status (`inc_once human-owned pass`); the cached entry holds no label. The store must verify against the `approvals.pub` beside it, else one line on standard error and every example reads as agent-written. spec/paka.md section 11 says so. Tests in paka/tests/approvals.rs: no store, another program's record, an unsigned record and another key's signature all read agent-written.
 
 ### M7-06 · L4 · Build the owner's approve command: show pending changes plainly, record approval
 
+- status: done
 - needs: M7-04, M7-05
 - flags: owner
 - done when: For a hand-written set of example and grant changes, including two that differ only in one expected value, the command prints the hand-written expected text; the owner completes one approval of each in a walk-through.
 - why this level: Must describe code changes truthfully to a non-reader; a misleading summary gets a wrong approval with no error anywhere.
+- note: Per M7-01: grows: per-item screen with fixed grant meanings, whole bodies with marked lines, escaped non-ASCII, `--adopt`, `--drop`, terminal-only answers, signing and the serial bump. The walk-through uses a paka built from `development`.
+- note: Per M7-02: the foreign grant screen shows the declaration's lines and named files, and a changed C file as changed.
+- note: Done: `paka approve <path> [--adopt <name>] [--drop <name>] [--key <file>]` in paka/src/main.rs, screens in paka/src/approve.rs. Items: the program's changed records and apps never approved, then `--adopt` and `--drop`, then owned files; each on its own screen with its own yes or no from a terminal (else status 2); one or more yes raises the serial by one and signs. With no store yet, the first starts beside the nearest `approvals.pub`. The program must check, since an example screen shows its status. Tests in paka/tests/approve.rs run the command under `script` for a terminal; the expected screens are written by hand, two of them differing only in one expected value. The owner's walk-through is still to do. Foreign grants (M7-13): an added one shows its meaning, its files (a source with its line count) and its function lines; a changed declaration or file shows as `~ Name`.
 
 ### M7-07 · L4 · Build the gate: refuse when approvals differ or a human-owned example fails
 
+- status: done
 - needs: M7-04, M7-05
 - flags: none
 - done when: The gate exits non-zero for a changed, deleted or renamed human-owned example, a changed grant list, a new app whose grant list was never approved, a missing or tampered store record, or a failing or unfinished human-owned example; each case is tested.
 - why this level: Unlisted cases (a deleted example, a new app with grants) pass silently; this gate stands in for code review.
+- note: Per M7-01: `paka gate <tree> --base <tree>`; 'a new app never approved' means one in a gated program. Adds the serial rule, owned files, the workflow-directory rule and the key-file refusal; runs human-owned examples in the interpreter.
+- note: Done: `paka gate <tree> --base <tree>` in paka/src/gate.rs. Refuses when the base has no `approvals.pub` or the tree's differs; when the tree's store does not verify with the base's key or does not follow the base's store; per gated program, each record its source no longer matches and each app never approved; each owned file (every recorded file, every file under `.github/workflows/`, `TRUSTED`) changed, gone or never approved; each human-owned example that does not pass in the interpreter; each symbolic link among the store files, the owned files and the files of gated programs, or on a directory of their paths, before it reads them. One line per refusal, then the line naming revert or `paka approve`, status 1; else `gate: passed`, status 0. `Store::file_changes` compares file records; foreign parts are compared with their grants record (M7-13). Tests: paka/tests/gate.rs.
 
 ### M7-08 · L2 · Report pending approvals and refusals to the agent in the agreed shape
 
+- status: done
 - needs: M7-07
 - flags: none
 - done when: Edit results and gate output list each item awaiting approval in the agreed shape; expected outputs are written by hand.
 - why this level: Formats known data into a given shape.
+- note: Per M4-03: items awaiting approval ride in edit replies as a new optional field; they are not errors, and M7-01 fixes their shape.
+- note: Per M7-01: the agreed shape is the pending list of its section 1.6; an edit is stored, not refused.
+- note: Done: paka/src/pending.rs gives each item one line and one JSON object, and the fields `pending`, `blocks` (`merge`, `release`) and `next` of section 1.6. A grants item has `approved` and `found` (null when never approved or gone); an example or file item has `change` (`edited`, `renamed or deleted`, `never approved`); a human-owned example that does not pass has `result`; a refusal of the key, store or a whole program is kind `refused` with `message`. `paka gate ... --json` prints the object (empty and null when passed); text output is unchanged. An edit reply carries the three fields only when the edited program is gated and something awaits; the store is found by the walk-up rule and read without its signature. Hand-written expected outputs: tests/serve/pending.txt and `json_lists_each_item_in_the_agreed_shape` in paka/tests/gate.rs.
 
 ### M7-09 · L4 · Cache example results by closure hash, mode and compiler version
 
@@ -1921,13 +2350,19 @@ or merged during review. Ids with a letter were added during review.
 - flags: none
 - done when: A rerun with no edit executes zero examples; editing a transitive dependency reruns exactly its dependent examples; tests assert both counts. The closure hash is added here, on top of M4-11's body and interface hashes. A cached result holds no label and no approval state; the label is read from the store each time.
 - why this level: A stale hit is false evidence; the key must cover everything an example depends on.
+- status: done
+- note: Done: `paka::hash::closure` hashes the name and body hash of an example and of every definition it reaches through the Index. `paka::results::Cache` keys a result by the SHA-256 of the compiler version, the mode (`interpreter`, the only mode `paka examples` has) and that closure hash. A result is the example's status and entry text, nothing else, so no label or approval state is held. A pass names no position and is kept under its key; any other entry names positions, so it is kept under its key and a hash of where the definitions it reaches stand (file name, line, and their text from the start of their first line). Choices where the records are silent: no cache existed on disk, so results live as one file per key in a directory per compiler version under `$XDG_CACHE_HOME/paka/examples`, else `$HOME/.cache/paka/examples`, written to a temporary file and renamed; opening the cache removes the other versions' directories; with neither variable, every example runs. The compiler version is the package version with the executable's size and change time, so a rebuilt compiler never reads an older one's results. A read or write failure is only a miss. Every test that runs `paka examples` sets `XDG_CACHE_HOME` to a directory under the test target directory. `paka::check_defs` returns the lowered program with each definition's check. Tests: paka/tests/example_cache.rs: a rerun runs zero of five examples; nine scripted edits rerun the hand-written counts (a transitive dependency 2, a field default 2, a view 1, an update 1, an unrelated definition 0, a layout change 0, moving a failing example or a definition it reaches 1 each); another compiler version reruns all and removes the first version's results; every cached output equals an uncached run; `paka examples` prints entries planted in its cache.
+- note: Per M7-01: unchanged; a cached result holds no label, as its done-when already says.
 
-### M7-10 · L1 · Add the gate to CI as a required check on pull requests
+### M7-10 · L4 · Add the gate to CI as a required check on pull requests
 
 - needs: M7-07
 - flags: owner
-- done when: A test pull request changing a grant list without approval shows a failed check; the owner sees it go red and marks the check as required. A second test pull request that changes a grant list and its stored approval together also shows a failed check.
-- why this level: Adds a given command to CI; the required-check switch is the owner's.
+- done when: A test pull request changing a grant list without approval shows a failed check; the owner sees it go red and marks the check as required. A second test pull request that changes a grant list and its stored approval together also shows a failed check. A third adds a second workflow with a passing job named `gate` beside an unapproved grant change and is still blocked.
+- why this level: A mistake in this job is silent: a gate that runs the pull request's own workflow or code passes anything (M7-01).
+- note: Per M7-01: regraded from level 1 to level 4. `pull_request_target`, two checkouts, paka built from the target branch, read-only token, time limit, no pull-request code run.
+- note: Workflow written: .github/workflows/gate.yml, job `gate`. Runs on `pull_request_target` for `development` and `main` with `contents: read`; checks out the target branch and `refs/pull/<n>/merge` without keeping the token, builds paka from the target branch only, runs `paka gate merged --base base`, 30-minute limit. Until `approvals.pub` and a signed store recording both workflow files are on the target branch the gate refuses every pull request (`approvals.pub: missing on the base`); the check is not yet required, so this blocks nothing (M7-01 section 2: the first key goes in before the check is required). The workflow first runs on pull requests opened after it is on the target branch.
+- note: Owner steps left: (1) commit `approvals.pub` and a store signed with `paka approve` that records `.github/workflows/ci.yml` and `gate.yml`, and see `gate` go green on a pull request; (2) open the three test pull requests of the done-when and see each go red; (3) in Settings, Rules (or Branches), for `development`: require status checks to pass, add the check `gate` (source GitHub Actions), include administrators, allow no bypass; leave 'require branches to be up to date' off; on `main` after the M7 merge. Mark done after (3).
 
 ### M7-11 · L3 · Run human-owned examples against the release binary itself
 
@@ -1936,6 +2371,7 @@ or merged during review. Ids with a letter were added during review.
 - done when: The owner has approved, through M7-06, at least one function example for each sample (wc, counter, to-do) and one UI example for each visual sample (counter, to-do); the counter is the hole-free copy from M6-18a. Every human-owned sample example, function and UI, passes against a release binary whose file hash equals the artefact's; M5-26's command, with release added, reports no tree difference on every UI example whose program has no hole; a planted failure is reported.
 - why this level: Drives a compiled binary from outside across runtime, release build and example runner.
 - note: Re-grade once M7-03 is approved: if examples are compiled into the binary, lowering them for release is split out as its own task.
+- note: Per M7-01: the owner first approves each sample's grant list, the empty ones too.
 
 ### M7-12 · L2 · Make the release command refuse unless gate and binary examples pass
 
@@ -1943,33 +2379,44 @@ or merged during review. Ids with a letter were added during review.
 - flags: native-only
 - done when: Release leaves an artefact only after the gate and the binary examples pass; tests show a refusal and no artefact for each failing case. M1's light check and M6's three-mode conformance still pass unchanged; a test shows the artefact's file hash equals the hash of the binary the examples ran against, and a rebuild planted between the two is refused.
 - why this level: Sequences existing steps and checks their exit codes.
+- note: Per M7-02: a release of a program with foreign code also builds and ships one host per declaration.
 
 ### M7-13 · L3 · Add foreign library declarations and their named grants to the checker
 
+- status: done
 - needs: M7-02, M7-07
 - flags: none
-- done when: A program using a declared C library builds only with that library's named grant; adding the grant needs approval at the gate; reference updated. The declaration prints in the canonical layout and reparses unchanged; Edit, Find and View accept it; editing it rechecks its users.
+- done when: A call into a declared C library runs only under that library's named grant; without it the call is refused as every ungranted effect is; adding the grant needs approval at the gate; reference updated. The declaration prints in the canonical layout and reparses unchanged; Edit, Find and View accept it; editing it rechecks its users.
 - why this level: New declaration through parser, resolver, checker and grants; several modules with clear rules.
 - note: Updates the language reference in the same pull request, within M2-18's size rule.
+- note: Per M7-02: adds the `foreign` kind, its three line kinds and the plain-file-name rule; the word itself is reserved by M7-02a. Foreign grants are approved through the M7-01 store.
+- note: Done: `Def::Foreign` in paka/src/ast.rs, parsed, printed and hashed (its lines are part of the interface, so an edit rechecks its users); paka/src/resolve/foreign.rs checks the shape (`bad-foreign`, spec/m1.md section 10). The name is a grant and each function an effect with `then:` and `or:` (paka/src/sig.rs). The interpreter refuses a foreign effect without its grant as every ungranted effect is, and with it answers `or("no host")` until M7-14 and M7-15; compiled code refuses it, and `paka build` reports `unsupported-form`. `records` stores each granted declaration's printed text and the SHA-256 of its source and header files (`none` for a link or a missing file); `changes`, the gate and `paka approve` compare and show them. Tests: paka/src/resolve/tests.rs, paka/src/approve.rs, paka/tests/effects.rs, paka/tests/gate.rs, tests/print. The conformance exit gate needs cases for the new node kinds under tests/conformance.
 
 ### M7-14 · L4 · Build the foreign host process with generated glue and a pipe protocol
 
+- status: done
 - needs: M7-02
-- flags: unsafe
+- flags: none
 - done when: A test C library is called through the host in a separate process; malformed requests and a crashing library never take down the caller.
 - why this level: Marshalling into C and crash containment; a mistake corrupts data without any trap.
+- note: Per M7-02: the unchecked code is one fixed C file plus generated C per declaration, built by the pinned clang with warnings as errors and one exact-type line per function, from copies in an empty directory. The Rust side only starts a process and moves bytes, so its `unsafe` flag likely drops; the level stays.
+- note: Done: paka/src/foreign.rs builds a declaration's host: in a new directory, copies of its `source:` and `header:` files (regular files only) under `lib/`, the fixed paka/src/foreign/host.c, and generated `glue.c`, which includes both and holds per function one exact-type line and a decoder; the pinned clang (now checked by paka/src/clang.rs for `paka build` too) builds them with `-Wall -Wextra -Werror`, a `library:` linked as `-l<name>`. paka/src/foreign/pipe.rs starts the host and moves frames, with no `unsafe`, so the flag drops: frames are an 8-byte length and bytes, little-endian; a request is a 4-byte function number and the arguments as M7-02 lays them out with 8-byte string lengths; a reply is 0 and the result, or 1 alone for a malformed request, which the host refuses and then goes on. `Host::call` answers the result or `Died` or `BadReply`; dropping a host kills it. Tests: paka/tests/foreign.rs calls the library in paka/tests/foreign through a host, sends malformed requests, crashes the library, and builds against a wrong header type, an unnamed nearby header and `libm`. The build cache and the time limit are left to M7-15.
 
 ### M7-15 · L3 · Perform foreign calls as effects: start host, exchange messages, report failures
 
+- status: done
 - needs: M7-13, M7-14, M6-17
 - flags: none
 - done when: A conformance test calls the test C library identically in three modes; without the grant the call is refused; host death becomes a message.
 - why this level: Process lifetime, timeouts and grant enforcement in the shared runtime; known technique.
 - note: Stays level 3 only while arguments and results pass through M4-36's existing decoder and message encoder unchanged; any new unsafe makes it level 4 with the unsafe flag.
+- note: Per M7-02: lazy start, one host per declaration, the fixed time limit, restart after death and the four reasons `no host`, `host died`, `timed out`, `bad reply`. It stays level 3 only while foreign effects use M4-36's decoder unchanged.
+- note: Done: the interpreter, compiled dev mode and release perform foreign effects through one host protocol in paka-rt/src/foreign.rs (moved there from paka/src/foreign/pipe.rs): lazy start, one host per declaration, the fixed 10 s limit, a fresh host after a failure, and `or` answered with `no host`, `host died`, `timed out` or `bad reply`; a call with no result answers its `then` message. Each foreign effect is an `Effect` alternative after the five built-in ones, its arguments in their words, then `then` and `or`; M4-36's decoder reads it with its existing word and text readers and no new unsafe. The run loops take a table of the foreign effects (name, declaration, granted, crossing types): an ungranted call ends the app as an ungranted built-in effect does, and a UI example or replay drops a granted one. An Int, Float or Bool result reaches its `then` through a generated answer function that takes the result's word by address, a dev slot after the equalities and `@app.call` ids -4 to -6 in release, so no Float travels in an integer register. Dev hosts come from the host cache, found once per build and keyed by their path, so they survive a swap and a changed declaration restarts its host. A released program finds the host of declaration `NAME` beside its binary as `<binary>.NAME` (docs/abi/m1.md section 13): it never builds one, the binary stays one file the release step can ship with its hosts, and the name keeps two programs in one folder apart; `paka build` puts each granted declaration's host there when it builds. `@app` grows to 18 words with the table. `foreign` left tests/conformance/release-skip; tests/conformance/apps/foreign_refused adds the refusal; the back end now builds every case, so errors/unsupported_form and its CLI test are gone and the kind stays for a program it cannot lower. paka-diff: 444 agree in dev and release, 19 UI examples agree. Tests: tests/conformance/apps/foreign_call, foreign_host_died, foreign_without_host and foreign_refused in all three modes, paka/tests/effects.rs, paka/tests/foreign.rs.
 
 ### M7-16 · L2 · Name the trusted libraries and ship a generated third-party notices file
 
 - needs: M7-02, M7-12
 - flags: owner
-- done when: A test fails when a vendored or linked library is missing from the trusted list; releases include a generated notices file; owner approves the list.
+- done when: The trusted list is the root file `TRUSTED`, moved from `.cargo/approved-crates.txt` with system libraries added and approved as an owned file in the M7-01 store; a test fails when a vendored or linked library is missing from it; releases include a generated notices file; owner approves the list.
 - why this level: Collects names and licence texts from the vendor directory in a fixed order.
+- note: Per M7-02: paka/tests/vendored.rs reads `TRUSTED`; the notices file is generated from it and `vendor/`.

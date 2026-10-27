@@ -1,0 +1,13 @@
+[package]
+name = "paka-installer"
+version = "0.0.0"
+edition = "2024"
+
+[lints.clippy]
+undocumented_unsafe_blocks = "deny"
+
+[dependencies]
+paka = { path = "../paka" }
+paka-gen = { path = "../paka-gen" }
+paka-json = { path = "../json" }
+paka-rt = { path = "../paka-rt" }

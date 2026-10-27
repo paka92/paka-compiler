@@ -1,45 +1,61 @@
 #![deny(clippy::float_arithmetic)]
 
-mod body;
 mod build;
-mod core_form;
-mod interp;
 mod llvm;
-mod lower;
-mod resolve;
-mod sig;
-mod source;
 #[cfg(test)]
 mod vectors;
 
 use core_form::Program;
-use paka::ast::Def;
+use llvm::Checks;
 use paka::diagnostic::Diagnostic;
-use paka::{ast, builtins, diagnostic, parser};
+use paka::results::Cache;
+use paka::serve::serve;
+use paka::session::{self, Runner, Session};
+use paka::{Checked, Hole, approvals, approve, check, check_defs, core_form, diagnostic, gate};
+use paka::{interp, pending, source};
+use paka_json::Value;
 use paka_rt::{Fd1, abi};
 use source::{Source, read};
+use std::collections::BTreeSet;
 use std::ffi::OsStr;
-use std::io::Write;
+use std::fs::{self, TryLockError};
+use std::io::{IsTerminal, Write};
 use std::os::unix::ffi::OsStrExt;
+use std::path::{Path, PathBuf};
 use std::process::ExitCode;
 use std::{env, io};
 
-const USAGE: &str = "usage: paka run <path> [argument...]\n       paka build <path> -o <output>\n       paka check <path> [--json]\n       paka examples <path>\n";
+const USAGE: &str = "usage: paka run <path> [argument...]\n       paka build <path> -o <output>\n       paka check <path> [--json]\n       paka examples <path>\n       paka serve <path>\n       paka approve <path> [--adopt <name>] [--drop <name>] [--key <file>]\n       paka gate <tree> --base <tree> [--json]\n";
 
 fn main() -> ExitCode {
     let args: Vec<_> = env::args_os().skip(1).collect();
     let words: Vec<_> = args.iter().map(|a| a.to_str()).collect();
-    let (file, output) = match words[..] {
-        [Some("run"), _, ..] => (&args[1], None),
-        [Some("build"), _, Some("-o"), _] => (&args[1], Some(&args[3])),
+    let (file, output, checks) = match words[..] {
+        [Some("run"), _, ..] => (&args[1], None, Checks::All),
+        [Some("build"), _, Some("-o"), _] => (&args[1], Some(&args[3]), Checks::All),
+        // A measurement-only build (M6-30), which only a `measure` compiler makes.
+        [
+            Some("build"),
+            _,
+            Some("--omit"),
+            Some("bounds"),
+            Some("-o"),
+            _,
+        ] if cfg!(feature = "measure") => (&args[1], Some(&args[5]), Checks::NoBounds),
         [Some("check"), _] => return check_file(&args[1], false),
         [Some("check"), _, Some("--json")] => return check_file(&args[1], true),
         [Some("examples"), _] => return examples_file(&args[1]),
+        [Some("serve"), _] => return serve_program(&args[1]),
+        [Some("approve"), _, ..] => return approve_program(&args[1], &words[2..]),
+        [Some("gate"), _, Some("--base"), _] => return gate_tree(&args[1], &args[3], false),
+        [Some("gate"), _, Some("--base"), _, Some("--json")] => {
+            return gate_tree(&args[1], &args[3], true);
+        }
         _ => return report(USAGE.as_bytes(), 2),
     };
     let path = &file.to_string_lossy();
     let (source, found) = read_and_check(file);
-    let result = load(path, found).and_then(|(core, holes)| match output {
+    let result = load(path, found, output.is_some()).and_then(|(mut core, holes)| match output {
         None => {
             abi::ignore_signals();
             Ok(interp::run(
@@ -55,7 +71,7 @@ fn main() -> ExitCode {
             }
             Ok(1)
         }
-        Some(output) => build::build(path, &core, output).map(|()| 0),
+        Some(output) => build::build(path, &mut core, output, checks).map(|()| 0),
     });
     match result {
         Ok(status) => ExitCode::from(status),
@@ -70,24 +86,162 @@ fn read_and_check(file: &OsStr) -> (Source, Checked) {
     (source, found)
 }
 
-/// The core form of a checked program that holds an app, and its holes.
-fn load(path: &str, found: Checked) -> Result<(Program, Vec<Hole>), Diagnostic> {
+/// The core form of a checked program that holds an app, headless unless `built`, and its holes.
+fn load(path: &str, found: Checked, built: bool) -> Result<(Program, Vec<Hole>), Diagnostic> {
     let (core, holes, _) = found?;
-    match core.app {
+    match &core.app {
+        Some(app) if app.view.is_some() && !built => {
+            let why = "a visual app is not run from the command line yet";
+            Err(Diagnostic::tool(path, "no-app", why))
+        }
         Some(_) => Ok((core, holes)),
         None => Err(Diagnostic::tool(path, "no-app", "the program has no app")),
     }
 }
 
 /// `paka examples`: the program needs no app, since each example starts with a fresh world.
+/// Results come from the user's example cache when it holds them (M7-09); labels from the
+/// approval store, and a store that does not verify owns nothing (M7-05).
 fn examples_file(file: &OsStr) -> ExitCode {
-    match read_and_check(file) {
-        (_, Ok((core, ..))) => {
+    let (source, read) = read(file);
+    match read.and_then(|()| check_defs(&file.to_string_lossy(), &source)) {
+        Ok(((core, ..), defs)) => {
+            let mut cache = Cache::user(&defs, &source);
             let (mut out, mut err) = (io::stdout().lock(), io::stderr());
-            ExitCode::from(interp::examples(&core, &mut out, &mut err))
+            let owned = approvals::owned(file.as_ref()).unwrap_or_else(|why| {
+                let _ = writeln!(err, "{why}; every example reads as agent-written");
+                BTreeSet::new()
+            });
+            let status = interp::examples(&core, &mut cache, &owned, &mut out, &mut err);
+            ExitCode::from(status)
         }
-        (source, Err(d)) => reject(&source, d),
+        Err(d) => reject(&source, d),
     }
+}
+
+/// `paka serve`: the tool interface on standard input and output (docs/decisions/M4-03.md). A
+/// program that does not parse is not served, and neither is one another server holds.
+fn serve_program(file: &OsStr) -> ExitCode {
+    let (source, read) = read(file);
+    let workspace = read.and_then(|()| session::workspace(&source.text));
+    let workspace = match workspace {
+        Ok(workspace) => workspace,
+        Err(d) => return reject(&source, d),
+    };
+    let path = file.to_string_lossy();
+    let lock = fs::File::open(file).map_err(TryLockError::Error);
+    let lock = match lock.and_then(|f| f.try_lock().map(|()| f)) {
+        Ok(lock) => lock,
+        Err(e) => {
+            let why = match e {
+                TryLockError::WouldBlock => "another server holds this program".into(),
+                TryLockError::Error(e) => e.to_string(),
+            };
+            return reject(&source, Diagnostic::tool(&path, "not-served", why));
+        }
+    };
+    let runner = env::current_exe().map(|exe| exe.with_file_name("paka-runner"));
+    let runner = Runner::new(runner.unwrap_or_else(|_| "paka-runner".into()));
+    let mut session = Session::new(file, &source, workspace, lock, runner);
+    match serve(io::stdin().lock(), io::stdout().lock(), |call| {
+        session.handle(call)
+    }) {
+        Ok(()) => ExitCode::SUCCESS,
+        Err(e) => report(format!("paka serve: {e}\n").as_bytes(), 1),
+    }
+}
+
+/// `paka approve`: each item awaiting the owner on its own screen with its own yes or no, read
+/// from a terminal only; then the store with a higher serial, signed (docs/decisions/M7-01.md).
+fn approve_program(file: &OsStr, flags: &[Option<&str>]) -> ExitCode {
+    let (mut adopt, mut drop, mut key) = (vec![], vec![], None);
+    for pair in flags.chunks(2) {
+        match pair {
+            [Some("--adopt"), Some(name)] => adopt.push(name.to_string()),
+            [Some("--drop"), Some(name)] => drop.push(name.to_string()),
+            [Some("--key"), Some(path)] if key.is_none() => key = Some(PathBuf::from(path)),
+            _ => return report(USAGE.as_bytes(), 2),
+        }
+    }
+    if !io::stdin().is_terminal() {
+        return report(b"paka approve: answers are read from a terminal only\n", 2);
+    }
+    let home = env::var_os("HOME").map(|h| Path::new(&h).join(".config/paka/approval_key"));
+    let Some(key) = key.or(home) else {
+        return report(b"paka approve: no HOME; name the key with --key\n", 2);
+    };
+    let (dir, program, mut store) = match approvals::to_approve(file.as_ref()) {
+        Ok(found) => found,
+        Err(why) => return report(format!("paka approve: {why}\n").as_bytes(), 1),
+    };
+    let (source, read) = read(file);
+    let items = read.and_then(|()| approve::items(&store, &dir, &program, &source, &adopt, &drop));
+    let items = match items {
+        Ok(items) => items,
+        Err(d) => return reject(&source, d),
+    };
+    if items.is_empty() {
+        return report(b"approvals: nothing awaits approval\n", 0);
+    }
+    let count = items.len();
+    let mut answers = io::stdin().lines();
+    let mut approved = 0;
+    for (at, item) in items.into_iter().enumerate() {
+        print!("[{}/{count}] {}", at + 1, item.screen);
+        match yes(&mut answers) {
+            Some(true) => {
+                store.apply(item.change);
+                approved += 1;
+            }
+            Some(false) => {}
+            None => return report(b"paka approve: no answer; nothing is signed\n", 1),
+        }
+    }
+    if approved == 0 {
+        return report(b"approvals: nothing approved, nothing signed\n", 0);
+    }
+    store.serial += 1;
+    match store.save(&dir, &key) {
+        Ok(()) => {
+            println!("approvals: serial {}, signed", store.serial);
+            ExitCode::SUCCESS
+        }
+        Err(why) => report(format!("paka approve: {why}\n").as_bytes(), 1),
+    }
+}
+
+/// Asks until the answer is yes or no; none when the answers end.
+fn yes(answers: &mut impl Iterator<Item = io::Result<String>>) -> Option<bool> {
+    loop {
+        print!("Approve this item? yes / no: ");
+        let _ = io::stdout().flush();
+        match answers.next()?.ok()?.trim() {
+            "yes" => return Some(true),
+            "no" => return Some(false),
+            _ => {}
+        }
+    }
+}
+
+/// `paka gate`: one line per refusal, or the pending list as one JSON object; status 1 when
+/// refused, else 0.
+fn gate_tree(tree: &OsStr, base: &OsStr, json: bool) -> ExitCode {
+    let items = gate::gate(tree.as_ref(), base.as_ref());
+    let mut out = io::stdout().lock();
+    if json {
+        let _ = writeln!(out, "{}", Value::object(pending::fields(&items)));
+    } else if items.is_empty() {
+        let _ = writeln!(out, "gate: passed");
+    } else {
+        for item in &items {
+            let _ = writeln!(out, "{}", item.line());
+        }
+        let _ = writeln!(
+            out,
+            "Revert the change, or ask the owner to run paka approve."
+        );
+    }
+    ExitCode::from(u8::from(!items.is_empty()))
 }
 
 /// `paka check`: the diagnostic `run` would print, or a note per hole and a warning per unused
@@ -112,81 +266,6 @@ fn check_file(file: &OsStr, json: bool) -> ExitCode {
         }
     }
     ExitCode::from(status)
-}
-
-/// A hole in a checked program: `paka check` notes it, `paka build` refuses it unless an example
-/// holds it (M2-06 section 1.5).
-struct Hole {
-    note: Diagnostic,
-    refusal: Option<Diagnostic>,
-}
-
-/// A checked program's core form, its holes and its `unused-name` warnings; or its first error.
-type Checked = Result<(Program, Vec<Hole>, Vec<Diagnostic>), Diagnostic>;
-
-/// Parses and checks a program, then lowers it to the core form. Positions count lines across
-/// the files until `Source::locate` places them.
-fn check(path: &str, source: &Source) -> Checked {
-    let files = source.files.iter().map(|f| (f.bytes.clone(), f.line));
-    let program = parser::parse_files(path, &source.text, files)?;
-    let resolved = resolve::resolve(path, &program)?;
-    let mut table = sig::Table::build(path, &program, &resolved);
-    if let Some(d) = second_app(path, &program) {
-        return Err(d);
-    }
-    let bodies = body::check(path, &program, &resolved, &mut table);
-    if let Some(d) = bodies.defs.iter().flatten().next() {
-        return Err(d.clone());
-    }
-    let files = source
-        .files
-        .iter()
-        .map(|f| (f.name.clone(), f.line))
-        .collect();
-    let core = lower::lower(files, &source.text, &program, &resolved, &table, &bodies);
-    let holes = holes(path, &program, &table, &bodies, &core);
-    Ok((core, holes, resolved.unused))
-}
-
-/// The holes of a checked program, in position order.
-fn holes(
-    path: &str,
-    program: &ast::Program,
-    table: &sig::Table,
-    bodies: &body::Bodies,
-    core: &Program,
-) -> Vec<Hole> {
-    let mut sites: Vec<_> = (core.sites.iter())
-        .filter_map(|s| Some(((s.line, s.col), s.hole.as_deref()?)))
-        .collect();
-    sites.sort();
-    sites.dedup();
-    let hole = |(at, name): (ast::Pos, &str)| {
-        let def = program.defs.iter().rposition(|d| d.name().at <= at);
-        let def = def.expect("a hole stands in a definition");
-        let len = name.len() + 2;
-        let takes =
-            (bodies.types[def].get(&(at, len))).map_or("no value".into(), |&t| table.types.show(t));
-        let note = Diagnostic::new(path, at, len, "hole", format!("??{name} takes {takes}"));
-        let finish = format!("a release build has no holes; finish ??{name}");
-        let refusal = Diagnostic::new(path, at, len, "hole-in-build", finish);
-        Hole {
-            note: note.in_definition(program.defs[def].name().text),
-            refusal: (!matches!(program.defs[def], Def::Example { .. })).then_some(refusal),
-        }
-    };
-    sites.into_iter().map(hole).collect()
-}
-
-fn second_app(path: &str, program: &ast::Program) -> Option<Diagnostic> {
-    let mut apps = program.defs.iter().filter_map(|d| match d {
-        Def::App { name, .. } => Some(name),
-        _ => None,
-    });
-    let second = apps.nth(1)?;
-    let message = "a program holds one app";
-    let d = Diagnostic::new(path, second.at, second.text.len(), "multiple-apps", message);
-    Some(d.in_definition(second.text))
 }
 
 /// Reports `d` in the file it is in, as one line.

@@ -75,6 +75,9 @@ pub(super) fn values<'x>(e: &'x Expr<'x>) -> Vec<&'x Expr<'x>> {
 impl Cx<'_, '_> {
     /// `used` says how the last line counts: as the block's value or as nothing.
     pub(super) fn block(&mut self, b: &Block, used: Use) -> Res<Out> {
+        if let Use::Elements = used {
+            return self.children(b).map(|()| Out::Unit);
+        }
         let mut ended = false;
         for (i, s) in b.stmts.iter().enumerate() {
             if ended {
@@ -265,7 +268,7 @@ impl Cx<'_, '_> {
     }
 
     /// The element type of the list a `for` goes over.
-    fn elements(&mut self, list: &Expr) -> Res<Ty> {
+    pub(super) fn elements(&mut self, list: &Expr) -> Res<Ty> {
         let ty = self.expr_val(list, None)?;
         if self.free(ty) {
             return Err(self.open_value(list, None));

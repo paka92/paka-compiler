@@ -1,8 +1,9 @@
 //! The interpreter on core programs written by hand (docs/core.md): every node, each trap
 //! kind, the call-depth limit, and the effects the handler returns.
 
+use super::effects::Host;
 use super::value::{Entries, Items, Key, Value, equals};
-use super::{on_big_stack, run};
+use super::{Detector, on_big_stack, run, run_watched};
 use crate::builtins::{self, ROWS};
 use crate::core_form::{
     App, Arg, Arith, Arm, Bin, Block, Callee, Cmp, Compound, Effect, Enum, Expr, ExprKind, Field,
@@ -271,12 +272,17 @@ fn program(mut fns: Vec<Func>, mut update: Func) -> Program {
         app: Some(App {
             name: "light".into(),
             state: None,
-            start: 0,
+            start: Some(0),
+            view: None,
             update: fns.len() - 1,
             grants: BTreeSet::from([Grant::Console]),
+            foreign: BTreeSet::new(),
         }),
         fns,
         examples: vec![],
+        ui_examples: vec![],
+        foreign: vec![],
+        libraries: vec![],
         sites,
     }
 }
@@ -1451,4 +1457,190 @@ fn a_failed_standard_error_changes_no_status() {
         }
     }
     assert_eq!(run(&light(true, vec![]), &[], &mut vec![], &mut Broken), 3);
+}
+
+// The overlap detector
+
+/// Call sites the detector tests tell apart.
+const OUTER: usize = 47;
+const INNER: usize = 48;
+
+fn call_at(site: usize, id: usize, args: Vec<Arg>) -> Stmt {
+    Stmt::Expr(e(ExprKind::Call(Callee::Fn(id), args, site)))
+}
+
+fn value(x: Expr) -> Arg {
+    Arg::Value(x)
+}
+
+/// `two(&a, b)`, `both(&a, &b)`, `keep(a, b)`, `bump(&a)`, `busy()`, which writes a local of
+/// its own, and `late(a, &b)`.
+fn detector_fns() -> Vec<Func> {
+    let busy = vec![
+        Stmt::Let(1, list(vec![int(1)])),
+        set(1, vec![item(0)], int(2)),
+    ];
+    vec![
+        func("two", &[true, false], 2, block(vec![], None)),
+        func("both", &[true, true], 2, block(vec![], None)),
+        func("keep", &[false, false], 2, block(vec![], None)),
+        func("bump", &[true], 1, block(vec![], None)),
+        func("busy", &[], 2, block(busy, Some(int(0)))),
+        func("late", &[false, true], 2, block(vec![], None)),
+    ]
+}
+
+/// The detector after `calls` run after `world` and a list of lists in local 5, and what the run
+/// says.
+fn watched(calls: Vec<Stmt>) -> (Detector, Out, Program) {
+    let mut stmts = world();
+    stmts.push(Stmt::Let(
+        5,
+        list((1..4).map(|n| list(vec![int(n)])).collect()),
+    ));
+    stmts.extend(calls);
+    let p = plain(detector_fns(), stmts, at(1, vec![item(0)]));
+    let (mut out, mut err) = (vec![], vec![]);
+    let (status, detector) = run_watched(&p, &[], &mut Host(&mut out), &mut err);
+    let text = |bytes| String::from_utf8(bytes).unwrap();
+    (detector, (text(out), text(err), status), p)
+}
+
+/// The sites flagged in a run that succeeds, and says the same with the detector off.
+fn flagged(calls: Vec<Stmt>) -> Vec<usize> {
+    let (detector, said, p) = watched(calls);
+    assert_eq!(said.1, "");
+    assert_eq!(said, go(&p));
+    detector.flagged
+}
+
+#[test]
+fn an_inout_overlapping_another_argument_is_flagged_at_the_call() {
+    let two = 0;
+    let cases = [
+        call_at(OUTER, two, vec![io(1, vec![]), value(var(1))]),
+        call_at(
+            OUTER,
+            two,
+            vec![io(1, vec![item(1)]), value(at(1, vec![cut(0, 3)]))],
+        ),
+        call_at(OUTER, two, vec![io(3, vec![Step::Field(2)]), value(var(3))]),
+        call_at(
+            OUTER,
+            two,
+            vec![io(5, vec![item(2)]), value(at(5, vec![cut(1, 3), item(1)]))],
+        ),
+    ];
+    for (n, case) in cases.into_iter().enumerate() {
+        assert_eq!(flagged(vec![case]), [OUTER], "case {n}");
+    }
+}
+
+#[test]
+fn two_overlapping_places_a_call_takes_are_flagged_and_end_the_run() {
+    let (both, late) = (1, 5);
+    let cases = [
+        call_at(
+            OUTER,
+            both,
+            vec![
+                io(3, vec![Step::Field(2), item(0)]),
+                io(3, vec![Step::Field(2)]),
+            ],
+        ),
+        call_at(
+            OUTER,
+            both,
+            vec![io(2, vec![key(text("a"))]), io(2, vec![key(text("a"))])],
+        ),
+        call_at(OUTER, late, vec![value(var(1)), io(1, vec![item(0)])]),
+    ];
+    for (n, case) in cases.into_iter().enumerate() {
+        let (detector, said, _) = watched(vec![case]);
+        assert_eq!(detector.flagged, [OUTER], "case {n}");
+        let internal = "light: internal error: a call takes overlapping places\n";
+        assert_eq!(said, (String::new(), internal.into(), 4), "case {n}");
+    }
+}
+
+#[test]
+fn arguments_apart_at_run_time_are_not_flagged() {
+    for case in apart() {
+        assert_eq!(flagged(vec![case]), [] as [usize; 0]);
+    }
+}
+
+#[test]
+fn calls_that_take_two_arguments_from_one_local_are_counted() {
+    let (detector, ..) = watched(apart());
+    assert_eq!(detector.shared, 6);
+}
+
+/// Calls whose arguments are apart, all but one with two from one local.
+fn apart() -> Vec<Stmt> {
+    let (two, both) = (0, 1);
+    vec![
+        call_at(
+            OUTER,
+            two,
+            vec![io(1, vec![item(0)]), value(at(1, vec![cut(1, 3)]))],
+        ),
+        call_at(
+            OUTER,
+            two,
+            vec![io(5, vec![item(0)]), value(at(5, vec![item(1)]))],
+        ),
+        call_at(
+            OUTER,
+            two,
+            vec![io(5, vec![item(0)]), value(at(5, vec![cut(1, 3), item(0)]))],
+        ),
+        call_at(
+            OUTER,
+            two,
+            vec![io(1, vec![item(0)]), value(at(1, vec![item(0)]))],
+        ),
+        call_at(OUTER, two, vec![io(1, vec![]), value(var(5))]),
+        call_at(
+            OUTER,
+            both,
+            vec![io(3, vec![Step::Field(0)]), io(3, vec![Step::Field(2)])],
+        ),
+        call_at(
+            OUTER,
+            both,
+            vec![io(2, vec![key(text("a"))]), io(2, vec![key(text("b"))])],
+        ),
+    ]
+}
+
+#[test]
+fn a_read_only_argument_written_before_the_call_starts_is_flagged() {
+    let (keep, bump) = (2, 3);
+    let bump_xs = e(ExprKind::Call(Callee::Fn(bump), vec![io(1, vec![])], INNER));
+    let by_inout = call_at(OUTER, keep, vec![value(var(1)), value(bump_xs)]);
+    assert_eq!(flagged(vec![by_inout]), [OUTER]);
+    let set_first = block(vec![set(1, vec![item(0)], int(1))], Some(int(0)));
+    let by_assignment = e(ExprKind::If(Box::new(flag(true)), set_first, None));
+    let by_assignment = call_at(
+        OUTER,
+        keep,
+        vec![value(at(1, vec![cut(0, 1)])), value(by_assignment)],
+    );
+    assert_eq!(flagged(vec![by_assignment]), [OUTER]);
+}
+
+#[test]
+fn writes_before_the_read_after_the_call_or_in_another_frame_are_not_flagged() {
+    let (keep, bump, busy) = (2, 3, 4);
+    let bump_xs = e(ExprKind::Call(Callee::Fn(bump), vec![io(1, vec![])], INNER));
+    let busy = e(ExprKind::Call(Callee::Fn(busy), vec![], INNER));
+    let bump_ys = e(ExprKind::Call(Callee::Fn(bump), vec![io(5, vec![])], INNER));
+    let calls = vec![
+        call_at(OUTER, keep, vec![value(bump_xs), value(var(1))]),
+        call_at(OUTER, keep, vec![value(var(1)), value(busy)]),
+        call_at(OUTER, keep, vec![value(var(1)), value(bump_ys)]),
+        set(1, vec![item(0)], int(1)),
+    ];
+    assert_eq!(flagged(calls), [] as [usize; 0]);
 }

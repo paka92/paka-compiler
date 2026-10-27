@@ -1,0 +1,25 @@
+bad_code agent-written trapped at main.paka:8:20
+  trap bad_conversion
+  from_code(55296)
+  in example bad_code
+code_past_end agent-written trapped at main.paka:7:25
+  trap out_of_bounds
+  index 0, length 0
+  in example code_past_end
+in_range agent-written pass
+index_past_end agent-written trapped at main.paka:1:34
+  trap out_of_bounds
+  index 2, length 2
+  in third, called from example index_past_end
+negative_index agent-written trapped at main.paka:4:31
+  trap out_of_bounds
+  index -1, length 3
+  in example negative_index
+slice_past_end agent-written trapped at main.paka:6:31
+  trap out_of_bounds
+  slice 1..<4, length 3
+  in example slice_past_end
+slice_reversed agent-written trapped at main.paka:5:31
+  trap out_of_bounds
+  slice 2..<1, length 3
+  in example slice_reversed

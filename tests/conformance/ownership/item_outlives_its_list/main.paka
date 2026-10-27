@@ -1,0 +1,36 @@
+enum Msg { Start }
+
+fn literal() -> Option<Bool> {
+  [Some(false), Some(true)][0]
+}
+
+fn local() -> Option<Bool> {
+  let xs = [Some(false), Some(true)]
+  xs[0]
+}
+
+fn branch(flag: Bool) -> Option<Bool> {
+  if flag {
+    let xs = [Some(false), Some(true)]
+    xs[0]
+  } else {
+    None
+  }
+}
+
+fn show(x: Option<Bool>) -> String {
+  match x {
+    Some(v) => "{v}"
+    None => "none"
+  }
+}
+
+fn update(msg: Msg) -> List<Effect<Msg>> {
+  [Print("{show(literal())} {show(local())} {show(branch(true))}"), Exit]
+}
+
+app ownership {
+  start: Start
+  update: update
+  grants: [Console]
+}

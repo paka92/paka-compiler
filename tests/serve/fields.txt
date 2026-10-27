@@ -1,0 +1,33 @@
+Served program: tests/cases/run-interp/sample_wc_count. Each call's fields, as M4-03 section 3
+lists them: an unknown field, a missing required one, and each type refused.
+
+> {"v":1,"id":20,"call":"find","nmae":"update"}
+< {"v":1,"id":20,"ok":false,"error":{"kind":"bad_request","message":"find has no field `nmae`"}}
+> {"v":1,"id":1,"call":"find","name":1}
+< {"v":1,"id":1,"ok":false,"error":{"kind":"bad_request","message":"`name` must be a string"}}
+> {"v":1,"id":2,"call":"find","takes":["Int",2]}
+< {"v":1,"id":2,"ok":false,"error":{"kind":"bad_request","message":"`takes` must be a list of strings"}}
+> {"v":1,"id":3,"call":"find","failing":"yes"}
+< {"v":1,"id":3,"ok":false,"error":{"kind":"bad_request","message":"`failing` must be true or false"}}
+> {"v":1,"id":4,"call":"find","budget":-1}
+< {"v":1,"id":4,"ok":false,"error":{"kind":"bad_request","message":"`budget` must be a whole number"}}
+> {"v":1,"id":5,"call":"find","budget":1.5}
+< {"v":1,"id":5,"ok":false,"error":{"kind":"bad_request","message":"`budget` must be a whole number"}}
+> {"v":1,"id":6,"call":"view"}
+< {"v":1,"id":6,"ok":false,"error":{"kind":"bad_request","message":"view needs the field `name`"}}
+> {"v":1,"id":7,"call":"view","name":null}
+< {"v":1,"id":7,"ok":false,"error":{"kind":"bad_request","message":"`name` must be a string"}}
+> {"v":1,"id":8,"call":"edit","name":"x","text":null}
+< {"v":1,"id":8,"ok":false,"error":{"kind":"bad_request","message":"edit needs the field `base`"}}
+> {"v":1,"id":9,"call":"edit","name":"x","base":1,"text":null}
+< {"v":1,"id":9,"ok":false,"error":{"kind":"bad_request","message":"`base` must be a string or null"}}
+> {"v":1,"id":10,"call":"edit","name":"x","base":null,"text":"t","run":[]}
+< {"v":1,"id":10,"ok":false,"error":{"kind":"bad_request","message":"`run` must be an object"}}
+> {"v":1,"id":11,"call":"edit","name":"x","base":null,"text":"t","run":{"app":"wc","limit":1}}
+< {"v":1,"id":11,"ok":false,"error":{"kind":"bad_request","message":"run has no field `limit`"}}
+> {"v":1,"id":12,"call":"edit","name":"x","base":null,"text":"t","run":{"args":[]}}
+< {"v":1,"id":12,"ok":false,"error":{"kind":"bad_request","message":"run needs the field `app`"}}
+> {"v":1,"id":13,"call":"run","app":"wc","args":["a",1]}
+< {"v":1,"id":13,"ok":false,"error":{"kind":"bad_request","message":"`args` must be a list of strings"}}
+> {"v":1,"id":14,"call":"run","app":"wc","limit_ms":"10"}
+< {"v":1,"id":14,"ok":false,"error":{"kind":"bad_request","message":"`limit_ms` must be a whole number"}}

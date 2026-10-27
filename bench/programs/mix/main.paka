@@ -1,0 +1,27 @@
+// A 64-bit mixing generator folded into a running hash. Wrapping arithmetic.
+
+enum Msg { Start }
+
+fn hash(n: Int) -> Int {
+  var s = 1
+  var h = 0
+  for i in 0..<n {
+    s = wrap_add(s, -7046029254386353131)
+    var z = wrap_mul(bit_xor(s, shift_right(s, 30)), -4658895280553007687)
+    z = wrap_mul(bit_xor(z, shift_right(z, 27)), -7723592293110705685)
+    z = bit_xor(z, shift_right(z, 31))
+    h = wrap_mul(bit_xor(h, z), 1099511628211)
+  }
+  h
+}
+
+fn update(msg: Msg) -> List<Effect<Msg>> {
+  let h = hash(1000000000)
+  [Print("{h}"), Exit]
+}
+
+app mix {
+  start: Start
+  update: update
+  grants: [Console]
+}

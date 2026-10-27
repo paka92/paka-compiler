@@ -7,7 +7,7 @@ enum Msg {
 }
 
 // What is known of a file: not read yet, its text, or that it cannot be read.
-enum File { Unknown, Text(text: String), Unreadable }
+enum File { Unknown, Plain(text: String), Unreadable }
 
 // Why a merge stopped: it needs a file not read yet, or it found an error.
 enum Stop { Need(name: String), Error(line: String) }
@@ -57,7 +57,7 @@ fn merge(name: String, text: String, files: Map<String, File>, m: inout Merge) -
       Unreadable => {
         return Err(Error(at + "cannot read {target}"))
       }
-      Text(t) => {
+      Plain(t) => {
         _ = merge(target, t, files, &m)?
       }
     }
@@ -71,7 +71,7 @@ fn merge_root(root: String, files: Map<String, File>) -> Result<List<String>, St
   match unwrap_or(get(files, root), Unknown) {
     Unknown => Err(Need(root))
     Unreadable => Err(Error("error: cannot read {root}"))
-    Text(text) => {
+    Plain(text) => {
       var m = Merge {}
       _ = merge(root, text, files, &m)?
       Ok(m.out)
@@ -118,7 +118,7 @@ fn update(s: inout Resolver, m: Msg) -> List<Effect<Msg>> {
       resume(&s)
     }
     Loaded(text) => {
-      s.files[s.waiting] = Text(text)
+      s.files[s.waiting] = Plain(text)
       resume(&s)
     }
     ReadFailed(_) => {

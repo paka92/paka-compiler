@@ -131,6 +131,7 @@ impl Cx<'_, '_> {
             } => return self.if_expr(e, branches, otherwise.as_ref(), Use::Value(want)),
             K::Match { .. } => return self.match_expr(e, Use::Value(want)),
             K::Inout(x) => return self.expr(x, want),
+            K::Children(call, _) => return Err(self.outside_view(call)),
             _ => self.unknown(),
         };
         Ok(Out::Val(ty))
@@ -272,7 +273,7 @@ impl Cx<'_, '_> {
 
     /// Whether the two operands suit `op`; errors stand at the operator.
     fn operands(&self, at: Span, op: BinOp, (l, lt): (&Expr, Ty), (r, rt): (&Expr, Ty)) -> Res {
-        use BinOp::{Add, And, Div, Ge, Gt, Le, Lt, Mul, Or, Rem, Sub};
+        use BinOp::{Add, And, Div, Eq, Ge, Gt, Le, Lt, Mul, Ne, Or, Rem, Sub};
         let (shown_l, shown_r) = (self.types.show(lt), self.types.show(rt));
         let text = |message: String, want: &str, found: &str| {
             (self.fail(at, "type-mismatch", message)).with_types(&want, &found)
@@ -292,6 +293,10 @@ impl Cx<'_, '_> {
                     render(other)
                 );
                 return Err(text(message, &shown_l, &shown_r));
+            }
+            Eq | Ne if either("Ui") => {
+                let message = "a Ui cannot be compared; compare what ui_text or ui_tree gives";
+                return Err(text(message.into(), "String", "Ui"));
             }
             Rem if either("Float") => {
                 let message = "no % on Float: write x - y * trunc(x / y)".to_string();
@@ -523,6 +528,7 @@ impl Cx<'_, '_> {
 
     /// Whether the program or the built-ins define `name`.
     fn defined(&self, name: &str) -> bool {
+        self.defs.note(name);
         (self.program.defs.iter()).any(|d| d.name().text == name)
             || self.fns.contains_key(name)
             || self.variants.contains_key(name)
@@ -532,7 +538,7 @@ impl Cx<'_, '_> {
     fn is_update(&self) -> bool {
         let update =
             |d: &Checked| matches!(d.item, Item::App { update: Some(u), .. } if u == self.def);
-        self.defs.iter().any(update)
+        self.defs.find(update).is_some()
     }
 
     /// The operand of `?` takes the function's error type where its own is open: `Ok(1)?` in a

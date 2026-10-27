@@ -1,8 +1,11 @@
 //! The core form: what every back end runs. docs/core.md gives each node its type rule,
 //! evaluation order and trap points; the headings there match the types here.
 
+pub use paka_rt::effects::Grant;
+pub use paka_rt::foreign::Plain;
 use paka_rt::ops::{Float, Int};
 use std::collections::BTreeSet;
+use std::path::PathBuf;
 
 /// Positions in the program's lists.
 pub type Ty = usize;
@@ -13,7 +16,7 @@ pub type EnumId = usize;
 /// Parameters first, then each binding in order of appearance.
 pub type Local = usize;
 
-#[derive(Debug, PartialEq)]
+#[derive(Debug, Default, PartialEq)]
 pub struct Program {
     /// Each file's own name and the line it starts on, in program order (M2-02 section 1.3).
     pub files: Vec<(String, usize)>,
@@ -22,11 +25,78 @@ pub struct Program {
     pub enums: Vec<Enum>,
     pub fns: Vec<Fn>,
     pub examples: Vec<Fn>,
+    /// The examples that drive the app through a `Ui` (M5-06): only the interpreter runs them.
+    pub ui_examples: Vec<Fn>,
     pub app: Option<App>,
     pub sites: Vec<TrapSite>,
+    /// Each foreign effect, in declared order; an `Effect::Foreign` value's first field is its
+    /// index here.
+    pub foreign: Vec<Foreign>,
+    pub libraries: Vec<Library>,
+}
+
+/// A function of a foreign declaration: its effect's name, the declaration's index in
+/// `Program::libraries` and its own among the declaration's functions.
+#[derive(Debug, PartialEq)]
+pub struct Foreign {
+    pub name: String,
+    pub library: usize,
+    pub number: usize,
+}
+
+/// A foreign declaration (docs/decisions/M7-02.md): its name, which is its grant, the directory
+/// of the file that holds it, its file lines in order and its functions.
+#[derive(Clone, Debug, PartialEq)]
+pub struct Library {
+    pub name: String,
+    pub dir: PathBuf,
+    /// `library`, `source` or `header`, and a file name.
+    pub files: Vec<(String, String)>,
+    pub functions: Vec<CFunction>,
+}
+
+/// A C function: its symbol and the types that cross.
+#[derive(Clone, Debug, PartialEq)]
+pub struct CFunction {
+    pub symbol: String,
+    pub params: Vec<Plain>,
+    pub result: Option<Plain>,
+}
+
+/// The type of a crossing type.
+pub fn plain(t: Plain) -> Type {
+    match t {
+        Plain::Int => Type::Int,
+        Plain::Float => Type::Float,
+        Plain::Bool => Type::Bool,
+        Plain::String => Type::String,
+    }
+}
+
+/// A foreign effect's alternative in the layout of `Effect`, after the built-in ones, and its
+/// fields after its index.
+#[allow(clippy::disallowed_methods)] // the index is the lowerer's, never a program's value
+pub fn foreign_effect(fields: &[Expr]) -> (usize, &[Expr]) {
+    let [
+        Expr {
+            kind: ExprKind::Int(id),
+            ..
+        },
+        fields @ ..,
+    ] = fields
+    else {
+        unreachable!("a foreign effect starts with its index");
+    };
+    (Effect::Foreign as usize + id.get() as usize, fields)
 }
 
 impl Program {
+    /// The C function of foreign effect `k`.
+    pub fn crossing(&self, k: usize) -> &CFunction {
+        let f = &self.foreign[k];
+        &self.libraries[f.library].functions[f.number]
+    }
+
     /// The number of `t`, added on first use; equal types share one number.
     pub fn ty(&mut self, t: Type) -> Ty {
         match self.types.iter().position(|known| *known == t) {
@@ -36,6 +106,18 @@ impl Program {
                 self.types.len() - 1
             }
         }
+    }
+
+    /// Definition `def`: a function, or example `def - fns.len()`.
+    pub fn def(&self, def: usize) -> &Fn {
+        (self.fns.get(def)).unwrap_or_else(|| &self.examples[def - self.fns.len()])
+    }
+
+    /// The definition and site that compiled code's `def << 32 | offset` names: the offset counts
+    /// from the definition's first site (M4-05 section 6).
+    pub fn place(&self, at: u64) -> (&Fn, &TrapSite) {
+        let f = self.def((at >> 32) as usize);
+        (f, &self.sites[f.site + (at & 0xFFFF_FFFF) as usize])
     }
 }
 
@@ -54,6 +136,10 @@ pub enum Type {
     Fn(Vec<Ty>, Option<Ty>),
     Record(RecordId),
     Enum(EnumId),
+    /// `View<M>`: an element tree whose messages are of type `M` (M5-01).
+    View(Ty),
+    /// The program's visual app running with no window (M5-06).
+    Ui,
 }
 
 #[derive(Debug, PartialEq)]
@@ -95,7 +181,7 @@ pub struct Fn {
     pub claims: Vec<Site>,
 }
 
-#[derive(Debug, PartialEq)]
+#[derive(Clone, Debug, PartialEq, Eq, PartialOrd, Ord)]
 pub struct Param {
     pub ty: Ty,
     pub inout: bool,
@@ -107,16 +193,13 @@ pub struct App {
     /// The state record literal with every default written in.
     pub state: Option<Expr>,
     /// A variant of the message enum, the type of `update`'s last parameter.
-    pub start: usize,
+    pub start: Option<usize>,
     pub update: FnId,
+    /// The view of a visual app.
+    pub view: Option<FnId>,
     pub grants: BTreeSet<Grant>,
-}
-
-#[derive(Debug, PartialEq, Eq, PartialOrd, Ord)]
-pub enum Grant {
-    Console,
-    ReadFiles,
-    WriteFiles,
+    /// The foreign declarations it is granted.
+    pub foreign: BTreeSet<String>,
 }
 
 /// The variants of `Effect<M>`, in declared order.
@@ -127,6 +210,8 @@ pub enum Effect {
     WriteFile,
     Exit,
     ExitWith,
+    /// A foreign effect: its index in `Program::foreign`, then its arguments, `then` and `or`.
+    Foreign,
 }
 
 /// Where a trap is reported; `line` counts across the files, the kind travels with the trap.
@@ -138,13 +223,13 @@ pub struct TrapSite {
     pub hole: Option<String>,
 }
 
-#[derive(Debug, PartialEq)]
+#[derive(Clone, Debug, PartialEq)]
 pub struct Block {
     pub stmts: Vec<Stmt>,
     pub value: Option<Box<Expr>>,
 }
 
-#[derive(Debug, PartialEq)]
+#[derive(Clone, Debug, PartialEq)]
 pub enum Stmt {
     Let(Local, Expr),
     /// `place = e`, or `place op= e` with the operator.
@@ -157,7 +242,7 @@ pub enum Stmt {
     Expr(Expr),
 }
 
-#[derive(Debug, PartialEq)]
+#[derive(Clone, Debug, PartialEq)]
 pub enum Walk {
     List(Expr),
     /// `a..<b`
@@ -165,13 +250,13 @@ pub enum Walk {
 }
 
 /// `ty` is `None` for a node that gives no value.
-#[derive(Debug, PartialEq)]
+#[derive(Clone, Debug, PartialEq)]
 pub struct Expr {
     pub ty: Option<Ty>,
     pub kind: ExprKind,
 }
 
-#[derive(Debug, PartialEq)]
+#[derive(Clone, Debug, PartialEq)]
 pub enum ExprKind {
     Int(Int),
     Float(Float),
@@ -193,23 +278,42 @@ pub enum ExprKind {
     /// `else if` nests in the else block.
     If(Box<Expr>, Block, Option<Block>),
     Match(Box<Expr>, Vec<Arm>),
+    /// A view's root: the one node its element lines give.
+    Root(Block),
+    /// A row of `builtins::ELEMENTS`, its arguments in table order with defaults written in, and
+    /// its child block. The site is the element's name.
+    Element(usize, Vec<Expr>, Option<Block>, Site),
+    /// A hole where an element may stand: a placeholder node.
+    Placeholder(Site),
+    /// An element line of a view: adds its node to the child list being built.
+    Child(Box<Child>),
+}
+
+/// `line` counts the element lines of a child block from 0 (M5-02 section 1.4); `looped` when a
+/// `for` adds it. `node` is an element, a view call or a placeholder.
+#[derive(Clone, Debug, PartialEq)]
+pub struct Child {
+    pub line: usize,
+    pub looped: bool,
+    pub key: Option<Expr>,
+    pub node: Expr,
 }
 
 /// A write or an `inout` argument is rooted at a `Local`; `Root::Value` never appears in one.
-#[derive(Debug, PartialEq)]
+#[derive(Clone, Debug, PartialEq)]
 pub struct Place {
     pub root: Root,
     pub steps: Vec<Step>,
 }
 
-#[derive(Debug, PartialEq)]
+#[derive(Clone, Debug, PartialEq)]
 pub enum Root {
     Local(Local),
     Value(Box<Expr>),
 }
 
 /// Each site is the step's `[`.
-#[derive(Debug, PartialEq)]
+#[derive(Clone, Debug, PartialEq)]
 pub enum Step {
     Field(usize),
     Item(Expr, Site),
@@ -218,7 +322,7 @@ pub enum Step {
 }
 
 /// A variant of a user enum, `Option`, `Result` or `Effect`.
-#[derive(Debug, PartialEq)]
+#[derive(Clone, Debug, PartialEq)]
 pub enum Tag {
     User(EnumId, usize),
     Some,
@@ -228,35 +332,36 @@ pub enum Tag {
     Effect(Effect),
 }
 
-#[derive(Debug, PartialEq)]
+#[derive(Clone, Debug, PartialEq)]
 pub enum FnRef {
     Fn(FnId),
     Variant(EnumId, usize),
 }
 
-#[derive(Debug, PartialEq)]
+#[derive(Clone, Debug, PartialEq)]
 pub enum Callee {
     Fn(FnId),
-    /// An index into `builtins::ROWS`, chosen once by the checker.
+    /// An index into `builtins::ROWS`, chosen once by the checker; `ROWS.len() + k` is row `k` of
+    /// `builtins::UI`. `ui_start` takes no argument, since a program holds one app.
     Builtin(usize),
     Value(Box<Expr>),
 }
 
-#[derive(Debug, PartialEq)]
+#[derive(Clone, Debug, PartialEq)]
 pub enum Arg {
     Value(Expr),
     Inout(Place),
 }
 
 /// The tags it decides; a one-tag arm binds each field to a local or to nothing.
-#[derive(Debug, PartialEq)]
+#[derive(Clone, Debug, PartialEq)]
 pub struct Arm {
     pub tags: Vec<Tag>,
     pub binds: Vec<Option<Local>>,
     pub body: Block,
 }
 
-#[derive(Debug, PartialEq)]
+#[derive(Clone, Debug, PartialEq)]
 pub enum Un {
     Neg(Site),
     NegFloat,
@@ -264,7 +369,7 @@ pub enum Un {
 }
 
 /// The site, where an operator has one, is the operator.
-#[derive(Debug, PartialEq)]
+#[derive(Clone, Debug, PartialEq)]
 pub enum Bin {
     Int(Arith, Site),
     Float(FloatArith),
@@ -276,7 +381,7 @@ pub enum Bin {
     Or,
 }
 
-#[derive(Debug, PartialEq)]
+#[derive(Clone, Debug, PartialEq)]
 pub enum Arith {
     Add,
     Sub,
@@ -285,7 +390,7 @@ pub enum Arith {
     Rem,
 }
 
-#[derive(Debug, PartialEq)]
+#[derive(Clone, Debug, PartialEq)]
 pub enum FloatArith {
     Add,
     Sub,
@@ -294,14 +399,14 @@ pub enum FloatArith {
 }
 
 /// The operators `op=` allows: Int `+ - * / %`, Float `+ - * /`, String `+`.
-#[derive(Debug, PartialEq)]
+#[derive(Clone, Debug, PartialEq)]
 pub enum Compound {
     Int(Arith, Site),
     Float(FloatArith),
     Join(Site),
 }
 
-#[derive(Debug, PartialEq)]
+#[derive(Clone, Debug, PartialEq)]
 pub enum Cmp {
     Lt,
     Le,
@@ -322,6 +427,9 @@ mod tests {
             enums: vec![],
             fns: vec![],
             examples: vec![],
+            ui_examples: vec![],
+            foreign: vec![],
+            libraries: vec![],
             app: None,
             sites: vec![],
         };

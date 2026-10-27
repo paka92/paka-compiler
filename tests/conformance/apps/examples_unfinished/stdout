@@ -1,7 +1,7 @@
-u_call unfinished at main.paka:1:27
+u_call agent-written unfinished at main.paka:1:27
   ??todo
   in later, called from example u_call
-u_direct unfinished at main.paka:6:16
+u_direct agent-written unfinished at main.paka:6:16
   ??pick
   in example u_direct
-u_other pass
+u_other agent-written pass

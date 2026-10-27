@@ -2,7 +2,7 @@ use std::fs::File;
 use std::io::pipe;
 use std::process::{Command, Output, Stdio};
 
-const USAGE: &str = "usage: paka run <path> [argument...]\n       paka build <path> -o <output>\n       paka check <path> [--json]\n       paka examples <path>\n";
+const USAGE: &str = "usage: paka run <path> [argument...]\n       paka build <path> -o <output>\n       paka check <path> [--json]\n       paka examples <path>\n       paka serve <path>\n       paka approve <path> [--adopt <name>] [--drop <name>] [--key <file>]\n       paka gate <tree> --base <tree> [--json]\n";
 
 fn paka(args: &[&str]) -> Output {
     Command::new(env!("CARGO_BIN_EXE_paka"))
@@ -28,6 +28,13 @@ fn bad_arguments_print_usage_and_exit_2() {
     assert_usage(&["build", "a.paka", "-o", "out", "extra"]);
     assert_usage(&["fmt", "a.paka"]);
     assert_usage(&["check", "a.paka", "b.paka"]);
+}
+
+/// The measurement-only switch (M6-30) is a usage error to the normal compiler.
+#[cfg(not(feature = "measure"))]
+#[test]
+fn the_normal_compiler_refuses_omit() {
+    assert_usage(&["build", "a.paka", "--omit", "bounds", "-o", "out"]);
 }
 
 fn assert_unreadable(args: &[&str], path: &str) {
@@ -259,24 +266,6 @@ fn run_of_an_interpolated_program_prints_it() {
     assert_eq!(out.status.code(), Some(0));
     assert_eq!(String::from_utf8_lossy(&out.stdout), "let there be 1\n");
     assert!(out.stderr.is_empty());
-}
-
-#[test]
-fn build_of_a_program_beyond_the_m1_subset_is_unsupported_form() {
-    let file = interpolated_light("interpolated-build");
-    let output = file.with_extension("out");
-    let out = paka(&[
-        "build",
-        file.to_str().unwrap(),
-        "-o",
-        output.to_str().unwrap(),
-    ]);
-    std::fs::remove_file(&file).unwrap();
-    assert_eq!(out.status.code(), Some(1));
-    assert!(out.stdout.is_empty());
-    assert!(!output.exists());
-    let text = String::from_utf8_lossy(&out.stderr);
-    assert!(text.contains("error[unsupported-form]"), "{text}");
 }
 
 #[test]

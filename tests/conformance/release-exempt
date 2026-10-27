@@ -1,0 +1,35 @@
+# Cases release mode does not run as the others (M6-06): a case with a hole, which paka build
+# must refuse by the holes' names, and an example-status case, compared in interpreter and dev
+# only until M7-11.
+hole apps/hole_cold_branch_run
+hole apps/hole_run_trap
+hole apps/hole_statement_run
+hole apps/hole_trap_keeps_output
+hole ownership/hole_in_argument
+hole types/hole_in_a_literal_inside_a_variant
+examples apps/example_check_error_runs_nothing
+examples apps/example_return_allowed
+examples apps/examples_assert_is_trapped
+examples apps/examples_counter
+examples apps/examples_counter_fixed
+examples apps/examples_directory_program
+examples apps/examples_effects_compare
+examples apps/examples_errors
+examples apps/examples_fail_and_chain
+examples apps/examples_fail_comparisons
+examples apps/examples_fail_not_a_comparison
+examples apps/examples_fail_value_text
+examples apps/examples_fn_values
+examples apps/examples_inout
+examples apps/examples_lists
+examples apps/examples_list_traps
+examples apps/examples_none
+examples apps/examples_order_by_name_bytes
+examples apps/examples_owned
+examples apps/examples_records
+examples apps/examples_text
+examples apps/examples_text_traps
+examples apps/examples_trapped
+examples apps/examples_unfinished
+examples apps/ui_todo_check
+examples apps/unused_name_examples_silent

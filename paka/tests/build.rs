@@ -17,6 +17,7 @@ const NO_APP: &str = concat!(
 
 const LIGHT_IR: &str = concat!(env!("CARGO_MANIFEST_DIR"), "/../docs/abi/light.ll");
 const FAKE_CLANG_DIR: &str = concat!(env!("CARGO_MANIFEST_DIR"), "/tests/fake_clang");
+const CLANG_VERSION: &str = include_str!("../clang-version");
 const SYSTEM_LIBS: [&str; 7] = [
     "-lgcc_s",
     "-lutil",
@@ -42,12 +43,19 @@ fn assert_tool_error(out: &Output, path: &str, code: &str) {
     assert_eq!(out.status.code(), Some(1));
 }
 
-/// Runs `paka_exe build source -o output` with `PATH` set to `path`.
-fn build_with(paka_exe: &Path, source: &str, output: &Path, path: &str) -> Output {
-    Command::new(paka_exe)
+/// `paka build source -o output` with `PATH` set to `path`; a fake clang reports the pinned version.
+fn build_command(paka_exe: &Path, source: &str, output: &Path, path: &str) -> Command {
+    let mut command = Command::new(paka_exe);
+    command
         .args(["build", source, "-o"])
         .arg(output)
         .env("PATH", path)
+        .env("FAKE_CLANG_VERSION", CLANG_VERSION.trim());
+    command
+}
+
+fn build_with(paka_exe: &Path, source: &str, output: &Path, path: &str) -> Output {
+    build_command(paka_exe, source, output, path)
         .output()
         .unwrap()
 }
@@ -107,15 +115,39 @@ fn failing_clang_is_one_diagnostic_and_leaks_nothing() {
     assert!(dir.entries().is_empty(), "left behind: {:?}", dir.entries());
 }
 
+/// Any clang but the pinned one is refused before it compiles anything, naming both versions.
+#[test]
+fn other_clang_version_is_refused() {
+    build_runtime();
+    let pinned = CLANG_VERSION.trim();
+    for (version, found) in [
+        ("20.1.2", "20.1.2"),
+        ("21.1.80", "21.1.80"),
+        ("", "unknown"),
+    ] {
+        let (log, dir) = (Scratch::new("version-log"), Scratch::new("version"));
+        let out = build_command(Path::new(PAKA), LIGHT, &dir.path("out"), FAKE_CLANG_DIR)
+            .env("FAKE_CLANG_VERSION", version)
+            .env("FAKE_CLANG_LOG", log.path("args"))
+            .output()
+            .unwrap();
+        assert_tool_error(&out, LIGHT, "clang-version");
+        let stderr = String::from_utf8_lossy(&out.stderr);
+        assert!(stderr.contains(&format!("clang {pinned} ")), "{stderr:?}");
+        assert!(stderr.contains(&format!("version {found}\n")), "{stderr:?}");
+        assert!(
+            dir.entries().is_empty() && log.entries().is_empty(),
+            "clang ran"
+        );
+    }
+}
+
 #[test]
 fn clang_gets_the_documents_command() {
     let archive = common::runtime_archive();
     let (log, dir) = (Scratch::new("log"), Scratch::new("args"));
     let (output, log_file) = (dir.path("out"), log.path("args"));
-    let out = Command::new(PAKA)
-        .args(["build", LIGHT, "-o"])
-        .arg(&output)
-        .env("PATH", FAKE_CLANG_DIR)
+    let out = build_command(Path::new(PAKA), LIGHT, &output, FAKE_CLANG_DIR)
         .env("FAKE_CLANG_LOG", &log_file)
         .output()
         .unwrap();
@@ -125,7 +157,7 @@ fn clang_gets_the_documents_command() {
     let recorded = fs::read_to_string(log_file).unwrap();
     let args: Vec<_> = recorded.lines().collect();
     let output = output.to_str().unwrap();
-    let ir = args[1]
+    let ir = args[2]
         .strip_prefix(output)
         .and_then(|r| r.strip_prefix('.'));
     let pid = ir.and_then(|r| r.strip_suffix(".ll"));
@@ -134,10 +166,10 @@ fn clang_gets_the_documents_command() {
         "{args:?}"
     );
     let archive = fs::canonicalize(archive).unwrap();
-    assert_eq!(fs::canonicalize(args[2]).unwrap(), archive);
-    assert_eq!(args[0], "-O2");
-    assert_eq!(args[3..10], SYSTEM_LIBS);
-    assert_eq!(args[10..], ["-o", output]);
+    assert_eq!(fs::canonicalize(args[3]).unwrap(), archive);
+    assert_eq!(args[..2], ["-O3", "-Wl,--gc-sections"]);
+    assert_eq!(args[4..11], SYSTEM_LIBS);
+    assert_eq!(args[11..], ["-o", output]);
 }
 
 #[test]
@@ -176,7 +208,7 @@ fn abi_document_ir_links_and_runs() {
     let archive = common::runtime_archive();
     let dir = Scratch::new("abi-ir");
     let status = Command::new("clang")
-        .args(["-O2", LIGHT_IR])
+        .args(["-O3", LIGHT_IR])
         .arg(archive)
         .args(SYSTEM_LIBS)
         .arg("-o")
@@ -270,4 +302,50 @@ fn line_feed_in_output_path_keeps_one_line() {
     let out = build_native(LIGHT, &dir.path("no/such\ndir/out"));
     assert_tool_error(&out, LIGHT, "clang-failed");
     assert_eq!(out.stderr.iter().filter(|&&b| b == b'\n').count(), 1);
+}
+
+const FOREIGN_CALL: &str = concat!(
+    env!("CARGO_MANIFEST_DIR"),
+    "/../tests/conformance/apps/foreign_call"
+);
+
+/// Relative source and output paths are read from the working directory, and a granted foreign
+/// declaration's host lands beside the output there.
+#[test]
+fn relative_paths_build_from_another_directory() {
+    build_runtime();
+    let dir = Scratch::new("relative");
+    fs::create_dir_all(dir.path("work/bin")).unwrap();
+    fs::create_dir(dir.path("src")).unwrap();
+    fs::copy(LIGHT, dir.path("src/light.paka")).unwrap();
+    fs::copy(
+        format!("{FOREIGN_CALL}/main.paka"),
+        dir.path("src/calc.paka"),
+    )
+    .unwrap();
+    for file in ["calc.c", "calc.h"] {
+        fs::copy(
+            format!("{FOREIGN_CALL}/files/{file}"),
+            dir.path(&format!("src/{file}")),
+        )
+        .unwrap();
+    }
+    let want = fs::read_to_string(format!("{FOREIGN_CALL}/stdout")).unwrap();
+    for (source, output, stdout) in [
+        ("../src/light.paka", "light", "let there be light\n"),
+        ("../src/calc.paka", "bin/calc", &want),
+    ] {
+        let build = Command::new(PAKA)
+            .args(["build", source, "-o", output])
+            .current_dir(dir.path("work"))
+            .env("XDG_CACHE_HOME", dir.path("cache"))
+            .output()
+            .unwrap();
+        assert_eq!(build.status.code(), Some(0), "{source}: {build:?}");
+        let run = Command::new(dir.path("work").join(output))
+            .output()
+            .unwrap();
+        assert_eq!(String::from_utf8_lossy(&run.stdout), stdout, "{source}");
+    }
+    assert!(dir.path("work/bin/calc.Calc").is_file());
 }

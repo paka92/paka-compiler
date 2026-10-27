@@ -1,0 +1,20 @@
+type Counter { count: Int = 0 }
+
+enum Msg { Inc }
+
+fn update(s: inout Counter, m: Msg) {
+  s.count += 1
+}
+
+app errors {
+  state: Counter
+  update: update
+  view: errors_view
+  grants: []
+}
+
+fn caption() {
+  Text("a")
+}
+
+view errors_view(s: Counter) -> View<Msg> { Text("{s.count}") }

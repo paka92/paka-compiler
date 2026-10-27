@@ -87,6 +87,17 @@ impl Row<'_, '_> {
     }
 }
 
+/// The type `text` names, in the syntax of a row.
+pub(super) fn ty(types: &mut Types, text: &'static str) -> Ty {
+    let tokens = tokens(text);
+    Row {
+        tokens,
+        at: 0,
+        types,
+    }
+    .ty()
+}
+
 /// The signature a `Fn` or `Variant` row gives.
 pub(super) fn sig(types: &mut Types, row: &'static str) -> Sig<'static> {
     let mut row = Row {

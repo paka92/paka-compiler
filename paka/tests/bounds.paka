@@ -1,0 +1,46 @@
+// List items and slices at positions read from the data, so the optimizer cannot prove a bounds
+// check away (M6-30). Built with `--omit bounds`, its optimized IR has none left.
+
+enum Msg { Start }
+
+fn chase(next: List<Int>, steps: Int) -> Int {
+  var at = 0
+  var left = steps
+  while left > 0 {
+    at = next[at]
+    left -= 1
+  }
+  at
+}
+
+fn scatter(to: List<Int>, n: Int) -> Int {
+  var out = to
+  for i in 0..<len(to) {
+    out[to[i]] = i
+  }
+  out[n - 1]
+}
+
+fn edges(g: List<List<Int>>, from: Int) -> Int {
+  var sum = 0
+  for v in g[from] {
+    sum += len(g[v])
+  }
+  sum
+}
+
+fn middle(xs: List<Int>, a: Int, b: Int) -> Int {
+  len(xs[a..<b])
+}
+
+fn update(msg: Msg) -> List<Effect<Msg>> {
+  let next = [2, 0, 1]
+  let g = [[1, 2], [0], [0, 1, 2]]
+  [Print("{chase(next, 4)} {scatter(next, 3)} {edges(g, 0)} {middle(next, next[2], next[0])}"), Exit]
+}
+
+app bounds {
+  start: Start
+  update: update
+  grants: [Console]
+}

@@ -1,0 +1,7 @@
+a_branch_value agent-written pass
+arm_writes_its_subject agent-written pass
+break_and_continue agent-written pass
+early_exits agent-written pass
+loops_build_and_overwrite agent-written pass
+match_arms agent-written pass
+nested_owners agent-written pass

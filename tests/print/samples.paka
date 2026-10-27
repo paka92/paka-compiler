@@ -1,0 +1,91 @@
+type Counter { count: Int = 0 }
+
+type Empty {}
+
+enum Msg { Start(path: String), Loaded(text: String) }
+
+fn clamp(x: Int; lo: Int, hi: Int) -> Int {
+  max(lo, min(x, hi))
+}
+
+example clamp_low {
+  clamp(0 - 5, lo: 0, hi: 9) == 0
+}
+
+app wc {
+  state: Tally
+  start: Start
+  update: update
+  view: counter_view
+  grants: [ReadFiles, Console]
+}
+
+fn statements(s: inout Tally) {
+  let bonus = 10
+  let n: Int = 0
+  var sum = 0
+  sum += x
+  _ = pop(&q)
+  if x < 0 {
+    return x
+  } else if x == 0 {
+    hits += 1
+  } else {
+    sum += x
+  }
+  for x in xs {
+    sum += x
+  }
+  while i < n {
+    i += 1
+  }
+  match m {
+    Start(path) => [ReadFile(path, then: Loaded)]
+    Loaded(text) => {
+      s.words = count_words(text)
+      [Print("{s.words} words"), Exit]
+    }
+  }
+  clamp(n, lo: 0, hi: 9)
+  [Print("done"), Exit]
+  Counter { count: 1 }
+  Counter {}
+  append(&g.next[a], b)
+  let y = if c {
+    1
+  } else {
+    2
+  }
+  // running total
+  sum += x
+  (a * b) + c
+  return 0
+}
+
+fn empty() {}
+
+view counter_view(s: Counter) -> View<Msg> {
+  let label = "{s.count}"
+  Col(gap: 8) {
+    Text(label, key: "count")
+    if s.count > 0 {
+      Button("-", on: Dec)
+    }
+    for t in s.items {
+      row(t, key: t.id)
+    }
+    match s.screen {
+      Done => {}
+      Next(n) => Text("{n}")
+    }
+    Spacer() {}
+  }
+}
+
+foreign Sum {
+  library: "m"
+  source: "sum.c"
+  header: "sum.h"
+  Checksum(text: String) -> Int = "sum_bytes"
+  Reset() = "sum_reset"
+}

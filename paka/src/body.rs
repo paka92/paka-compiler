@@ -9,7 +9,9 @@
 use crate::ast::{self, Block, Def, Expr, ExprKind as K, Pos, Program};
 use crate::diagnostic::Diagnostic;
 use crate::resolve::Resolved;
-use crate::sig::{Checked, Item, Node, Sig, Table, Ty, Types};
+use crate::sig::{Defs, Item, Node, Sig, Table, Ty, Types};
+#[cfg(test)]
+pub(crate) use own::RULE_A_OFF;
 use std::collections::{BTreeMap, BTreeSet};
 use text::{float_fix, named, render};
 
@@ -27,6 +29,8 @@ mod stmt;
 #[cfg(test)]
 mod tests;
 mod text;
+mod ui;
+mod view;
 
 /// The result of checking a program's bodies, one entry per definition.
 pub struct Bodies {
@@ -37,6 +41,8 @@ pub struct Bodies {
     /// The row picked for each call of a built-in that has several, by (position, length in
     /// bytes) of the name: the row's place among the rows of that name.
     pub rows: Vec<BTreeMap<(Pos, usize), usize>>,
+    /// The signatures each definition read, by name (M4-09).
+    pub reads: Vec<BTreeSet<String>>,
 }
 
 type Res<T = ()> = Result<T, Diagnostic>;
@@ -64,6 +70,8 @@ enum Use {
     Dropped,
     /// As the value of the block, of this type when it is known.
     Value(Option<Ty>),
+    /// Every line is an element of a view (M5-01).
+    Elements,
 }
 
 impl Use {
@@ -71,7 +79,7 @@ impl Use {
     fn want(self) -> Option<Ty> {
         match self {
             Use::Value(want) => want,
-            Use::Dropped => None,
+            Use::Dropped | Use::Elements => None,
         }
     }
 }
@@ -96,9 +104,13 @@ struct Cx<'t, 'a> {
     program: &'a Program<'a>,
     resolved: &'t Resolved,
     types: &'t mut Types<'a>,
-    defs: &'t [Checked<'a>],
+    defs: &'t Defs<'a>,
     fns: &'t BTreeMap<&'static str, Vec<Sig<'static>>>,
     variants: &'t BTreeMap<&'static str, Sig<'static>>,
+    elements: &'t BTreeMap<&'static str, Sig<'static>>,
+    /// In a view, its result type and where the element being checked stands.
+    view: Ty,
+    place: view::Place,
     /// The definition being checked, its result and the `return`s that end it.
     def: usize,
     result: Option<Ty>,
@@ -125,7 +137,9 @@ pub fn check<'a>(
         defs,
         fns,
         variants,
+        elements,
     } = table;
+    let view = types.unknown();
     let mut cx = Cx {
         path,
         program,
@@ -134,6 +148,9 @@ pub fn check<'a>(
         defs,
         fns,
         variants,
+        elements,
+        view,
+        place: view::Place::Root,
         def: 0,
         result: None,
         tails: BTreeSet::new(),
@@ -148,9 +165,12 @@ pub fn check<'a>(
         defs: Vec::new(),
         types: Vec::new(),
         rows: Vec::new(),
+        reads: Vec::new(),
     };
     for (i, def) in program.defs.iter().enumerate() {
+        cx.defs.take_reads();
         bodies.defs.push(cx.definition(i, def));
+        bodies.reads.push(cx.defs.take_reads());
         bodies.types.push(std::mem::take(&mut cx.info));
         bodies.rows.push(std::mem::take(&mut cx.picks));
     }
@@ -178,6 +198,7 @@ impl<'t, 'a> Cx<'t, 'a> {
             (Def::Type { fields, .. }, Item::Record(held)) => (fields.iter().zip(held))
                 .find_map(|(f, h)| self.expect(f.default.as_ref()?, h.ty).err()),
             (Def::Example { body, .. }, _) => self.example(body).err(),
+            (Def::View { params, body, .. }, Item::View(sig)) => self.view(sig, params, body).err(),
             (Def::App { name, entries }, Item::App { state, update }) => {
                 self.app(name, entries, (*state, *update)).err()
             }
@@ -187,11 +208,15 @@ impl<'t, 'a> Cx<'t, 'a> {
     }
 
     fn function(&mut self, sig: &Sig<'_>, params: &[ast::Param<'a>], body: &'a Block<'a>) -> Res {
+        self.params(sig, params);
+        self.run(body, sig.result)
+    }
+
+    fn params(&mut self, sig: &Sig<'_>, params: &[ast::Param<'a>]) {
         for (p, s) in params.iter().zip(&sig.params) {
             let how = if p.inout { How::Inout } else { How::Param };
             self.locals.insert(p.name.at, Local { ty: s.ty, how });
         }
-        self.run(body, sig.result)
     }
 
     /// An example is a function without parameters that gives a Bool.

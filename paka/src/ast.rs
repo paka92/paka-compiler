@@ -57,17 +57,60 @@ pub enum Def<'a> {
         name: Name<'a>,
         entries: Vec<Entry<'a>>,
     },
+    /// Its body is `let` lines and then one element expression (docs/decisions/M5-01.md).
+    View {
+        name: Name<'a>,
+        params: Vec<Param<'a>>,
+        result: Type<'a>,
+        body: Block<'a>,
+    },
+    /// A C library whose functions are effects; its name is their grant (docs/decisions/M7-02.md).
+    Foreign {
+        name: Name<'a>,
+        lines: Vec<ForeignLine<'a>>,
+    },
 }
 
-impl Def<'_> {
-    pub fn name(&self) -> &Name<'_> {
+/// A line of a `foreign` block. Quoted text is held as written between its quotes.
+#[derive(Debug, PartialEq)]
+pub enum ForeignLine<'a> {
+    /// `library:`, `source:` or `header:` and its file name.
+    File(Name<'a>, Name<'a>),
+    /// An effect and its C symbol: `Name(params) -> Result = "symbol"`.
+    Function {
+        name: Name<'a>,
+        params: Vec<Param<'a>>,
+        result: Option<Type<'a>>,
+        symbol: Name<'a>,
+    },
+}
+
+impl<'a> Def<'a> {
+    pub fn name(&self) -> &Name<'a> {
         match self {
             Def::Type { name, .. }
             | Def::Enum { name, .. }
             | Def::Fn { name, .. }
             | Def::Example { name, .. }
-            | Def::App { name, .. } => name,
+            | Def::App { name, .. }
+            | Def::View { name, .. }
+            | Def::Foreign { name, .. } => name,
         }
+    }
+
+    /// The names it defines: its own and its variants', a foreign declaration's effects too.
+    pub fn names(&self) -> Vec<&'a str> {
+        let variants = match self {
+            Def::Enum { variants, .. } => variants.iter().map(|v| v.name.text).collect(),
+            Def::Foreign { lines, .. } => (lines.iter())
+                .filter_map(|line| match line {
+                    ForeignLine::Function { name, .. } => Some(name.text),
+                    ForeignLine::File(..) => None,
+                })
+                .collect(),
+            _ => vec![],
+        };
+        [self.name().text].into_iter().chain(variants).collect()
     }
 }
 
@@ -101,6 +144,7 @@ pub enum Entry<'a> {
     Start(Pos, Expr<'a>),
     Update(Pos, Name<'a>),
     Grants(Pos, Vec<Name<'a>>),
+    View(Pos, Name<'a>),
 }
 
 #[derive(Debug, PartialEq)]
@@ -263,6 +307,8 @@ pub enum ExprKind<'a> {
         subject: Box<Expr<'a>>,
         arms: Vec<Arm<'a>>,
     },
+    /// An element call and its child block, read only where an element may stand.
+    Children(Box<Expr<'a>>, Block<'a>),
 }
 
 #[derive(Debug, PartialEq)]

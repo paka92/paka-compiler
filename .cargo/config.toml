@@ -1,0 +1,9 @@
+# Outside crates come only from vendor/; each must be listed in approved-crates.txt.
+[source.crates-io]
+replace-with = "vendored"
+
+[source.vendored]
+directory = "vendor"
+
+[net]
+offline = true

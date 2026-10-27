@@ -1,24 +1,35 @@
 //! Evaluation of the core form, node by node (docs/core.md sections 2 to 6).
 
-use super::value::{Entries, FnKey, Items, Key, Value, equals, number, position};
+use super::show::show;
+use super::value::{Entries, FnKey, Items, Key, Message, Value, equals, number, position};
 use super::{RUN_THREAD, STACK, builtin, generic};
+use crate::builtins::{ELEMENTS, ROWS};
 use crate::core_form::Fn as Func;
 use crate::core_form::{
-    App, Arg, Arith, Arm, Bin, Block, Callee, Cmp, Compound, Expr, ExprKind, FloatArith, FnId,
-    FnRef, Local, Place, Program, Root, Site, Step, Stmt, Ty, Un, Walk,
+    App, Arg, Arith, Arm, Bin, Block, Callee, Child, Cmp, Compound, Expr, ExprKind, FloatArith,
+    FnId, FnRef, Local, Place, Program, Root, Site, Step, Stmt, Ty, Un, Walk,
 };
+pub use overlap::Detector;
+use overlap::{held_in_register, spans};
 use paka_rt::ops::{self, Float, Int, Text};
+use paka_rt::route::Event;
+use paka_rt::tree::{self, Edit, Node};
 use std::cmp::Ordering;
 use std::fmt::Write;
+use std::sync::Arc;
+use std::sync::atomic::{self, AtomicBool};
 use std::{mem, panic, thread};
+pub use ui::{Left, Ui};
+
+mod overlap;
+mod ui;
 
 /// The call depth no call may pass; the handler is at depth 1.
 const DEPTH: usize = 10_000;
 /// The most expressions and blocks under evaluation on one stack segment. A level takes under
 /// 5 KiB in a debug build, so a segment of `STACK` bytes holds it with a wide margin.
 const BUDGET: usize = 1_000;
-/// The most bytes in a String, and the most items or entries in a List or Map.
-pub const CAP: usize = 16_777_216;
+pub use paka_rt::ops::CAP;
 /// Frame names a trap keeps: the report shows eight, one more says there were others.
 const KEPT: usize = 9;
 
@@ -56,6 +67,7 @@ impl From<ops::Trap> for Kind {
             ops::Trap::DivideByZero => Kind::DivideByZero,
             ops::Trap::OutOfBounds => Kind::OutOfBounds,
             ops::Trap::BadConversion => Kind::BadConversion,
+            ops::Trap::Memory => Kind::Memory,
         }
     }
 }
@@ -100,6 +112,11 @@ pub enum Stop {
     Return(Value),
     Break,
     Continue,
+    /// A UI example's app stopped with this line: an effect it does not grant, or start fields
+    /// with no arguments to fill them.
+    Ended(String),
+    /// The interrupt was set: the run is past its time limit (docs/decisions/M4-04.md).
+    Time,
 }
 
 impl From<Trap> for Stop {
@@ -194,12 +211,28 @@ enum Target {
     User(FnId),
     Ctor(usize),
     Builtin(usize),
+    /// A row of `builtins::UI`.
+    Ui(usize),
 }
+
+/// The children of one child block, in the order their lines ran.
+type Kids = Vec<(tree::Step, Node<Message>)>;
 
 pub struct Machine<'a> {
     core: &'a Program,
     depth: usize,
     levels: usize,
+    /// The child lists being built, innermost last.
+    kids: Vec<Kids>,
+    /// Of a UI example: the first frame that held an error node, as the call that drew it and
+    /// the node's line.
+    pub broken: Option<(Site, String)>,
+    /// Of a UI example, when kept: each action's events from its start and what it left.
+    pub ui_log: Option<Vec<(Vec<Event>, Left)>>,
+    /// The run-time overlap detector, when the run asks for it.
+    pub detector: Option<Detector>,
+    /// Polled at each call and loop turn, when the run has a time limit.
+    pub interrupt: Option<Arc<AtomicBool>>,
 }
 
 impl<'a> Machine<'a> {
@@ -208,7 +241,28 @@ impl<'a> Machine<'a> {
             core,
             depth: 0,
             levels: 0,
+            kids: vec![],
+            broken: None,
+            ui_log: None,
+            detector: None,
+            interrupt: None,
         }
+    }
+
+    /// The tree view `id` draws from `args`.
+    pub fn draw(&mut self, id: FnId, args: Vec<Value>) -> Done<Node<Message>> {
+        let site = self.core.fns[id].site;
+        self.depth = 0;
+        match self.invoke(id, args, site)?.0 {
+            Value::Node(node) => Ok(*node),
+            _ => unreachable!("a view gives a node"),
+        }
+    }
+
+    /// What function `id` gives for `args`, called at depth 1 like the handler.
+    pub fn run(&mut self, id: FnId, args: Vec<Value>) -> Done {
+        let site = self.core.fns[id].site;
+        Ok(self.invoke(id, args, site)?.0)
     }
 
     /// The state, built once from the defaults the core form writes in; `None` without a `state:`.
@@ -246,10 +300,7 @@ impl<'a> Machine<'a> {
     pub fn answer(&mut self, f: FnKey, arg: Value) -> Done {
         match f {
             FnKey::Ctor(_, variant) => Ok(Value::Variant(variant, Items(vec![arg]))),
-            FnKey::Fn(id) => {
-                let site = self.core.fns[id].site;
-                Ok(self.invoke(id, vec![arg], site)?.0)
-            }
+            FnKey::Fn(id) => self.run(id, vec![arg]),
         }
     }
 
@@ -320,6 +371,7 @@ impl<'a> Machine<'a> {
         if self.depth >= DEPTH {
             return Err(Trap::bare(Kind::Stack, site).into());
         }
+        self.poll()?;
         let f = &self.core.fns[id];
         locals.resize_with(f.locals.len(), Value::default);
         let mut fr = Frame {
@@ -336,7 +388,7 @@ impl<'a> Machine<'a> {
                 trap.leave(&f.name);
                 Err(Stop::Trap(trap))
             }
-            Err(internal @ Stop::Internal(_)) => Err(internal),
+            Err(stop @ (Stop::Internal(_) | Stop::Time)) => Err(stop),
             Err(_) => unreachable!("a loop holds its break"),
         }
     }
@@ -450,10 +502,18 @@ impl<'a> Machine<'a> {
 
     /// Runs a loop body once; whether the loop is over.
     fn run_body(&mut self, fr: &mut Frame, body: &Block) -> Done<bool> {
+        self.poll()?;
         match self.block(fr, body) {
             Ok(_) | Err(Stop::Continue) => Ok(false),
             Err(Stop::Break) => Ok(true),
             Err(stop) => Err(stop),
+        }
+    }
+
+    fn poll(&self) -> Done<()> {
+        match &self.interrupt {
+            Some(flag) if flag.load(atomic::Ordering::Relaxed) => Err(Stop::Time),
+            _ => Ok(()),
         }
     }
 
@@ -488,7 +548,97 @@ impl<'a> Machine<'a> {
             ExprKind::Call(callee, args, site) => self.call(fr, callee, args, *site),
             ExprKind::If(c, then, other) => self.branch(fr, c, then, other.as_ref()),
             ExprKind::Match(subject, arms) => self.matching(fr, subject, arms),
+            ExprKind::Root(lines) => {
+                let mut kids = self.lines(fr, lines)?.into_iter();
+                let (_, root) = kids.next().expect("a view's one root");
+                Ok(Value::Node(Box::new(root)))
+            }
+            ExprKind::Element(row, args, children, site) => {
+                self.element(fr, *row, args, children.as_ref(), *site)
+            }
+            ExprKind::Placeholder(site) => {
+                let name = self.core.sites[*site].hole.clone().unwrap_or_default();
+                Ok(Value::Node(Box::new(Node::Hole(name))))
+            }
+            ExprKind::Child(child) => self.child(fr, child),
         }
+    }
+
+    /// The nodes the element lines of `b` add.
+    fn lines(&mut self, fr: &mut Frame, b: &Block) -> Done<Kids> {
+        self.kids.push(vec![]);
+        let done = self.block(fr, b);
+        let kids = self.kids.pop().expect("the list just pushed");
+        done.map(|_| kids)
+    }
+
+    fn element(
+        &mut self,
+        fr: &mut Frame,
+        row: usize,
+        args: &[Expr],
+        children: Option<&Block>,
+        site: Site,
+    ) -> Done {
+        let mut values = self.all(fr, args)?.into_iter();
+        let mut next = || values.next().expect("a checked argument");
+        let name = ELEMENTS[row].name;
+        let node = match name {
+            "Text" => Node::Text(text(next())),
+            "Button" | "Input" => {
+                let shown = text(next());
+                let value = next();
+                let text = show(self.core, args[1].ty.expect("a typed message"), &value);
+                let message = Message { value, text };
+                match name {
+                    "Button" => Node::Button {
+                        label: shown,
+                        on: message,
+                        focus: false,
+                    },
+                    _ => Node::Input {
+                        text: shown,
+                        on_change: message,
+                        edit: Edit::default(),
+                    },
+                }
+            }
+            _ => {
+                let gap = position(next().int()).ok_or_else(|| Trap::bare(Kind::Assert, site))?;
+                let lines = children.expect("a child block");
+                let children = tree::unique(name, self.lines(fr, lines)?);
+                let gap = gap as u64;
+                match name {
+                    "Row" => Node::Row { gap, children },
+                    _ => Node::Col { gap, children },
+                }
+            }
+        };
+        Ok(Value::Node(Box::new(node)))
+    }
+
+    /// Adds the line's node to the child list being built, under its key or its place.
+    fn child(&mut self, fr: &mut Frame, c: &Child) -> Done {
+        let Value::Node(node) = self.eval(fr, &c.node)? else {
+            unreachable!("a node");
+        };
+        let key = match &c.key {
+            Some(k) => Some(self.eval(fr, k)?.key()),
+            None => None,
+        };
+        let kids = self.kids.last_mut().expect("a child list being built");
+        let step = match key {
+            Some(key) => step(key),
+            None if c.looped && matches!(*node, Node::Hole(_)) => {
+                let made = kids
+                    .iter()
+                    .filter(|(s, _)| matches!(s, tree::Step::LoopHole(l, _) if *l == c.line));
+                tree::Step::LoopHole(c.line, made.count())
+            }
+            None => tree::Step::Place(c.line),
+        };
+        kids.push((step, *node));
+        Ok(Value::Unit)
     }
 
     fn items(&mut self, fr: &mut Frame, es: &[Expr], make: impl FnOnce(Items) -> Value) -> Done {
@@ -690,6 +840,7 @@ impl<'a> Machine<'a> {
         };
         let path = self.path(fr, &place.steps)?;
         let value = self.eval(fr, e)?;
+        let written = self.detector.is_some().then(|| spans(&path));
         let root = &mut fr.locals[*l];
         match op {
             None => store(root, path, value, CAP)?,
@@ -698,13 +849,19 @@ impl<'a> Machine<'a> {
                 compound(slot, op, value)?
             }
         }
+        if let (Some(d), Some(written)) = (&mut self.detector, written) {
+            d.wrote(self.depth, *l, &written);
+        }
         Ok(())
     }
 
     fn call(&mut self, fr: &mut Frame, callee: &Callee, args: &[Arg], site: Site) -> Done {
         let target = match callee {
             Callee::Fn(id) => Target::User(*id),
-            Callee::Builtin(row) => Target::Builtin(*row),
+            Callee::Builtin(row) => match row.checked_sub(ROWS.len()) {
+                Some(k) => Target::Ui(k),
+                None => Target::Builtin(*row),
+            },
             Callee::Value(e) => match self.eval(fr, e)? {
                 Value::Fn(FnKey::Fn(id)) => Target::User(id),
                 Value::Fn(FnKey::Ctor(_, v)) => Target::Ctor(v),
@@ -714,19 +871,23 @@ impl<'a> Machine<'a> {
         let lend = |i| match target {
             Target::Ctor(_) => false,
             Target::Builtin(row) => !generic::keeps(row, i),
-            Target::User(_) => true,
+            Target::User(_) | Target::Ui(_) => true,
         };
-        let mut given: Vec<Given> = Vec::with_capacity(args.len());
-        for (i, arg) in args.iter().enumerate() {
-            let g = self.given(fr, arg, lend(i), &given)?;
-            given.push(g);
+        let base = self.detector.as_ref().map_or(0, Detector::marks);
+        let given = self.operands(fr, args, lend, site);
+        if let Some(d) = &mut self.detector {
+            let seen = given.as_ref().map_or(&[][..], Vec::as_slice);
+            if d.start(self.depth, site, args, seen, base) {
+                return Err(Stop::Internal("a call takes overlapping places".into()));
+            }
         }
-        let (mut params, loans) = take_args(fr, given)?;
+        let (mut params, loans) = take_args(fr, given?)?;
         // A trap skips `give_back`; the loaned slots stay `Unit`, which nothing can see once the run ends.
         let value = match target {
             Target::Ctor(v) => return Ok(Value::Variant(v, Items(params))),
             Target::Builtin(row) if generic::calls_back(row) => self.sort_by(&mut params, site)?,
             Target::Builtin(row) => builtin::call(row, &mut params, site)?,
+            Target::Ui(k) => self.ui(k, &mut params, site)?,
             Target::User(id) => {
                 let (value, locals) = self.invoke(id, params, site)?;
                 params = locals;
@@ -752,12 +913,34 @@ impl<'a> Machine<'a> {
             frame = kept;
             Ok(answer.bool())
         };
-        let mut scratch = Vec::with_capacity(xs.0.len());
-        generic::merge_sort(&mut xs.0, &mut scratch, &mut ask)?;
+        generic::merge_sort(&mut xs.0, &mut ask)?;
         Ok(Value::Unit)
     }
 
-    fn given(&mut self, fr: &mut Frame, arg: &Arg, lend: bool, earlier: &[Given]) -> Done<Given> {
+    /// The arguments in written order.
+    fn operands(
+        &mut self,
+        fr: &mut Frame,
+        args: &[Arg],
+        lend: impl Fn(usize) -> bool,
+        site: Site,
+    ) -> Done<Vec<Given>> {
+        let mut given: Vec<Given> = Vec::with_capacity(args.len());
+        for (i, arg) in args.iter().enumerate() {
+            let g = self.given(fr, arg, lend(i), &given, site)?;
+            given.push(g);
+        }
+        Ok(given)
+    }
+
+    fn given(
+        &mut self,
+        fr: &mut Frame,
+        arg: &Arg,
+        lend: bool,
+        earlier: &[Given],
+        site: Site,
+    ) -> Done<Given> {
         match arg {
             Arg::Inout(p) => {
                 let Root::Local(l) = &p.root else {
@@ -772,17 +955,31 @@ impl<'a> Machine<'a> {
                 }) = &e.kind
                 {
                     let taken = |g: &Given| matches!(g, Given::Borrow(m, _) if m == l);
-                    let heavy = !matches!(
-                        fr.locals[*l],
-                        Value::Int(_) | Value::Float(_) | Value::Bool(_) | Value::Fn(_)
-                    );
+                    let heavy = !held_in_register(&fr.locals[*l]);
                     if lend && steps.is_empty() && heavy && !earlier.iter().any(taken) {
+                        if let Some(d) = &mut self.detector {
+                            d.read(self.depth, *l, &[], &fr.locals[*l], site);
+                        }
                         return Ok(Given::Borrow(*l, vec![]));
+                    }
+                    if self.detector.is_some() {
+                        return self.watched(fr, *l, steps, site);
                     }
                 }
                 Ok(Given::Own(self.eval(fr, e)?))
             }
         }
+    }
+
+    /// A read-only place argument read as `read` reads it, noted for the detector.
+    fn watched(&mut self, fr: &mut Frame, l: Local, steps: &[Step], site: Site) -> Done<Given> {
+        let path = self.path(fr, steps)?;
+        let copy = walk(&fr.locals[l], &path, fr.site, |seen| seen.copy())?;
+        let value = copy.ok_or_else(|| Trap::bare(Kind::Stack, fr.site))?;
+        if let Some(d) = &mut self.detector {
+            d.read(self.depth, l, &path, &value, site);
+        }
+        Ok(Given::Own(value))
     }
 }
 
@@ -993,6 +1190,22 @@ pub(super) fn compare(cmp: &Cmp, a: &Value, b: &Value) -> bool {
         Cmp::Le => matches!(order, Some(Ordering::Less | Ordering::Equal)),
         Cmp::Gt => order == Some(Ordering::Greater),
         Cmp::Ge => matches!(order, Some(Ordering::Greater | Ordering::Equal)),
+    }
+}
+
+/// A key as a step of the tree, where it leaves Paka.
+#[allow(clippy::disallowed_methods)]
+fn step(key: Key) -> tree::Step {
+    match key {
+        Key::Int(n) => tree::Step::Int(n.get()),
+        Key::Str(t) => tree::Step::Str(t.as_str().into()),
+    }
+}
+
+fn text(v: Value) -> String {
+    match v {
+        Value::Str(t) => t.as_str().into(),
+        _ => unreachable!("a checked String"),
     }
 }
 

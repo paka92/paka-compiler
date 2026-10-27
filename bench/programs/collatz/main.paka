@@ -1,0 +1,32 @@
+// The start below N of the longest Collatz chain.
+
+enum Msg { Start }
+
+fn chain(start: Int) -> Int {
+  var x = start
+  var n = 1
+  while x != 1 {
+    if x % 2 == 0 { x = x / 2 } else { x = 3 * x + 1 }
+    n += 1
+  }
+  n
+}
+
+fn update(msg: Msg) -> List<Effect<Msg>> {
+  var best = 0
+  var best_start = 0
+  for i in 1..<9000000 {
+    let n = chain(i)
+    if n > best {
+      best = n
+      best_start = i
+    }
+  }
+  [Print("{best_start}"), Exit]
+}
+
+app collatz {
+  start: Start
+  update: update
+  grants: [Console]
+}

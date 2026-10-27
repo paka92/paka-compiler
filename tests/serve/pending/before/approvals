@@ -1,0 +1,6 @@
+serial 1
+grants main.paka wc [Console, ReadFiles]
+example main.paka counts_two 3
+  example counts_two {
+    count_words("a b") == 2
+  }

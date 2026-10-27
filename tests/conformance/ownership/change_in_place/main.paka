@@ -6,9 +6,9 @@ type Cell { shape: Shape = Dot, hits: Int = 0 }
 
 type Account { balance: Int = 0 }
 
-type Row { count: Int = 0 }
+type Line { count: Int = 0 }
 
-type Sheet { items: List<Row> = [] }
+type Sheet { items: List<Line> = [] }
 
 type Links { next: List<List<Int>> = [] }
 
@@ -49,7 +49,7 @@ fn update(msg: Msg) -> List<Effect<Msg>> {
   touch(&c, &grid, &cells)
   var accounts: Map<String, Account> = ["x": Account { balance: 10 }, "y": Account {}]
   transfer(&accounts, "x", "y", 4)
-  var sheet = Sheet { items: [Row {}, Row {}] }
+  var sheet = Sheet { items: [Line {}, Line {}] }
   sheet.items[1].count += 1
   var links = Links { next: [[1], [0]] }
   append(&links.next[0], 2)

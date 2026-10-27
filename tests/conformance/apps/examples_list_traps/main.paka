@@ -1,0 +1,12 @@
+fn at(xs: List<Int>, i: Int) -> Int { xs[i] }
+
+example item_past_end { at([1, 2], 2) == 0 }
+example negative_item { at([1, 2], -1) == 0 }
+example write_past_end {
+  var xs = [1]
+  xs[1] = 2
+  true
+}
+example slice_reversed { len([1, 2, 3][2..<1]) == 0 }
+example slice_past_end { len([1, 2, 3][0..<4]) == 0 }
+example in_range { at([1, 2], 1) == 2 }

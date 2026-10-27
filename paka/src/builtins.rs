@@ -9,7 +9,7 @@ pub enum Kind {
     Variant,
     Fn,
     Grant,
-    /// An `example` or an `app`: it holds a name but is never used by name.
+    /// An `example`, an `app` or `View`: it holds a name but is never used by name.
     Other,
 }
 
@@ -125,6 +125,113 @@ pub const ROWS: &[(Kind, &str)] = &[
     (Kind::Fn, "unreachable() -> T"),
 ];
 
+/// How an element takes its width (M5-05 section 1.2).
+#[derive(Clone, Copy, Debug, PartialEq)]
+pub enum Width {
+    Hug,
+    Fill,
+}
+
+/// An element of M5-04 section 2. Each argument is its name, `:` ending a labelled one, its type
+/// in the syntax of a signature (`M` is the view's message type) and its default, if any. Every
+/// element also takes `key:` last, an Int or String (M5-02), required when `needs_key` holds.
+#[derive(Debug, PartialEq)]
+pub struct Element {
+    pub name: &'static str,
+    pub args: &'static [(&'static str, &'static str, Option<&'static str>)],
+    pub children: bool,
+    pub needs_key: bool,
+    pub takes_focus: bool,
+    pub width: Width,
+}
+
+impl Element {
+    /// Its signature in the syntax of a row, labelled arguments after `;`, giving `View<M>`.
+    pub fn sig(&self) -> String {
+        let arg = |&(name, ty, default): &(&str, &str, Option<&str>)| {
+            let default = default.map_or(String::new(), |d| format!(" = {d}"));
+            format!("{}: {ty}{default}", name.trim_end_matches(':'))
+        };
+        let (labelled, bare): (Vec<_>, Vec<_>) = self.args.iter().partition(|a| a.0.ends_with(':'));
+        let bare: Vec<_> = bare.into_iter().map(arg).collect();
+        let labelled: Vec<_> = labelled.into_iter().map(arg).collect();
+        let labelled = if labelled.is_empty() {
+            String::new()
+        } else {
+            format!("; {}", labelled.join(", "))
+        };
+        format!("{}({}{labelled}) -> View<M>", self.name, bare.join(", "))
+    }
+}
+
+pub const ELEMENTS: &[Element] = &[
+    Element {
+        name: "Text",
+        args: &[("text", "String", None)],
+        children: false,
+        needs_key: false,
+        takes_focus: false,
+        width: Width::Fill,
+    },
+    Element {
+        name: "Button",
+        args: &[("label", "String", None), ("on:", "M", None)],
+        children: false,
+        needs_key: false,
+        takes_focus: false,
+        width: Width::Hug,
+    },
+    Element {
+        name: "Input",
+        args: &[
+            ("text", "String", None),
+            ("on_change:", "fn(String) -> M", None),
+        ],
+        children: false,
+        needs_key: true,
+        takes_focus: true,
+        width: Width::Fill,
+    },
+    Element {
+        name: "Row",
+        args: &[("gap:", "Int", Some("0"))],
+        children: true,
+        needs_key: false,
+        takes_focus: false,
+        width: Width::Fill,
+    },
+    Element {
+        name: "Col",
+        args: &[("gap:", "Int", Some("0"))],
+        children: true,
+        needs_key: false,
+        takes_focus: false,
+        width: Width::Fill,
+    },
+];
+
+/// The UI example type and functions (M5-06 section 2), for example bodies only. `App` stands for
+/// the bare name of a visual app.
+pub const UI: &[(Kind, &str)] = &[
+    (Kind::Type, "Ui"),
+    (Kind::Fn, "ui_start(app: App) -> Ui"),
+    (Kind::Fn, "ui_click(ui: inout Ui, path: String)"),
+    (Kind::Fn, "ui_type(ui: inout Ui, text: String)"),
+    (Kind::Fn, "ui_tree(ui: Ui) -> String"),
+    (Kind::Fn, "ui_text(ui: Ui, path: String) -> String"),
+    (Kind::Fn, "ui_has(ui: Ui, path: String) -> Bool"),
+];
+
+/// Whether `name` is a UI type or function.
+pub fn is_ui(name: &str) -> bool {
+    UI.iter().any(|&(_, row)| self::name(row) == name)
+}
+
+/// The element named `name`, if one is.
+pub fn element(name: &str) -> Option<&'static Element> {
+    ELEMENTS.iter().find(|e| e.name == name)
+}
+
 /// The name a row defines.
 pub fn name(row: &'static str) -> &'static str {
     let end = row.find(|c: char| !c.is_alphanumeric() && c != '_');
@@ -173,6 +280,45 @@ mod tests {
             .filter(|name| !sources.iter().any(|s| calls(s, name)))
             .collect();
         assert!(missing.is_empty(), "no golden case calls {missing:?}");
+    }
+
+    #[test]
+    fn the_element_table_is_the_approved_one() {
+        let want = [
+            "Text(text String) fill",
+            "Button(label String, on: M) hug",
+            "Input(text String, on_change: fn(String) -> M) needs-key takes-focus fill",
+            "Row(gap: Int = 0) children fill",
+            "Col(gap: Int = 0) children fill",
+        ];
+        let line = |e: &Element| {
+            let arg = |&(name, ty, default): &(_, _, Option<&str>)| {
+                let default = default.map_or(String::new(), |d| format!(" = {d}"));
+                format!("{name} {ty}{default}")
+            };
+            let args: Vec<_> = e.args.iter().map(arg).collect();
+            let marks = [
+                (e.children, " children"),
+                (e.needs_key, " needs-key"),
+                (e.takes_focus, " takes-focus"),
+            ];
+            let marks: String = marks.iter().filter(|m| m.0).map(|m| m.1).collect();
+            let width = if e.width == Width::Hug { "hug" } else { "fill" };
+            format!("{}({}){marks} {width}", e.name, args.join(", "))
+        };
+        assert_eq!(ELEMENTS.iter().map(line).collect::<Vec<_>>(), want);
+    }
+
+    #[test]
+    fn element_signatures_read_as_rows() {
+        let want = [
+            "Text(text: String) -> View<M>",
+            "Button(label: String; on: M) -> View<M>",
+            "Input(text: String; on_change: fn(String) -> M) -> View<M>",
+            "Row(; gap: Int = 0) -> View<M>",
+            "Col(; gap: Int = 0) -> View<M>",
+        ];
+        assert_eq!(ELEMENTS.iter().map(Element::sig).collect::<Vec<_>>(), want);
     }
 
     #[test]

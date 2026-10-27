@@ -41,15 +41,18 @@ impl<'a> Cx<'_, 'a> {
             }
             Some(Binding::Def(i)) => match &defs[i].item {
                 Item::Fn(sig) => self.bare(e, from_ref(sig), (true, false), want),
+                Item::View(_) => Err(self.outside_view(e)),
                 _ => unknown(self),
             },
             Some(Binding::Variant(i, j)) => {
                 let sig = self.variant_sig(i, j);
-                self.bare(e, &[sig], (true, true), want)
+                let user = !matches!(defs[i].item, Item::Foreign(_));
+                self.bare(e, &[sig], (user, true), want)
             }
             Some(Binding::Builtin(b)) => match (variants.get(b), fns.get(b)) {
                 (Some(sig), _) => self.bare(e, from_ref(sig), (false, true), want),
                 (_, Some(rows)) => self.bare(e, rows, (false, false), want),
+                _ if self.elements.contains_key(b) => Err(self.outside_view(e)),
                 _ => unknown(self),
             },
             None => unknown(self),
@@ -106,8 +109,8 @@ impl<'a> Cx<'_, 'a> {
         Err(self.fail_at(e, "not-a-value", message))
     }
 
-    /// The text that offers a function to stand where a built-in variant was named; the letters
-    /// of its row are filled in from the function type asked for.
+    /// The text that offers a function to stand where a built-in variant or a foreign effect was
+    /// named; the letters of its row are filled in from the function type asked for.
     fn variant_wrapper(&mut self, name: &str, sig: &Sig<'_>, want: Option<Ty>) -> String {
         let mut bound = Bound::new();
         if let Some(w) = want
@@ -132,7 +135,11 @@ impl<'a> Cx<'_, 'a> {
         let result = sig.result.map(&mut show).unwrap_or_default();
         let names: Vec<_> = sig.params.iter().map(|p| p.name).collect();
         format!(
-            "{name} is a built-in variant and cannot be a value; write fn {}_of({}) -> {result} {{ {name}({}) }}",
+            "{name} is {} and cannot be a value; write fn {}_of({}) -> {result} {{ {name}({}) }}",
+            match self.variants.contains_key(name) {
+                true => "a built-in variant",
+                false => "a foreign effect",
+            },
             name.to_lowercase(),
             params.join(", "),
             names.join(", ")
@@ -142,6 +149,7 @@ impl<'a> Cx<'_, 'a> {
     pub(super) fn variant_sig(&self, i: usize, j: usize) -> Sig<'a> {
         let fields = match &self.defs[i].item {
             Item::Enum(variants) => &variants[j].fields[..],
+            Item::Foreign(sigs) => return sigs[j].clone(),
             _ => &[],
         };
         let param = |f: &crate::sig::Field<'a>| Param {
@@ -170,6 +178,7 @@ impl<'a> Cx<'_, 'a> {
         match self.resolved.get(callee.at) {
             Some(Binding::Def(i)) => match &defs[i].item {
                 Item::Fn(sig) => self.invoke(&to(Kind::Fn), from_ref(sig), args, want),
+                Item::View(_) => Err(self.outside_view(callee)),
                 _ => self.unbound(args),
             },
             Some(Binding::Variant(i, j)) => {
@@ -184,8 +193,12 @@ impl<'a> Cx<'_, 'a> {
                 Ok(out)
             }
             Some(Binding::Builtin(b)) if fns.contains_key(b) => {
+                self.ui_call(b, args)?;
                 let out = self.invoke(&to(Kind::Fn), &fns[b], args, want)?;
                 Ok(if b == "unreachable" { Out::Never } else { out })
+            }
+            Some(Binding::Builtin(b)) if self.elements.contains_key(b) => {
+                Err(self.outside_view(callee))
             }
             Some(Binding::Local(_)) => {
                 let ty = self.expr_val(callee, None)?;
@@ -193,6 +206,22 @@ impl<'a> Cx<'_, 'a> {
             }
             _ => self.unbound(args),
         }
+    }
+
+    /// A call of the function or view `callee` names, with its one signature `sig`.
+    pub(super) fn call_sig(
+        &mut self,
+        callee: &Expr,
+        sig: &Sig<'_>,
+        args: &[Arg],
+        want: Option<Ty>,
+    ) -> Res<Out> {
+        let c = Callee {
+            name: render(callee),
+            at: span(callee),
+            kind: Kind::Fn,
+        };
+        self.invoke(&c, from_ref(sig), args, want)
     }
 
     /// An `ExitWith` written with an Int literal must name a status a program may choose.
@@ -409,13 +438,18 @@ impl<'a> Cx<'_, 'a> {
         want: Option<Ty>,
     ) -> Res<Out> {
         let (mut bound, mut open, picked) = (Bound::new(), Vec::new(), first.is_some());
-        let mut misfit = None;
+        let (mut misfit, mut waiting) = (None, Vec::new());
         for (i, (arg, param)) in args.iter().zip(&sig.params).enumerate() {
             let hint = self.subst(param.ty, &bound);
             let later = i > 0 || c.kind == Kind::Variant;
             if matches!(arg.value.kind, K::Hole(_)) && later && self.free(hint) {
                 self.info.insert(span(&arg.value), hint);
                 open.push((i, hint));
+                continue;
+            }
+            // A hole deeper in waits, like a bare one, for the letters the position binds.
+            if later && self.free(hint) && holds_hole(&arg.value) {
+                waiting.push(i);
                 continue;
             }
             let got = self.argument(c, arg, param, hint, first.take())?;
@@ -440,6 +474,14 @@ impl<'a> Cx<'_, 'a> {
                 let (w, r) = (self.types.show(w), self.types.show(r));
                 return Err(self.mismatch(c.at, &w, &r, ""));
             }
+        }
+        for i in waiting.into_iter().filter(|_| misfit.is_none()) {
+            let hint = self.subst(sig.params[i].ty, &bound);
+            let got = self.argument(c, &args[i], &sig.params[i], hint, None)?;
+            if !self.free(got) {
+                self.bind(hint, got, &mut bound);
+            }
+            open.push((i, got));
         }
         for (i, got) in open {
             let (param, value) = (sig.params[i].ty, &args[i].value);
@@ -710,5 +752,16 @@ impl<'a> Cx<'_, 'a> {
     fn bind_all(&self, rows: &[Ty], found: &[Ty], bound: &mut Bound) -> bool {
         let each = |ok, (&r, &f)| self.bind(r, f, bound) & ok;
         rows.len() == found.len() && rows.iter().zip(found).fold(true, each)
+    }
+}
+
+/// Whether a hole sits in `e` as an item or an argument, at any depth.
+fn holds_hole(e: &Expr) -> bool {
+    match &e.kind {
+        K::Hole(_) => true,
+        K::List(items) => items.iter().any(holds_hole),
+        K::Map(pairs) => pairs.iter().any(|(k, v)| holds_hole(k) || holds_hole(v)),
+        K::Call(_, args) => args.iter().any(|a| holds_hole(&a.value)),
+        _ => false,
     }
 }

@@ -1,9 +1,9 @@
-first_word_of_none pass
-first_word_wrong fail at main.paka:19:46
+first_word_of_none agent-written pass
+first_word_wrong agent-written fail at main.paka:19:46
   left: Some("a")
   right: None
-ratio_divides pass
-ratio_refuses_zero pass
-ratio_wrong_text fail at main.paka:17:40
+ratio_divides agent-written pass
+ratio_refuses_zero agent-written pass
+ratio_wrong_text agent-written fail at main.paka:17:40
   left: Err("divide by zero")
   right: Err("nope")

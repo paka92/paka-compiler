@@ -48,6 +48,14 @@ Files added by the `apps/` cases. Each is optional.
 - `absent`: paths, one per line, that must not exist after the command.
 - `present`: paths, one per line, that must exist after the command.
 
+Two files at the root serve release mode of the differential harness (M6-06, `paka-diff
+--release`). `release-skip` lists feature tags, one per line, from the fixed list in
+`installer/src/release.rs`, which tags each case from its program; a run case is skipped in release
+while any of its tags is listed. `release-exempt` lists, as `hole CASE` lines, every run case with
+a hole, which `paka build` must refuse by the holes' names, and as `examples CASE` lines every
+example-status case, compared in interpreter and dev only until M7-11. `#` lines are comments. Build
+first with `cargo build --release -p paka -p paka-installer -p paka-rt`.
+
 ## Pass rules
 
 The case folder is the working directory, so every diagnostic path is `main.paka`.
@@ -83,14 +91,16 @@ non-zero, an oversize reference. Command, which runs the gate and its self-tests
 
 It is a plain test, so `cargo test --workspace --locked --offline` runs it too.
 
-- **Reference samples.** A block of `spec/paka.md` fenced as `paka` is a sample (the reference
-  says so in its first paragraph); no other block is. A sample checks and runs when, saved as
+- **Reference samples.** A block of `spec/paka.md` or `spec/screens.md` fenced as `paka` is a
+  sample (each page says so in its first paragraph); no other block is. A sample checks and runs when, saved as
   `main.paka` in a fresh folder, `paka check main.paka` and `paka examples main.paka` both exit 0,
-  and, if it has an `app`, `paka run main.paka words.txt` also exits 0, with `words.txt` in that
-  folder holding the text `a b c`.
+  and, if it has an `app` without `view:`, `paka run main.paka words.txt` also exits 0, with
+  `words.txt` in that folder holding the text `a b c`. A visual app is not run: `paka run` refuses
+  it for now.
 - **Size.** `spec/paka.md` is at most 8,000 tokens under the one counting rule: bytes divided by
   three (M2-18, `paka/tests/reference.rs`). The test rounds the quotient up, so the budget is
-  24,000 bytes; rounding down would allow two bytes more.
+  24,000 bytes; rounding down would allow two bytes more. `spec/screens.md`, the visual-app
+  sections M5-41 added, has its own budget of 2,500 tokens under the same rule.
 - **Coverage.** The syntax node kinds are the variants of the node enums of `paka/src/ast.rs`
   (definitions, app entries, types, statements, expressions, string parts, arm bodies, patterns
   and the three operator enums), each written `Enum::Variant`. The built-ins are the distinct
@@ -359,6 +369,7 @@ M2-41 reuses `order_call_arguments` and `order_assignment_right_first`.
 | labels are tested before the argument types | `wrong_label_before_type` |
 | argument count, tested before labels | `wrong_argument_count_few`, `wrong_argument_count_many`, `wrong_argument_count_before_label` |
 | `inout` parameters, forwarded `&`, Int and String | `inout_calls` |
+| `inout` Int, Float, Bool, record and field; a borrowed record | `inout_records` |
 | `return` early: in `for`, in `while`, bare | `early_return` |
 | `return` on the last line, bare, also through a branch or a `match` arm | `return_last`, `return_last_bare`, `return_last_in_branch`, `return_last_in_match_arm` |
 | `return` with a value in a function without a result | `return_value_without_result` |
@@ -554,6 +565,8 @@ full in the folder. `(Rn)` marks a case that follows a reading in the Settled re
 | `start` is a variant with String fields only; an unknown name, a function and a non-String field are told apart | `start_unknown_name`, `start_is_function`, `start_field_not_string`, `start_before_grants` (R9) |
 | no app: `check` passes, `run` and `build` give `no-app` after the program is checked | `no_app_check_ok`, `no_app_run`, `no_app_build`, `no_app_empty_file`, `no_app_error_first`, `no_app_check_error_first` (R7) |
 | two apps stay a check error | `multiple_apps`, `multiple_apps_check` |
+| a visual app (M5-01): the counter sample checks clean | `view_counter_check` |
+| UI examples (M5-06): the to-do sample checks clean and its examples pass with no window (M5-22) | `ui_todo_check` |
 
 ### Arguments and the first message (M2-15 §1.4)
 
@@ -734,8 +747,6 @@ construct (the target `c.shape.w`, the operand or write `&xs`).
 | `unexpected-token` | `unexpected_token` | 4:12 | spec/m1.md §10; M2-02 §5: `;` |
 | `unexpected-inout-mark` | `unexpected_inout_mark` | 5:11 | spec/m1.md §10; M2-05 §5 |
 | `nesting-too-deep` | `nesting_too_deep` | 4:66 | spec/m1.md §10; M2-02 §5; `tests/cases/parse/nesting_too_deep` |
-| `unsupported-view` | `unsupported_view` | 7:1 | spec/m1.md §10; `tests/cases/parse/view_definition` |
-| `unsupported-form` | `unsupported_form` | via `build`, no position | spec/m1.md §10 (build, no position) |
 | `duplicate-name` | `duplicate_name` | 3:6 | spec/m1.md §10; `tests/cases/check/duplicate_enum` |
 | `duplicate-local` | `duplicate_local` | 5:7 | spec/m1.md §10; M2-02 §5 |
 | `no-app` | `no_app` | via `run`, no position | spec/m1.md §10 (no position) |
@@ -781,6 +792,15 @@ construct (the target `c.shape.w`, the operand or write `&xs`).
 | `missing-arm` | `missing_arm` | 5:11 | M2-02 §5; `tests/cases/check-text/missing_arm_none` |
 | `duplicate-arm` | `duplicate_arm` | 7:5 | M2-02 §5 |
 | `wildcard-on-enum` | `wildcard_on_enum` | 5:5 | M2-02 §5; `tests/cases/check-text/wildcard_on_option` |
+| `bad-view-signature` | `bad_view_signature` | 16:18 | M5-01 §2; `tests/cases/check/view_inout_parameter` |
+| `element-outside-view` | `element_outside_view` | 17:3 | M5-01 §1.3; `tests/cases/check/view_element_in_fn` |
+| `wrong-child-block` | `wrong_child_block` | 17:3 | M5-01 §2; `tests/cases/check/view_missing_child_block` |
+| `missing-key` | `missing_key` | 19:7 | M5-02; `tests/cases/check/view_loop_child_without_key` |
+| `key-on-root` | `key_on_root` | 16:63 | M5-02; `tests/cases/check/view_key_on_root` |
+| `duplicate-key` | `duplicate_key` | 19:28 | M5-02; `tests/cases/check/view_duplicate_key` |
+| `ui-outside-example` | `ui_outside_example` | 27:15 | M5-06 §2; `tests/cases/check/ui_type_in_fn` |
+| `bad-ui-start` | `bad_ui_start` | 14:21 | M5-06 §2; `tests/cases/check/ui_start_string` |
+| `bad-ui-path` | `bad_ui_path` | 28:17 | M5-06 §1.2; `tests/cases/check/ui_bad_path` |
 
 Not in the table, since a program cannot reach them in a file:
 
@@ -788,18 +808,24 @@ Not in the table, since a program cannot reach them in a file:
 |---|---|
 | `file-unreadable` | needs a file that cannot be read; a case folder always holds `main.paka` (spec/m1.md §13) |
 | `clang-missing` | needs a machine without `clang`; tested out of the folder (spec/m1.md §13) |
+| `clang-version` | needs a `clang` of another version (spec/m1.md §13) |
 | `clang-failed` | needs a failing `clang` run (spec/m1.md §13) |
 | `runtime-missing` | needs `libpaka_rt.a` removed from the executable's folder (spec/m1.md §13) |
+| `bad-migrate-signature` | a migrate is not a program file; tested in paka/tests/migrate.rs (M5-07 §2) |
+| `migrate-needs-reset` | a migrate is not a program file; tested in paka/tests/migrate.rs (M5-07 §2) |
+| `effect-in-migrate` | a migrate is not a program file; tested in paka/tests/migrate.rs (M5-07 §2) |
+| `old-value-use` | a migrate is not a program file; tested in paka/tests/migrate.rs (M5-07 §2) |
 
 `unused-name` is a warning and has no kind; its cases are under "Warnings: `unused-name`" in
-the apps/ part. `unsupported-form` is temporary (spec/m1.md §10): drop its case when the back end
-builds the core form.
+the apps/ part. `unsupported-form` (spec/m1.md §10) has no case: since M7-15 the back end builds
+every case, and the kind stays for a program it cannot lower, such as one whose frame is too big.
 
 ### types/ M2-02: records, enums, names
 
 | Point | Case(s) |
 |---|---|
 | record fields, defaults, order of fields in a literal | `record_defaults_and_order` |
+| records copied, nested, written by field, passed and returned | `record_values` |
 | field omitted with no default | `record_field_omitted` |
 | label not a field / out of order | `record_label_not_a_field`, `record_label_out_of_order` |
 | duplicate field name | `record_duplicate_field` |
@@ -821,6 +847,7 @@ builds the core form.
 | arm forms: block, single line, alternatives, `_`, nested patterns | `match_arm_forms`, `match_enum_arms`, `match_int_string_bool` |
 | a single-line arm `_ = e`, its `?` passing an error on | `match_arm_discard` |
 | `Option` and `Result` subjects | `match_option_result` |
+| enum values: built, matched with binds, nested, reassigned | `enum_values_match` |
 | an arm that leaves: bare after `=>` is refused at the keyword; as a block it runs | `match_arm_return`, `match_arm_break`, `match_arm_continue`, `match_arms_that_leave` |
 | arm types differ | `match_arm_type_differs` |
 | a single-line arm with no value: `missing-value` at its pattern (M2-02 §5) | `match_single_line_arm_no_value` |

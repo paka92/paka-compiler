@@ -2,8 +2,23 @@
 //! sections 3, 4 and 11. The view is all the back end builds until it takes the whole core form.
 
 use crate::core_form::{self, Expr, ExprKind, Grant, Program, Tag, Type};
+use paka_rt::abi::table::{APP, RUN, VISUAL};
 
-/// What the back end builds: the effects of an `update` whose body is a constant list.
+mod code;
+pub mod lint;
+#[cfg(test)]
+mod views;
+
+/// The checks the IR has: all of them, or, in a measurement-only build (M6-30), all but those of
+/// List items and slices.
+#[derive(Clone, Copy, Debug, PartialEq)]
+pub enum Checks {
+    All,
+    NoBounds,
+}
+
+/// What the back end builds: an `update` whose body gives a list of effects, after statements
+/// that may call other functions.
 #[derive(Debug, PartialEq)]
 pub struct M1 {
     pub app: String,
@@ -12,8 +27,14 @@ pub struct M1 {
     pub console: bool,
     /// The Paka name of the update function.
     pub update_name: String,
-    /// The effects `update` returns, in order.
-    pub update: Vec<Effect>,
+    /// The effects `update` returns, in order, when they are constants; `None` when the body
+    /// builds them.
+    pub update: Option<Vec<Effect>>,
+    /// The start of `update`'s body, which leaves its block open, or all of it when it builds its
+    /// effects; empty when it has no statements.
+    pub body: String,
+    /// The other functions with their constants and declarations.
+    pub code: String,
 }
 
 #[derive(Debug, PartialEq)]
@@ -23,27 +44,33 @@ pub enum Effect {
 }
 
 /// The M1 view of `core`, or `None` when it holds what the back end cannot build.
-pub fn view(core: &Program) -> Option<M1> {
+pub fn view(core: &mut Program, checks: Checks) -> Option<M1> {
     let app = core.app.as_ref()?;
-    let update = &core.fns[app.update];
-    if app.state.is_some() || !update.body.stmts.is_empty() {
+    let (start, id) = (app.start?, app.update);
+    let update = &core.fns[id];
+    if app.state.is_some() {
         return None;
     }
     let Type::Enum(msg) = core.types[update.params.last()?.ty] else {
         return None;
     };
-    if !core.enums[msg].variants[app.start].fields.is_empty() {
+    if !core.enums[msg].variants[start].fields.is_empty() {
         return None;
     }
-    let ExprKind::List(items) = &update.body.value.as_ref()?.kind else {
-        return None;
+    let literal = match &update.body.value.as_ref()?.kind {
+        ExprKind::List(items) => items.iter().map(effect).collect::<Option<Vec<_>>>(),
+        _ => None,
     };
+    let (body, code) = code::lower(core, id, literal.is_none(), checks)?;
+    let (app, update) = (core.app.as_ref()?, &core.fns[id]);
     Some(M1 {
         app: app.name.clone(),
-        start: app.start,
+        start,
         console: app.grants.contains(&Grant::Console),
         update_name: update.name.clone(),
-        update: items.iter().map(effect).collect::<Option<_>>()?,
+        update: literal,
+        body,
+        code,
     })
 }
 
@@ -65,22 +92,26 @@ fn effect(e: &Expr) -> Option<Effect> {
 
 /// The IR text of the program; layout and wording follow docs/abi/m1.md section 11.
 pub fn emit(core: &M1) -> String {
-    let texts: Vec<&str> = core
-        .update
-        .iter()
-        .filter_map(|e| match e {
-            Effect::Print(text) if !text.is_empty() => Some(text.as_str()),
-            _ => None,
-        })
-        .collect();
+    let effects = core.update.as_deref().unwrap_or_default();
+    let texts = effects.iter().filter_map(|e| match e {
+        Effect::Print(text) if !text.is_empty() => Some(text.as_str()),
+        _ => None,
+    });
     let mut constants = constant("name", &core.app);
-    for (i, text) in texts.iter().enumerate() {
+    for (i, text) in texts.enumerate() {
         constants += &constant(&format!("s{i}"), text);
     }
-    constants += &effect_list(&core.update);
-    let (list, count) = match core.update.is_empty() {
+    constants += &effect_list(effects);
+    let (list, count) = match effects.is_empty() {
         true => ("null", 0),
-        false => ("@fx", core.update.len()),
+        false => ("@fx", effects.len()),
+    };
+    let body = match core.update {
+        Some(_) => format!(
+            "{}  store {{ ptr, i64 }} {{ ptr {list}, i64 {count} }}, ptr %out\n  ret i32 0\n",
+            core.body
+        ),
+        None => core.body.clone(),
     };
     let grants = u64::from(core.console); // bit 0: Console
     let update = format!("p_{}", core.update_name);
@@ -88,21 +119,51 @@ pub fn emit(core: &M1) -> String {
         "target triple = \"x86_64-pc-linux-gnu\"
 
 {constants}
-declare i32 @paka_rt1_run(ptr, i64, ptr, i64, i64)
+{RUN}
 
 define internal i32 @{update}(i64 %m, ptr %out) {{
-  store {{ ptr, i64 }} {{ ptr {list}, i64 {count} }}, ptr %out
-  ret i32 0
-}}
+{body}}}
 
 define i32 @main() {{
   %st = call i32 @paka_rt1_run(ptr @name, i64 {}, ptr @{update}, i64 {}, i64 {grants})
   ret i32 %st
 }}
-",
+{}",
         core.app.len(),
-        core.start
+        core.start,
+        core.code
     )
+}
+
+/// The IR text of an app the M1 view cannot hold, on the entry of docs/abi/m1.md sections 13
+/// and 14; `None` for what the back end cannot build.
+pub fn app(core: &mut Program, checks: Checks) -> Option<String> {
+    let app = core.app.as_ref()?;
+    let (entry, name) = match app.view {
+        Some(_) => (VISUAL, "paka_rt1_visual"),
+        None => (APP, "paka_rt1_app"),
+    };
+    let code = code::lower_app(core, checks)?;
+    Some(format!(
+        "target triple = \"x86_64-pc-linux-gnu\"
+
+{entry}
+
+define i32 @main() {{
+  %st = call i32 @{name}(ptr @app)
+  ret i32 %st
+}}
+
+{code}"
+    ))
+}
+
+/// The IR text of `core`: the M1 view's when it holds the program, else the headless app's.
+pub fn ir(core: &mut Program, checks: Checks) -> Option<String> {
+    match view(core, checks) {
+        Some(view) => Some(emit(&view)),
+        None => app(core, checks),
+    }
 }
 
 /// A byte-string constant, every byte hex-escaped.
@@ -149,11 +210,6 @@ mod tests {
     use std::path::{Path, PathBuf};
     use std::process::{Command, Stdio};
 
-    const BANNED: [&str; 12] = [
-        "nsw", "nuw", "inbounds", "noalias", "fast", "nnan", "ninf", "nsz", "arcp", "contract",
-        "afn", "reassoc",
-    ];
-
     fn root() -> PathBuf {
         Path::new(env!("CARGO_MANIFEST_DIR")).join("..")
     }
@@ -161,12 +217,13 @@ mod tests {
     /// The view of a program the front end accepts and the back end can build.
     fn accepted(file: &Path) -> Option<M1> {
         view(
-            &crate::check(
+            &mut crate::check(
                 "main.paka",
                 &crate::source::Source::file("main.paka", fs::read(file).unwrap()),
             )
             .ok()?
             .0,
+            Checks::All,
         )
     }
 
@@ -200,24 +257,15 @@ mod tests {
         }
     }
 
-    /// The banned words found as whole words, outside the hex of string constants.
-    fn banned_in(ir: &str) -> Vec<&str> {
-        let code = ir.split("c\"").enumerate().map(|(i, part)| match i {
-            0 => part,
-            _ => part.split_once('"').map_or("", |(_, rest)| rest),
-        });
-        code.flat_map(|part| part.split(|c: char| !c.is_ascii_alphanumeric() && c != '_'))
-            .filter(|word| BANNED.contains(word))
-            .collect()
-    }
-
     fn core(update: Vec<Effect>) -> M1 {
         M1 {
             app: "app".into(),
             start: 1,
             console: true,
             update_name: "go".into(),
-            update,
+            update: Some(update),
+            body: String::new(),
+            code: String::new(),
         }
     }
 
@@ -258,9 +306,11 @@ app light {
             start: 0,
             console: true,
             update_name: "update".into(),
-            update: vec![Effect::Print("let there be light".into()), Effect::Exit],
+            update: Some(vec![print("let there be light"), Effect::Exit]),
+            body: String::new(),
+            code: String::new(),
         };
-        assert_eq!(view(&lowered(LIGHT)), Some(by_hand));
+        assert_eq!(view(&mut lowered(LIGHT), Checks::All), Some(by_hand));
     }
 
     #[test]
@@ -273,7 +323,7 @@ app light {
         let ty = state.ty(Type::Record(0));
         state.app.as_mut().unwrap().state = Some(typed(ty, ExprKind::Record(0, vec![])));
         let mut statement = lowered(LIGHT);
-        let unused = typed(1, ExprKind::Str("unused".into()));
+        let unused = typed(1, ExprKind::Hole(0));
         statement.fns[0]
             .body
             .stmts
@@ -283,18 +333,18 @@ app light {
         let mut none = lowered(LIGHT);
         none.app = None;
         let payload = lowered(&LIGHT.replace("Start }", "Start(path: String) }"));
-        for core in [state, statement, computed, none, payload] {
-            assert_eq!(view(&core), None);
+        for mut core in [state, statement, computed, none, payload] {
+            assert_eq!(view(&mut core, Checks::All), None);
         }
     }
 
     #[test]
     fn grants_beyond_console_do_not_change_the_view() {
         let mut core = lowered(LIGHT);
-        let plain = view(&core);
+        let plain = view(&mut core, Checks::All);
         core.app.as_mut().unwrap().grants.insert(Grant::ReadFiles);
         assert!(plain.is_some());
-        assert_eq!(view(&core), plain);
+        assert_eq!(view(&mut core, Checks::All), plain);
     }
 
     #[test]
@@ -318,21 +368,43 @@ app light {
     }
 
     #[test]
-    fn no_banned_word_in_any_run_case() {
+    fn every_run_case_and_the_abi_document_pass_the_linter() {
         let cases = run_cases();
         assert!(!cases.is_empty(), "no runnable case found");
-        for (folder, ir) in cases {
-            assert!(!ir.is_empty(), "{}", folder.display());
-            assert_eq!(banned_in(&ir), Vec::<&str>::new(), "{}", folder.display());
+        let reference = fs::read_to_string(root().join("docs/abi/light.ll")).unwrap();
+        let document = (root().join("docs/abi/light.ll"), reference);
+        for (file, ir) in cases.into_iter().chain([document]) {
+            assert!(!ir.is_empty(), "{}", file.display());
+            assert_eq!(lint::lint(&ir), Vec::<String>::new(), "{}", file.display());
         }
     }
 
+    /// Release IR has no slot table: every call names its callee, and the only global a load
+    /// reads is the runtime's stack limit.
     #[test]
-    fn banned_word_scan_sees_words_and_skips_constants() {
-        assert_eq!(banned_in("add nsw i64 %a, %b"), ["nsw"]);
-        assert_eq!(banned_in("fadd fast double"), ["fast"]);
-        assert!(banned_in("call @faster(i64 1) @inbounds_x").is_empty());
-        assert!(banned_in("@s0 = private constant [4 x i8] c\"fast\"").is_empty());
+    fn every_call_in_any_run_case_is_direct() {
+        let cases = run_cases();
+        assert!(!cases.is_empty(), "no runnable case found");
+        for (folder, ir) in cases {
+            let calls = ir
+                .lines()
+                .filter_map(|line| line.split_once(" call ")?.1.split_once(' '));
+            for (_, callee) in calls {
+                assert!(callee.starts_with('@'), "{}: {callee}", folder.display());
+            }
+            for line in ir.lines().filter(|l| l.contains(" = load ")) {
+                let at = line
+                    .rsplit_once("ptr ")
+                    .unwrap()
+                    .1
+                    .split(',')
+                    .next()
+                    .unwrap();
+                let global = at.starts_with('@');
+                let limit = at == "@paka_rt1_stack_limit";
+                assert!(!global || limit, "{}: {line}", folder.display());
+            }
+        }
     }
 
     #[test]
@@ -363,5 +435,196 @@ app light {
         assert!(ir.contains("define internal i32 @p_go(i64 %m, ptr %out) {\n"));
         assert!(ir.contains("(ptr @name, i64 3, ptr @p_go, i64 1, i64 0)\n"));
         assert_eq!(clang_accepts(&ir), Ok(()));
+    }
+
+    /// Every defined function checks its frame against the runtime's limit before anything else;
+    /// only a large frame is kept from being inlined.
+    #[test]
+    fn every_function_checks_the_stack_and_a_large_frame_is_not_inlined() {
+        let fields: Vec<String> = (0..1024).map(|i| format!("f{i}: Int")).collect();
+        let values: Vec<String> = (0..1024).map(|i| format!("f{i}: n")).collect();
+        let source = format!(
+            "enum Msg {{ Start }}\ntype Big {{ {} }}\n\
+             fn down(n: Int) -> Int {{ down(n + 1) + 1 }}\n\
+             fn wide(n: Int) -> Int {{ let b = Big {{ {} }}\n b.f0 + down(n) }}\n\
+             fn update(m: Msg) -> List<Effect<Msg>> {{ let r = wide(0)\n [Exit] }}\n\
+             app a {{\n start: Start\n update: update\n grants: []\n}}\n",
+            fields.join(", "),
+            values.join(", ")
+        );
+        let ir = emit(&view(&mut lowered(&source), Checks::All).unwrap());
+        assert_eq!(lint::lint(&ir), Vec::<String>::new());
+        assert_eq!(clang_accepts(&ir), Ok(()));
+        let defines: Vec<_> = ir.split("\ndefine internal i32 @p_").skip(2).collect();
+        assert_eq!(defines.len(), 2, "{ir}");
+        for define in defines {
+            let (head, body) = define.split_once("\nentry:\n").unwrap();
+            let first = body.lines().find(|l| !l.contains(" = alloca ")).unwrap();
+            assert_eq!(first, "  %mark.at = ptrtoint ptr %mark to i64", "{define}");
+            let large = head.starts_with("wide(");
+            assert_eq!(head.ends_with(" noinline {"), large, "{head}");
+            let frame = if large { "16400" } else { "16" };
+            assert!(
+                body.contains(&format!("%room = sub i64 %mark.at, {frame}\n")),
+                "{body}"
+            );
+        }
+    }
+
+    /// A loop over a `List<Float>` through the generic rows keeps its items as doubles at full
+    /// optimization: no call through a pointer, no item copied by the runtime.
+    #[test]
+    fn a_generic_loop_over_floats_is_specialized() {
+        let source = "enum Msg { Start }
+fn scaled(xs: List<Float>, k: Float) -> List<Float> {
+  var out: List<Float> = []
+  for x in xs { append(&out, x * k) }
+  sort(&out)
+  out
+}
+fn update(m: Msg) -> List<Effect<Msg>> {
+  var ys = scaled(list_of(1.5, count: 1000), 2.0)
+  [Print(\"{unwrap_or(find(ys, 3.0), -1)} {to_int(pop(&ys))}\"), Exit]
+}
+app a {
+  start: Start
+  update: update
+  grants: [Console]
+}
+";
+        let ir = emit(&view(&mut lowered(source), Checks::All).unwrap());
+        assert_eq!(lint::lint(&ir), Vec::<String>::new());
+        let optimized = optimized(&ir);
+        let calls = optimized
+            .lines()
+            .filter_map(|line| line.split_once(" call "));
+        for (_, call) in calls {
+            let callee = call.split('(').next().unwrap().rsplit(' ').next().unwrap();
+            assert!(callee.starts_with('@'), "{call}");
+        }
+        assert!(!optimized.contains("@paka_rt1_copy"), "{optimized}");
+        assert!(optimized.contains("store double"), "{optimized}");
+    }
+
+    /// `ir` at the optimization `paka build` uses.
+    fn optimized(ir: &str) -> String {
+        let mut clang = Command::new("clang")
+            .args(["-O3", "-S", "-emit-llvm", "-x", "ir", "-", "-o", "-"])
+            .stdin(Stdio::piped())
+            .stdout(Stdio::piped())
+            .spawn()
+            .unwrap();
+        let _ = clang.stdin.take().unwrap().write_all(ir.as_bytes());
+        let out = clang.wait_with_output().unwrap();
+        assert!(out.status.success());
+        String::from_utf8(out.stdout).unwrap()
+    }
+
+    /// The blocks of `function` on a cycle that branch to a trap.
+    fn trap_branches_in_loops(function: &str) -> Vec<String> {
+        let mut blocks: Vec<(&str, Vec<&str>, bool)> = Vec::new();
+        for line in function.lines().skip(1) {
+            match (line.strip_prefix("  "), line.split_once(':')) {
+                (Some(inst), _) => {
+                    let block = blocks.last_mut().unwrap();
+                    block.2 |= inst.contains("@paka_rt1_trap(");
+                    let labels = inst.split("label %").skip(1);
+                    block
+                        .1
+                        .extend(labels.map(|s| s.split([',', ' ', ']']).next().unwrap()));
+                }
+                (None, Some((name, _))) => blocks.push((name, Vec::new(), false)),
+                _ => {}
+            }
+        }
+        let at = |name: &str| blocks.iter().position(|b| b.0 == name).unwrap();
+        let reaches = |from: &str, to: usize| {
+            let mut seen = vec![false; blocks.len()];
+            let mut stack = vec![at(from)];
+            while let Some(b) = stack.pop() {
+                if b == to {
+                    return true;
+                }
+                if !std::mem::replace(&mut seen[b], true) {
+                    stack.extend(blocks[b].1.iter().map(|s| at(s)));
+                }
+            }
+            false
+        };
+        let blocks = &blocks;
+        (0..blocks.len())
+            .filter(|&i| blocks[i].1.iter().any(|s| blocks[at(s)].2))
+            .filter(|&i| blocks[i].1.iter().any(|s| reaches(s, i)))
+            .map(|i| blocks[i].0.to_string())
+            .collect()
+    }
+
+    #[test]
+    fn the_loop_list_has_no_trap_branch_inside_a_loop() {
+        let loops = include_str!("../tests/loops.paka");
+        let kernels: Vec<&str> = loops
+            .lines()
+            .filter_map(|line| line.strip_prefix("fn ")?.split('(').next())
+            .filter(|name| *name != "update")
+            .collect();
+        let mut ir = ir(&mut lowered(loops), Checks::All).unwrap();
+        assert_eq!(lint::lint(&ir), Vec::<String>::new());
+        // Kept external, each kernel is optimized for any input, not folded into `update`.
+        for k in &kernels {
+            ir = ir.replace(
+                &format!("define internal i32 @p_{k}("),
+                &format!("define i32 @p_{k}("),
+            );
+        }
+        let optimized = optimized(&ir);
+        for k in kernels {
+            let head = format!("@p_{k}(");
+            let mut functions = optimized.split("\ndefine ");
+            let function = functions.find(|f| f.lines().next().unwrap().contains(&head));
+            let function = function.unwrap().split("\n}").next().unwrap();
+            assert_eq!(
+                trap_branches_in_loops(function),
+                Vec::<String>::new(),
+                "{k}: {function}"
+            );
+        }
+    }
+
+    /// Generated programs (M6-21): each without a hole builds in release, and together they give
+    /// every core-form node kind but a view's and a hole's. `PAKA_GEN_SEEDS` sets how many
+    /// (default 2,000).
+    #[test]
+    fn generated_programs_build_in_release_with_every_kind() {
+        use paka::coverage::core::{CORE_KINDS, VIEW_KINDS, kinds};
+        let n = std::env::var("PAKA_GEN_SEEDS").map_or(2_000, |n| n.parse().unwrap());
+        // The main thread's stack, which `paka` checks on.
+        let worker = std::thread::Builder::new().stack_size(8 << 20);
+        let found = worker.spawn(move || {
+            let mut found = std::collections::BTreeMap::new();
+            for seed in 0..n {
+                let text = crate::source::Source::file("main.paka", paka_gen::program(seed).into());
+                let (mut core, holes, _) = crate::check("main.paka", &text).unwrap();
+                if holes.iter().any(|h| h.refusal.is_some()) {
+                    continue;
+                }
+                kinds(&core)
+                    .0
+                    .into_iter()
+                    .for_each(|k| *found.entry(k).or_insert(0) += 1);
+                let ir =
+                    ir(&mut core, Checks::All).unwrap_or_else(|| panic!("seed {seed} is refused"));
+                assert_eq!(lint::lint(&ir), Vec::<String>::new(), "seed {seed}");
+            }
+            found
+        });
+        let found = found.unwrap().join().unwrap();
+        for kind in CORE_KINDS {
+            println!("{:>6} {kind}", found.get(kind).unwrap_or(&0));
+        }
+        let missing: Vec<_> = (CORE_KINDS.iter())
+            .filter(|k| !found.contains_key(*k) && !VIEW_KINDS.contains(k))
+            .filter(|k| **k != "ExprKind::Hole")
+            .collect();
+        assert!(missing.is_empty(), "never built: {missing:?}");
     }
 }

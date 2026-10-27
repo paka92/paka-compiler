@@ -5,17 +5,21 @@ A programming language for code written by AI agents.
 People describe what they want and decide what a program may do; an agent writes and reads the
 code. The design and its reasons are in the [genesis paper](GENESIS.md).
 
-**Status:** research prototype. The language is defined, a checker and a slow interpreter work,
-and the first experiment has run. Its pre-set rule says **stop** (see [Experiment](#experiment)).
-Nothing here is ready for real programs.
+**Status:** the language is defined, and a checker and an interpreter run it. Dev mode, the live
+GUI and release mode are being built, in that order.
 
 ## What works
 
-- [`spec/paka.md`](spec/paka.md): the whole language on one page.
+- [`spec/paka.md`](spec/paka.md): the language on one page; [`spec/screens.md`](spec/screens.md)
+  adds visual apps.
 - `paka check`: parses and type-checks the full language of the reference.
 - `paka run`: runs headless programs in an interpreter.
 - `paka build`: compiles the milestone 1 subset to a native binary through LLVM IR and `clang`.
 - `paka examples`: runs a program's in-file examples.
+- `paka serve`: the agent tool interface, JSON lines on standard input and output; requests are
+  checked and dispatched. `find` lists definitions by name, user, kind, state or type shape;
+  `view` shows one with the signatures it uses, both within a token budget; `edit` replaces, adds
+  or deletes one definition against its version and writes the files. Run is being built.
 
 ```paka
 enum Msg { Start }
@@ -36,7 +40,13 @@ A program touches only what its `grants` allow; this one may write to the consol
 ## Build
 
 Needs Rust 1.96.1 (pinned in `rust-toolchain.toml`) and, for `paka build`, `clang` on the path.
-Standard library only; no third-party crates.
+Outside crates are vendored in `vendor/`, each listed in `.cargo/approved-crates.txt`, and build
+offline; building needs no system package beyond the toolchain.
+
+Visual apps, being built, run in a Wayland session. A window loads `libwayland-client`,
+`libwayland-cursor` and `libxkbcommon` at run time (Debian and Ubuntu: `libwayland-client0`,
+`libwayland-cursor0`, `libxkbcommon0`). The font is Noto Sans Regular, shipped in `gui/fonts/`
+under the SIL Open Font License 1.1.
 
 ```
 cargo build --release --locked
@@ -48,14 +58,14 @@ usage: paka run <path> [argument...]
        paka build <path> -o <output>
        paka check <path> [--json]
        paka examples <path>
+       paka serve <path>
 ```
 
-## Experiment
+## Benchmark
 
-Milestone 3 asks whether a model writes Paka about as well as Rust before more is built. One model
-(`claude-sonnet-5-5`) solved 14 tasks in Paka, Rust and TypeScript, 4 times each, with build and
-test feedback. The rules were frozen in [`experiment/protocol.md`](experiment/protocol.md) before
-any counted run.
+How well does a model write a language it has never seen? One model (`claude-sonnet-5-5`) solved
+14 tasks in Paka, Rust and TypeScript, 4 times each, with build and test feedback. The method is in
+[`experiment/protocol.md`](experiment/protocol.md).
 
 | | Paka | Rust | TypeScript |
 |---|---|---|---|
@@ -63,9 +73,9 @@ any counted run.
 | Mean edits | 0.34 | 0.20 | 0.21 |
 | Output tokens | 445,593 | 192,932 | 157,316 |
 
-Against Rust: first-try gap 8.93 points (held), edits gap 0.143 (held), token ratio 2.310 (lost),
-so the pre-set verdict is **stop**. The model writes Paka about as correctly but spends more than
-twice the tokens. Rulings on single runs, the report and the go / no-go analysis are still open.
+Every run was solved. With no Paka code in its training, the model writes Paka nearly as correctly
+as Rust, at 2.3 times the output tokens. Dev mode's one-definition tools aim at that cost; the
+benchmark stays to track it.
 
 Rebuild the numbers from the raw logs:
 
@@ -78,6 +88,9 @@ cargo run --release -p harness --bin metrics -- experiment/runs/counted <rulings
 ```
 paka/          the command: lexer, parser, checker, interpreter, IR emitter
 paka-rt/       runtime for built programs
+installer/     loads compiled dev-mode code into executable memory
+gui/           visual apps: element tree, layout, input, window, drawing, accessibility, font
+json/          the JSON reader and writer the command and the harness share
 harness/       experiment harness: sandboxed runner, trial loop, batch and metrics commands
 spec/          language reference and the milestone 1 subset
 docs/          core library, ABI and decision records

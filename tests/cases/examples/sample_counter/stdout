@@ -1,1 +1,7 @@
-dec_stops_at_zero pass
+dec_at_zero_stays agent-written pass
+dec_stops_at_zero agent-written pass
+inc_once agent-written pass
+inc_then_dec agent-written pass
+reset_to_zero agent-written unfinished at main.paka:59:3
+  ??reset
+  in example reset_to_zero

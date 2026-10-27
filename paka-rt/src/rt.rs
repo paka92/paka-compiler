@@ -1,13 +1,16 @@
 //! The run loop of ABI section 5 and the safe decoding around it.
 
-use crate::abi::{List, Str, Update};
+use crate::abi::dev::{MARGIN, RUNNER_STACK};
+use crate::abi::heap::call;
+use crate::abi::{List, Str, Update, paka_rt1_stack_limit, take_trap};
 use std::fs::File;
 use std::io::{self, ErrorKind, Write};
 use std::os::fd::AsFd;
 use std::panic::{AssertUnwindSafe, catch_unwind};
+use std::sync::atomic::Ordering;
 
 /// The status of a stop that is the program's doing (ABI section 7).
-const STOPPED: i32 = 3;
+pub(crate) const STOPPED: i32 = 3;
 
 /// The status of an internal error (ABI section 7).
 pub const INTERNAL_ERROR: i32 = 4;
@@ -68,6 +71,8 @@ enum Stop {
     Ended,
     Missing,
     Failed(&'static str),
+    /// A trap's kind, when the runtime found it, and its text.
+    Trapped(&'static [u8], &'static [u8]),
     Internal(&'static str),
 }
 
@@ -86,14 +91,15 @@ impl Stop {
         }
     }
 
-    /// The line's text after `<app>: `, in two pieces.
-    fn pieces(&self) -> [&'static str; 2] {
+    /// The line's text after `<app>: `, in three pieces.
+    fn pieces(&self) -> [&'static [u8]; 3] {
         match self {
-            Stop::Usage(_) => ["expected 0 arguments, got ", ""],
-            Stop::Ended => ["ended without Exit", ""],
-            Stop::Missing => ["effect Print refused: grant Console is missing", ""],
-            Stop::Failed(reason) => ["effect Print failed: ", reason],
-            Stop::Internal(reason) => ["internal error: ", reason],
+            Stop::Usage(_) => [b"expected 0 arguments, got ", b"", b""],
+            Stop::Ended => [b"ended without Exit", b"", b""],
+            Stop::Missing => [b"effect Print refused: grant Console is missing", b"", b""],
+            Stop::Failed(reason) => [b"effect Print failed: ", reason.as_bytes(), b""],
+            Stop::Trapped(kind, text) => [b"trap ", kind, text],
+            Stop::Internal(reason) => [b"internal error: ", reason.as_bytes(), b""],
         }
     }
 }
@@ -173,10 +179,28 @@ fn perform(
         return Err(Stop::Usage(args));
     }
     let mut slot = List::UNWRITTEN;
-    if update(start, &mut slot) != 0 {
-        return Err(Stop::Internal("update returned a non-zero status"));
+    let (called, trap) = on_runner(|| (call(update, start, &mut slot), take_trap()));
+    let mut heap = called.heap;
+    match (called.broken, called.status, trap) {
+        (true, ..) => return Err(Stop::Internal("runtime panicked")),
+        (_, 0, _) => {}
+        (_, 1, Some((kind, text))) => return Err(Stop::Trapped(kind, text)),
+        _ => return Err(Stop::Internal("update returned a non-zero status")),
     }
-    for effect in slot.effects()? {
+    let done = performed(out, &slot, grants);
+    if let Err(Stop::Internal(_)) = done {
+        return done;
+    }
+    slot.release(&mut heap);
+    match heap.leaks().is_empty() && heap.faults().is_empty() {
+        true => done,
+        false => Err(Stop::Internal("memory ledger not clean")),
+    }
+}
+
+/// Performs the effects in `list`; `Ok` after `Exit`.
+fn performed(out: &mut dyn Write, list: &List, grants: Grants) -> Result<(), Stop> {
+    for effect in list.effects()? {
         match effect.decode()? {
             Decoded::Exit => return Ok(()),
             Decoded::Print(_) if !grants.console => return Err(Stop::Missing),
@@ -184,6 +208,22 @@ fn perform(
         }
     }
     Err(Stop::Ended)
+}
+
+/// Runs `f` on a new thread with a `RUNNER_STACK` stack, the stack limit `MARGIN` above its
+/// bottom; a local's address stands for the top.
+pub(crate) fn on_runner<R: Send>(f: impl FnOnce() -> R + Send) -> R {
+    std::thread::scope(|s| {
+        let runner = std::thread::Builder::new().stack_size(RUNNER_STACK);
+        let run = runner.spawn_scoped(s, || {
+            let mark = 0u8;
+            let top = (&raw const mark).addr() as u64;
+            paka_rt1_stack_limit.store(top - (RUNNER_STACK - MARGIN) as u64, Ordering::Relaxed);
+            f()
+        });
+        let run = run.expect("a runner thread");
+        run.join().unwrap_or_else(|e| std::panic::resume_unwind(e))
+    })
 }
 
 /// The text and a line feed in one buffer, one write.
@@ -213,8 +253,8 @@ fn reason(e: &io::Error) -> &'static str {
 
 /// Writes the stop's line piece by piece, without allocating; a failure to write is ignored.
 fn stop(err: &mut dyn Write, app: &[u8], why: Stop) -> i32 {
-    let [text, reason] = why.pieces();
-    let line = [app, b": ", text.as_bytes(), reason.as_bytes()];
+    let [text, a, b] = why.pieces();
+    let line = [app, b": ", text, a, b];
     let _ = line.iter().try_for_each(|piece| err.write_all(piece));
     if let Stop::Usage(count) = why {
         let _ = write!(err, "{count}");

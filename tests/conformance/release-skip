@@ -1,0 +1,3 @@
+# Feature tags release builds do not lower yet (M6-06); a run case is skipped in release while any
+# of its tags is here. A lowering task removes the tags it makes pass. No case carries `shared
+# data` or `pools` (M2-10).
