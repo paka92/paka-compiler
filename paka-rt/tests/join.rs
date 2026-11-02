@@ -52,7 +52,8 @@ fn join(ctx: &mut Context, a: &str, b: &str) -> (i32, TextWords, usize) {
     let status = unsafe { rt_text(ctx, JOIN, 0, at(&a), at(&b), 0, out.as_mut_ptr()) };
     let asked = ASKED.with(Cell::get) - before;
     // SAFETY: `out` holds a String's words when the status is 0, and is unread otherwise.
-    (status, unsafe { out.as_ptr().cast::<TextWords>().read() }, asked)
+    let words = unsafe { out.as_ptr().cast::<TextWords>().read() };
+    (status, words, asked)
 }
 
 #[test]
