@@ -773,6 +773,13 @@ fn run(
         .arg(limit.as_millis().to_string())
         .args(args)
         .output()?;
+    // The child's own failure (`noted`), not the program's.
+    let failed = output.stderr.strip_prefix(b"paka-diff: ");
+    if let Some(why) = failed.filter(|_| output.status.code() == Some(2)) {
+        return Err(io::Error::other(
+            String::from_utf8_lossy(why).trim_end().to_owned(),
+        ));
+    }
     let note = fs::read_to_string(&note).unwrap_or_default();
     Ok((output.into(), note))
 }
@@ -864,8 +871,8 @@ fn one(args: &[OsString]) -> ExitCode {
                 None => Err("the program has no app".into()),
             });
             if let Err(why) = edited {
-                let _ = fs::write(note, format!("unsupported: {why}"));
-                return ExitCode::from(1);
+                let written = noted(note, &format!("unsupported: {why}"));
+                return written.err().unwrap_or(ExitCode::from(1));
             }
             let ran = dev.run(args, &mut Host(Fd1::default()), HEAP, limit);
             let (mut leaks, faults) = ran.ledger;
@@ -873,7 +880,9 @@ fn one(args: &[OsString]) -> ExitCode {
             if matches!(ran.end, Err(Stopped::Trap)) {
                 leaks = 0;
             }
-            let _ = fs::write(note, format!("ledger {leaks} {faults}"));
+            if let Err(failed) = noted(note, &format!("ledger {leaks} {faults}")) {
+                return failed;
+            }
             let (status, line) = match ran.end {
                 Ok(end) => end,
                 Err(Stopped::Trap) => (3, dev.report(&ran.trap)),
@@ -884,6 +893,14 @@ fn one(args: &[OsString]) -> ExitCode {
         }
     };
     ExitCode::from(status)
+}
+
+/// Writes the dev run's note; a failure is the harness's own, said on standard error with status 2.
+fn noted(note: &OsString, text: &str) -> Result<(), ExitCode> {
+    fs::write(note, text).map_err(|e| {
+        eprintln!("paka-diff: cannot write {}: {e}", Path::new(note).display());
+        ExitCode::from(2)
+    })
 }
 
 #[cfg(test)]
