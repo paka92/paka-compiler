@@ -2164,7 +2164,7 @@ or merged during review. Ids with a letter were added during review.
 
 - needs: M6-05, M6-19, M6-23
 - flags: native-only, conditional
-- done when: The linter allows the attribute only where signed; a two-array kernel vectorizes without a run-time overlap check; conformance stays identical in three modes.
+- done when: The linter allows the attribute only where signed; stencil's `sweep` vectorizes with no bounds check in its loop body (M6-23); conformance stays identical in three modes.
 - why this level: LLVM's noalias rules are subtle; one misplaced attribute miscompiles only under optimization.
 - note: Dropped if the owner declines in M6-23.
 - note: Per M6-01: adds the `noalias` row and its linter rule together, only as M6-23 signs.
