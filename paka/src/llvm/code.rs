@@ -38,6 +38,12 @@ mod view;
 const INLINE_FRAME: usize = 4 << 10;
 const MAX_FRAME: usize = 256 << 10;
 
+/// The SHA-256 of paka/src/body/own.rs, paka/src/llvm/code/owned.rs and paka/src/llvm/code/items.rs
+/// in that order: the overlap rules M6-22's run tested (M6-23 1.3); a changed file must be run again.
+#[cfg(test)]
+pub(super) const OVERLAP_RULES_SIGNED: &str =
+    "sha256:ad15f9a8ebdcda1b83e6b310d6f8af7c90f9618ffe4416af438a0753f6bcf261";
+
 /// The IR of `update`'s body, and of every other function with the constants and declarations
 /// they need; `None` when any of it is beyond this lowering. With `computed`, the body builds the
 /// effect list `update` ends in and returns; otherwise it leaves an open block for the constant
@@ -76,6 +82,19 @@ pub fn lower_app(core: &mut Program, checks: Checks) -> Option<String> {
     let Type::Enum(e) = core.types[msg] else {
         return None;
     };
+    let results = paka::emit::answers(core);
+    let answers: BTreeSet<Ty> = answer
+        .into_iter()
+        .chain(results.iter().map(|r| r.1))
+        .collect();
+    let answering = |f: &Fn| {
+        let ty = Type::Fn(f.params.iter().map(|p| p.ty).collect(), f.result);
+        answers.iter().any(|&a| core.types[a] == ty)
+    };
+    module.runtime = (core.fns.iter().enumerate())
+        .filter(|&(id, f)| id == app.update || Some(id) == app.view || answering(f))
+        .map(|(_, f)| f.name.as_str())
+        .collect();
     module.seen.insert(app.update);
     let mut defines = module.function(update, None)?;
     let state = app.state.as_ref().map(|value| Fn {
@@ -93,9 +112,7 @@ pub fn lower_app(core: &mut Program, checks: Checks) -> Option<String> {
     if let Some(f) = &state {
         defines += &module.function(f, None)?;
     }
-    module.dispatched.extend(answer);
-    let results = paka::emit::answers(core);
-    module.dispatched.extend(results.iter().map(|&(_, t)| t));
+    module.dispatched.extend(answers);
     let args = ["ptr %a", "ptr %b", "ptr %c"];
     let handler = args[..update.params.len() + usize::from(update.result.is_some())].join(", ");
     let view = match app.view {
@@ -271,6 +288,9 @@ struct Module<'a> {
     dispatched: BTreeSet<Ty>,
     /// The sort functions called: by item type, and the type of `before` for `sort_by`.
     sorts: BTreeSet<(Ty, Option<Ty>)>,
+    /// The functions the runtime calls through `@app.call`: the handler, the view and the
+    /// answer functions. Their parameters carry no `noalias` (M6-23 1.2).
+    runtime: BTreeSet<&'a str>,
     /// For the M1 run loop, which performs `Print` and `Exit` only.
     m1: bool,
     checks: Checks,
@@ -327,6 +347,7 @@ impl<'a> Module<'a> {
             fn_values: vec![],
             dispatched: BTreeSet::new(),
             sorts: BTreeSet::new(),
+            runtime: BTreeSet::new(),
             m1,
             checks,
         }
@@ -449,10 +470,11 @@ impl<'a> Module<'a> {
         // The block after the stack check.
         b.lines.insert_str(0, "body:\n");
         let mut params = vec![];
+        let noalias = b.module.noalias(f);
         for (n, p) in f.params.iter().enumerate() {
             let ty = b.ty(b.locals[n]?);
             if p.inout || ty == "ptr" {
-                params.push(format!("ptr %a{n}"));
+                params.push(format!("ptr{noalias} %a{n}"));
             } else {
                 params.push(format!("{ty} %a{n}"));
                 b.store(ty, &format!("%a{n}"), &format!("%v{n}"));
@@ -477,6 +499,15 @@ impl<'a> Module<'a> {
             "\ndefine internal i32 @p_{name}({params}){inline} {{\nentry:\n{}{check}{}}}\n",
             b.slots, b.lines
         ))
+    }
+
+    /// The promise on each pointer parameter of user function `f`: `noalias`, where M6-23 signs
+    /// it. A test in llvm.rs holds the overlap rules to `OVERLAP_RULES_SIGNED`.
+    fn noalias(&self, f: &Fn) -> &'static str {
+        match self.runtime.contains(f.name.as_str()) {
+            true => "",
+            false => " noalias",
+        }
     }
 
     /// The IR type of an `Int`, a function value, a `Bool`, a `Float`, or `ptr` for a value held in memory: a

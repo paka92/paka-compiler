@@ -2157,21 +2157,25 @@ or merged during review. Ids with a letter were added during review.
 
 ### M6-23 · L5 · Decide whether release IR may promise no overlap for inout
 
+- status: done
 - needs: M6-01, M6-22
 - flags: decision, owner, native-only
 - done when: Owner signs a written decision citing the suite's results, the exact attribute placement and the plan if a hole appears later.
 - why this level: Turns a checker rule into undefined behaviour if wrong; a trust decision only the owner can take.
 - note: Process: one evidence report and one reviewer told to break it, then the owner; not three proposals. If the owner declines, M6-24 is dropped.
-- note: A draft proposal is in docs/decisions/M6-23.md, awaiting the owner: `noalias` on the inout and read-only pointer parameters of user functions, signed by the hash of the overlap rules; stencil 5.0 s to 1.15 s with it added by hand.
+- note: Done: approved by the owner on 2026-11-02 with the review's five changes; see docs/decisions/M6-23.md. `noalias` on the inout and read-only pointer parameters of user functions, signed by the hash of the overlap rules and the two emitter files that decide what reaches them; stencil 5.0 s to 1.15 s with it added by hand.
 
 ### M6-24 · L4 · Emit the no-overlap promise on inout parameters as signed
 
 - needs: M6-05, M6-19, M6-23
 - flags: native-only, conditional
-- done when: The linter allows the attribute only where signed; a two-array kernel vectorizes without a run-time overlap check; conformance stays identical in three modes.
+- done when: The linter allows the attribute only where signed; stencil's `sweep` vectorizes with no bounds check in its loop body (M6-23); conformance stays identical in three modes.
 - why this level: LLVM's noalias rules are subtle; one misplaced attribute miscompiles only under optimization.
 - note: Dropped if the owner declines in M6-23.
 - note: Per M6-01: adds the `noalias` row and its linter rule together, only as M6-23 signs.
+- note: Per M6-23: the promise covers read-only pointer parameters as well as inout ones, at its 1.2 places, with 1.3's hash test and exemption test. 'A two-array kernel vectorizes without a run-time overlap check' becomes 'stencil's `sweep` vectorizes with no bounds check in its loop body'; the item block comparison LLVM adds stays (1.2).
+- status: done
+- note: Done: release IR writes `noalias` on the `ptr %a<n>` parameters of user functions through one helper (paka/src/llvm/code.rs), never on the handler, the view, `.state` or an answer function, which the runtime calls through `@app.call`. The linter passes `noalias` only there: on a `define` line of `@p_<name>` that `@main`, `@app.call` and the `@v<t>` dispatchers `@app.call` names do not reach; M6-01 has the row. `OVERLAP_RULES_SIGNED` is the hash of paka/src/body/own.rs, paka/src/llvm/code/owned.rs and paka/src/llvm/code/items.rs; a test requires it to match and to be a row of docs/results/M6-22.md, which the rerun added (1,000,000 programs, 0 flagged). A test builds a function taking each type `read()` exempts (`BY_VALUE` in own.rs, and a function type) and finds no `ptr` parameter for them. At `clang -O3`, stencil's `sweep` loads and stores `<2 x double>` with no trap branch in its vector loop; the scalar loop for the last item of a row keeps its checks, and the one item block comparison stays. Without `noalias` the same loop is scalar. `paka-diff --release` over tests/conformance: 445 agree in all three modes. `sort_by` comparators get `noalias` though the sorter calls them through `@v<f>`: both arguments are read-only and nothing writes during the call. The vector loop needs `n` known: IPSCCP folds stencil's constant into `sweep`; a kernel whose length comes from a record field stays scalar.
 
 ### M6-25 · L2 · Run the 24-hour three-back-end fuzz and file each divergence
 
