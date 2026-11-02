@@ -12,6 +12,8 @@ pub mod abi;
 #[forbid(unsafe_code)]
 pub mod effects;
 #[forbid(unsafe_code)]
+mod examples;
+#[forbid(unsafe_code)]
 pub mod foreign;
 #[forbid(unsafe_code)]
 mod headless;
@@ -19,6 +21,8 @@ mod headless;
 pub mod limit;
 #[forbid(unsafe_code)]
 pub mod ops;
+#[forbid(unsafe_code)]
+pub mod replay;
 #[forbid(unsafe_code)]
 mod rt;
 

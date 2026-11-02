@@ -2,7 +2,7 @@ use std::fs::File;
 use std::io::pipe;
 use std::process::{Command, Output, Stdio};
 
-const USAGE: &str = "usage: paka run <path> [argument...]\n       paka build <path> -o <output>\n       paka check <path> [--json]\n       paka examples <path>\n       paka serve <path>\n       paka approve <path> [--adopt <name>] [--drop <name>] [--key <file>]\n       paka gate <tree> --base <tree> [--json]\n";
+const USAGE: &str = "usage: paka run <path> [argument...]\n       paka build <path> -o <output> [--examples <name>...]\n       paka check <path> [--json]\n       paka examples <path>\n       paka serve <path>\n       paka approve <path> [--adopt <name>] [--drop <name>] [--key <file>]\n       paka gate <tree> --base <tree> [--json]\n";
 
 fn paka(args: &[&str]) -> Output {
     Command::new(env!("CARGO_BIN_EXE_paka"))
@@ -26,6 +26,8 @@ fn bad_arguments_print_usage_and_exit_2() {
     assert_usage(&["build", "a.paka", "-o"]);
     assert_usage(&["build", "a.paka", "out", "-o"]);
     assert_usage(&["build", "a.paka", "-o", "out", "extra"]);
+    assert_usage(&["build", "a.paka", "-o", "out", "--examples"]);
+    assert_usage(&["build", "a.paka", "--examples", "e", "-o", "out"]);
     assert_usage(&["fmt", "a.paka"]);
     assert_usage(&["check", "a.paka", "b.paka"]);
 }
