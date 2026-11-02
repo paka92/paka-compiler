@@ -502,7 +502,7 @@ impl<'a> Module<'a> {
     }
 
     /// The promise on each pointer parameter of user function `f`: `noalias`, where M6-23 signs
-    /// it, while the overlap rules hash to `OVERLAP_RULES_SIGNED`.
+    /// it. A test in llvm.rs holds the overlap rules to `OVERLAP_RULES_SIGNED`.
     fn noalias(&self, f: &Fn) -> &'static str {
         match self.runtime.contains(f.name.as_str()) {
             true => "",

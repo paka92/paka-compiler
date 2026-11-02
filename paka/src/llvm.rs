@@ -609,12 +609,26 @@ app a {
         let sweep = function(&optimized, "sweep");
         assert!(sweep.contains("load <2 x double>"), "{sweep}");
         assert!(sweep.contains("store <2 x double>"), "{sweep}");
+        let mut block = "";
+        let mut vector = Vec::new();
+        for line in sweep.lines().skip(1) {
+            match (line.strip_prefix("  "), line.split_once(':')) {
+                (Some(inst), _) if inst.contains("load <2 x double>") => vector.push(block),
+                (None, Some((name, _))) => block = name,
+                _ => {}
+            }
+        }
         let checked = trap_branches_in_loops(sweep);
-        assert!(checked.iter().all(|b| !b.starts_with("vector.")), "{sweep}");
+        assert!(
+            vector.iter().all(|b| !checked.iter().any(|c| c == b)),
+            "{sweep}"
+        );
     }
 
     /// Every type a read exempts from Rule B is passed by value, so it never reaches a `noalias`
-    /// parameter (M6-23 1.3).
+    /// parameter (M6-23 1.3). `read()` also exempts a type variable and an expression with no
+    /// type; user code reaches neither, as an uninferred type is refused and Paka has no type
+    /// parameters.
     #[test]
     fn every_type_a_read_exempts_is_passed_by_value() {
         let value = |t: &str| match t {
@@ -668,7 +682,10 @@ app a {
         let hash = format!("sha256:{}", paka::hash::hex(&paka::sha256::sha256(&bytes)));
         let results = fs::read_to_string(root().join("docs/results/M6-22.md")).unwrap();
         assert!(
-            hash == code::OVERLAP_RULES_SIGNED && results.contains(&hash),
+            hash == code::OVERLAP_RULES_SIGNED
+                && (results.lines()).any(|l| {
+                    l.starts_with("| ") && l.trim_end().ends_with(&format!("| {hash} |"))
+                }),
             "the overlap rules changed to {hash}: rerun M6-22's million-program run, add its \
              numbers and this hash as a row of docs/results/M6-22.md, and set \
              OVERLAP_RULES_SIGNED in paka/src/llvm/code.rs to it"
