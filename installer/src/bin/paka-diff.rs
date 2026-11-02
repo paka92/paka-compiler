@@ -15,7 +15,7 @@
 //! `paka-diff --fuzz-release FIRST COUNT KEEP` also builds each program in release (M6-20) and
 //! keeps each that differs as the run case `KEEP/SEED`, its expectations the interpreter's run.
 //! Where the interpreter ends in a stack trap, release may finish or run on: that run is cut by
-//! the limit and not compared, unless it died by a signal. `PAKA_PLANT` 9 to 18 plants a fault in
+//! the limit and not compared, unless it died by a signal. `PAKA_PLANT` 9 to 19 plants a fault in
 //! every release build, in the IR handed to clang (`RELEASE_PLANTS`, M6-21).
 //!
 //! `paka-diff --edits FIRST COUNT KEEP` runs the edit sequences of COUNT seeds from FIRST (M4-43).
@@ -26,18 +26,22 @@
 //!
 //! `paka-diff --ui [ROOT]` plays every UI example of the programs under ROOT, `tests` by default,
 //! on both back ends (M5-26): each action's events, replayed in dev mode, must leave the tree, trap
-//! or end the interpreter's action left. Each program is a child, `paka-diff --ui-one NAME` in its
-//! folder. `PAKA_PLANT` 8 plants a view fault.
+//! or end the interpreter's action left. Release is the third (M7-11c): the program is built once
+//! and each example's actions replayed by `--paka-replay` must write what each left; an example
+//! compared on fewer actions than it has differs. A program with a hole has no release build. Each
+//! program is a child, `paka-diff --ui-one NAME` in its folder. `PAKA_PLANT` 8 plants a view fault
+//! in dev mode, 19 in release.
 //!
 //! Each run is a child, `paka-diff --one interp|dev NOTE LIMIT_MS ARGS...` in the staged case
 //! folder: it runs `main.paka` as `paka run` does, stopped past the limit, and in dev mode writes
 //! its ledger, or why the dev back end refused the program, to NOTE.
 
 use paka::interp;
+use paka::interp::Logged;
 use paka::source::{Source, read};
 use paka_installer::dev::Dev;
 use paka_installer::diff::{
-    Outcome, cases, difference, difference_in, no_core_dumps, shrink, stage, ui_examples,
+    Outcome, cases, difference, difference_in, no_core_dumps, replayed, shrink, stage, ui_examples,
 };
 use paka_installer::release;
 use paka_rt::abi::dev::app::Stopped;
@@ -184,7 +188,7 @@ fn refused(
             "has a hole but is not a `hole` line of release-exempt".into()
         ));
     }
-    let out = Outcome::from(build(paka, dir)?);
+    let out = Outcome::from(build(paka, dir, &dir.with_extension("prog"))?);
     let text = String::from_utf8_lossy(&out.stderr);
     let named = names.iter().all(|n| text.contains(&format!("??{n}")));
     Ok(
@@ -206,7 +210,7 @@ fn ran(
     reference: &Outcome,
     args: &[OsString],
 ) -> io::Result<Result<String, String>> {
-    let out = build(paka, dir)?;
+    let out = build(paka, dir, &dir.with_extension("prog"))?;
     if !out.status.success() {
         let why = String::from_utf8_lossy(&out.stderr).into_owned();
         let stale = match why.contains("undefined") && why.contains("paka_rt1_") {
@@ -215,21 +219,21 @@ fn ran(
         };
         return Ok(Err(format!("build failed{stale}: {why:?}")));
     }
-    let release = native(&dir.with_extension("prog"), dir, args, LIMIT)?;
+    let release = native(&dir.with_extension("prog"), dir, args, Stdio::null(), LIMIT)?;
     Ok(match difference_in(reference, &release, "release") {
         Some(why) => Err(why),
         None => Ok("agree".into()),
     })
 }
 
-/// `paka build main.paka` in `dir`, written beside it.
-fn build(paka: &Path, dir: &Path) -> io::Result<process::Output> {
+/// `paka build main.paka` in `dir`, written to `exe`.
+fn build(paka: &Path, dir: &Path, exe: &Path) -> io::Result<process::Output> {
     let mut command = Command::new(paka);
     command.current_dir(dir).args([
         "build".as_ref(),
         "main.paka".as_ref(),
         "-o".as_ref(),
-        dir.with_extension("prog").as_os_str(),
+        exe.as_os_str(),
     ]);
     if let Some(plant) = release_plant() {
         command.env("PATH", planted_clang(plant)?);
@@ -237,13 +241,13 @@ fn build(paka: &Path, dir: &Path) -> io::Result<process::Output> {
     command.output()
 }
 
-/// The release fault `PAKA_PLANT` 9 to 18 names (M6-21): a sed script on the IR handed to clang.
+/// The release fault `PAKA_PLANT` 9 to 19 names (M6-21): a sed script on the IR handed to clang.
 fn release_plant() -> Option<usize> {
     let n: usize = env::var("PAKA_PLANT").ok()?.parse().ok()?;
     (9..9 + RELEASE_PLANTS.len()).contains(&n).then_some(n)
 }
 
-const RELEASE_PLANTS: [&str; 10] = [
+const RELEASE_PLANTS: [&str; 11] = [
     // 9: `>` as `>=`.
     "s/icmp sgt/icmp sge/g",
     // 10: Float arithmetic folded as if no value were NaN or infinite.
@@ -264,6 +268,8 @@ const RELEASE_PLANTS: [&str; 10] = [
     r"s/= icmp ugt i64 \(.*\), 63$/= icmp ne i64 0, 0/",
     // 18: the range check of `to_int` left out.
     "s/= fcmp o[gl][et] double .*, 0x[C4]3E0000000000000$/= icmp eq i64 0, 0/",
+    // 19: a Col drawn as a Row.
+    "s/@paka_rt1_view(i64 3,/@paka_rt1_view(i64 2,/g",
 ];
 
 /// A `PATH` whose first `clang` applies release plant `n` to each IR file it is given, then runs
@@ -286,12 +292,19 @@ fn planted_clang(n: usize) -> io::Result<OsString> {
     Ok(path)
 }
 
-/// Runs `exe` in `dir` with no display, killed past `limit`, its output in files beside `dir`.
-fn native(exe: &Path, dir: &Path, args: &[OsString], limit: Duration) -> io::Result<Outcome> {
+/// Runs `exe` in `dir` on `stdin` with no display, killed past `limit`, its output in files beside
+/// `dir`.
+fn native(
+    exe: &Path,
+    dir: &Path,
+    args: &[OsString],
+    stdin: Stdio,
+    limit: Duration,
+) -> io::Result<Outcome> {
     let [stdout, stderr] = ["stdout", "stderr"].map(|e| dir.with_extension(e));
     let mut child = (Command::new(exe).current_dir(dir).args(args))
         .env_remove("WAYLAND_DISPLAY")
-        .stdin(Stdio::null())
+        .stdin(stdin)
         .stdout(fs::File::create(&stdout)?)
         .stderr(fs::File::create(&stderr)?)
         .spawn()?;
@@ -388,7 +401,11 @@ fn judged_release(dirs: &[PathBuf; 2], built: &Path, name: &str) -> io::Result<(
 
 /// The release verdict on the program staged in `built`, against the interpreter's run.
 fn released(built: &Path, reference: &Outcome) -> io::Result<(usize, String)> {
-    let out = build(&env::current_exe()?.with_file_name("paka"), built)?;
+    let out = build(
+        &env::current_exe()?.with_file_name("paka"),
+        built,
+        &built.with_extension("prog"),
+    )?;
     let why = String::from_utf8_lossy(&out.stderr);
     let refused = ["[unsupported-form]", "[hole-in-build]"]
         .iter()
@@ -402,7 +419,13 @@ fn released(built: &Path, reference: &Outcome) -> io::Result<(usize, String)> {
             false => (1, format!("build failed: {why:?}")),
         });
     }
-    let run = native(&built.with_extension("prog"), built, &[], FUZZ_LIMIT)?;
+    let run = native(
+        &built.with_extension("prog"),
+        built,
+        &[],
+        Stdio::null(),
+        FUZZ_LIMIT,
+    )?;
     let trap = String::from_utf8_lossy(&reference.stderr);
     let stack = trap
         .lines()
@@ -480,7 +503,7 @@ fn programs(root: &Path) -> io::Result<Vec<PathBuf>> {
     Ok(found)
 }
 
-/// Plays the UI examples of `main.paka` here on both back ends and lists each as agree or
+/// Plays the UI examples of `main.paka` here on the three back ends and lists each as agree or
 /// differ, or the program as unsupported; the status is 1 when one differs.
 fn ui_one(name: &str) -> ExitCode {
     let (source, found) = read("main.paka".as_ref());
@@ -495,17 +518,69 @@ fn ui_one(name: &str) -> ExitCode {
         println!("unsupported {name}: {why}");
         return ExitCode::SUCCESS;
     }
+    let holed = core.sites.iter().any(|s| s.hole.is_some());
+    let release = (!holed).then(built_here);
     let mut differ = false;
     for (example, verdict) in ui_examples(&core, &dev, HEAP, LIMIT) {
+        let verdict = verdict.and_then(|log| {
+            let n = log.len();
+            match &release {
+                None => Ok(format!("{n} actions, no release build (a hole)")),
+                Some(Err(why)) => Err(why.clone()),
+                Some(Ok(exe)) => {
+                    replay(exe, &example, &log).map(|k| format!("{n} actions, {k} in release"))
+                }
+            }
+        });
         match verdict {
-            Ok(actions) => println!("agree {name} {example}; {actions} actions"),
+            Ok(note) => println!("agree {name} {example}; {note}"),
             Err(why) => {
                 differ = true;
                 println!("differ {name} {example}: {why}");
             }
         }
     }
+    let _ = fs::remove_dir_all(scratch());
     ExitCode::from(u8::from(differ))
+}
+
+/// The release build of `main.paka` here, in the scratch folder.
+fn built_here() -> Result<PathBuf, String> {
+    let exe = scratch().join("app");
+    let built = fs::create_dir_all(scratch()).and_then(|()| {
+        build(
+            &env::current_exe()?.with_file_name("paka"),
+            ".".as_ref(),
+            &exe,
+        )
+    });
+    match built {
+        Ok(out) if out.status.success() => Ok(exe),
+        Ok(out) => Err(format!(
+            "release build failed: {:?}",
+            String::from_utf8_lossy(&out.stderr)
+        )),
+        Err(e) => Err(format!("release build failed: {e}")),
+    }
+}
+
+/// Replays the actions of `example`'s `log` on the release build `exe`, compared with the log.
+fn replay(exe: &Path, example: &str, log: &[Logged]) -> Result<usize, String> {
+    let dir = scratch().join(example);
+    let actions = dir.with_extension("actions");
+    let lines: String = (log.iter().filter_map(|(a, ..)| a.as_ref()))
+        .map(|a| format!("{a}\n"))
+        .collect();
+    let run = || {
+        fs::create_dir_all(&dir)?;
+        fs::write(&actions, lines)?;
+        let args = ["--paka-replay".into()];
+        native(exe, &dir, &args, fs::File::open(&actions)?.into(), LIMIT)
+    };
+    replayed(
+        log,
+        &run().map_err(|e| format!("release replay failed: {e}"))?,
+    )
 }
 
 /// The edits after each generated program.

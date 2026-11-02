@@ -148,7 +148,13 @@ pub fn drawn(
         let mut dropped = Dropped;
         let mut ui = Windowless::start(ctx, code, app, start, &mut dropped);
         let lines = io::stdin().lines().map(Result::unwrap_or_default);
-        return ui.replay(lines, &mut io::stdout().lock(), |t| report(app.name, t));
+        let line = |t: &Trap| {
+            trapped(app.name, take_trap(), t.kind)
+                .1
+                .trim_end()
+                .to_owned()
+        };
+        return ui.replay(lines, &mut io::stdout().lock(), line);
     }
     let mut world = Host(Fd1::default());
     let mut ui = Windowless::start(ctx, code, app, start, &mut world);

@@ -237,14 +237,13 @@ impl Dev {
         self.played(args, world, cap, limit, events, None)
     }
 
-    /// Runs the visual app with no window and its effects dropped on the clicks of `lines`, as a
-    /// release binary's `--paka-replay` does (M7-03), writing its trees to `out` and its trap
-    /// reports to `err`; its end, a trap that ends it as status 3.
+    /// Runs the visual app with no window and its effects dropped on the actions of `lines`, as a
+    /// release binary's `--paka-replay` does (M7-03), writing what each left to `out`; its end, a
+    /// trap that ends it as status 3.
     pub fn replay(
         &self,
         lines: impl Iterator<Item = String> + Send,
         out: &mut (impl Write + Send),
-        err: &mut (impl Write + Send),
     ) -> End {
         let (app, start) = match self.app(&[]) {
             Ok(started) => started,
@@ -255,8 +254,8 @@ impl Dev {
             let mut dropped = Dropped;
             let ended = {
                 let mut ui = Windowless::start(ctx, calls.code(), &app, &start, &mut dropped);
-                let report = |t: &Trap| drop(err.write_all(self.report(t).as_bytes()));
-                ui.replay(lines, out, report)
+                let line = |t: &Trap| self.report(t).lines().next().unwrap_or_default().into();
+                ui.replay(lines, out, line)
             };
             match ended {
                 Ok(end) => end,

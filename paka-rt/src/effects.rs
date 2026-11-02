@@ -36,7 +36,8 @@ pub trait World {
     fn read(&mut self, path: &str) -> Result<String, Reason>;
     /// Creates or replaces the file.
     fn write(&mut self, path: &str, text: &str) -> Result<(), Reason>;
-    /// Whether granted foreign effects are dropped rather than performed.
+    /// Whether granted effects, foreign ones too, are dropped rather than performed: none queues an
+    /// answer (docs/decisions/M7-03.md 1.2).
     fn drops(&self) -> bool {
         false
     }
@@ -102,6 +103,9 @@ pub fn perform<F, M>(
         return Err(stop(format!(
             "effect {name} refused: grant {needed} is missing"
         )));
+    }
+    if world.drops() && grant_for(&effect).is_some() {
+        return Ok(None);
     }
     let next = match effect {
         Effect::Exit => return Err((0, String::new())),
@@ -199,12 +203,12 @@ impl<W: Write> World for Host<W> {
     }
 }
 
-/// The world of a UI example (M5-06), which drops every granted effect.
+/// The world of a UI example (M5-06), which drops every granted effect: `perform` never reaches it.
 pub struct Dropped;
 
 impl World for Dropped {
     fn print(&mut self, _: &str) -> Result<(), Reason> {
-        Ok(())
+        Err("dropped")
     }
 
     fn read(&mut self, _: &str) -> Result<String, Reason> {
@@ -212,7 +216,7 @@ impl World for Dropped {
     }
 
     fn write(&mut self, _: &str, _: &str) -> Result<(), Reason> {
-        Ok(())
+        Err("dropped")
     }
 
     fn drops(&self) -> bool {
@@ -231,12 +235,34 @@ fn file_reason(e: &io::Error) -> Reason {
     }
 }
 
-/// The host against real descriptors and files (docs/decisions/M2-15.md sections 1.6 and 1.7).
+/// The host against real descriptors and files (docs/decisions/M2-15.md sections 1.6 and 1.7),
+/// and the dropped world.
 #[cfg(test)]
 mod tests {
     use super::*;
     use std::os::unix::fs::PermissionsExt;
     use std::path::PathBuf;
+
+    #[test]
+    fn a_dropped_effect_queues_no_answer_and_a_refusal_or_exit_still_ends() {
+        let grants = BTreeSet::from([Grant::Console, Grant::ReadFiles, Grant::WriteFiles]);
+        let effects: [Effect<u8, u8>; 3] = [
+            Effect::Print("x"),
+            Effect::ReadFile("f", 1, 2),
+            Effect::WriteFile("f", "x", 3, 4),
+        ];
+        for effect in effects {
+            assert!(matches!(
+                perform("a", &grants, effect, &mut Dropped),
+                Ok(None)
+            ));
+        }
+        let refused = perform::<u8, u8>("a", &BTreeSet::new(), Effect::Print("x"), &mut Dropped);
+        let line = "a: effect Print refused: grant Console is missing\n".to_string();
+        assert!(matches!(refused, Err((3, l)) if l == line));
+        let exit = perform::<u8, u8>("a", &grants, Effect::Exit, &mut Dropped);
+        assert!(matches!(exit, Err((0, l)) if l.is_empty()));
+    }
 
     #[cfg(target_os = "linux")]
     #[test]

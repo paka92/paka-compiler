@@ -1,7 +1,8 @@
 //! The UI example functions (docs/decisions/M5-06.md): the program's visual app with no window,
 //! driven by an example. Each action is handled to the end, its view included. Effects are not
 //! performed: a granted one is dropped, so no answer arrives, and `Exit` ends the app. Each
-//! action is logged with the events that led to it, for M5-26's comparison with dev mode.
+//! action is logged with its action line and the events that led to it, for M5-26's comparison
+//! with dev mode and release.
 
 use super::{Done, Kind, Machine, Stop, Trap};
 use crate::builtins::{UI, name};
@@ -11,6 +12,7 @@ use crate::interp::value::{Message, Value};
 use crate::interp::{report, start_message};
 use paka_rt::effects::Dropped;
 use paka_rt::input::Key;
+use paka_rt::replay::{Action, Left};
 use paka_rt::route::{Event, Sent, focused, route};
 use paka_rt::tree::{self, Node, Step};
 use std::collections::VecDeque;
@@ -22,20 +24,13 @@ pub struct Ui {
     tree: Node<Message>,
     /// After `Exit`: reads see the last tree and an action is an assert trap.
     exited: bool,
-    /// The events sent since the start; `None` once an effect's answer was dropped, as dev mode
-    /// would handle it.
-    events: Option<Vec<Event>>,
+    /// The events sent since the start.
+    events: Vec<Event>,
 }
 
-/// What a UI example's action left: the tree, the tree after `Exit`, a trap report's first line,
-/// or the line of an end.
-#[derive(Debug, Clone, PartialEq)]
-pub enum Left {
-    Tree(String),
-    Exited(String),
-    Trapped(String),
-    Ended(String),
-}
+/// An action of a UI example as M5-26 logs it: the action, `None` for the launch, the events sent
+/// since the launch and what it left.
+pub type Logged = (Option<Action>, Vec<Event>, Left);
 
 impl<'a> Machine<'a> {
     /// Runs row `k` of `builtins::UI` on `args`, which it may update; the handler runs at depth 1.
@@ -94,7 +89,7 @@ impl<'a> Machine<'a> {
             state: self.state(app)?,
             tree: Node::Error(String::new()),
             exited: false,
-            events: Some(vec![]),
+            events: vec![],
         };
         let done = match app.start {
             Some(start) => match start_message(self.core, app, start, &[]) {
@@ -103,7 +98,7 @@ impl<'a> Machine<'a> {
             },
             None => self.redraw(&mut ui, None, site),
         };
-        self.log(&ui, &done);
+        self.log(&ui, None, &done);
         done.map(|()| ui)
     }
 
@@ -114,6 +109,7 @@ impl<'a> Machine<'a> {
             Some(node @ (Node::Button { .. } | Node::Input { .. })) => node.kind(),
             _ => return Err(Trap::bare(Kind::Assert, site).into()),
         };
+        let action = Action::Click(path.clone());
         let event = Event::Click(path, kind);
         let message = match route(&mut ui.tree, &event) {
             Some(Sent::Click(on)) => Some(on.value.copy()),
@@ -124,7 +120,7 @@ impl<'a> Machine<'a> {
             Some(None) => Err(Trap::bare(Kind::Stack, site).into()),
             None => Ok(()),
         };
-        self.sent(ui, event, done)
+        self.sent(ui, action, event, done)
     }
 
     /// One code point to the focused Input; `\n` and tab do nothing.
@@ -148,22 +144,20 @@ impl<'a> Machine<'a> {
                 .and_then(|message| self.turn(ui, message, Some((before, change.cursor)), site)),
             None => Ok(()),
         };
-        self.sent(ui, event, done)
+        self.sent(ui, Action::Type(c.into()), event, done)
     }
 
-    /// Notes `event` as sent to `ui` and logs what it left.
-    fn sent(&mut self, ui: &mut Ui, event: Event, done: Done<()>) -> Done<()> {
-        if let Some(events) = &mut ui.events {
-            events.push(event);
-        }
-        self.log(ui, &done);
+    /// Notes `event` as sent to `ui` by `action` and logs what it left.
+    fn sent(&mut self, ui: &mut Ui, action: Action, event: Event, done: Done<()>) -> Done<()> {
+        ui.events.push(event);
+        self.log(ui, Some(action), &done);
         done
     }
 
-    /// Logs what an action left, when the machine keeps a log.
-    fn log(&mut self, ui: &Ui, done: &Done<()>) {
+    /// Logs what `action`, `None` for the launch, left, when the machine keeps a log.
+    fn log(&mut self, ui: &Ui, action: Option<Action>, done: &Done<()>) {
         let (core, app) = (self.core, self.app());
-        let (Some(log), Some(events)) = (&mut self.ui_log, &ui.events) else {
+        let Some(log) = &mut self.ui_log else {
             return;
         };
         let left = match done {
@@ -176,7 +170,7 @@ impl<'a> Machine<'a> {
             Err(Stop::Ended(line)) => Left::Ended(line.clone()),
             Err(_) => return,
         };
-        log.push((events.clone(), left));
+        log.push((action, ui.events.clone(), left));
     }
 
     /// `update`, its effects, then the view; a typed key's cursor follows last.
@@ -185,13 +179,8 @@ impl<'a> Machine<'a> {
         let (mut effects, state) = self.update(app, ui.state.take(), message)?;
         ui.state = state;
         if matches!(effects, Value::List(_)) {
-            let mut answers = VecDeque::new();
             let (core, world) = (&self.core, &mut Dropped);
-            let end = perform(core, app, None, &mut effects, world, &mut answers);
-            if !answers.is_empty() {
-                ui.events = None;
-            }
-            match end {
+            match perform(core, app, None, &mut effects, world, &mut VecDeque::new()) {
                 Some((_, line)) if !line.is_empty() => return Err(Stop::Ended(line)),
                 Some(_) => ui.exited = true,
                 None => {}

@@ -7,9 +7,8 @@ use crate::foreign::Hosts;
 use crate::results::{Cache, Entry};
 use crate::source::in_file;
 use effects::{End, Host, Queued, World, perform};
-pub use eval::{Detector, Left};
+pub use eval::{Detector, Logged};
 use eval::{Done, Kind, Machine, Stop, Trap};
-use paka_rt::route::Event;
 use paka_rt::tree::Node;
 use show::show;
 use std::any::Any;
@@ -265,8 +264,8 @@ pub fn draw(core: &Program, id: FnId, args: Vec<Value>) -> Result<Node<Message>,
     }
 }
 
-/// Runs UI example `f`: each action's events from its `ui_start` and what it left (M5-26).
-pub fn ui_log(core: &Program, f: &Func) -> Result<Vec<(Vec<Event>, Left)>, String> {
+/// Runs UI example `f`: each action, its events from `ui_start` and what it left (M5-26).
+pub fn ui_log(core: &Program, f: &Func) -> Result<Vec<Logged>, String> {
     on_big_stack(|| {
         let mut machine = Machine::new(core);
         machine.ui_log = Some(vec![]);

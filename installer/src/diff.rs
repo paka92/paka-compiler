@@ -1,12 +1,14 @@
 //! The differential harness in dev mode (M4-40): each run case of the conformance suite runs on
 //! the interpreter and on the dev back end, each in a child process, and the two runs are compared
-//! by M2-06 section 1.2's meaning fields. UI examples are compared action by action (M5-26).
+//! by M2-06 section 1.2's meaning fields. UI examples are compared action by action (M5-26), in
+//! release through `--paka-replay` (M7-11c).
 
 use crate::dev::{Dev, Played};
 use paka::core_form::{Fn, Program};
-use paka::interp::{Left, ui_log};
+use paka::interp::{Logged, ui_log};
 use paka_rt::abi::dev::app::Stopped;
 use paka_rt::effects::Dropped;
+use paka_rt::replay::Left;
 use std::fs;
 use std::io;
 use std::ops::Range;
@@ -278,17 +280,17 @@ pub fn no_core_dumps() {
 
 /// Plays each UI example of `core`, installed in `dev`, on both back ends: the events of every
 /// action it takes, replayed on dev code from the start on a heap of `heap` bytes, must leave
-/// what the action left in the interpreter, and free all they made. Each example's name and the
-/// number of actions compared, or how they differ.
+/// what the action left in the interpreter, and free all they made. Each example's name and its
+/// log, or how they differ.
 pub fn ui_examples(
     core: &Program,
     dev: &Dev,
     heap: u64,
     limit: Duration,
-) -> Vec<(String, Result<usize, String>)> {
+) -> Vec<(String, Result<Vec<Logged>, String>)> {
     let compare = |f: &Fn| {
         let log = ui_log(core, f).map_err(|why| format!("interpreter: {why}"))?;
-        for (k, (events, want)) in log.iter().enumerate() {
+        for (k, (_, events, want)) in log.iter().enumerate() {
             let played = dev.play(&[], &mut Dropped, heap, limit, events.clone());
             let got = left(&played);
             if got != *want {
@@ -301,7 +303,7 @@ pub fn ui_examples(
                 ));
             }
         }
-        Ok(log.len())
+        Ok(log)
     };
     let mut all: Vec<_> = core
         .ui_examples
@@ -310,6 +312,41 @@ pub fn ui_examples(
         .collect();
     all.sort_by(|a, b| a.0.cmp(&b.0));
     all
+}
+
+/// Compares a release replay of `log`'s actions with the log: what each left on standard output,
+/// then the end on standard error and the status. The count of actions compared, or how it differs.
+pub fn replayed(log: &[Logged], got: &Outcome) -> Result<usize, String> {
+    let (n, out) = (log.len(), String::from_utf8_lossy(&got.stdout));
+    let mut rest = &out[..];
+    for (k, (.., want)) in log.iter().enumerate() {
+        let want = want.to_string();
+        let Some(after) = rest.strip_prefix(&want) else {
+            let why = match want.lines().zip(rest.lines()).find(|(a, b)| a != b) {
+                Some((a, b)) => format!("line {a:?}, release {b:?}"),
+                None => "release output ends".into(),
+            };
+            return Err(format!(
+                "release compared on {k} of {n} actions: action {k}: {why}"
+            ));
+        };
+        rest = after;
+    }
+    if let Some(line) = rest.lines().next() {
+        return Err(format!("release goes on after {n} actions: {line:?}"));
+    }
+    let (end, ended) = match log.last() {
+        Some((.., Left::Ended(line))) => (line.as_str(), true),
+        Some((.., Left::Exited(_))) => ("", true),
+        _ => ("", false),
+    };
+    let err = String::from_utf8_lossy(&got.stderr);
+    match got.status {
+        Some(status) if err == end && (ended || status == 0) => Ok(n),
+        status => Err(format!(
+            "release ended with status {status:?} and {err:?}, want {end:?}"
+        )),
+    }
 }
 
 /// What a dev run left, in the interpreter's terms.
@@ -340,4 +377,74 @@ fn unlike(want: &Left, got: &Left) -> String {
         return format!("tree line {x:?}, dev {y:?}");
     }
     format!("{want:?}, dev {got:?}")
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use paka_rt::replay::Action;
+
+    /// A launch, a click and the `Exit` it made, with what a release replay of them writes.
+    fn exited() -> (Vec<Logged>, Outcome) {
+        let tree = |n| format!("Col gap=0\n  Button #0 \"{n}\" on=Quit\n");
+        let click = Action::parse("click #0");
+        let log = vec![
+            (None, vec![], Left::Tree(tree(0))),
+            (click.clone(), vec![], Left::Tree(tree(1))),
+            (click, vec![], Left::Exited(tree(1))),
+        ];
+        let stdout: String = log.iter().map(|(.., l)| l.to_string()).collect();
+        let out = Outcome {
+            stdout: stdout.into_bytes(),
+            stderr: vec![],
+            status: Some(0),
+        };
+        (log, out)
+    }
+
+    #[test]
+    fn a_replay_agrees_on_every_action() {
+        let (log, out) = exited();
+        assert_eq!(replayed(&log, &out), Ok(3));
+    }
+
+    #[test]
+    fn a_replay_cut_short_differs() {
+        let (log, mut out) = exited();
+        let last = Left::Exited("Col gap=0\n  Button #0 \"1\" on=Quit\n".into());
+        out.stdout
+            .truncate(out.stdout.len() - last.to_string().len());
+        assert_eq!(
+            replayed(&log, &out),
+            Err("release compared on 2 of 3 actions: action 2: release output ends".into())
+        );
+    }
+
+    #[test]
+    fn another_result_more_output_or_another_end_differs() {
+        let (log, out) = exited();
+        let text = String::from_utf8(out.stdout.clone()).unwrap();
+        let changed = Outcome {
+            stdout: text.replacen("\"1\"", "\"2\"", 1).into_bytes(),
+            ..out.clone()
+        };
+        let why = r#"release compared on 1 of 3 actions: action 1: line "  Button #0 \"1\" on=Quit", release "  Button #0 \"2\" on=Quit""#;
+        assert_eq!(replayed(&log, &changed), Err(why.into()));
+        let more = Outcome {
+            stdout: [text.as_bytes(), b"Col gap=0\n"].concat(),
+            ..out.clone()
+        };
+        let why = r#"release goes on after 3 actions: "Col gap=0""#;
+        assert_eq!(replayed(&log, &more), Err(why.into()));
+        let trapped = Outcome {
+            stderr: b"a: trap overflow at main.paka:1:2\n".to_vec(),
+            status: Some(3),
+            ..out
+        };
+        assert!(
+            replayed(&log, &trapped)
+                .unwrap_err()
+                .starts_with("release ended with")
+        );
+    }
 }

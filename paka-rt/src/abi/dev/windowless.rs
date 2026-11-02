@@ -13,6 +13,7 @@ use super::view::{self, Drawing};
 use super::{Context, Trap, until};
 use crate::abi::measure::{self, Frame, Timed};
 use crate::effects::{End, World};
+use crate::replay::{Action, Left};
 use crate::route::{Event, Sent, focused, route};
 use crate::tree::{self, Node};
 use std::collections::VecDeque;
@@ -169,37 +170,54 @@ impl<'a, W: World> Windowless<'a, W> {
         ran
     }
 
-    /// Plays `lines`, each `click PATH`, as `--paka-replay` does (M7-03): writes the tree text,
-    /// then an empty line, to `out` after the launch and after each action, and hands `report`
-    /// the last trap each kept. The end, or status 2 at a line that is no such click.
+    /// Plays `lines`, each an `Action`, as `--paka-replay` does (docs/decisions/M7-03.md 1.2):
+    /// writes to `out` what the launch and each action left, `line` giving a kept trap's first
+    /// line. A trap that ends the app writes nothing; no line after an end is read. The end, or
+    /// status 2 at a line that is no action or names no node.
     pub fn replay(
         &mut self,
         lines: impl IntoIterator<Item = String>,
         out: &mut impl Write,
-        mut report: impl FnMut(&Trap),
+        line: impl Fn(&Trap) -> String,
     ) -> Result<End, Stopped> {
         let mut lines = lines.into_iter();
         let mut seen = 0;
         loop {
-            if let Some(trap) = self.traps.get(seen..).and_then(<[Trap]>::last) {
-                report(trap);
+            if let Some(left) = self.left(seen, &line) {
+                let _ = write!(out, "{left}");
             }
             seen = self.traps.len();
             if let Some(end) = &self.end {
                 return end.clone();
             }
-            let _ = writeln!(out, "{}", self.drawing.root);
-            let Some(line) = lines.next() else {
+            let Some(text) = lines.next() else {
                 return Ok((0, String::new()));
             };
-            let Some(event) = clicked(&self.drawing.root, &line) else {
+            let root = &self.drawing.root;
+            let Some(events) = Action::parse(&text).and_then(|a| a.events(root)) else {
                 return Ok((
                     2,
-                    format!("{}: not a replay action: {line}\n", self.app.name),
+                    format!("{}: not a replay action: {text}\n", self.app.name),
                 ));
             };
-            self.send([event]);
+            self.send(events);
         }
+    }
+
+    /// What the last action left, its traps those past the first `seen`; `None` for a trap that
+    /// ends the app.
+    fn left(&self, seen: usize, line: impl Fn(&Trap) -> String) -> Option<Left> {
+        if let Some(trap) = self.traps.get(seen) {
+            return Some(Left::Trapped(line(trap)));
+        }
+        let tree = || self.drawing.root.to_string();
+        Some(match &self.end {
+            None => Left::Tree(tree()),
+            Some(Ok((_, end))) if end.is_empty() => Left::Exited(tree()),
+            Some(Ok((_, end))) => Left::Ended(end.clone()),
+            Some(Err(Stopped::Time)) => Left::Ended("stopped: time".into()),
+            Some(Err(Stopped::Trap)) => return None,
+        })
     }
 
     fn ended(&mut self, done: Result<(), Ended>) {
@@ -384,13 +402,6 @@ impl<'a, W: World> Windowless<'a, W> {
             release(self.ctx, record, &mut self.state);
         }
     }
-}
-
-/// The click a replay line names, if its path reaches a node of `root`.
-fn clicked<M>(root: &Node<M>, line: &str) -> Option<Event> {
-    let path = tree::path(line.strip_prefix("click ")?)?;
-    let kind = root.at(&path)?.kind();
-    Some(Event::Click(path, kind))
 }
 
 /// `call`, each call of compiled code timed in a measure build.

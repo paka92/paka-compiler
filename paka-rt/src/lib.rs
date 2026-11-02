@@ -20,6 +20,8 @@ pub mod limit;
 #[forbid(unsafe_code)]
 pub mod ops;
 #[forbid(unsafe_code)]
+pub mod replay;
+#[forbid(unsafe_code)]
 mod rt;
 
 pub use headless::run_app;
