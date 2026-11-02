@@ -2,7 +2,7 @@
 # M6-25: the three-back-end fuzz. Runs `paka-diff --fuzz-release` on WORKERS processes over
 # consecutive seed blocks until HOURS have passed. OUT/run.txt records the commit and settings,
 # OUT/blocks.log one line per block (first seed, count, status, seconds), and every divergence is
-# kept, shrunk, as a run case under OUT/kept.
+# kept, shrunk, as a run case under OUT/kept. Builds' scratch goes to OUT/tmp, on OUT's disk.
 set -u
 usage="usage: scripts/m6-25-fuzz OUT [HOURS] [WORKERS] [FIRST] [BLOCK]"
 out=${1:?$usage}
@@ -18,7 +18,9 @@ if grep -qvE '^(#|$)' "$root/tests/conformance/release-skip"; then
     exit 1
 fi
 cargo build --release --locked --offline --manifest-path "$root/Cargo.toml" || exit 1
-mkdir -p "$out/kept" "$out/logs"
+mkdir -p "$out/kept" "$out/logs" "$out/tmp"
+export TMPDIR
+TMPDIR=$(cd "$out/tmp" && pwd)
 end=$(( $(date +%s) + $(awk -v h="$hours" 'BEGIN { print int(h * 3600) }') ))
 {
     echo "commit $(git -C "$root" rev-parse HEAD)"
