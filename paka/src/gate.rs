@@ -20,7 +20,7 @@ const OWNED: [&str; 2] = [".github/workflows", "TRUSTED"];
 /// One item per refusal; none when `tree` may merge into `base`.
 pub fn gate(tree: &Path, base: &Path) -> Vec<Item> {
     let refused = |why: &str| vec![Item::Refused(why.into())];
-    let fixed = links(tree, STORE.iter().chain(&OWNED).map(|p| p.to_string()));
+    let fixed = fixed_links(tree);
     if !fixed.is_empty() {
         return fixed;
     }
@@ -71,7 +71,7 @@ pub fn program(
     source: &Source,
     read: &Read,
 ) -> Vec<Item> {
-    let fixed = links(root, STORE.iter().chain(&OWNED).map(|p| p.to_string()));
+    let fixed = fixed_links(root);
     if !fixed.is_empty() {
         return fixed;
     }
@@ -85,6 +85,11 @@ pub fn program(
     };
     items.extend(file_items(store, root));
     items
+}
+
+/// One refusal per link among the store's files and the owned paths every tree has.
+fn fixed_links(tree: &Path) -> Vec<Item> {
+    links(tree, STORE.iter().chain(&OWNED).map(|p| p.to_string()))
 }
 
 /// One refusal per link among the owned files, `programs` and their `.paka` files.

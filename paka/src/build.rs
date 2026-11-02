@@ -10,7 +10,7 @@ use std::env;
 use std::ffi::OsStr;
 use std::fs::{self, File};
 use std::io::{self, Write};
-use std::path::Path;
+use std::path::{Path, PathBuf};
 use std::process::{Command, Stdio};
 
 const RUNTIME: &str = "libpaka_rt.a";
@@ -54,17 +54,7 @@ pub fn compile(
     let broken = llvm::lint::lint(&text);
     // The emitter alone keeps the promise table (M6-01 section 1.1); a finding is its bug.
     assert!(broken.is_empty(), "release IR breaks M6-01: {broken:?}");
-    let runtime = env::current_exe()
-        .map(|exe| exe.with_file_name(RUNTIME))
-        .ok()
-        .filter(|archive| archive.is_file())
-        .ok_or_else(|| {
-            Diagnostic::tool(
-                path,
-                "runtime-missing",
-                format!("no {RUNTIME} next to paka"),
-            )
-        })?;
+    let runtime = runtime(path)?;
     clang::check(path)?;
     let mut ir = output.to_os_string();
     ir.push(format!(".{}.ll", std::process::id()));
@@ -85,6 +75,18 @@ pub fn compile(
         .and_then(|()| link(path, &ir, &runtime, output));
     let _ = fs::remove_file(&ir);
     result
+}
+
+/// The runtime every binary links, next to this paka; `path` is the source path for diagnostics.
+pub fn runtime(path: &str) -> Result<PathBuf, Diagnostic> {
+    let beside = env::current_exe().map(|exe| exe.with_file_name(RUNTIME));
+    beside
+        .ok()
+        .filter(|archive| archive.is_file())
+        .ok_or_else(|| {
+            let why = format!("no {RUNTIME} next to paka");
+            Diagnostic::tool(path, "runtime-missing", why)
+        })
 }
 
 /// Puts the host of each granted declaration of `core` beside `output` as `<output>.<name>`; one

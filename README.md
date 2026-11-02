@@ -28,6 +28,7 @@ being built.
 - `paka gate`: refuses a merged tree whose approvals differ or whose human-owned examples fail.
 - `paka release`: gates one program, builds it once, runs its human-owned examples against the
   binary and writes the binary, its hosts and a `RELEASE` file of hashes to a new directory.
+  A release that was killed is not checked: remove its directory and run it again.
 
 ```paka
 enum Msg { Start }

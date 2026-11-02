@@ -7,9 +7,11 @@ use crate::interp::Logged;
 use paka_rt::replay::{Action, Left};
 use std::fmt;
 use std::io::{self, Read, Write};
+use std::mem;
 use std::os::unix::process::ExitStatusExt;
 use std::path::Path;
-use std::process::{Command, Output, Stdio};
+use std::process::{Command, ExitStatus, Output, Stdio};
+use std::sync::{Arc, Mutex, mpsc};
 use std::thread;
 use std::time::{Duration, Instant};
 
@@ -50,18 +52,23 @@ pub struct Outcome {
 
 impl From<Output> for Outcome {
     fn from(o: Output) -> Outcome {
-        let status = o.status.code().filter(|_| o.status.signal().is_none());
         Outcome {
             stdout: o.stdout,
             stderr: o.stderr,
-            status,
+            status: code(o.status),
         }
     }
 }
 
+/// The status a run ended with, `None` when a signal ended it.
+fn code(status: ExitStatus) -> Option<i32> {
+    status.code().filter(|_| status.signal().is_none())
+}
+
 /// Runs example `name` of `exe`, killed past `LIMIT`.
 pub fn run(exe: &Path, name: &str) -> io::Result<Ran> {
-    let Some(o) = exec(exe, &["--paka-examples", name], b"")? else {
+    let command = &mut Command::new(exe);
+    let Ok(o) = exec(command.args(["--paka-examples", name]), b"", LIMIT)? else {
         return Ok(Ran::TimedOut);
     };
     let [out, err] = [o.stdout, o.stderr].map(|b| String::from_utf8_lossy(&b).into_owned());
@@ -72,6 +79,7 @@ pub fn run(exe: &Path, name: &str) -> io::Result<Ran> {
         (Some(3), "", _, Some(line)) => Ran::Trapped(line.into()),
         (code, o, e, _) => {
             let ended = code.map_or("killed by a signal".into(), |c| format!("status {c}"));
+            let [o, e] = [o, e].map(tail);
             Ran::Other(format!(
                 "{ended}, standard output {o:?}, standard error {e:?}"
             ))
@@ -79,54 +87,100 @@ pub fn run(exe: &Path, name: &str) -> io::Result<Ran> {
     })
 }
 
-/// Replays `actions` on `exe` from its launch, killed past `LIMIT`.
-pub fn replay(exe: &Path, actions: &[Action]) -> Result<Outcome, String> {
+/// Replays `actions` on `command`'s binary from its launch, killed past `LIMIT`.
+pub fn replay(command: &mut Command, actions: &[Action]) -> Result<Outcome, String> {
     let lines: String = actions.iter().map(|a| format!("{a}\n")).collect();
-    match exec(exe, &["--paka-replay"], lines.as_bytes()) {
-        Ok(Some(o)) => Ok(o),
-        Ok(None) => Err("the replay timed out".into()),
-        Err(e) => Err(format!("{}: {e}", exe.display())),
+    let exe = Path::new(command.get_program()).display().to_string();
+    match exec(command.arg("--paka-replay"), lines.as_bytes(), LIMIT) {
+        Ok(Ok(o)) => Ok(o),
+        Ok(Err(_)) => Err("the replay timed out".into()),
+        Err(e) => Err(format!("{exe}: {e}")),
     }
 }
 
-/// Runs `exe` with `args` and `input` on standard input: what it left, or `None` when it ran
-/// past `LIMIT` and was killed.
-fn exec(exe: &Path, args: &[&str], input: &[u8]) -> io::Result<Option<Outcome>> {
-    let mut child = (Command::new(exe).args(args))
-        .stdin(Stdio::piped())
+/// The most of each output stream a run keeps; the rest is read and dropped.
+const KEPT: usize = 16 << 20;
+
+/// Runs `command` with `input` on standard input: what it left, or as `Err` what it left by
+/// `limit` when it ran past it and was killed. A pipe a grandchild holds open past `limit`
+/// counts as running past it; that grandchild is left running.
+pub fn exec(
+    command: &mut Command,
+    input: &[u8],
+    limit: Duration,
+) -> io::Result<Result<Outcome, Outcome>> {
+    let deadline = Instant::now() + limit;
+    let mut child = (command.stdin(Stdio::piped()))
         .stdout(Stdio::piped())
         .stderr(Stdio::piped())
         .spawn()?;
     let (mut stdin, input) = (child.stdin.take().expect("piped"), input.to_vec());
     // A binary may end before it reads all of its input.
-    let writer = thread::spawn(move || _ = stdin.write_all(&input));
-    let read = |mut pipe: Box<dyn Read + Send>| {
-        thread::spawn(move || {
-            let mut bytes = vec![];
-            pipe.read_to_end(&mut bytes).map(|_| bytes)
-        })
-    };
-    let out = read(Box::new(child.stdout.take().expect("piped")));
-    let err = read(Box::new(child.stderr.take().expect("piped")));
-    let start = Instant::now();
+    thread::spawn(move || _ = stdin.write_all(&input));
+    let (done, ended) = mpsc::channel();
+    let out = kept(child.stdout.take().expect("piped"), done.clone());
+    let err = kept(child.stderr.take().expect("piped"), done);
     let status = loop {
         if let Some(status) = child.try_wait()? {
-            break status;
+            break Some(status);
         }
-        if start.elapsed() > LIMIT {
+        if Instant::now() > deadline {
             child.kill()?;
             child.wait()?;
-            return Ok(None);
+            break None;
         }
         thread::sleep(Duration::from_millis(2));
     };
-    let joined = |t: thread::JoinHandle<io::Result<Vec<u8>>>| t.join().expect("reader");
-    writer.join().expect("writer");
-    Ok(Some(Outcome::from(Output {
-        status,
-        stdout: joined(out)?,
-        stderr: joined(err)?,
-    })))
+    let drained = (0..2).all(|_| {
+        let left = deadline.saturating_duration_since(Instant::now());
+        ended.recv_timeout(left).is_ok()
+    });
+    let taken = |b: Arc<Mutex<Vec<u8>>>| mem::take(&mut *b.lock().expect("reader"));
+    let o = Outcome {
+        stdout: taken(out),
+        stderr: taken(err),
+        status: status.and_then(code),
+    };
+    Ok(if status.is_some() && drained {
+        Ok(o)
+    } else {
+        Err(o)
+    })
+}
+
+/// Reads `pipe` to its end on a thread of its own, keeping its first `KEPT` bytes, then says so
+/// on `done`.
+fn kept(mut pipe: impl Read + Send + 'static, done: mpsc::Sender<()>) -> Arc<Mutex<Vec<u8>>> {
+    let bytes = Arc::new(Mutex::new(vec![]));
+    let into = Arc::clone(&bytes);
+    thread::spawn(move || {
+        let mut chunk = [0; 1 << 16];
+        loop {
+            match pipe.read(&mut chunk) {
+                Ok(0) => break,
+                Ok(n) => {
+                    let mut kept = into.lock().expect("reader");
+                    let room = KEPT.saturating_sub(kept.len());
+                    kept.extend_from_slice(&chunk[..n.min(room)]);
+                }
+                Err(e) if e.kind() == io::ErrorKind::Interrupted => {}
+                Err(_) => break,
+            }
+        }
+        _ = done.send(());
+    });
+    bytes
+}
+
+/// How many characters of a run's output a refusal shows.
+const TAIL: usize = 200;
+
+/// The last `TAIL` characters of `text`, after a `…` when it is longer.
+fn tail(text: &str) -> String {
+    match text.char_indices().rev().nth(TAIL - 1) {
+        Some((i, _)) if i > 0 => format!("…{}", &text[i..]),
+        _ => text.into(),
+    }
 }
 
 /// Compares release with `log`, each history its own replay from the launch by `run`: those no
@@ -184,8 +238,12 @@ fn replayed(want: &[&Left], got: &Outcome) -> Result<(), (usize, String)> {
         let want = want.to_string();
         let Some(after) = rest.strip_prefix(&want) else {
             let why = match want.lines().zip(rest.lines()).find(|(a, b)| a != b) {
-                Some((a, b)) => format!("line {a:?}, release {b:?}"),
-                None => format!("release output ends, status {:?} and {err:?}", got.status),
+                Some((a, b)) => format!("line {a:?}, release {:?}", tail(b)),
+                None => format!(
+                    "release output ends, status {:?} and {:?}",
+                    got.status,
+                    tail(&err)
+                ),
             };
             return Err((k, why));
         };
@@ -194,7 +252,7 @@ fn replayed(want: &[&Left], got: &Outcome) -> Result<(), (usize, String)> {
     if let Some(line) = rest.lines().next() {
         return Err((
             n,
-            format!("release goes on after the last action: {line:?}"),
+            format!("release goes on after the last action: {:?}", tail(line)),
         ));
     }
     let (status, end) = match want.last() {
@@ -208,8 +266,9 @@ fn replayed(want: &[&Left], got: &Outcome) -> Result<(), (usize, String)> {
     Err((
         n,
         format!(
-            "release ended with status {:?} and {err:?}, want {status} and {end:?}",
-            got.status
+            "release ended with status {:?} and {:?}, want {status} and {end:?}",
+            got.status,
+            tail(&err)
         ),
     ))
 }

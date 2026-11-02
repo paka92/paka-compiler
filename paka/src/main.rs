@@ -75,15 +75,16 @@ fn main() -> ExitCode {
                 &mut io::stderr(),
             ))
         }
-        Some(_) if holes.iter().any(|h| h.refusal.is_some()) => {
-            for d in holes.into_iter().filter_map(|h| h.refusal) {
-                reject(&source, d);
+        Some(output) => {
+            if let Err(refusals) = no_holes(holes) {
+                refusals.into_iter().for_each(|d| _ = reject(&source, d));
+                return Ok(1);
             }
-            Ok(1)
+            let named = named.iter().map(|n| n.to_string_lossy().into());
+            keep_examples(&mut core, &named.collect(), path)
+                .and_then(|()| build::build(path, &mut core, output, checks))
+                .map(|()| 0)
         }
-        Some(output) => keep_examples(&mut core, named, path)
-            .and_then(|()| build::build(path, &mut core, output, checks))
-            .map(|()| 0),
     });
     match result {
         Ok(status) => ExitCode::from(status),
@@ -93,8 +94,11 @@ fn main() -> ExitCode {
 
 /// Keeps in `core` only the function examples `named` (M7-11b); a name that is not one refuses
 /// the build.
-fn keep_examples(core: &mut Program, named: &[OsString], path: &str) -> Result<(), Diagnostic> {
-    let named: BTreeSet<_> = named.iter().map(|n| n.to_string_lossy()).collect();
+fn keep_examples(
+    core: &mut Program,
+    named: &BTreeSet<String>,
+    path: &str,
+) -> Result<(), Diagnostic> {
     if let Some(n) = named
         .iter()
         .find(|n| !core.examples.iter().any(|e| e.name == **n))
@@ -104,6 +108,15 @@ fn keep_examples(core: &mut Program, named: &[OsString], path: &str) -> Result<(
     }
     core.examples.retain(|e| named.contains(e.name.as_str()));
     Ok(())
+}
+
+/// The refusals among `holes`, which a build may not hold.
+fn no_holes(holes: Vec<Hole>) -> Result<(), Vec<Diagnostic>> {
+    let refusals: Vec<_> = holes.into_iter().filter_map(|h| h.refusal).collect();
+    match refusals.is_empty() {
+        true => Ok(()),
+        false => Err(refusals),
+    }
 }
 
 /// The program at `file` and what checking it gives.
