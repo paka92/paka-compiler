@@ -1,5 +1,6 @@
 #![deny(clippy::float_arithmetic)]
 
+mod artefact;
 mod build;
 mod llvm;
 #[cfg(test)]
@@ -25,7 +26,7 @@ use std::path::{Path, PathBuf};
 use std::process::ExitCode;
 use std::{env, io};
 
-const USAGE: &str = "usage: paka run <path> [argument...]\n       paka build <path> -o <output> [--examples <name>...]\n       paka check <path> [--json]\n       paka examples <path>\n       paka serve <path>\n       paka approve <path> [--adopt <name>] [--drop <name>] [--key <file>]\n       paka gate <tree> --base <tree> [--json]\n";
+const USAGE: &str = "usage: paka run <path> [argument...]\n       paka build <path> -o <output> [--examples <name>...]\n       paka check <path> [--json]\n       paka examples <path>\n       paka serve <path>\n       paka approve <path> [--adopt <name>] [--drop <name>] [--key <file>]\n       paka gate <tree> --base <tree> [--json]\n       paka release <path> -o <dir> [--key <file>]\n";
 
 fn main() -> ExitCode {
     let args: Vec<_> = env::args_os().skip(1).collect();
@@ -56,6 +57,10 @@ fn main() -> ExitCode {
         [Some("gate"), _, Some("--base"), _, Some("--json")] => {
             return gate_tree(&args[1], &args[3], true);
         }
+        [Some("release"), _, Some("-o"), _] => return release_program(&args[1], &args[3], None),
+        [Some("release"), _, Some("-o"), _, Some("--key"), _] => {
+            return release_program(&args[1], &args[3], Some(&args[5]));
+        }
         _ => return report(USAGE.as_bytes(), 2),
     };
     let path = &file.to_string_lossy();
@@ -70,15 +75,16 @@ fn main() -> ExitCode {
                 &mut io::stderr(),
             ))
         }
-        Some(_) if holes.iter().any(|h| h.refusal.is_some()) => {
-            for d in holes.into_iter().filter_map(|h| h.refusal) {
-                reject(&source, d);
+        Some(output) => {
+            if let Err(refusals) = no_holes(holes) {
+                refusals.into_iter().for_each(|d| _ = reject(&source, d));
+                return Ok(1);
             }
-            Ok(1)
+            let named = named.iter().map(|n| n.to_string_lossy().into());
+            keep_examples(&mut core, &named.collect(), path)
+                .and_then(|()| build::build(path, &mut core, output, checks))
+                .map(|()| 0)
         }
-        Some(output) => keep_examples(&mut core, named, path)
-            .and_then(|()| build::build(path, &mut core, output, checks))
-            .map(|()| 0),
     });
     match result {
         Ok(status) => ExitCode::from(status),
@@ -88,8 +94,11 @@ fn main() -> ExitCode {
 
 /// Keeps in `core` only the function examples `named` (M7-11b); a name that is not one refuses
 /// the build.
-fn keep_examples(core: &mut Program, named: &[OsString], path: &str) -> Result<(), Diagnostic> {
-    let named: BTreeSet<_> = named.iter().map(|n| n.to_string_lossy()).collect();
+fn keep_examples(
+    core: &mut Program,
+    named: &BTreeSet<String>,
+    path: &str,
+) -> Result<(), Diagnostic> {
     if let Some(n) = named
         .iter()
         .find(|n| !core.examples.iter().any(|e| e.name == **n))
@@ -99,6 +108,15 @@ fn keep_examples(core: &mut Program, named: &[OsString], path: &str) -> Result<(
     }
     core.examples.retain(|e| named.contains(e.name.as_str()));
     Ok(())
+}
+
+/// The refusals among `holes`, which a build may not hold.
+fn no_holes(holes: Vec<Hole>) -> Result<(), Vec<Diagnostic>> {
+    let refusals: Vec<_> = holes.into_iter().filter_map(|h| h.refusal).collect();
+    match refusals.is_empty() {
+        true => Ok(()),
+        false => Err(refusals),
+    }
 }
 
 /// The program at `file` and what checking it gives.
@@ -188,8 +206,7 @@ fn approve_program(file: &OsStr, flags: &[Option<&str>]) -> ExitCode {
     if !io::stdin().is_terminal() {
         return report(b"paka approve: answers are read from a terminal only\n", 2);
     }
-    let home = env::var_os("HOME").map(|h| Path::new(&h).join(".config/paka/approval_key"));
-    let Some(key) = key.or(home) else {
+    let Some(key) = key.or_else(owner_key) else {
         return report(b"paka approve: no HOME; name the key with --key\n", 2);
     };
     let (dir, program, mut store) = match approvals::to_approve(file.as_ref()) {
@@ -229,6 +246,23 @@ fn approve_program(file: &OsStr, flags: &[Option<&str>]) -> ExitCode {
             ExitCode::SUCCESS
         }
         Err(why) => report(format!("paka approve: {why}\n").as_bytes(), 1),
+    }
+}
+
+/// The owner's approval key where `paka approve` and `paka release` look when none is named.
+fn owner_key() -> Option<PathBuf> {
+    env::var_os("HOME").map(|h| Path::new(&h).join(".config/paka/approval_key"))
+}
+
+/// `paka release`: the artefact in `out`, or the refusal and status 1 with nothing there
+/// (docs/decisions/M7-03.md).
+fn release_program(file: &OsStr, out: &OsStr, key: Option<&OsString>) -> ExitCode {
+    let Some(key) = key.map(PathBuf::from).or_else(owner_key) else {
+        return report(b"paka release: no HOME; name the key with --key\n", 2);
+    };
+    match artefact::release(file, out.as_ref(), &key) {
+        Ok(()) => ExitCode::SUCCESS,
+        Err(why) => report(why.as_bytes(), 1),
     }
 }
 

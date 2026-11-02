@@ -7,7 +7,7 @@ mod common;
 use common::Scratch;
 use paka::ast::Def;
 use paka::core_form::Library;
-use paka::foreign::{Failure, Host, Kind, LIMIT, Value, build, cached, library};
+use paka::foreign::{Failure, Host, Kind, LIMIT, Value, build, cached, library, read_regular};
 use paka::parser;
 use paka_rt::ops::Float;
 use std::fs;
@@ -39,7 +39,7 @@ fn declared(source: &str, dir: &Path) -> Library {
 }
 
 fn host_of(source: &str, dir: &Path, out: &Path) -> Result<PathBuf, String> {
-    build(&declared(source, dir), out)
+    build(&declared(source, dir), out, &read_regular)
 }
 
 fn float(x: f64) -> Value<'static> {

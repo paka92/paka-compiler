@@ -4,6 +4,7 @@
 
 use crate::ast::{Def, Entry, ForeignLine};
 use crate::diagnostic::Diagnostic;
+use crate::foreign::{Read, read_regular};
 use crate::hash::hex;
 use crate::parser::{parse_def, split};
 use crate::print;
@@ -14,7 +15,7 @@ use std::io::{self, ErrorKind, Write};
 use std::path::{Path, PathBuf};
 use std::process::{Command, Output, Stdio};
 use std::sync::atomic::{AtomicUsize, Ordering};
-use std::{env, fs, mem, process};
+use std::{env, fs, mem, process, str};
 
 const SSH_KEYGEN: &str = "/usr/bin/ssh-keygen";
 const NAMESPACE: &str = "paka-approval";
@@ -87,6 +88,12 @@ impl Store {
     pub fn open(dir: &Path, key: &Path) -> Result<Store, String> {
         let text = fs::read(dir.join("approvals")).map_err(|e| format!("approvals: {e}"))?;
         let key = fs::read_to_string(key).map_err(|e| format!("{}: {e}", key.display()))?;
+        Store::verify(dir, &text, &key)
+    }
+
+    /// The store `text`, read from `dir`, when `approvals.sig` there signs it with `key`, the
+    /// text of a public key file.
+    pub fn verify(dir: &Path, text: &[u8], key: &str) -> Result<Store, String> {
         let key = key.lines().next().filter(|k| !k.is_empty());
         let signers = Signers::new(key.ok_or("approvals.pub: no key")?)?;
         let mut verify = Command::new(SSH_KEYGEN);
@@ -95,10 +102,10 @@ impl Store {
             .arg(&signers.0)
             .arg("-s")
             .arg(dir.join("approvals.sig"));
-        if !run(verify, &text)?.status.success() {
+        if !run(verify, text)?.status.success() {
             return Err("approvals: the signature does not verify".into());
         }
-        Store::parse(&String::from_utf8(text).map_err(|_| "approvals: not UTF-8")?)
+        Store::parse(str::from_utf8(text).map_err(|_| "approvals: not UTF-8")?)
     }
 
     /// Writes the store into `dir` and signs it with the private key at `key`; ssh-keygen asks
@@ -129,7 +136,11 @@ impl Store {
     /// The records of `program`, a path relative to the store, that its source no longer
     /// matches, then each of its apps with no grants record.
     pub fn changes(&self, program: &str, source: &Source) -> Result<Vec<Change>, Diagnostic> {
-        let mut now = records(program, source)?;
+        Ok(self.compare(program, records(program, source)?))
+    }
+
+    /// As `changes`, with `now` the records the source holds.
+    pub fn compare(&self, program: &str, mut now: Vec<Record>) -> Vec<Change> {
         let approved = self.records.iter().filter(|r| r.program() == Some(program));
         let mut changes: Vec<_> = approved
             .filter_map(|r| {
@@ -148,7 +159,7 @@ impl Store {
             approved: None,
             now: Some(r),
         }));
-        Ok(changes)
+        changes
     }
 
     /// Each owned file under `root` that differs from its record, has none or is gone: every
@@ -357,6 +368,15 @@ impl<'a> Reader<'a> {
 /// The grants record of each app and the example record of each example in `source`, as it
 /// stands, for `program`.
 pub fn records(program: &str, source: &Source) -> Result<Vec<Record>, Diagnostic> {
+    records_with(program, source, &read_regular)
+}
+
+/// As `records`, with each foreign file's bytes from `read`.
+pub fn records_with(
+    program: &str,
+    source: &Source,
+    read: &Read,
+) -> Result<Vec<Record>, Diagnostic> {
     let (mut records, mut declared) = (vec![], BTreeMap::new());
     for file in &source.files {
         let printed = print::program(&file.name, &source.text[file.bytes.clone()])?;
@@ -384,7 +404,7 @@ pub fn records(program: &str, source: &Source) -> Result<Vec<Record>, Diagnostic
                 Def::Foreign { lines, .. } => {
                     let dir = Path::new(&file.path).parent().unwrap_or(Path::new(""));
                     let text = String::from_utf8_lossy(text).into();
-                    let files = built_files(dir, &lines);
+                    let files = built_files(dir, &lines, read);
                     declared.insert(name, Foreign { text, files });
                 }
                 _ => {}
@@ -405,17 +425,10 @@ pub fn records(program: &str, source: &Source) -> Result<Vec<Record>, Diagnostic
     Ok(records)
 }
 
-/// Each `source:` and `header:` file in `dir` with its SHA-256, or `none` when it is not a regular
-/// file; a library is covered by its name alone.
-fn built_files(dir: &Path, lines: &[ForeignLine]) -> Vec<(String, String)> {
-    let hash = |name: &str| {
-        let path = dir.join(name);
-        let regular = fs::symlink_metadata(&path).is_ok_and(|m| m.is_file());
-        match fs::read(&path) {
-            Ok(bytes) if regular => hex(&sha256(&bytes)),
-            _ => "none".into(),
-        }
-    };
+/// Each `source:` and `header:` file in `dir` with its SHA-256, or `none` when `read` gives no
+/// bytes for it; a library is covered by its name alone.
+fn built_files(dir: &Path, lines: &[ForeignLine], read: &Read) -> Vec<(String, String)> {
+    let hash = |name: &str| read(&dir.join(name)).map_or("none".into(), |b| hex(&sha256(&b)));
     (lines.iter())
         .filter_map(|line| match line {
             ForeignLine::File(key, file) if key.text != "library" => {

@@ -93,7 +93,7 @@ pub fn cached(library: &Library, cache: &Path) -> Result<PathBuf, String> {
     let fresh = cache.join(format!("build-{}-{n}", process::id()));
     let _ = fs::remove_dir_all(&fresh);
     fs::create_dir_all(cache).map_err(|e| format!("{}: {e}", cache.display()))?;
-    let built = build(library, &fresh);
+    let built = build(library, &fresh, &read_regular);
     // A host another run placed first is as good as this one.
     if built.is_err() || fs::rename(&fresh, &dir).is_err() {
         let _ = fs::remove_dir_all(&fresh);
@@ -149,9 +149,12 @@ pub fn library(name: &str, dir: &Path, lines: &[ForeignLine]) -> Library {
     library
 }
 
-/// Builds the host of `library` inside `out`, which must not exist yet: the executable's path,
-/// or why there is none.
-pub fn build(library: &Library, out: &Path) -> Result<PathBuf, String> {
+/// How a declaration's files are read: the bytes of a regular file, or why there are none.
+pub type Read<'a> = dyn Fn(&Path) -> Result<Vec<u8>, String> + 'a;
+
+/// Builds the host of `library` inside `out`, which must not exist yet, from its files as `read`
+/// gives them: the executable's path, or why there is none.
+pub fn build(library: &Library, out: &Path, read: &Read) -> Result<PathBuf, String> {
     clang::check("").map_err(|d| d.message)?;
     let failed = |e: std::io::Error| format!("{}: {e}", out.display());
     fs::create_dir(out).map_err(failed)?;
@@ -164,7 +167,7 @@ pub fn build(library: &Library, out: &Path) -> Result<PathBuf, String> {
         match key.as_str() {
             "library" => libraries.push(format!("-l{file}")),
             key => {
-                let bytes = read_regular(&library.dir.join(file))?;
+                let bytes = read(&library.dir.join(file))?;
                 fs::write(out.join("lib").join(file), bytes).map_err(failed)?;
                 if key == "source" {
                     sources.push(Path::new("lib").join(file));
@@ -191,7 +194,7 @@ pub fn build(library: &Library, out: &Path) -> Result<PathBuf, String> {
 }
 
 /// The bytes of a regular file, never what a link points at.
-fn read_regular(path: &Path) -> Result<Vec<u8>, String> {
+pub fn read_regular(path: &Path) -> Result<Vec<u8>, String> {
     let regular = fs::symlink_metadata(path).is_ok_and(|m| m.is_file());
     (fs::read(path).ok())
         .filter(|_| regular)
