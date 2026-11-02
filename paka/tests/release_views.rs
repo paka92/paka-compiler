@@ -1,6 +1,6 @@
 //! Visual apps built by `paka build` (M6-18): the hole-free counter of paka/src/llvm/views.rs
-//! takes clicks on standard input with no display (`--paka-replay`), keeps its old tree when a
-//! handler traps, and opens a window. The window test is skipped with no Wayland display.
+//! takes clicks on standard input with no display (`--paka-replay`) and writes each action's full
+//! result (M7-11c), keeps its old tree when a handler traps, and opens a window. The window test is skipped with no Wayland display.
 
 #[allow(dead_code)]
 mod common;
@@ -114,12 +114,46 @@ fn a_trapping_handler_keeps_the_old_tree_and_performs_none_of_its_effects() {
         .replace("grants: []", "grants: [Console]");
     let scratch = Scratch::new("release-counter-trap");
     let exe = built(&scratch, &source);
-    let (status, trees, err) = replay(&exe, &[PLUS, PLUS, "click #2\n", PLUS].concat());
-    assert_eq!(
-        (status, trees),
-        (Some(0), counters(&["0", "1", "2", "2", "3"]))
+    let (status, out, err) = replay(&exe, &[PLUS, PLUS, "click #2\n", PLUS].concat());
+    let trap = "trapped counter: trap divide_by_zero at main.paka:9:31\n\n";
+    let want = [&counters(&["0", "1", "2"]), trap, &counters(&["3"])].concat();
+    assert_eq!((status, out, err), (Some(0), want, String::new()));
+}
+
+/// `Exit` shows the tree it left and ends the replay; lines after it are not read.
+#[test]
+fn an_exit_shows_its_tree_and_ends_the_replay() {
+    let source = COUNTER
+        .replace(
+            "fn update(s: inout Counter, m: Msg) {",
+            "fn update(s: inout Counter, m: Msg) -> List<Effect<Msg>> {",
+        )
+        .replace(
+            "Reset => s.count = 0",
+            "Reset => {\n      return [Exit]\n    }",
+        )
+        .replace("s.count - 1)\n  }\n}", "s.count - 1)\n  }\n  []\n}");
+    let scratch = Scratch::new("release-counter-exit");
+    let exe = built(&scratch, &source);
+    let exited = format!("exited\n{}", counters(&["1"]));
+    let want = [counters(&["0", "1"]), exited].concat();
+    let actions = [PLUS, "click #2\n", PLUS].concat();
+    assert_eq!(replay(&exe, &actions), (Some(0), want, String::new()));
+}
+
+/// A typed line sends each of its code points; with no Input focused none reaches the app. A line
+/// that is no action ends the replay with status 2.
+#[test]
+fn typed_text_and_a_bad_line() {
+    let scratch = Scratch::new("release-counter-typed");
+    let exe = built(&scratch, COUNTER);
+    let actions = "type \"a\\\"\\{\\}\\té\"\ntype a\n";
+    let want = (
+        Some(2),
+        counters(&["0", "0"]),
+        "counter: not a replay action: type a\n".to_string(),
     );
-    assert_eq!(err, "counter: trap divide_by_zero at main.paka:9:31\n");
+    assert_eq!(replay(&exe, actions), want);
 }
 
 /// The app, killed when the test ends, which closes its window.

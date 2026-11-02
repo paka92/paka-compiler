@@ -1,8 +1,9 @@
 //! The differential harness (M4-40): planted differences in output, status, trap kind and trap
 //! position each differ, as does a run ended by a signal; and the command lists every run case of
-//! the conformance suite once. Every UI example agrees on both back ends, and a planted view fault
-//! differs in each (M5-26). A planted release fault is found, shrunk and kept as a case (M6-20),
-//! and each of a fast subset of the others is found (M6-21).
+//! the conformance suite once. Every UI example agrees in all three back ends, a planted dev view
+//! fault differs in each (M5-26) and a planted release one in each built (M7-11c). A planted
+//! release fault is found, shrunk and kept as a case (M6-20), and each of a fast subset of the
+//! others is found (M6-21).
 
 use paka_installer::diff::{Outcome, cases, difference};
 use std::path::Path;
@@ -256,20 +257,54 @@ fn edit_sequences_find_each_planted_staleness() {
     let _ = std::fs::remove_dir_all(&keep);
 }
 
+/// What `paka-diff --ui` lists for the UI examples under `tests` with `PAKA_PLANT` at `plant`:
+/// its output, its last line and its status.
+fn ui(plant: &str) -> (String, String, Option<i32>) {
+    let out = Command::new(env!("CARGO_BIN_EXE_paka-diff"))
+        .args(["--ui", concat!(env!("CARGO_MANIFEST_DIR"), "/../tests")])
+        .env("PAKA_PLANT", plant)
+        .output()
+        .unwrap();
+    let text = String::from_utf8(out.stdout).unwrap();
+    let total = text.lines().last().unwrap_or_default().to_owned();
+    (text, total, out.status.code())
+}
+
+/// Every UI example agrees in all three back ends, release where the program has no hole, each on
+/// all of its actions: past a dropped answer, `Exit` and typed escapes (M7-11c). A planted view
+/// fault in dev mode differs in each example.
 #[test]
 fn ui_examples_agree_and_a_planted_view_fault_differs_in_each() {
-    let ui = |plant: &str| {
-        let out = Command::new(env!("CARGO_BIN_EXE_paka-diff"))
-            .args(["--ui", concat!(env!("CARGO_MANIFEST_DIR"), "/../tests")])
-            .env("PAKA_PLANT", plant)
-            .output()
-            .unwrap();
-        let text = String::from_utf8(out.stdout).unwrap();
-        let total = text.lines().last().unwrap_or_default().to_owned();
-        (text, total, out.status.code())
-    };
+    build_paka_beside(Path::new(env!("CARGO_BIN_EXE_paka-diff")));
     let (text, total, status) = ui("0");
-    for case in ["sample_counter", "sample_todo", "ui_ends"] {
+    let hole = "no release build (a hole)";
+    let ends = [
+        ("answer_dropped", 3),
+        ("error_node", 2),
+        ("hangs", 2),
+        ("quits", 2),
+        ("refused", 2),
+        ("typed", 5),
+        ("view_traps", 3),
+    ];
+    let read = [
+        ("read_then_quit", 3),
+        ("read_then_save", 3),
+        ("typed_text", 11),
+    ];
+    let mut want: Vec<_> = ends
+        .iter()
+        .map(|(e, n)| format!("agree cases/examples/ui_ends {e}; {n} actions, {hole}\n"))
+        .collect();
+    want.extend(
+        read.iter().map(|(e, n)| {
+            format!("agree cases/examples/ui_read {e}; {n} actions, {n} in release\n")
+        }),
+    );
+    for line in want {
+        assert!(text.contains(&line), "{line}{text}");
+    }
+    for case in ["sample_counter", "sample_todo", "ui_todo"] {
         assert!(
             text.contains(&format!("agree cases/examples/{case} ")),
             "{text}"
@@ -293,4 +328,26 @@ fn ui_examples_agree_and_a_planted_view_fault_differs_in_each() {
         ),
         "{text}"
     );
+}
+
+/// A Col drawn as a Row in every release build differs in each example of a program with no hole,
+/// at the launch, and leaves the others agreeing.
+#[test]
+fn a_planted_release_view_fault_differs_in_each_example_built() {
+    build_paka_beside(Path::new(env!("CARGO_BIN_EXE_paka-diff")));
+    let (text, _, status) = ui("19");
+    for (example, n) in [
+        ("read_then_quit", 3),
+        ("read_then_save", 3),
+        ("typed_text", 11),
+    ] {
+        let want = format!(
+            "differ cases/examples/ui_read {example}: release compared on 0 of {n} actions: "
+        );
+        assert!(text.contains(&want), "{want}\n{text}");
+    }
+    let built = |l: &&str| l.starts_with("agree ") && !l.ends_with("(a hole)");
+    assert_eq!(text.lines().filter(built).count(), 0, "{text}");
+    assert!(text.contains("agree cases/examples/ui_ends answer_dropped; 3 actions"));
+    assert_eq!(status, Some(1));
 }
