@@ -93,6 +93,7 @@ pub fn lower_app(core: &mut Program, checks: Checks) -> Option<String> {
     if let Some(f) = &state {
         defines += &module.function(f, None)?;
     }
+    defines += &module.examples()?;
     module.dispatched.extend(answer);
     let results = paka::emit::answers(core);
     module.dispatched.extend(results.iter().map(|&(_, t)| t));
@@ -274,6 +275,8 @@ struct Module<'a> {
     /// For the M1 run loop, which performs `Print` and `Exit` only.
     m1: bool,
     checks: Checks,
+    /// Lowering a function example: it is `@p_example.<name>` and its calls stay out of line.
+    example: bool,
 }
 
 impl<'a> Module<'a> {
@@ -329,7 +332,32 @@ impl<'a> Module<'a> {
             sorts: BTreeSet::new(),
             m1,
             checks,
+            example: false,
         }
+    }
+
+    /// Each function example as `@p_example.<name>`, its calls kept out of line so the optimizer
+    /// cannot fold it away (M7-03 1.1), and `@examples.call`, which runs example `%id`; empty
+    /// without examples.
+    fn examples(&mut self) -> Option<String> {
+        let core = self.core;
+        if core.examples.is_empty() {
+            return Some(String::new());
+        }
+        let (mut cases, mut blocks, mut defines) = (String::new(), String::new(), String::new());
+        self.example = true;
+        for (id, f) in core.examples.iter().enumerate() {
+            cases += &format!(" i64 {id}, label %e{id}");
+            blocks += &format!(
+                "e{id}:\n  %s{id} = call i32 @p_example.{}(ptr %out)\n  ret i32 %s{id}\n",
+                f.name
+            );
+            defines += &self.function(f, None)?;
+        }
+        self.example = false;
+        Some(format!(
+            "\ndefine internal i32 @examples.call(i64 %id, ptr %out) {{\nentry:\n  switch i64 %id, label %none [{cases} ]\n{blocks}none:\n  ret i32 1\n}}\n{defines}"
+        ))
     }
 
     /// Every function, equality, sort and dispatcher still wanted, then the constants and
@@ -471,10 +499,11 @@ impl<'a> Module<'a> {
         // Drops the label of the block nothing reaches that `give` opened.
         let end = b.lines.trim_end().rfind('\n').map_or(0, |i| i + 1);
         b.lines.truncate(end);
+        let prefix = if b.module.example { "example." } else { "" };
         let (name, params) = (&f.name, params.join(", "));
         let (check, inline) = b.stack_check(f.site)?;
         Some(format!(
-            "\ndefine internal i32 @p_{name}({params}){inline} {{\nentry:\n{}{check}{}}}\n",
+            "\ndefine internal i32 @p_{prefix}{name}({params}){inline} {{\nentry:\n{}{check}{}}}\n",
             b.slots, b.lines
         ))
     }
@@ -1293,7 +1322,11 @@ impl Body<'_, '_> {
             }
             None => None,
         };
-        let status = self.op(format!("call i32 {callee}({})", list.join(", ")));
+        let attributes = if self.module.example { " noinline" } else { "" };
+        let status = self.op(format!(
+            "call i32 {callee}({}){attributes}",
+            list.join(", ")
+        ));
         self.pass(&status);
         Some(out.map(|(t, r)| {
             let v = self.get(t, &r);

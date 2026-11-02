@@ -2,7 +2,7 @@
 //! sections 3, 4 and 11. The view is all the back end builds until it takes the whole core form.
 
 use crate::core_form::{self, Expr, ExprKind, Grant, Program, Tag, Type};
-use paka_rt::abi::table::{APP, RUN, VISUAL};
+use paka_rt::abi::table::{APP, EXAMPLES, RUN, VISUAL};
 
 mod code;
 pub mod lint;
@@ -143,14 +143,15 @@ pub fn app(core: &mut Program, checks: Checks) -> Option<String> {
         Some(_) => (VISUAL, "paka_rt1_visual"),
         None => (APP, "paka_rt1_app"),
     };
+    let (declared, first) = examples_first(core);
     let code = code::lower_app(core, checks)?;
     Some(format!(
         "target triple = \"x86_64-pc-linux-gnu\"
 
 {entry}
-
+{declared}
 define i32 @main() {{
-  %st = call i32 @{name}(ptr @app)
+{first}  %st = call i32 @{name}(ptr @app)
   ret i32 %st
 }}
 
@@ -158,9 +159,41 @@ define i32 @main() {{
     ))
 }
 
-/// The IR text of `core`: the M1 view's when it holds the program, else the headless app's.
+/// In a build with function examples (M7-11b), the entry and names `main` needs and the start of
+/// `main`: the runtime runs the example asked for and gives its status, or -1 for the app to run.
+/// Both empty without examples.
+fn examples_first(core: &Program) -> (String, String) {
+    let names: Vec<_> = core.examples.iter().map(|e| e.name.as_str()).collect();
+    let (Some(app), false) = (&core.app, names.is_empty()) else {
+        return Default::default();
+    };
+    let names = names.join(" ");
+    let first = format!(
+        "  %ex = call i32 @paka_rt1_examples(ptr @name, i64 {}, ptr @examples, i64 {}, ptr @examples.call)
+  %app = icmp slt i32 %ex, 0
+  br i1 %app, label %run, label %done
+done:
+  ret i32 %ex
+run:
+",
+        app.name.len(),
+        names.len(),
+    );
+    (
+        format!("{EXAMPLES}\n{}", constant("examples", &names)),
+        first,
+    )
+}
+
+/// The IR text of `core`: the M1 view's when it holds the program and no example, else the
+/// headless app's.
 pub fn ir(core: &mut Program, checks: Checks) -> Option<String> {
-    match view(core, checks) {
+    match core
+        .examples
+        .is_empty()
+        .then(|| view(core, checks))
+        .flatten()
+    {
         Some(view) => Some(emit(&view)),
         None => app(core, checks),
     }
@@ -518,6 +551,34 @@ app a {
         let out = clang.wait_with_output().unwrap();
         assert!(out.status.success());
         String::from_utf8(out.stdout).unwrap()
+    }
+
+    /// A function example's calls into the program stay calls at full optimization (M7-03 1.1),
+    /// while the app's are still inlined.
+    #[test]
+    fn an_examples_calls_stay_calls_in_the_optimized_ir() {
+        let plain = LIGHT.replace(
+            "fn update",
+            "fn twice(n: Int) -> Int { n + n }\n\nfn update",
+        );
+        let plain = plain.replace("\"let there be light\"", "\"{twice(2)}\"");
+        let source = format!("{plain}\nexample doubles {{ twice(2) == 4 }}\n");
+        let ir = ir(&mut lowered(&source), Checks::All).unwrap();
+        assert_eq!(lint::lint(&ir), Vec::<String>::new());
+        assert_eq!(clang_accepts(&ir), Ok(()));
+        let entry = "call i32 @paka_rt1_examples(ptr @name, i64 5, ptr @examples, i64 7, ptr @examples.call)";
+        assert!(ir.contains(entry), "{ir}");
+        let calls = |ir: &str| {
+            let ir = optimized(ir);
+            ir.lines()
+                .filter(|l| l.contains(" call ") && l.contains("@p_twice"))
+                .count()
+        };
+        assert_eq!(calls(&ir), 1, "{}", optimized(&ir));
+        assert_eq!(
+            calls(&super::ir(&mut lowered(&plain), Checks::All).unwrap()),
+            0
+        );
     }
 
     /// The blocks of `function` on a cycle that branch to a trap.

@@ -17,7 +17,7 @@ use paka_json::Value;
 use paka_rt::{Fd1, abi};
 use source::{Source, read};
 use std::collections::BTreeSet;
-use std::ffi::OsStr;
+use std::ffi::{OsStr, OsString};
 use std::fs::{self, TryLockError};
 use std::io::{IsTerminal, Write};
 use std::os::unix::ffi::OsStrExt;
@@ -25,14 +25,19 @@ use std::path::{Path, PathBuf};
 use std::process::ExitCode;
 use std::{env, io};
 
-const USAGE: &str = "usage: paka run <path> [argument...]\n       paka build <path> -o <output>\n       paka check <path> [--json]\n       paka examples <path>\n       paka serve <path>\n       paka approve <path> [--adopt <name>] [--drop <name>] [--key <file>]\n       paka gate <tree> --base <tree> [--json]\n";
+const USAGE: &str = "usage: paka run <path> [argument...]\n       paka build <path> -o <output> [--examples <name>...]\n       paka check <path> [--json]\n       paka examples <path>\n       paka serve <path>\n       paka approve <path> [--adopt <name>] [--drop <name>] [--key <file>]\n       paka gate <tree> --base <tree> [--json]\n";
 
 fn main() -> ExitCode {
     let args: Vec<_> = env::args_os().skip(1).collect();
     let words: Vec<_> = args.iter().map(|a| a.to_str()).collect();
+    let mut named = &args[..0];
     let (file, output, checks) = match words[..] {
         [Some("run"), _, ..] => (&args[1], None, Checks::All),
         [Some("build"), _, Some("-o"), _] => (&args[1], Some(&args[3]), Checks::All),
+        [Some("build"), _, Some("-o"), _, Some("--examples"), _, ..] => {
+            named = &args[5..];
+            (&args[1], Some(&args[3]), Checks::All)
+        }
         // A measurement-only build (M6-30), which only a `measure` compiler makes.
         [
             Some("build"),
@@ -71,12 +76,29 @@ fn main() -> ExitCode {
             }
             Ok(1)
         }
-        Some(output) => build::build(path, &mut core, output, checks).map(|()| 0),
+        Some(output) => keep_examples(&mut core, named, path)
+            .and_then(|()| build::build(path, &mut core, output, checks))
+            .map(|()| 0),
     });
     match result {
         Ok(status) => ExitCode::from(status),
         Err(d) => reject(&source, d),
     }
+}
+
+/// Keeps in `core` only the function examples `named` (M7-11b); a name that is not one refuses
+/// the build.
+fn keep_examples(core: &mut Program, named: &[OsString], path: &str) -> Result<(), Diagnostic> {
+    let named: BTreeSet<_> = named.iter().map(|n| n.to_string_lossy()).collect();
+    if let Some(n) = named
+        .iter()
+        .find(|n| !core.examples.iter().any(|e| e.name == **n))
+    {
+        let why = format!("no function example named {n}");
+        return Err(Diagnostic::tool(path, "unknown-name", why));
+    }
+    core.examples.retain(|e| named.contains(e.name.as_str()));
+    Ok(())
 }
 
 /// The program at `file` and what checking it gives.
