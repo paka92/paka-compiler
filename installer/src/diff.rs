@@ -41,6 +41,24 @@ pub fn difference(a: &Outcome, b: &Outcome) -> Option<String> {
     difference_in(a, b, "dev")
 }
 
+/// The release verdict on `run` against the interpreter's `reference`: 0 agree, 1 differ or 2 not
+/// compared, and its note.
+pub fn release_verdict(reference: &Outcome, run: &Outcome) -> (usize, String) {
+    let trap = String::from_utf8_lossy(&reference.stderr);
+    let stack = trap
+        .lines()
+        .next()
+        .is_some_and(|l| l.contains(" trap stack at "));
+    match difference_in(reference, run, "release") {
+        // Release may finish or run on where the interpreter's stack ran out, not crash (M6-01).
+        _ if reference.status == Some(3) && stack && run.status.is_some() => {
+            (2, "not compared: a stack trap".into())
+        }
+        Some(why) => (1, why),
+        None => (0, "agree".into()),
+    }
+}
+
 /// How the run of `b` in mode `mode` differs in meaning from the reference run `a`.
 pub fn difference_in(a: &Outcome, b: &Outcome, mode: &str) -> Option<String> {
     let text = |bytes: &[u8]| String::from_utf8_lossy(bytes).into_owned();

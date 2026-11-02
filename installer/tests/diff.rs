@@ -5,7 +5,9 @@
 //! release fault is found, shrunk and kept as a case (M6-20), and each of a fast subset of the
 //! others is found (M6-21).
 
-use paka_installer::diff::{Outcome, cases, compiled_limit, difference, expect, stop, stopped};
+use paka_installer::diff::{
+    Outcome, cases, compiled_limit, difference, expect, release_verdict, stop, stopped,
+};
 use std::path::Path;
 use std::process::{self, Command};
 use std::time::Duration;
@@ -108,6 +110,18 @@ fn a_stopped_run_writes_no_expectations() {
     expect(&dir, &trapped(TRAP)).unwrap();
     assert_eq!(fs::read_to_string(dir.join("status")).unwrap(), "3\n");
     fs::remove_dir_all(&dir).unwrap();
+}
+
+#[test]
+fn a_release_run_past_a_stack_trap_must_keep_what_was_printed_before_it() {
+    let reference = trapped("a: trap stack at main.paka:3:5\n");
+    let on = |stdout: &str| Outcome {
+        stdout: stdout.as_bytes().to_vec(),
+        status: Some(0),
+        ..Outcome::default()
+    };
+    assert_eq!(release_verdict(&reference, &on("before\nafter\n")).0, 2);
+    assert_eq!(release_verdict(&reference, &on("other\n")).0, 1);
 }
 
 #[test]

@@ -47,7 +47,7 @@ use paka::source::{Source, read};
 use paka_installer::dev::Dev;
 use paka_installer::diff::{
     Outcome, cases, compiled_limit, difference, difference_in, expect, in_release, no_core_dumps,
-    shrink, stage, stop, stopped, ui_examples,
+    release_verdict, shrink, stage, stop, stopped, ui_examples,
 };
 use paka_installer::release;
 use paka_rt::abi::dev::app::Stopped;
@@ -527,19 +527,7 @@ fn released(built: &Path, reference: &Outcome, limit: Duration) -> io::Result<(u
         });
     }
     let run = native(&built.with_extension("prog"), built, &[], limit)?;
-    let trap = String::from_utf8_lossy(&reference.stderr);
-    let stack = trap
-        .lines()
-        .next()
-        .is_some_and(|l| l.contains(" trap stack at "));
-    Ok(match difference_in(reference, &run, "release") {
-        // Release may finish or run on where the interpreter's stack ran out, not crash (M6-01).
-        _ if reference.status == Some(3) && stack && run.status.is_some() => {
-            (2, "not compared: a stack trap".into())
-        }
-        Some(why) => (1, why),
-        None => (0, "agree".into()),
-    })
+    Ok(release_verdict(reference, &run))
 }
 
 /// Writes the run case `dir` of program `text`, expecting what its run on the interpreter staged
