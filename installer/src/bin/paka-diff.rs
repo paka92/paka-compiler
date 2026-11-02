@@ -421,10 +421,10 @@ fn released(built: &Path, reference: &Outcome) -> io::Result<(usize, String)> {
 }
 
 /// Writes the run case `dir` of program `text`, expecting what its run on the interpreter staged
-/// in `interp` leaves; the path of its program.
+/// in `interp` leaves, under the limit run cases have; the path of its program.
 fn keep_case(dir: &Path, text: &str, interp: &Path) -> io::Result<PathBuf> {
     fs::write(interp.join("main.paka"), text)?;
-    let (out, _) = run(interp, ENGINES[0], FUZZ_LIMIT, &[])?;
+    let (out, _) = run(interp, ENGINES[0], LIMIT, &[])?;
     let status = out
         .status
         .ok_or_else(|| io::Error::other("the interpreter was killed"))?;
