@@ -70,7 +70,7 @@ use std::time::{Duration, Instant};
 const HEAP: u64 = 1 << 30;
 /// How long a run of a conformance case, and of a generated program, may take before it stops.
 const LIMIT: Duration = Duration::from_secs(3);
-const FUZZ_LIMIT: Duration = Duration::from_millis(250);
+const FUZZ_LIMIT: Duration = Duration::from_secs(1);
 const CONFORMANCE: &str = "tests/conformance";
 
 fn main() -> ExitCode {
@@ -136,7 +136,7 @@ fn compare_release(root: &Path) -> io::Result<ExitCode> {
         let dirs = ENGINES.map(|e| scratch.join(format!("{flat}-{e}")));
         dirs.iter().try_for_each(|d| stage(&case, d))?;
         let args = arguments(&case);
-        let ((mut verdict, mut line), reference) = judged(&dirs, &name, LIMIT, &args)?;
+        let ((mut verdict, mut line), reference, _) = judged(&dirs, &name, LIMIT, &args)?;
         let (source, found) = read(&dirs[0].join("main.paka").into_os_string());
         let Ok((core, ..)) = found.and_then(|()| paka::check("main.paka", &source)) else {
             tally.add((1, format!("differ {name}: the program does not check")))?;
@@ -482,7 +482,7 @@ fn fuzz(seeds: Range<u64>, keep: &Path, release: bool) -> io::Result<ExitCode> {
     };
     let judge = |name: &str| match release {
         true => judged_release(&dirs, &built, name),
-        false => judged(&dirs, name, FUZZ_LIMIT, &[]).map(|(verdict, _)| verdict),
+        false => judged(&dirs, name, FUZZ_LIMIT, &[]).map(|(verdict, ..)| verdict),
     };
     let mut tally = Tally::default();
     for seed in seeds {
@@ -515,11 +515,11 @@ fn fuzz(seeds: Range<u64>, keep: &Path, release: bool) -> io::Result<ExitCode> {
 /// `judged`'s verdict on the generated program staged in `dirs`, with the copy in `built` also
 /// built and run in release, which must agree with the interpreter.
 fn judged_release(dirs: &[PathBuf; 2], built: &Path, name: &str) -> io::Result<(usize, String)> {
-    let ((verdict, line), reference) = judged(dirs, name, FUZZ_LIMIT, &[])?;
+    let ((verdict, line), reference, limit) = judged(dirs, name, FUZZ_LIMIT, &[])?;
     if reference.stopped() {
         return Ok((verdict, line));
     }
-    let (release, note) = released(built, &reference)?;
+    let (release, note) = released(built, &reference, limit)?;
     if release == 1 {
         return Ok((1, format!("differ {name}: release {note}")));
     }
@@ -533,8 +533,9 @@ fn judged_release(dirs: &[PathBuf; 2], built: &Path, name: &str) -> io::Result<(
     Ok((verdict, format!("{word} {rest}; release {note}")))
 }
 
-/// The release verdict on the program staged in `built`, against the interpreter's run.
-fn released(built: &Path, reference: &Outcome) -> io::Result<(usize, String)> {
+/// The release verdict on the program staged in `built`, against the interpreter's run, stopped
+/// past `limit`.
+fn released(built: &Path, reference: &Outcome, limit: Duration) -> io::Result<(usize, String)> {
     let out = build(
         &env::current_exe()?.with_file_name("paka"),
         built,
@@ -555,7 +556,6 @@ fn released(built: &Path, reference: &Outcome) -> io::Result<(usize, String)> {
             false => (1, format!("build failed: {why:?}")),
         });
     }
-    let limit = compiled_limit(FUZZ_LIMIT);
     let run = native(
         &built.with_extension("prog"),
         built,
@@ -791,24 +791,25 @@ fn judge(
     limit: Duration,
     args: &[OsString],
 ) -> io::Result<(usize, String)> {
-    judged(dirs, name, limit, args).map(|(verdict, _)| verdict)
+    judged(dirs, name, limit, args).map(|(verdict, ..)| verdict)
 }
 
-/// The verdict `judge` gives and the interpreter's run.
+/// The verdict `judge` gives, the interpreter's run and the time a compiled run gets after it.
 fn judged(
     dirs: &[PathBuf; 2],
     name: &str,
     limit: Duration,
     args: &[OsString],
-) -> io::Result<((usize, String), Outcome)> {
+) -> io::Result<((usize, String), Outcome, Duration)> {
     let start = Instant::now();
     let (reference, _) = run(&dirs[0], ENGINES[0], limit, args)?;
+    let compiled = compiled_limit(start.elapsed());
     // How far a stopped run got depends on speed, not meaning.
     if reference.stopped() {
         let why = format!("unsupported {name}: the interpreter ran past the limit");
-        return Ok(((2, why), reference));
+        return Ok(((2, why), reference, compiled));
     }
-    let (dev, note) = run(&dirs[1], ENGINES[1], compiled_limit(start.elapsed()), args)?;
+    let (dev, note) = run(&dirs[1], ENGINES[1], compiled, args)?;
     let verdict = match (
         note.strip_prefix("unsupported: "),
         difference(&reference, &dev),
@@ -821,7 +822,7 @@ fn judged(
         (None, None) => (0, format!("agree {name}; {}", ledger(&note))),
         (None, Some(why)) => (1, format!("differ {name}: {why}; {}", ledger(&note))),
     };
-    Ok((verdict, reference))
+    Ok((verdict, reference, compiled))
 }
 
 /// Runs `main.paka` in `dir` on `engine` in a child, stopped past `limit`: its outcome and note.
