@@ -58,11 +58,17 @@ fn tree(name: &str) -> Scratch {
     let files = [
         ("TRUSTED", TRUSTED),
         ("vendor/ahash/Cargo.toml", "[package]\n"),
-        ("vendor/ahash/LICENSE-MIT", "Copyright (c) 2018 Someone\n\nMIT text\n"),
+        (
+            "vendor/ahash/LICENSE-MIT",
+            "Copyright (c) 2018 Someone\n\nMIT text\n",
+        ),
         ("vendor/ahash/LICENSE-APACHE", "Apache text"),
         ("vendor/ahash/src/lib.rs", ""),
         ("vendor/tool/LICENSE", "tool text\n"),
-        ("vendor/bare-0.1.0/Cargo.toml", "[package]\nauthors = [\"A\", \"B\"]\n"),
+        (
+            "vendor/bare-0.1.0/Cargo.toml",
+            "[package]\nauthors = [\"A\", \"B\"]\n",
+        ),
         ("vendor/bare/LICENSE", "another version's text\n"),
         ("fonts/Demo.ttf", "font"),
         ("fonts/OFL.txt", "OFL text\n"),

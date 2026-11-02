@@ -8,7 +8,7 @@ use paka::clang::SYSTEM_LIBS;
 use paka::notices::{Row, notices, rows};
 use std::collections::BTreeSet;
 use std::fs;
-use std::path::Path;
+use std::path::{Path, PathBuf};
 
 type Crates = BTreeSet<(String, String)>;
 
@@ -106,17 +106,17 @@ fn loaded(code: &str) -> BTreeSet<String> {
 }
 
 /// The `.rs` files under `dir`.
-fn sources(dir: &Path) -> Vec<std::path::PathBuf> {
-    let Ok(entries) = fs::read_dir(dir) else {
-        return vec![];
-    };
-    let paths = entries.map(|e| e.unwrap().path());
-    paths
-        .flat_map(|p| match p.is_dir() {
-            true => sources(&p),
-            false => (p.extension() == Some("rs".as_ref())).then_some(p).into_iter().collect(),
-        })
-        .collect()
+fn sources(dir: &Path) -> Vec<PathBuf> {
+    let mut files = vec![];
+    for entry in fs::read_dir(dir).into_iter().flatten() {
+        let path = entry.unwrap().path();
+        if path.is_dir() {
+            files.extend(sources(&path));
+        } else if path.extension() == Some("rs".as_ref()) {
+            files.push(path);
+        }
+    }
+    files
 }
 
 fn stubbed() -> Crates {
@@ -192,7 +192,9 @@ fn an_unlisted_system_library_fails() {
 fn every_library_program_code_loads_is_trusted() {
     let text = trusted();
     let rows = rows(&text).unwrap();
-    let crates = rows.iter().filter(|r| r.runs == "programs" && !r.is_system() && !r.is_file());
+    let crates = rows
+        .iter()
+        .filter(|r| r.runs == "programs" && !r.is_system() && !r.is_file());
     let files = crates.flat_map(|r| sources(&r.dir(root()).join("src")));
     let mut found = BTreeSet::new();
     for file in files {
@@ -202,7 +204,10 @@ fn every_library_program_code_loads_is_trusted() {
         assert!(found.remove(name), "{name} is no longer in the code");
     }
     let found = Vec::from_iter(found);
-    assert_eq!(found, ["libwayland-client", "libwayland-cursor", "libxkbcommon"]);
+    assert_eq!(
+        found,
+        ["libwayland-client", "libwayland-cursor", "libxkbcommon"]
+    );
     assert_eq!(unlisted_system(&found, &rows), Vec::<String>::new());
 }
 

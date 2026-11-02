@@ -26,7 +26,7 @@ impl Row<'_> {
     }
 
     /// The directory holding the licence texts: the file's own, or the crate's in `vendor/`.
-    fn dir(&self, root: &Path) -> PathBuf {
+    pub fn dir(&self, root: &Path) -> PathBuf {
         if self.is_file() {
             return root.join(self.name).parent().unwrap().into();
         }
@@ -67,31 +67,95 @@ pub fn rows(text: &str) -> Result<Vec<Row<'_>>, String> {
     Ok(rows)
 }
 
-/// The notices file for the `TRUSTED` in `root`: each row programs run, in order, with the
-/// licence texts beside it.
+/// Standard texts for licences a package names but ships no text of, from a vendored crate that
+/// ships them verbatim.
+const STANDARD: [(&str, &str); 2] = [
+    ("Apache-2.0", "vendor/ahash/LICENSE-APACHE"),
+    ("MIT", "vendor/ahash/LICENSE-MIT"),
+];
+
+/// The notices file for the `TRUSTED` in `root`: each row programs run, in order, then each
+/// distinct licence text once, after the rows it covers, in order of first use.
 pub fn notices(root: &Path) -> Result<String, String> {
     let text = fs::read_to_string(root.join("TRUSTED")).map_err(|e| format!("TRUSTED: {e}"))?;
+    let rows = rows(&text)?;
     let mut out = String::from(
         "Third-party notices: each library and file in TRUSTED that a program contains or loads, \
-         in that\norder, with the licence texts its package ships.\n",
+         in that\norder, then each distinct licence text once, after the list of those it covers.\n\n",
     );
-    for row in rows(&text)?.iter().filter(|r| r.runs == "programs") {
-        let (name, version) = (row.name, row.version);
-        write!(out, "\n==== {name} {version}\n").unwrap();
-        writeln!(out, "licence: {}\npurpose: {}", row.licence, row.purpose).unwrap();
+    let mut texts: Vec<(String, Vec<String>)> = vec![];
+    for row in rows.iter().filter(|r| r.runs == "programs") {
+        write!(
+            out,
+            "{} {}  {}  {}",
+            row.name, row.version, row.licence, row.purpose
+        )
+        .unwrap();
         if row.is_system() {
-            out += "(from the system, not shipped)\n";
+            out += "  (from the system, not shipped)\n";
             continue;
         }
-        let texts = licences(root, &row.dir(root))?;
-        if texts.is_empty() {
-            out += "(no licence text in its package)\n";
-        }
-        for (file, text) in texts {
-            writeln!(out, "---- {file}\n{}", text.trim_end_matches('\n')).unwrap();
+        out += "\n";
+        for (user, body) in row_texts(root, row)? {
+            match texts.iter_mut().find(|(b, _)| *b == body) {
+                Some((_, users)) => users.push(user),
+                None => texts.push((body, vec![user])),
+            }
         }
     }
+    for (n, (body, users)) in texts.iter().enumerate() {
+        let users = users.join("\n");
+        write!(out, "\n==== text {}, for:\n{users}\n----\n{body}\n", n + 1).unwrap();
+    }
     Ok(out)
+}
+
+/// A row's licence texts, each with the line naming whose and where from: the package's own, or
+/// the standard text of each licence it names when it ships none.
+fn row_texts(root: &Path, row: &Row) -> Result<Vec<(String, String)>, String> {
+    let id = format!("{} {}", row.name, row.version);
+    let dir = row.dir(root);
+    let own = licences(root, &dir)?;
+    if !own.is_empty() {
+        let line = |(file, text): (String, String)| (format!("{id}  {file}"), trimmed(&text));
+        return Ok(own.into_iter().map(line).collect());
+    }
+    let words = row
+        .licence
+        .split(|c: char| c.is_whitespace() || "()/".contains(c));
+    let ids = words.filter(|w| !["", "OR", "AND", "WITH"].contains(w));
+    ids.map(|spdx| supplied(root, &dir, &id, spdx)).collect()
+}
+
+/// The standard text of the licence `spdx` for the crate `id` in `dir`, and the line saying so.
+fn supplied(root: &Path, dir: &Path, id: &str, spdx: &str) -> Result<(String, String), String> {
+    let none = || format!("{id}: its package has no licence text, and none is supplied for {spdx}");
+    let (_, from) = STANDARD.iter().find(|(s, _)| *s == spdx).ok_or_else(none)?;
+    let text = fs::read_to_string(root.join(from)).map_err(|e| format!("{from}: {e}"))?;
+    if spdx != "MIT" {
+        let line = format!("{id}  {spdx}, not in its package: the standard text from {from}");
+        return Ok((line, trimmed(&text)));
+    }
+    let toml = fs::read_to_string(dir.join("Cargo.toml")).unwrap_or_default();
+    let authors = toml.lines().find_map(|l| l.strip_prefix("authors = ["));
+    let authors: Vec<_> = authors.map_or(vec![], |a| a.split('"').skip(1).step_by(2).collect());
+    if authors.is_empty() {
+        return Err(format!(
+            "{id}: no authors in its Cargo.toml for the MIT copyright line"
+        ));
+    }
+    let (_, rest) = text
+        .split_once('\n')
+        .filter(|(first, _)| first.starts_with("Copyright"))
+        .ok_or_else(|| format!("{from}: no copyright first line"))?;
+    let text = format!("Copyright (c) {}\n{rest}", authors.join(", "));
+    let line =
+        format!("{id}  MIT, not in its package: {from} with the copyright line from its authors");
+    Ok((line, trimmed(&text)))
+}
+
+fn trimmed(text: &str) -> String {
+    text.trim_end_matches('\n').into()
 }
 
 /// The licence files directly in `dir`, by name in byte order, and their texts.
