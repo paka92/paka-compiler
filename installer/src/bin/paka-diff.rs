@@ -858,3 +858,28 @@ fn one(args: &[OsString]) -> ExitCode {
     };
     ExitCode::from(status)
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    fn trapped(kind: &str, at: &str) -> Ran {
+        Ran::Trapped(format!("app: trap {kind} at main.paka:{at}"))
+    }
+
+    #[test]
+    fn a_trap_agrees_by_kind_and_position_but_stack_and_memory_by_kind_alone() {
+        for kind in ["stack", "memory"] {
+            let want = format!("deep trapped at main.paka:11:53\n  trap {kind}\n  in down\n");
+            assert!(example_agrees(&want, &trapped(kind, "11:4")), "{kind}");
+            assert!(
+                !example_agrees(&want, &trapped("overflow", "11:53")),
+                "{kind}"
+            );
+        }
+        let want = "big trapped at main.paka:12:29\n  trap overflow\n  in big\n";
+        assert!(example_agrees(want, &trapped("overflow", "12:29")));
+        assert!(!example_agrees(want, &trapped("overflow", "12:30")));
+        assert!(!example_agrees(want, &trapped("stack", "12:29")));
+    }
+}

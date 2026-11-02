@@ -64,11 +64,12 @@ fn a_leak_or_a_status_without_a_trap_is_an_internal_error() {
 
 #[test]
 fn an_unknown_name_or_another_shape_is_a_usage_line() {
-    for name in ["nope", "hold", "holds fails", ""] {
+    for name in ["nope", "hold", "holds fails"] {
         let line = format!("app: --paka-examples: no function example named {name}\n");
         assert_eq!(ran(&["--paka-examples", name]), said(2, &line), "{name:?}");
     }
     let shape = "app: --paka-examples takes one example name\n";
     assert_eq!(ran(&["--paka-examples"]), said(2, shape));
+    assert_eq!(ran(&["--paka-examples", ""]), said(2, shape));
     assert_eq!(ran(&["--paka-examples", "holds", "fails"]), said(2, shape));
 }

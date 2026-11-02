@@ -571,10 +571,11 @@ app a {
         let calls = |ir: &str| {
             let ir = optimized(ir);
             ir.lines()
-                .filter(|l| l.contains(" call ") && l.contains("@p_twice"))
+                .filter(|l| l.contains(" call ") && l.contains("@p_twice("))
                 .count()
         };
         assert_eq!(calls(&ir), 1, "{}", optimized(&ir));
+        assert!(!optimized(&ir).contains(".specialized"));
         assert_eq!(
             calls(&super::ir(&mut lowered(&plain), Checks::All).unwrap()),
             0
