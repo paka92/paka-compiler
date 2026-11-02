@@ -827,11 +827,13 @@ or merged during review. Ids with a letter were added during review.
 
 ### M3-18 · L2 · Freeze the protocol and make the harness refuse counted runs from other commits
 
+- status: done
 - needs: M3-02, M3-03, M3-04, M3-09, M3-10, M3-17
 - flags: owner
 - done when: Before any model call the owner merges and tags (`protocol`) a protocol naming tasks, model, metrics, margin and toolchain versions; the harness refuses a counted run from any commit but the one tagged `run`.
 - why this level: Assembles approved decisions into one file and adds one commit check; little to decide.
 - note: Protocol file experiment/protocol.md and the commit check are in; open: model id, CLI fixed-text tokens, call time limit, CLI version, Paka reference size, batch order. Waits for the owner's protocol tag. The protocol carries the 20 task outlines, their classes, the tags, the reserve order, the band lines, the two token caps and error status 20.
+- note: Done: the protocol is tagged `protocol` and the harness refuses counted runs from any commit but the one tagged `run`.
 
 ### M3-19 · L3 · Dry-run the harness on practice tasks and fix its faults
 
@@ -844,11 +846,13 @@ or merged during review. Ids with a letter were added during review.
 
 ### M3-19b · L2 · Run the Rust and TypeScript calibration pass and apply the swap rule
 
+- status: done
 - needs: M3-19
 - flags: owner, model-calls
 - done when: Logs show every counted task run in Rust and TypeScript only, never Paka; each swap follows M3-03's rule and comes from the reserve list; the owner merges the amended list and tags the `run` commit. Raw logs merged.
 - why this level: No design; must follow the pre-set rule exactly.
 - note: First pass (logs in experiment/runs/calib-1): 108 runs, no harness fault; 15 of 18 tasks passed first try in all 6 runs, Rust first-try 88% and TypeScript 86% on the counted list, so 11 swaps were due and the reserve list could not supply them. Owner ruling: keep S3, G2 and N1, write 11 harder counted tasks (T4 T5 P4 P5 S4 G3 R4 R5 N4 F3 F4; T5 P5 R5 F4 tagged) and 4 reserves (T6 tagged, S5, N5, F5 tagged), then calibrate again. The harder tasks are written and merged; each has Rust, TypeScript and Paka references that pass every case. protocol.md now lists counted T4 T5 P4 P5 S3 S4 G2 G3 R4 R5 N1 N4 F3 F4 and reserves T6 S5 N5 F5, with the replaced tasks kept out of the lists. Next: calibrate the new list. Second calibration (experiment/runs/calib-2): 84 runs, all solved; first try Rust 29 of 42 (69%), TypeScript 33 of 42 (79%), inside the 30 to 85% gate. All 6 runs passed first try on T5, P4, S4, G3, R4, R5 and N4: 7 swaps due against 4 reserves, so the owner decides. Every F4 first try failed the same hidden case by printing the placeholder OLD instead of the name. F3-Rust-2 had two void attempts from a full disk and passed on its third. Owner ruling: keep the list as it stands, the list-wide gate being met; recorded in protocol.md. F4 error line clarified and F4 calibrated again (experiment/runs/calib-3): 4 of 6 first try. Next: tag run and start M3-20. 84 runs plus up to 24 for swapped-in reserve tasks. More than 4 swaps goes to the owner, not to a fifth swap.
+- note: Done: the `run` commit is tagged and the counted runs in experiment/runs/counted were made from it.
 
 ### M3-20 · L2 · Run the counted experiment and publish the raw logs
 
