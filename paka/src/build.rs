@@ -5,7 +5,7 @@
 use crate::core_form::Program;
 use crate::diagnostic::Diagnostic;
 use crate::llvm::{self, Checks};
-use paka::clang;
+use paka::clang::{self, SYSTEM_LIBS};
 use std::env;
 use std::ffi::OsStr;
 use std::fs::{self, File};
@@ -19,15 +19,6 @@ const RUNTIME: &str = "libpaka_rt.a";
 const OPTIMIZE: [&str; 1] = ["-O3"];
 /// Drops the runtime code a binary never reaches: a headless app links no window.
 const GC_SECTIONS: &str = "-Wl,--gc-sections";
-const SYSTEM_LIBS: [&str; 7] = [
-    "-lgcc_s",
-    "-lutil",
-    "-lrt",
-    "-lpthread",
-    "-lm",
-    "-ldl",
-    "-lc",
-];
 
 /// Writes the executable for `core` to `output` with `checks`, its hosts from the host cache
 /// beside it; `path` is the source path for diagnostics.
