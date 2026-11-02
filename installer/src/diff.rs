@@ -16,9 +16,52 @@ use std::ops::Range;
 use std::path::{Path, PathBuf};
 use std::time::Duration;
 
+/// `run` as stopped past its limit: status 4 and `stopped: time` its whole standard error.
+pub fn stop(run: Outcome) -> Outcome {
+    Outcome {
+        stderr: b"stopped: time\n".to_vec(),
+        status: Some(4),
+        ..run
+    }
+}
+
+/// Whether `run` was stopped past its limit, maybe just after it printed a trap.
+pub fn stopped(run: &Outcome) -> bool {
+    run.status == Some(4) && run.stderr.ends_with(b"stopped: time\n")
+}
+
+/// The time a compiled run gets after an interpreter run of `interp`: compiled code outruns the
+/// interpreter, but a stack trap first fills the 64 MiB runner stack, and a busy machine stalls.
+pub fn compiled_limit(interp: Duration) -> Duration {
+    (interp * 4).max(Duration::from_secs(1))
+}
+
 /// How the dev run of `b` differs in meaning from the reference run `a`; `None` when they agree.
 pub fn difference(a: &Outcome, b: &Outcome) -> Option<String> {
     difference_in(a, b, "dev")
+}
+
+/// The release verdict on `run` against the interpreter's `reference`: 0 agree, 1 differ or 2 not
+/// compared, and its note.
+pub fn release_verdict(reference: &Outcome, run: &Outcome) -> (usize, String) {
+    let trap = String::from_utf8_lossy(&reference.stderr);
+    let stack = trap
+        .lines()
+        .next()
+        .is_some_and(|l| l.contains(" trap stack at "));
+    match difference_in(reference, run, "release") {
+        // Release may finish or run on where the interpreter's stack ran out, not crash (M6-01),
+        // after the same output.
+        _ if reference.status == Some(3)
+            && stack
+            && run.status.is_some()
+            && run.stdout.starts_with(&reference.stdout) =>
+        {
+            (2, "not compared: a stack trap".into())
+        }
+        Some(why) => (1, why),
+        None => (0, "agree".into()),
+    }
 }
 
 /// How the run of `b` in mode `mode` differs in meaning from the reference run `a`.
@@ -88,6 +131,32 @@ fn folders(dir: &Path) -> io::Result<Vec<PathBuf>> {
     }
     folders.sort();
     Ok(folders)
+}
+
+/// Writes the expectations of run case `dir`: what `run` left. A run killed or stopped past its
+/// limit shows speed, not meaning, and is refused.
+pub fn expect(dir: &Path, run: &Outcome) -> io::Result<()> {
+    let status = match run.status {
+        None => return Err(io::Error::other("the interpreter was killed")),
+        Some(4) => return Err(io::Error::other("the interpreter was stopped")),
+        Some(status) => status,
+    };
+    fs::create_dir_all(dir)?;
+    fs::write(dir.join("stdout"), &run.stdout)?;
+    fs::write(dir.join("status"), format!("{status}\n"))?;
+    if !run.stderr.is_empty() {
+        fs::write(dir.join("stderr"), &run.stderr)?;
+    }
+    Ok(())
+}
+
+/// Fails when `dir` has no room for a build's files (16 MiB), so a full disk ends the run instead
+/// of reading as a divergence.
+pub fn room(dir: &Path) -> io::Result<()> {
+    let probe = dir.join("room");
+    let written = fs::write(&probe, vec![0; 16 << 20]);
+    let _ = fs::remove_file(&probe);
+    written
 }
 
 /// Copies case `case` into the empty folder `to`: its own files, then the contents of `files/`

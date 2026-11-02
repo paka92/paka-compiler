@@ -46,8 +46,8 @@ use paka::release::{Ran, exec};
 use paka::source::{Source, read};
 use paka_installer::dev::Dev;
 use paka_installer::diff::{
-    Outcome, cases, difference, difference_in, in_release, no_core_dumps, shrink, stage,
-    ui_examples,
+    Outcome, cases, compiled_limit, difference, difference_in, expect, in_release, no_core_dumps,
+    release_verdict, room, shrink, stage, stop, stopped, ui_examples,
 };
 use paka_installer::release;
 use paka_rt::abi::dev::app::Stopped;
@@ -70,7 +70,7 @@ use std::time::{Duration, Instant};
 const HEAP: u64 = 1 << 30;
 /// How long a run of a conformance case, and of a generated program, may take before it stops.
 const LIMIT: Duration = Duration::from_secs(3);
-const FUZZ_LIMIT: Duration = Duration::from_millis(250);
+const FUZZ_LIMIT: Duration = Duration::from_secs(1);
 const CONFORMANCE: &str = "tests/conformance";
 
 fn main() -> ExitCode {
@@ -136,7 +136,7 @@ fn compare_release(root: &Path) -> io::Result<ExitCode> {
         let dirs = ENGINES.map(|e| scratch.join(format!("{flat}-{e}")));
         dirs.iter().try_for_each(|d| stage(&case, d))?;
         let args = arguments(&case);
-        let ((mut verdict, mut line), reference) = judged(&dirs, &name, LIMIT, &args)?;
+        let ((mut verdict, mut line), reference, _) = judged(&dirs, &name, LIMIT, &args)?;
         let (source, found) = read(&dirs[0].join("main.paka").into_os_string());
         let Ok((core, ..)) = found.and_then(|()| paka::check("main.paka", &source)) else {
             tally.add((1, format!("differ {name}: the program does not check")))?;
@@ -429,12 +429,7 @@ fn planted_clang(n: usize) -> io::Result<OsString> {
 /// Runs `exe` in `dir` with no display, killed past `limit`.
 fn native(exe: &Path, dir: &Path, args: &[OsString], limit: Duration) -> io::Result<Outcome> {
     let command = &mut headless(exe, dir);
-    let stopped = |o| Outcome {
-        stderr: b"stopped: time\n".to_vec(),
-        status: Some(4),
-        ..o
-    };
-    Ok(exec(command.args(args), b"", limit)?.unwrap_or_else(stopped))
+    Ok(exec(command.args(args), b"", limit)?.unwrap_or_else(stop))
 }
 
 /// `exe` to run in `dir` with no display.
@@ -457,7 +452,7 @@ fn fuzz(seeds: Range<u64>, keep: &Path, release: bool) -> io::Result<ExitCode> {
     };
     let judge = |name: &str| match release {
         true => judged_release(&dirs, &built, name),
-        false => judged(&dirs, name, FUZZ_LIMIT, &[]).map(|(verdict, _)| verdict),
+        false => judged(&dirs, name, FUZZ_LIMIT, &[]).map(|(verdict, ..)| verdict),
     };
     let mut tally = Tally::default();
     for seed in seeds {
@@ -490,11 +485,11 @@ fn fuzz(seeds: Range<u64>, keep: &Path, release: bool) -> io::Result<ExitCode> {
 /// `judged`'s verdict on the generated program staged in `dirs`, with the copy in `built` also
 /// built and run in release, which must agree with the interpreter.
 fn judged_release(dirs: &[PathBuf; 2], built: &Path, name: &str) -> io::Result<(usize, String)> {
-    let ((verdict, line), reference) = judged(dirs, name, FUZZ_LIMIT, &[])?;
+    let ((verdict, line), reference, limit) = judged(dirs, name, FUZZ_LIMIT, &[])?;
     if stopped(&reference) {
         return Ok((verdict, line));
     }
-    let (release, note) = released(built, &reference)?;
+    let (release, note) = released(built, &reference, limit)?;
     if release == 1 {
         return Ok((1, format!("differ {name}: release {note}")));
     }
@@ -508,8 +503,9 @@ fn judged_release(dirs: &[PathBuf; 2], built: &Path, name: &str) -> io::Result<(
     Ok((verdict, format!("{word} {rest}; release {note}")))
 }
 
-/// The release verdict on the program staged in `built`, against the interpreter's run.
-fn released(built: &Path, reference: &Outcome) -> io::Result<(usize, String)> {
+/// The release verdict on the program staged in `built`, against the interpreter's run, stopped
+/// past `limit`.
+fn released(built: &Path, reference: &Outcome, limit: Duration) -> io::Result<(usize, String)> {
     let out = build(
         &env::current_exe()?.with_file_name("paka"),
         built,
@@ -527,39 +523,22 @@ fn released(built: &Path, reference: &Outcome) -> io::Result<(usize, String)> {
                 2,
                 format!("unsupported: {}", why.lines().next().unwrap_or("")),
             ),
-            false => (1, format!("build failed: {why:?}")),
+            false => {
+                room(built.parent().unwrap_or(built))?;
+                room(&env::temp_dir())?;
+                (1, format!("build failed: {why:?}"))
+            }
         });
     }
-    let run = native(&built.with_extension("prog"), built, &[], FUZZ_LIMIT)?;
-    let trap = String::from_utf8_lossy(&reference.stderr);
-    let stack = trap
-        .lines()
-        .next()
-        .is_some_and(|l| l.contains(" trap stack at "));
-    Ok(match difference_in(reference, &run, "release") {
-        // Release may finish or run on where the interpreter's stack ran out, not crash (M6-01).
-        _ if reference.status == Some(3) && stack && run.status.is_some() => {
-            (2, "not compared: a stack trap".into())
-        }
-        Some(why) => (1, why),
-        None => (0, "agree".into()),
-    })
+    let run = native(&built.with_extension("prog"), built, &[], limit)?;
+    Ok(release_verdict(reference, &run))
 }
 
 /// Writes the run case `dir` of program `text`, expecting what its run on the interpreter staged
-/// in `interp` leaves; the path of its program.
+/// in `interp` leaves, under the limit run cases have; the path of its program.
 fn keep_case(dir: &Path, text: &str, interp: &Path) -> io::Result<PathBuf> {
     fs::write(interp.join("main.paka"), text)?;
-    let (out, _) = run(interp, ENGINES[0], FUZZ_LIMIT, &[])?;
-    let status = out
-        .status
-        .ok_or_else(|| io::Error::other("the interpreter was killed"))?;
-    fs::create_dir_all(dir)?;
-    fs::write(dir.join("stdout"), &out.stdout)?;
-    fs::write(dir.join("status"), format!("{status}\n"))?;
-    if !out.stderr.is_empty() {
-        fs::write(dir.join("stderr"), &out.stderr)?;
-    }
+    expect(dir, &run(interp, ENGINES[0], LIMIT, &[])?.0)?;
     Ok(dir.join("main.paka"))
 }
 
@@ -743,11 +722,6 @@ fn kind(line: &str) -> String {
     reason.split(' ').take(words).collect::<Vec<_>>().join(" ")
 }
 
-/// Whether a run was stopped past its limit.
-fn stopped(o: &Outcome) -> bool {
-    o.status == Some(4) && o.stderr == b"stopped: time\n"
-}
-
 /// The verdict on the program staged in `dirs`, 0 agree, 1 differ or 2 unsupported, and its line.
 fn judge(
     dirs: &[PathBuf; 2],
@@ -755,26 +729,25 @@ fn judge(
     limit: Duration,
     args: &[OsString],
 ) -> io::Result<(usize, String)> {
-    judged(dirs, name, limit, args).map(|(verdict, _)| verdict)
+    judged(dirs, name, limit, args).map(|(verdict, ..)| verdict)
 }
 
-/// The verdict `judge` gives and the interpreter's run.
+/// The verdict `judge` gives, the interpreter's run and the time a compiled run gets after it.
 fn judged(
     dirs: &[PathBuf; 2],
     name: &str,
     limit: Duration,
     args: &[OsString],
-) -> io::Result<((usize, String), Outcome)> {
+) -> io::Result<((usize, String), Outcome, Duration)> {
     let start = Instant::now();
     let (reference, _) = run(&dirs[0], ENGINES[0], limit, args)?;
-    // Compiled code outruns the interpreter, so a dev run far slower than it has hung.
-    let slow = (start.elapsed() * 4).max(Duration::from_millis(20));
+    let compiled = compiled_limit(start.elapsed());
     // How far a stopped run got depends on speed, not meaning.
     if stopped(&reference) {
         let why = format!("unsupported {name}: the interpreter ran past the limit");
-        return Ok(((2, why), reference));
+        return Ok(((2, why), reference, compiled));
     }
-    let (dev, note) = run(&dirs[1], ENGINES[1], limit.min(slow), args)?;
+    let (dev, note) = run(&dirs[1], ENGINES[1], compiled, args)?;
     let verdict = match (
         note.strip_prefix("unsupported: "),
         difference(&reference, &dev),
@@ -787,7 +760,7 @@ fn judged(
         (None, None) => (0, format!("agree {name}; {}", ledger(&note))),
         (None, Some(why)) => (1, format!("differ {name}: {why}; {}", ledger(&note))),
     };
-    Ok((verdict, reference))
+    Ok((verdict, reference, compiled))
 }
 
 /// Runs `main.paka` in `dir` on `engine` in a child, stopped past `limit`: its outcome and note.
@@ -804,6 +777,13 @@ fn run(
         .arg(limit.as_millis().to_string())
         .args(args)
         .output()?;
+    // The child's own failure (`noted`), not the program's.
+    let failed = output.stderr.strip_prefix(b"paka-diff: ");
+    if let Some(why) = failed.filter(|_| output.status.code() == Some(2)) {
+        return Err(io::Error::other(
+            String::from_utf8_lossy(why).trim_end().to_owned(),
+        ));
+    }
     let note = fs::read_to_string(&note).unwrap_or_default();
     Ok((output.into(), note))
 }
@@ -895,8 +875,8 @@ fn one(args: &[OsString]) -> ExitCode {
                 None => Err("the program has no app".into()),
             });
             if let Err(why) = edited {
-                let _ = fs::write(note, format!("unsupported: {why}"));
-                return ExitCode::from(1);
+                let written = noted(note, &format!("unsupported: {why}"));
+                return written.err().unwrap_or(ExitCode::from(1));
             }
             let ran = dev.run(args, &mut Host(Fd1::default()), HEAP, limit);
             let (mut leaks, faults) = ran.ledger;
@@ -904,7 +884,9 @@ fn one(args: &[OsString]) -> ExitCode {
             if matches!(ran.end, Err(Stopped::Trap)) {
                 leaks = 0;
             }
-            let _ = fs::write(note, format!("ledger {leaks} {faults}"));
+            if let Err(failed) = noted(note, &format!("ledger {leaks} {faults}")) {
+                return failed;
+            }
             let (status, line) = match ran.end {
                 Ok(end) => end,
                 Err(Stopped::Trap) => (3, dev.report(&ran.trap)),
@@ -915,6 +897,14 @@ fn one(args: &[OsString]) -> ExitCode {
         }
     };
     ExitCode::from(status)
+}
+
+/// Writes the dev run's note; a failure is the harness's own, said on standard error with status 2.
+fn noted(note: &OsString, text: &str) -> Result<(), ExitCode> {
+    fs::write(note, text).map_err(|e| {
+        eprintln!("paka-diff: cannot write {}: {e}", Path::new(note).display());
+        ExitCode::from(2)
+    })
 }
 
 #[cfg(test)]

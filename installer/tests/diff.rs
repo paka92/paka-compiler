@@ -5,9 +5,14 @@
 //! release fault is found, shrunk and kept as a case (M6-20), and each of a fast subset of the
 //! others is found (M6-21).
 
-use paka_installer::diff::{Outcome, cases, difference};
+use paka_installer::diff::{
+    Outcome, cases, compiled_limit, difference, expect, release_verdict, room, stop, stopped,
+};
+use std::os::unix::fs::PermissionsExt;
 use std::path::Path;
-use std::process::Command;
+use std::process::{self, Command};
+use std::time::Duration;
+use std::{env, fs};
 
 const ROOT: &str = concat!(env!("CARGO_MANIFEST_DIR"), "/../tests/conformance");
 
@@ -67,6 +72,73 @@ fn death_by_signal_differs() {
         ..Outcome::default()
     };
     assert!(difference(&clean, &killed).is_some());
+}
+
+#[test]
+fn a_run_stopped_after_its_trap_line_counts_as_stopped() {
+    let four = |stderr: &str| Outcome {
+        status: Some(4),
+        ..trapped(stderr)
+    };
+    assert!(stopped(&four("stopped: time\n")));
+    assert!(stopped(&four(
+        "a: trap stack at main.paka:3:5\nstopped: time\n"
+    )));
+    assert!(!stopped(&trapped("stopped: time\n")));
+    assert!(!stopped(&four(TRAP)));
+    assert!(stopped(&stop(trapped(TRAP))));
+}
+
+#[test]
+fn a_compiled_run_outlasts_a_stack_fill_past_a_fast_interpreter() {
+    // A stack trap fills the 64 MiB runner stack (M4-05), slower than the interpreter's depth cap.
+    let ms = |interp| compiled_limit(Duration::from_millis(interp)).as_millis();
+    assert_eq!(ms(10), 1000);
+    assert_eq!(ms(2000), 8000);
+}
+
+#[test]
+fn a_stopped_run_writes_no_expectations() {
+    let dir = env::temp_dir().join(format!("paka-expect-{}", process::id()));
+    let four = Outcome {
+        status: Some(4),
+        ..Outcome::default()
+    };
+    for run in [stop(trapped(TRAP)), four] {
+        assert!(expect(&dir, &run).is_err());
+        assert!(!dir.exists());
+    }
+    expect(&dir, &trapped(TRAP)).unwrap();
+    assert_eq!(fs::read_to_string(dir.join("status")).unwrap(), "3\n");
+    fs::remove_dir_all(&dir).unwrap();
+}
+
+#[test]
+fn a_release_run_past_a_stack_trap_must_keep_what_was_printed_before_it() {
+    let reference = trapped("a: trap stack at main.paka:3:5\n");
+    let on = |stdout: &str| Outcome {
+        stdout: stdout.as_bytes().to_vec(),
+        status: Some(0),
+        ..Outcome::default()
+    };
+    assert_eq!(release_verdict(&reference, &on("before\nafter\n")).0, 2);
+    assert_eq!(release_verdict(&reference, &on("other\n")).0, 1);
+}
+
+#[test]
+fn a_note_that_cannot_be_written_fails_the_harness() {
+    let dir = env::temp_dir().join(format!("paka-note-{}", process::id()));
+    fs::create_dir_all(dir.join("note")).unwrap();
+    let case = Path::new(ROOT).join("core/early_return/main.paka");
+    fs::copy(case, dir.join("main.paka")).unwrap();
+    let out = Command::new(env!("CARGO_BIN_EXE_paka-diff"))
+        .args(["--one", "dev", "note", "1000"])
+        .current_dir(&dir)
+        .output()
+        .unwrap();
+    fs::remove_dir_all(&dir).unwrap();
+    assert_eq!(out.status.code(), Some(2));
+    assert!(out.stderr.starts_with(b"paka-diff: cannot write note: "));
 }
 
 #[test]
@@ -356,4 +428,17 @@ fn a_planted_release_view_fault_differs_in_each_example_built() {
     assert_eq!(text.lines().filter(built).count(), 0, "{text}");
     assert!(text.contains("agree cases/examples/ui_ends answer_dropped; 3 actions"));
     assert_eq!(status, Some(1));
+}
+
+#[test]
+fn a_folder_with_no_room_for_a_build_fails_the_harness() {
+    let dir = env::temp_dir().join(format!("paka-room-{}", process::id()));
+    fs::create_dir_all(&dir).unwrap();
+    room(&dir).unwrap();
+    assert_eq!(fs::read_dir(&dir).unwrap().count(), 0);
+    fs::set_permissions(&dir, fs::Permissions::from_mode(0o555)).unwrap();
+    let full = room(&dir);
+    fs::set_permissions(&dir, fs::Permissions::from_mode(0o755)).unwrap();
+    fs::remove_dir_all(&dir).unwrap();
+    assert!(full.is_err());
 }

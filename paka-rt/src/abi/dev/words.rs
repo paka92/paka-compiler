@@ -96,9 +96,14 @@ pub unsafe extern "sysv64" fn rt_text(
         let sep = (row == SPLIT).then(|| text(b));
         return pieces(ctx, row, &text(a), sep.as_ref(), site, out.cast());
     }
+    if row == JOIN {
+        // SAFETY: the caller vouches `a` and `b` are Strings' words.
+        let chars = unsafe { words(a).chars + words(b).chars };
+        let made = new_text_of(ctx, &[str(a), str(b)], chars);
+        return put(ctx, made, site, out);
+    }
     let word = |b: bool| Ok(Made::Word(b.into()));
     let made = match row {
-        JOIN => Ok(Made::Text(text(a).add(&text(b)))),
         COMPARE => Ok(Made::Word(text(a).cmp(&text(b)) as i64 as u64)),
         INDEX => text(a).index(int(b)).map(Made::Text),
         SLICE => text(a).slice(int(b), int(c)).map(Made::Text),
@@ -151,7 +156,13 @@ pub unsafe extern "sysv64" fn rt_text(
         }
         Err(e) => return fail(ctx, kind(e), site, operands(row, a, b, c)),
     };
-    let Some(words) = new_text(ctx, made.as_str()) else {
+    let made = new_text(ctx, made.as_str());
+    put(ctx, made, site, out)
+}
+
+/// Writes a new String's words to `out`, or traps `memory` at `site` when none was made.
+fn put(ctx: &mut Context, made: Option<TextWords>, site: u64, out: *mut u64) -> i32 {
+    let Some(words) = made else {
         return fail(ctx, MEMORY, site, [0; 3]);
     };
     // SAFETY: `out` has room for a String's words.
@@ -303,23 +314,34 @@ fn fail(ctx: &mut Context, kind: u64, site: u64, operands: [u64; 3]) -> i32 {
 
 /// A new String block holding `s`; `None` past the cap or when the heap refuses.
 pub(super) fn new_text(ctx: &mut Context, s: &str) -> Option<TextWords> {
-    let bytes = s.len() as u64;
-    if s.len() > CAP {
+    new_text_of(ctx, &[s], s.chars().count() as u64)
+}
+
+/// A new String block holding `parts` in turn, `chars` characters in all; `None` past the cap,
+/// checked before the block is made, or when the heap refuses.
+fn new_text_of(ctx: &mut Context, parts: &[&str], chars: u64) -> Option<TextWords> {
+    let bytes: usize = parts.iter().map(|p| p.len()).sum();
+    if bytes > CAP {
         return None;
     }
     let ptr = match bytes {
         0 => ptr::null_mut(),
         _ => {
-            let ptr = ctx.heap.alloc(bytes)?;
-            // SAFETY: `ptr` is a new block of `bytes`, apart from `s`.
-            unsafe { ptr::copy_nonoverlapping(s.as_ptr(), ptr, s.len()) };
+            let ptr = ctx.heap.alloc(bytes as u64)?;
+            let mut at = 0;
+            for p in parts {
+                // SAFETY: `ptr` is a new block of `bytes`, apart from each part.
+                unsafe { ptr::copy_nonoverlapping(p.as_ptr(), ptr.add(at), p.len()) };
+                at += p.len();
+            }
             ptr
         }
     };
+    let bytes = bytes as u64;
     Some(TextWords {
         ptr,
         bytes,
-        chars: s.chars().count() as u64,
+        chars,
         cap: bytes,
     })
 }
@@ -329,12 +351,20 @@ pub(super) fn new_text(ctx: &mut Context, s: &str) -> Option<TextWords> {
 /// `at` is the address of a String's words, whose bytes stay live and unchanged while it is used.
 pub(crate) unsafe fn as_str<'a>(at: u64) -> &'a str {
     // SAFETY: the caller vouches `at` holds a String's words.
-    let words = unsafe { &*ptr::with_exposed_provenance::<TextWords>(at as usize) };
+    let words = unsafe { words(at) };
     if words.bytes == 0 {
         return "";
     }
     // SAFETY: a String's words point to `bytes` bytes of UTF-8.
     unsafe { str::from_utf8_unchecked(slice::from_raw_parts(words.ptr, words.bytes as usize)) }
+}
+
+/// # Safety
+///
+/// `at` is the address of a String's words, which stay live while they are used.
+unsafe fn words<'a>(at: u64) -> &'a TextWords {
+    // SAFETY: the caller vouches `at` holds a String's words.
+    unsafe { &*ptr::with_exposed_provenance::<TextWords>(at as usize) }
 }
 
 /// An Int leaves Paka here, into the runtime's words.
