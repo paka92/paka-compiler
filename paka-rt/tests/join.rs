@@ -4,6 +4,7 @@
 
 use paka_rt::abi::dev::words::{JOIN, TextWords, rt_text};
 use paka_rt::abi::dev::{Context, MEMORY};
+use paka_rt::ops::CAP;
 use std::alloc::{GlobalAlloc, Layout, System};
 use std::cell::Cell;
 use std::{ptr, slice};
@@ -51,7 +52,8 @@ fn join(ctx: &mut Context, a: &str, b: &str) -> (i32, TextWords, usize) {
     // SAFETY: both operands are Strings' words, and `out` has room for a String's words.
     let status = unsafe { rt_text(ctx, JOIN, 0, at(&a), at(&b), 0, out.as_mut_ptr()) };
     let asked = ASKED.with(Cell::get) - before;
-    // SAFETY: `out` holds a String's words when the status is 0, and is unread otherwise.
+    // SAFETY: `out` is four set words, valid as a String's words whatever they hold; they are a
+    // String only when the status is 0.
     let words = unsafe { out.as_ptr().cast::<TextWords>().read() };
     (status, words, asked)
 }
@@ -77,4 +79,13 @@ fn a_join_past_the_cap_traps_before_it_makes_anything() {
     let (status, _, asked) = join(&mut ctx, &half, &half);
     assert_eq!((status, ctx.trap.kind), (1, MEMORY));
     assert_eq!(asked, 0);
+}
+
+#[test]
+fn a_join_to_the_cap_is_made_and_one_byte_more_traps() {
+    let mut ctx = Context::new(1 << 30);
+    let half = "z".repeat(CAP / 2);
+    assert_eq!(join(&mut ctx, &half, &half).0, 0);
+    let (status, ..) = join(&mut ctx, &half, &format!("{half}z"));
+    assert_eq!((status, ctx.trap.kind), (1, MEMORY));
 }
