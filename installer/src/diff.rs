@@ -110,6 +110,20 @@ fn folders(dir: &Path) -> io::Result<Vec<PathBuf>> {
     Ok(folders)
 }
 
+/// Writes the expectations of run case `dir`: what `run` left.
+pub fn expect(dir: &Path, run: &Outcome) -> io::Result<()> {
+    let status = run
+        .status
+        .ok_or_else(|| io::Error::other("the interpreter was killed"))?;
+    fs::create_dir_all(dir)?;
+    fs::write(dir.join("stdout"), &run.stdout)?;
+    fs::write(dir.join("status"), format!("{status}\n"))?;
+    if !run.stderr.is_empty() {
+        fs::write(dir.join("stderr"), &run.stderr)?;
+    }
+    Ok(())
+}
+
 /// Copies case `case` into the empty folder `to`: its own files, then the contents of `files/`
 /// (tests/conformance/README.md).
 pub fn stage(case: &Path, to: &Path) -> io::Result<()> {

@@ -46,8 +46,8 @@ use paka::release::{Ran, exec};
 use paka::source::{Source, read};
 use paka_installer::dev::Dev;
 use paka_installer::diff::{
-    Outcome, cases, compiled_limit, difference, difference_in, in_release, no_core_dumps, shrink,
-    stage, stop, stopped, ui_examples,
+    Outcome, cases, compiled_limit, difference, difference_in, expect, in_release, no_core_dumps,
+    shrink, stage, stop, stopped, ui_examples,
 };
 use paka_installer::release;
 use paka_rt::abi::dev::app::Stopped;
@@ -546,16 +546,7 @@ fn released(built: &Path, reference: &Outcome, limit: Duration) -> io::Result<(u
 /// in `interp` leaves, under the limit run cases have; the path of its program.
 fn keep_case(dir: &Path, text: &str, interp: &Path) -> io::Result<PathBuf> {
     fs::write(interp.join("main.paka"), text)?;
-    let (out, _) = run(interp, ENGINES[0], LIMIT, &[])?;
-    let status = out
-        .status
-        .ok_or_else(|| io::Error::other("the interpreter was killed"))?;
-    fs::create_dir_all(dir)?;
-    fs::write(dir.join("stdout"), &out.stdout)?;
-    fs::write(dir.join("status"), format!("{status}\n"))?;
-    if !out.stderr.is_empty() {
-        fs::write(dir.join("stderr"), &out.stderr)?;
-    }
+    expect(dir, &run(interp, ENGINES[0], LIMIT, &[])?.0)?;
     Ok(dir.join("main.paka"))
 }
 

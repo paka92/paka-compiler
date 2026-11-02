@@ -5,10 +5,11 @@
 //! release fault is found, shrunk and kept as a case (M6-20), and each of a fast subset of the
 //! others is found (M6-21).
 
-use paka_installer::diff::{Outcome, cases, compiled_limit, difference, stop, stopped};
+use paka_installer::diff::{Outcome, cases, compiled_limit, difference, expect, stop, stopped};
 use std::path::Path;
-use std::process::Command;
+use std::process::{self, Command};
 use std::time::Duration;
+use std::{env, fs};
 
 const ROOT: &str = concat!(env!("CARGO_MANIFEST_DIR"), "/../tests/conformance");
 
@@ -91,6 +92,22 @@ fn a_compiled_run_outlasts_a_stack_fill_past_a_fast_interpreter() {
     let ms = |interp| compiled_limit(Duration::from_millis(interp)).as_millis();
     assert_eq!(ms(10), 1000);
     assert_eq!(ms(2000), 8000);
+}
+
+#[test]
+fn a_stopped_run_writes_no_expectations() {
+    let dir = env::temp_dir().join(format!("paka-expect-{}", process::id()));
+    let four = Outcome {
+        status: Some(4),
+        ..Outcome::default()
+    };
+    for run in [stop(trapped(TRAP)), four] {
+        assert!(expect(&dir, &run).is_err());
+        assert!(!dir.exists());
+    }
+    expect(&dir, &trapped(TRAP)).unwrap();
+    assert_eq!(fs::read_to_string(dir.join("status")).unwrap(), "3\n");
+    fs::remove_dir_all(&dir).unwrap();
 }
 
 #[test]
