@@ -2289,11 +2289,12 @@ or merged during review. Ids with a letter were added during review.
 
 ### M7-03 · L4 · Propose how human-owned examples run against the shipped release binary
 
+- status: done
 - needs: M7-01
 - flags: decision, owner, native-only
 - done when: Owner approves a written mechanism covering function examples and UI examples, how the tested binary is shown to be the shipped one, and the command that ships (a new paka release, or paka build under a stated rule) so that conformance, fuzz and benchmark builds are not gated.
 - why this level: If the tested and shipped binaries can differ, the release evidence is empty.
-- note: Drafted: docs/decisions/M7-03.md, awaiting owner approval.
+- note: Done: approved by the owner on 2026-11-02 with the review's nine changes; see docs/decisions/M7-03.md.
 
 ### M7-04 · L4 · Build the approval store: record and verify approved examples and grant lists
 
