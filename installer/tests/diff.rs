@@ -88,8 +88,9 @@ fn a_run_stopped_after_its_trap_line_counts_as_stopped() {
 #[test]
 fn a_compiled_run_outlasts_a_stack_fill_past_a_fast_interpreter() {
     // A stack trap fills the 64 MiB runner stack (M4-05), slower than the interpreter's depth cap.
-    assert!(compiled_limit(Duration::from_millis(10)) >= Duration::from_secs(1));
-    assert!(compiled_limit(Duration::from_secs(2)) >= Duration::from_secs(8));
+    let ms = |interp| compiled_limit(Duration::from_millis(interp)).as_millis();
+    assert_eq!(ms(10), 1000);
+    assert_eq!(ms(2000), 8000);
 }
 
 #[test]
