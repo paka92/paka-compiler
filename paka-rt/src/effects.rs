@@ -97,15 +97,15 @@ pub fn perform<F, M>(
     world: &mut impl World,
 ) -> Result<Option<Next<F, M>>, End> {
     let stop = |why: String| (3, format!("{app}: {why}\n"));
-    if let Some((grant, name, needed)) = grant_for(&effect)
-        && !grants.contains(&grant)
-    {
-        return Err(stop(format!(
-            "effect {name} refused: grant {needed} is missing"
-        )));
-    }
-    if world.drops() && grant_for(&effect).is_some() {
-        return Ok(None);
+    if let Some((grant, name, needed)) = grant_for(&effect) {
+        if !grants.contains(&grant) {
+            return Err(stop(format!(
+                "effect {name} refused: grant {needed} is missing"
+            )));
+        }
+        if world.drops() {
+            return Ok(None);
+        }
     }
     let next = match effect {
         Effect::Exit => return Err((0, String::new())),
@@ -208,15 +208,15 @@ pub struct Dropped;
 
 impl World for Dropped {
     fn print(&mut self, _: &str) -> Result<(), Reason> {
-        Err("dropped")
+        unreachable!("perform drops every granted effect")
     }
 
     fn read(&mut self, _: &str) -> Result<String, Reason> {
-        Err("dropped")
+        unreachable!("perform drops every granted effect")
     }
 
     fn write(&mut self, _: &str, _: &str) -> Result<(), Reason> {
-        Err("dropped")
+        unreachable!("perform drops every granted effect")
     }
 
     fn drops(&self) -> bool {

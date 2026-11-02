@@ -111,9 +111,9 @@ pub enum Stop {
     Return(Value),
     Break,
     Continue,
-    /// A UI example's app stopped with this line: an effect it does not grant, or start fields
-    /// with no arguments to fill them.
-    Ended(String),
+    /// A UI example's app stopped with this status and line: an effect it does not grant, or
+    /// start fields with no arguments to fill them.
+    Ended(u8, String),
     /// The interrupt was set: the run is past its time limit (docs/decisions/M4-04.md).
     Time,
 }

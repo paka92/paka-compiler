@@ -27,8 +27,9 @@
 //! `paka-diff --ui [ROOT]` plays every UI example of the programs under ROOT, `tests` by default,
 //! on both back ends (M5-26): each action's events, replayed in dev mode, must leave the tree, trap
 //! or end the interpreter's action left. Release is the third (M7-11c): the program is built once
-//! and each example's actions replayed by `--paka-replay` must write what each left; an example
-//! compared on fewer actions than it has differs. A program with a hole has no release build. Each
+//! and the actions of each `Ui` value an example starts or copies, replayed from its launch by
+//! `--paka-replay`, must write what each left; an example compared on fewer actions than it has
+//! differs. A program `paka build` refuses for a hole has no release build. Each
 //! program is a child, `paka-diff --ui-one NAME` in its folder. `PAKA_PLANT` 8 plants a view fault
 //! in dev mode, 19 in release.
 //!
@@ -41,7 +42,8 @@ use paka::interp::Logged;
 use paka::source::{Source, read};
 use paka_installer::dev::Dev;
 use paka_installer::diff::{
-    Outcome, cases, difference, difference_in, no_core_dumps, replayed, shrink, stage, ui_examples,
+    Outcome, cases, difference, difference_in, in_release, no_core_dumps, shrink, stage,
+    ui_examples,
 };
 use paka_installer::release;
 use paka_rt::abi::dev::app::Stopped;
@@ -518,16 +520,15 @@ fn ui_one(name: &str) -> ExitCode {
         println!("unsupported {name}: {why}");
         return ExitCode::SUCCESS;
     }
-    let holed = core.sites.iter().any(|s| s.hole.is_some());
-    let release = (!holed).then(built_here);
+    let release = built_here();
     let mut differ = false;
     for (example, verdict) in ui_examples(&core, &dev, HEAP, LIMIT) {
         let verdict = verdict.and_then(|log| {
             let n = log.len();
             match &release {
-                None => Ok(format!("{n} actions, no release build (a hole)")),
-                Some(Err(why)) => Err(why.clone()),
-                Some(Ok(exe)) => {
+                Ok(None) => Ok(format!("{n} actions, no release build (a hole)")),
+                Err(why) => Err(why.clone()),
+                Ok(Some(exe)) => {
                     replay(exe, &example, &log).map(|k| format!("{n} actions, {k} in release"))
                 }
             }
@@ -544,8 +545,9 @@ fn ui_one(name: &str) -> ExitCode {
     ExitCode::from(u8::from(differ))
 }
 
-/// The release build of `main.paka` here, in the scratch folder.
-fn built_here() -> Result<PathBuf, String> {
+/// The release build of `main.paka` here, in the scratch folder; `None` when a hole keeps it
+/// from building.
+fn built_here() -> Result<Option<PathBuf>, String> {
     let exe = scratch().join("app");
     let built = fs::create_dir_all(scratch()).and_then(|()| {
         build(
@@ -555,32 +557,34 @@ fn built_here() -> Result<PathBuf, String> {
         )
     });
     match built {
-        Ok(out) if out.status.success() => Ok(exe),
-        Ok(out) => Err(format!(
-            "release build failed: {:?}",
-            String::from_utf8_lossy(&out.stderr)
-        )),
+        Ok(out) if out.status.success() => Ok(Some(exe)),
+        Ok(out) => {
+            let err = String::from_utf8_lossy(&out.stderr);
+            match err.contains("[hole-in-build]") {
+                true => Ok(None),
+                false => Err(format!("release build failed: {err:?}")),
+            }
+        }
         Err(e) => Err(format!("release build failed: {e}")),
     }
 }
 
-/// Replays the actions of `example`'s `log` on the release build `exe`, compared with the log.
+/// Replays `example`'s `log` on the release build `exe`, one run per history, compared with the log.
 fn replay(exe: &Path, example: &str, log: &[Logged]) -> Result<usize, String> {
-    let dir = scratch().join(example);
-    let actions = dir.with_extension("actions");
-    let lines: String = (log.iter().filter_map(|(a, ..)| a.as_ref()))
-        .map(|a| format!("{a}\n"))
-        .collect();
-    let run = || {
-        fs::create_dir_all(&dir)?;
-        fs::write(&actions, lines)?;
-        let args = ["--paka-replay".into()];
-        native(exe, &dir, &args, fs::File::open(&actions)?.into(), LIMIT)
-    };
-    replayed(
-        log,
-        &run().map_err(|e| format!("release replay failed: {e}"))?,
-    )
+    let mut runs = 0;
+    in_release(log, |history| {
+        runs += 1;
+        let dir = scratch().join(example).join(runs.to_string());
+        let actions = dir.with_extension("actions");
+        let lines: String = history.iter().map(|a| format!("{a}\n")).collect();
+        let run = || {
+            fs::create_dir_all(&dir)?;
+            fs::write(&actions, lines)?;
+            let args = ["--paka-replay".into()];
+            native(exe, &dir, &args, fs::File::open(&actions)?.into(), LIMIT)
+        };
+        run().map_err(|e| format!("release replay failed: {e}"))
+    })
 }
 
 /// The edits after each generated program.

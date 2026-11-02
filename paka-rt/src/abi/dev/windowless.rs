@@ -15,6 +15,7 @@ use crate::abi::measure::{self, Frame, Timed};
 use crate::effects::{End, World};
 use crate::replay::{Action, Left};
 use crate::route::{Event, Sent, focused, route};
+use crate::rt::INTERNAL_ERROR;
 use crate::tree::{self, Node};
 use std::collections::VecDeque;
 use std::io::Write;
@@ -23,7 +24,7 @@ use std::sync::atomic::Ordering;
 use std::time::Duration;
 
 /// How the loop reaches compiled code: its calls, a message's text from its type and address,
-/// and a trap's first line without the app's name.
+/// and a trap's first line without the app's name, called once as the trap is kept.
 pub struct Code<'a> {
     pub call: &'a mut Call<'a>,
     pub show: &'a mut dyn FnMut(u64, u64) -> String,
@@ -45,8 +46,9 @@ pub struct Windowless<'a, W> {
     queue: VecDeque<Queued>,
     /// The tree last drawn: one error node if the first view run trapped.
     pub drawing: Drawing,
-    /// The traps that leave the app running: in a handler or a view.
-    pub traps: Vec<Trap>,
+    /// The traps that leave the app running, in a handler or a view, each with its first line
+    /// without the app's name.
+    pub traps: Vec<(Trap, String)>,
     pub end: Option<Ended>,
 }
 
@@ -158,7 +160,7 @@ impl<'a, W: World> Windowless<'a, W> {
                 self.ctx.heap.sweep(made);
                 let drained = match stopped {
                     Stopped::Trap => {
-                        self.traps.push(mem::take(&mut self.ctx.trap));
+                        self.keep(code.at);
                         self.drain()
                     }
                     Stopped::Time if late => self.drain(),
@@ -171,19 +173,18 @@ impl<'a, W: World> Windowless<'a, W> {
     }
 
     /// Plays `lines`, each an `Action`, as `--paka-replay` does (docs/decisions/M7-03.md 1.2):
-    /// writes to `out` what the launch and each action left, `line` giving a kept trap's first
-    /// line. A trap that ends the app writes nothing; no line after an end is read. The end, or
-    /// status 2 at a line that is no action or names no node.
+    /// writes to `out` what the launch and each action left. A trap that ends the app writes
+    /// nothing; no line after an end is read. The end, or status 2 at a line that is no action or
+    /// names no node.
     pub fn replay(
         &mut self,
         lines: impl IntoIterator<Item = String>,
         out: &mut impl Write,
-        line: impl Fn(&Trap) -> String,
     ) -> Result<End, Stopped> {
         let mut lines = lines.into_iter();
         let mut seen = 0;
         loop {
-            if let Some(left) = self.left(seen, &line) {
+            if let Some(left) = self.left(seen) {
                 let _ = write!(out, "{left}");
             }
             seen = self.traps.len();
@@ -204,20 +205,28 @@ impl<'a, W: World> Windowless<'a, W> {
         }
     }
 
-    /// What the last action left, its traps those past the first `seen`; `None` for a trap that
-    /// ends the app.
-    fn left(&self, seen: usize, line: impl Fn(&Trap) -> String) -> Option<Left> {
-        if let Some(trap) = self.traps.get(seen) {
-            return Some(Left::Trapped(line(trap)));
+    /// What the last action left, its first trap the one past the first `seen`; `None` for a
+    /// trap that ends the app.
+    fn left(&self, seen: usize) -> Option<Left> {
+        if let Some((_, at)) = self.traps.get(seen) {
+            return Some(Left::Trapped(format!("{}: {at}", self.app.name)));
         }
         let tree = || self.drawing.root.to_string();
         Some(match &self.end {
             None => Left::Tree(tree()),
-            Some(Ok((_, end))) if end.is_empty() => Left::Exited(tree()),
-            Some(Ok((_, end))) => Left::Ended(end.clone()),
-            Some(Err(Stopped::Time)) => Left::Ended("stopped: time".into()),
+            Some(Ok((status, end))) if end.is_empty() => Left::Exited(*status, tree()),
+            Some(Ok((status, end))) => Left::Ended(*status, end.clone()),
+            Some(Err(Stopped::Time)) => Left::Ended(INTERNAL_ERROR as u8, "stopped: time".into()),
             Some(Err(Stopped::Trap)) => return None,
         })
+    }
+
+    /// Keeps the context's trap with its first line as `at` gives it; that line.
+    fn keep(&mut self, at: &dyn Fn(&Trap) -> String) -> String {
+        let trap = mem::take(&mut self.ctx.trap);
+        let line = at(&trap);
+        self.traps.push((trap, line.clone()));
+        line
     }
 
     fn ended(&mut self, done: Result<(), Ended>) {
@@ -280,7 +289,7 @@ impl<'a, W: World> Windowless<'a, W> {
                 if stopped != Stopped::Trap {
                     return Err(Err(stopped));
                 }
-                self.traps.push(mem::take(&mut self.ctx.trap));
+                self.keep(self.code.at);
                 return Ok(false);
             }
         };
@@ -378,11 +387,10 @@ impl<'a, W: World> Windowless<'a, W> {
                 mem::replace(&mut self.drawing, drawing).release(self.ctx);
             }
             Err(Stopped::Trap) => {
-                let trap = mem::take(&mut self.ctx.trap);
+                let line = self.keep(self.code.at);
                 if fresh {
-                    self.drawing.root = Node::Error((self.code.at)(&trap));
+                    self.drawing.root = Node::Error(line);
                 }
-                self.traps.push(trap);
             }
             Err(stopped) => return Err(Err(stopped)),
         }

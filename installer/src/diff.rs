@@ -8,7 +8,7 @@ use paka::core_form::{Fn, Program};
 use paka::interp::{Logged, ui_log};
 use paka_rt::abi::dev::app::Stopped;
 use paka_rt::effects::Dropped;
-use paka_rt::replay::Left;
+use paka_rt::replay::{Action, Left};
 use std::fs;
 use std::io;
 use std::ops::Range;
@@ -314,57 +314,101 @@ pub fn ui_examples(
     all
 }
 
-/// Compares a release replay of `log`'s actions with the log: what each left on standard output,
-/// then the end on standard error and the status. The count of actions compared, or how it differs.
-pub fn replayed(log: &[Logged], got: &Outcome) -> Result<usize, String> {
-    let (n, out) = (log.len(), String::from_utf8_lossy(&got.stdout));
+/// Compares release with `log`, each history its own replay from the launch by `run`: those no
+/// other history extends, which hold the rest. The count of actions compared, or how they differ.
+pub fn in_release(
+    log: &[Logged],
+    mut run: impl FnMut(&[Action]) -> Result<Outcome, String>,
+) -> Result<usize, String> {
+    let at = |h: &[Action]| log.iter().position(|(g, ..)| g == h);
+    if let Some(k) = (0..log.len()).find(|&k| at(&log[k].0).is_some_and(|j| log[j].2 != log[k].2)) {
+        return Err(format!(
+            "interpreter: action {k} left another result for the same actions"
+        ));
+    }
+    let n = log.len();
+    let mut done: Vec<&[Action]> = vec![];
+    for (k, (h, ..)) in log.iter().enumerate() {
+        let extended = log
+            .iter()
+            .any(|(g, ..)| g.len() > h.len() && g.starts_with(h));
+        if extended || at(h) != Some(k) {
+            continue;
+        }
+        let want = (0..=h.len()).map(|i| at(&h[..i]).map(|j| &log[j].2));
+        let want: Vec<_> = want
+            .collect::<Option<_>>()
+            .ok_or("the log skips an action")?;
+        if let Err((i, why)) = replayed(&want, &run(h)?) {
+            let seen = |g: &[Action]| done.iter().any(|d| d.starts_with(g));
+            let compared = log
+                .iter()
+                .filter(|(g, ..)| seen(g) || g.len() < i && h.starts_with(g));
+            let why = match h.get(..i).and_then(at) {
+                Some(j) => format!("action {j}: {why}"),
+                None => why,
+            };
+            return Err(format!(
+                "release compared on {} of {n} actions: {why}",
+                compared.count()
+            ));
+        }
+        done.push(h);
+    }
+    Ok(n)
+}
+
+/// Compares a release replay with `want`, what its launch and each action left: each result on
+/// standard output, then the end on standard error and the status. On a difference, how many
+/// results agree before it, and how it differs.
+fn replayed(want: &[&Left], got: &Outcome) -> Result<(), (usize, String)> {
+    let (n, out) = (want.len(), String::from_utf8_lossy(&got.stdout));
+    let err = String::from_utf8_lossy(&got.stderr);
     let mut rest = &out[..];
-    for (k, (.., want)) in log.iter().enumerate() {
+    for (k, want) in want.iter().enumerate() {
         let want = want.to_string();
         let Some(after) = rest.strip_prefix(&want) else {
             let why = match want.lines().zip(rest.lines()).find(|(a, b)| a != b) {
                 Some((a, b)) => format!("line {a:?}, release {b:?}"),
-                None => "release output ends".into(),
+                None => format!("release output ends, status {:?} and {err:?}", got.status),
             };
-            return Err(format!(
-                "release compared on {k} of {n} actions: action {k}: {why}"
-            ));
+            return Err((k, why));
         };
         rest = after;
     }
     if let Some(line) = rest.lines().next() {
-        return Err(format!("release goes on after {n} actions: {line:?}"));
+        return Err((
+            n,
+            format!("release goes on after the last action: {line:?}"),
+        ));
     }
-    let (end, ended) = match log.last() {
-        Some((.., Left::Ended(line))) => (line.as_str(), true),
-        Some((.., Left::Exited(_))) => ("", true),
-        _ => ("", false),
+    let (status, end) = match want.last() {
+        Some(Left::Exited(status, _)) => (*status, ""),
+        Some(Left::Ended(status, line)) => (*status, line.as_str()),
+        _ => (0, ""),
     };
-    let err = String::from_utf8_lossy(&got.stderr);
-    match got.status {
-        Some(status) if err == end && (ended || status == 0) => Ok(n),
-        status => Err(format!(
-            "release ended with status {status:?} and {err:?}, want {end:?}"
-        )),
+    if got.status == Some(i32::from(status)) && err == end {
+        return Ok(());
     }
+    Err((
+        n,
+        format!(
+            "release ended with status {:?} and {err:?}, want {status} and {end:?}",
+            got.status
+        ),
+    ))
 }
 
-/// What a dev run left, in the interpreter's terms.
+/// What a dev run left, in the interpreter's terms: its first trap, as the interpreter stops there.
 fn left(played: &Played) -> Left {
-    let first = |r: &String| r.lines().next().unwrap_or_default().to_owned();
     match &played.end {
-        _ if !played.traps.is_empty() => Left::Trapped(
-            played
-                .traps
-                .iter()
-                .map(first)
-                .collect::<Vec<_>>()
-                .join("; "),
-        ),
+        _ if !played.traps.is_empty() => {
+            Left::Trapped(played.traps[0].lines().next().unwrap_or_default().into())
+        }
         None => Left::Tree(played.tree.clone()),
-        Some(Ok((_, line))) if line.is_empty() => Left::Exited(played.tree.clone()),
-        Some(Ok((_, line))) => Left::Ended(line.clone()),
-        Some(Err(Stopped::Time)) => Left::Ended("stopped: time".into()),
+        Some(Ok((status, line))) if line.is_empty() => Left::Exited(*status, played.tree.clone()),
+        Some(Ok((status, line))) => Left::Ended(*status, line.clone()),
+        Some(Err(Stopped::Time)) => Left::Ended(4, "stopped: time".into()),
         Some(Err(Stopped::Trap)) => unreachable!("`play` reports a trap that ends the app"),
     }
 }
@@ -382,69 +426,92 @@ fn unlike(want: &Left, got: &Left) -> String {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use paka_rt::replay::Action;
 
-    /// A launch, a click and the `Exit` it made, with what a release replay of them writes.
-    fn exited() -> (Vec<Logged>, Outcome) {
-        let tree = |n| format!("Col gap=0\n  Button #0 \"{n}\" on=Quit\n");
-        let click = Action::parse("click #0");
-        let log = vec![
-            (None, vec![], Left::Tree(tree(0))),
-            (click.clone(), vec![], Left::Tree(tree(1))),
-            (click, vec![], Left::Exited(tree(1))),
-        ];
+    fn tree(n: u8) -> String {
+        format!("Col gap=0\n  Button #0 \"{n}\" on=Quit\n")
+    }
+
+    fn click(n: usize) -> Action {
+        Action::parse(&format!("click #{n}")).unwrap()
+    }
+
+    /// A launch, a click and the `ExitWith(7)` the next one made.
+    fn exited() -> Vec<Logged> {
+        vec![
+            (vec![], vec![], Left::Tree(tree(0))),
+            (vec![click(0)], vec![], Left::Tree(tree(1))),
+            (vec![click(0); 2], vec![], Left::Exited(7, tree(1))),
+        ]
+    }
+
+    /// What a release replay writes that leaves `log`'s results and ends with `status`.
+    fn written(log: &[Logged], status: i32) -> Outcome {
         let stdout: String = log.iter().map(|(.., l)| l.to_string()).collect();
-        let out = Outcome {
+        Outcome {
             stdout: stdout.into_bytes(),
             stderr: vec![],
-            status: Some(0),
-        };
-        (log, out)
+            status: Some(status),
+        }
     }
 
     #[test]
     fn a_replay_agrees_on_every_action() {
-        let (log, out) = exited();
-        assert_eq!(replayed(&log, &out), Ok(3));
+        let log = exited();
+        assert_eq!(in_release(&log, |_| Ok(written(&log, 7))), Ok(3));
     }
 
     #[test]
-    fn a_replay_cut_short_differs() {
-        let (log, mut out) = exited();
-        let last = Left::Exited("Col gap=0\n  Button #0 \"1\" on=Quit\n".into());
-        out.stdout
-            .truncate(out.stdout.len() - last.to_string().len());
-        assert_eq!(
-            replayed(&log, &out),
-            Err("release compared on 2 of 3 actions: action 2: release output ends".into())
-        );
+    fn a_replay_cut_short_differs_with_its_end() {
+        let log = exited();
+        let mut out = written(&log[..2], 2);
+        out.stderr = b"a: not a replay action: click\n".to_vec();
+        let why = r#"release compared on 2 of 3 actions: action 2: release output ends, status Some(2) and "a: not a replay action: click\n""#;
+        assert_eq!(in_release(&log, |_| Ok(out.clone())), Err(why.into()));
     }
 
     #[test]
-    fn another_result_more_output_or_another_end_differs() {
-        let (log, out) = exited();
+    fn another_result_more_output_or_another_status_differs() {
+        let log = exited();
+        let out = written(&log, 7);
         let text = String::from_utf8(out.stdout.clone()).unwrap();
         let changed = Outcome {
             stdout: text.replacen("\"1\"", "\"2\"", 1).into_bytes(),
             ..out.clone()
         };
         let why = r#"release compared on 1 of 3 actions: action 1: line "  Button #0 \"1\" on=Quit", release "  Button #0 \"2\" on=Quit""#;
-        assert_eq!(replayed(&log, &changed), Err(why.into()));
+        assert_eq!(in_release(&log, |_| Ok(changed.clone())), Err(why.into()));
         let more = Outcome {
             stdout: [text.as_bytes(), b"Col gap=0\n"].concat(),
             ..out.clone()
         };
-        let why = r#"release goes on after 3 actions: "Col gap=0""#;
-        assert_eq!(replayed(&log, &more), Err(why.into()));
-        let trapped = Outcome {
-            stderr: b"a: trap overflow at main.paka:1:2\n".to_vec(),
-            status: Some(3),
+        let why = r#"release compared on 3 of 3 actions: release goes on after the last action: "Col gap=0""#;
+        assert_eq!(in_release(&log, |_| Ok(more.clone())), Err(why.into()));
+        let zero = Outcome {
+            status: Some(0),
             ..out
         };
-        assert!(
-            replayed(&log, &trapped)
-                .unwrap_err()
-                .starts_with("release ended with")
-        );
+        let why = r#"release compared on 3 of 3 actions: release ended with status Some(0) and "", want 7 and """#;
+        assert_eq!(in_release(&log, |_| Ok(zero.clone())), Err(why.into()));
+    }
+
+    /// Two values, one copied after a click: one replay per history no other extends.
+    #[test]
+    fn each_history_is_replayed_once_from_its_launch() {
+        let left = |n| Left::Tree(tree(n));
+        let log: Vec<Logged> = vec![
+            (vec![], vec![], left(0)),
+            (vec![click(0)], vec![], left(1)),
+            (vec![], vec![], left(0)),
+            (vec![click(0), click(0)], vec![], left(2)),
+            (vec![click(0), click(1)], vec![], left(3)),
+        ];
+        let mut runs = vec![];
+        let run = |h: &[Action]| {
+            runs.push(h.to_vec());
+            let last = if h[1] == click(0) { 3 } else { 4 };
+            Ok(written(&[&log[..2], &log[last..=last]].concat(), 0))
+        };
+        assert_eq!(in_release(&log, run), Ok(5));
+        assert_eq!(runs, [log[3].0.clone(), log[4].0.clone()]);
     }
 }

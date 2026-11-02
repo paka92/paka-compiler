@@ -363,11 +363,6 @@ pub(crate) fn take_trap() -> Option<Trapped> {
     TRAP.try_with(Cell::take).ok().flatten()
 }
 
-/// The trap recorded since the last call, if any, left recorded.
-pub(crate) fn peek_trap() -> Option<Trapped> {
-    TRAP.try_with(Cell::get).ok().flatten()
-}
-
 /// Test only: an effect holding these words. They must make a value the decoder refuses, or one
 /// that reads nothing through its pointer.
 #[cfg(test)]

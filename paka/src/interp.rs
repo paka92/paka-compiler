@@ -357,7 +357,7 @@ fn entry(core: &Program, f: &Func) -> Result<(bool, String), String> {
             };
             (false, text)
         }
-        Err(Stop::Ended(line)) => (false, format!("{name} trapped\n  {line}")),
+        Err(Stop::Ended(_, line)) => (false, format!("{name} trapped\n  {line}")),
         Err(Stop::Internal(reason)) => return Err(reason),
         Err(_) => unreachable!("a loop holds its break"),
     })

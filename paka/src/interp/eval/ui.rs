@@ -1,8 +1,8 @@
 //! The UI example functions (docs/decisions/M5-06.md): the program's visual app with no window,
 //! driven by an example. Each action is handled to the end, its view included. Effects are not
 //! performed: a granted one is dropped, so no answer arrives, and `Exit` ends the app. Each
-//! action is logged with its action line and the events that led to it, for M5-26's comparison
-//! with dev mode and release.
+//! action is logged with the actions and events that led to it, for M5-26's comparison with dev
+//! mode and release.
 
 use super::{Done, Kind, Machine, Stop, Trap};
 use crate::builtins::{UI, name};
@@ -22,15 +22,17 @@ use std::mem;
 pub struct Ui {
     state: Option<Value>,
     tree: Node<Message>,
-    /// After `Exit`: reads see the last tree and an action is an assert trap.
-    exited: bool,
-    /// The events sent since the start.
+    /// The status after `Exit` or `ExitWith`: reads see the last tree and an action is an assert
+    /// trap.
+    exited: Option<u8>,
+    /// The actions taken and the events sent since the launch, a copy's before it included.
+    actions: Vec<Action>,
     events: Vec<Event>,
 }
 
-/// An action of a UI example as M5-26 logs it: the action, `None` for the launch, the events sent
-/// since the launch and what it left.
-pub type Logged = (Option<Action>, Vec<Event>, Left);
+/// An action of a UI example as M5-26 logs it: the actions taken since the launch, the last one
+/// included, the events they sent and what the last left.
+pub type Logged = (Vec<Action>, Vec<Event>, Left);
 
 impl<'a> Machine<'a> {
     /// Runs row `k` of `builtins::UI` on `args`, which it may update; the handler runs at depth 1.
@@ -46,13 +48,18 @@ impl<'a> Machine<'a> {
         let steps = |path: &str| tree::path(path).ok_or_else(assert);
         Ok(match (f, args) {
             ("ui_start", []) => Value::Ui(Box::new(self.ui_start(site)?)),
-            ("ui_click" | "ui_type", [Value::Ui(ui), _]) if ui.exited => return Err(assert()),
+            ("ui_click" | "ui_type", [Value::Ui(ui), _]) if ui.exited.is_some() => {
+                return Err(assert());
+            }
             ("ui_click", [Value::Ui(ui), Value::Str(path)]) => {
                 self.click(ui, steps(path.as_str())?, site)?;
                 Value::Unit
             }
             ("ui_type", [Value::Ui(ui), Value::Str(text)]) => {
                 for c in text.as_str().chars() {
+                    if ui.exited.is_some() {
+                        return Err(assert());
+                    }
                     self.key(ui, c, site)?;
                 }
                 Value::Unit
@@ -88,17 +95,18 @@ impl<'a> Machine<'a> {
         let mut ui = Ui {
             state: self.state(app)?,
             tree: Node::Error(String::new()),
-            exited: false,
+            exited: None,
+            actions: vec![],
             events: vec![],
         };
         let done = match app.start {
             Some(start) => match start_message(self.core, app, start, &[]) {
                 Ok(message) => self.turn(&mut ui, message, None, site),
-                Err((_, line)) => Err(Stop::Ended(line)),
+                Err((status, line)) => Err(Stop::Ended(status, line)),
             },
             None => self.redraw(&mut ui, None, site),
         };
-        self.log(&ui, None, &done);
+        self.log(&ui, &done);
         done.map(|()| ui)
     }
 
@@ -149,28 +157,31 @@ impl<'a> Machine<'a> {
 
     /// Notes `event` as sent to `ui` by `action` and logs what it left.
     fn sent(&mut self, ui: &mut Ui, action: Action, event: Event, done: Done<()>) -> Done<()> {
+        ui.actions.push(action);
         ui.events.push(event);
-        self.log(ui, Some(action), &done);
+        self.log(ui, &done);
         done
     }
 
-    /// Logs what `action`, `None` for the launch, left, when the machine keeps a log.
-    fn log(&mut self, ui: &Ui, action: Option<Action>, done: &Done<()>) {
+    /// Logs what `ui`'s last action, or its launch, left, when the machine keeps a log.
+    fn log(&mut self, ui: &Ui, done: &Done<()>) {
         let (core, app) = (self.core, self.app());
         let Some(log) = &mut self.ui_log else {
             return;
         };
         let left = match done {
-            Ok(()) if ui.exited => Left::Exited(ui.tree.to_string()),
-            Ok(()) => Left::Tree(ui.tree.to_string()),
+            Ok(()) => match ui.exited {
+                Some(status) => Left::Exited(status, ui.tree.to_string()),
+                None => Left::Tree(ui.tree.to_string()),
+            },
             Err(Stop::Trap(trap)) => {
                 let report = report(core, &app.name, trap);
                 Left::Trapped(report.lines().next().unwrap_or_default().into())
             }
-            Err(Stop::Ended(line)) => Left::Ended(line.clone()),
+            Err(Stop::Ended(status, line)) => Left::Ended(*status, line.clone()),
             Err(_) => return,
         };
-        log.push((action, ui.events.clone(), left));
+        log.push((ui.actions.clone(), ui.events.clone(), left));
     }
 
     /// `update`, its effects, then the view; a typed key's cursor follows last.
@@ -181,12 +192,12 @@ impl<'a> Machine<'a> {
         if matches!(effects, Value::List(_)) {
             let (core, world) = (&self.core, &mut Dropped);
             match perform(core, app, None, &mut effects, world, &mut VecDeque::new()) {
-                Some((_, line)) if !line.is_empty() => return Err(Stop::Ended(line)),
-                Some(_) => ui.exited = true,
+                Some((status, line)) if !line.is_empty() => return Err(Stop::Ended(status, line)),
+                Some((status, _)) => ui.exited = Some(status),
                 None => {}
             }
         }
-        if ui.exited {
+        if ui.exited.is_some() {
             return Ok(());
         }
         self.redraw(ui, typed, site)
@@ -239,6 +250,7 @@ impl Ui {
             state,
             tree,
             exited: self.exited,
+            actions: self.actions.clone(),
             events: self.events.clone(),
         }))
     }

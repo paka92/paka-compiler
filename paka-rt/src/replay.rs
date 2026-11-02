@@ -61,25 +61,25 @@ fn unquoted(text: &str) -> Option<String> {
     (tree::quoted(&out) == text).then_some(out)
 }
 
-/// What the launch or an action left (M5-26): the tree text, the tree after `Exit`, a trap's first
-/// line, or the line of an end.
+/// What the launch or an action left (M5-26): the tree text, the status and tree after `Exit` or
+/// `ExitWith`, a trap's first line, or the status and line of an end.
 #[derive(Debug, Clone, PartialEq)]
 pub enum Left {
     Tree(String),
-    Exited(String),
+    Exited(u8, String),
     Trapped(String),
-    Ended(String),
+    Ended(u8, String),
 }
 
 /// As `--paka-replay` writes it, an empty line after: the tree text, `exited` and the tree text,
-/// `trapped LINE` or `ended LINE`.
+/// `trapped LINE` or `ended LINE`. A status shows only as the program's own.
 impl Display for Left {
     fn fmt(&self, f: &mut Formatter) -> fmt::Result {
         match self {
             Left::Tree(tree) => writeln!(f, "{tree}"),
-            Left::Exited(tree) => writeln!(f, "exited\n{tree}"),
+            Left::Exited(_, tree) => writeln!(f, "exited\n{tree}"),
             Left::Trapped(line) => writeln!(f, "trapped {line}\n"),
-            Left::Ended(line) => writeln!(f, "ended {}\n", line.trim_end_matches('\n')),
+            Left::Ended(_, line) => writeln!(f, "ended {}\n", line.trim_end_matches('\n')),
         }
     }
 }
@@ -130,9 +130,12 @@ mod tests {
         let tree = "Col gap=0\n".to_string();
         let shown = [
             Left::Tree(tree.clone()),
-            Left::Exited(tree),
+            Left::Exited(0, tree),
             Left::Trapped("a: trap overflow at main.paka:1:2".into()),
-            Left::Ended("a: effect Print refused: grant Console is missing\n".into()),
+            Left::Ended(
+                3,
+                "a: effect Print refused: grant Console is missing\n".into(),
+            ),
         ]
         .map(|l| l.to_string());
         assert_eq!(

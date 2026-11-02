@@ -254,8 +254,7 @@ impl Dev {
             let mut dropped = Dropped;
             let ended = {
                 let mut ui = Windowless::start(ctx, calls.code(), &app, &start, &mut dropped);
-                let line = |t: &Trap| self.report(t).lines().next().unwrap_or_default().into();
-                ui.replay(lines, out, line)
+                ui.replay(lines, out)
             };
             match ended {
                 Ok(end) => end,
@@ -311,7 +310,7 @@ impl Dev {
                 let mut second = swap.as_ref().map(|(_, next, ..)| calls(next));
                 let mut ui = Windowless::start(ctx, first.code(), &app, &start, world);
                 ui.send(events);
-                let mut traps: Vec<_> = ui.traps.drain(..).map(|t| self.report(&t)).collect();
+                let mut traps: Vec<_> = ui.traps.drain(..).map(|(t, _)| self.report(&t)).collect();
                 let mut last = self;
                 if let (Some((queued, next, how, (app, start))), Some(calls)) = (&swap, &mut second)
                     && ui.end.is_none()
@@ -327,7 +326,7 @@ impl Dev {
                             match migrated {
                                 Ok(()) => {}
                                 Err(Stopped::Trap) if !ui.traps.is_empty() => {
-                                    traps.push(next.report(&ui.traps.remove(0)));
+                                    traps.push(next.report(&ui.traps.remove(0).0));
                                 }
                                 Err(Stopped::Time) if !run_late => traps.push(next.late(limit)),
                                 Err(_) => {}
@@ -338,7 +337,7 @@ impl Dev {
                         }
                     }
                 }
-                traps.extend(ui.traps.iter().map(|t| last.report(t)));
+                traps.extend(ui.traps.iter().map(|(t, _)| last.report(t)));
                 (ui.drawing.root.to_string(), traps, ui.end.take(), last)
             });
             let end = end.map(|end| match end {
