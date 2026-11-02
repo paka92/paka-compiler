@@ -158,6 +158,12 @@ fn a_plain_build_holds_no_example() {
     let exe = built(&scratch, &(TALLY.to_owned() + EXAMPLES), &[]);
     let refused = "tally: --paka-examples cannot be used here\n";
     assert_eq!(switch(&exe, "halves"), said(2, "", refused));
+    let scratch_light = Scratch::new("examples-plain-light");
+    let light = built(&scratch_light, &(LIGHT.to_owned() + EXAMPLES), &[]);
+    for switch in ["--paka-examples", "--paka-replay"] {
+        let refused = format!("light: {switch} cannot be used here\n");
+        assert_eq!(ran(&light, &[switch, "halves"]), said(2, "", &refused));
+    }
     let nm = Command::new("nm").arg(&exe).output().unwrap();
     assert!(nm.status.success() && !nm.stdout.is_empty());
     let symbols = String::from_utf8_lossy(&nm.stdout);
