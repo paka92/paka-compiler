@@ -3,6 +3,8 @@
 use crate::abi::dev::{MARGIN, RUNNER_STACK};
 use crate::abi::heap::call;
 use crate::abi::{List, Str, Update, paka_rt1_stack_limit, take_trap};
+use crate::effects::start_fields;
+use std::ffi::OsString;
 use std::fs::File;
 use std::io::{self, ErrorKind, Write};
 use std::os::fd::AsFd;
@@ -67,7 +69,8 @@ const USAGE: i32 = 2;
 /// Why a run stopped, short of `Exit`.
 #[derive(Debug, PartialEq, Eq)]
 enum Stop {
-    Usage(usize),
+    /// The usage line's text after `<app>: `.
+    Usage(String),
     Ended,
     Missing,
     Failed(&'static str),
@@ -92,9 +95,9 @@ impl Stop {
     }
 
     /// The line's text after `<app>: `, in three pieces.
-    fn pieces(&self) -> [&'static [u8]; 3] {
+    fn pieces(&self) -> [&[u8]; 3] {
         match self {
-            Stop::Usage(_) => [b"expected 0 arguments, got ", b"", b""],
+            Stop::Usage(why) => [why.as_bytes(), b"", b""],
             Stop::Ended => [b"ended without Exit", b"", b""],
             Stop::Missing => [b"effect Print refused: grant Console is missing", b"", b""],
             Stop::Failed(reason) => [b"effect Print failed: ", reason.as_bytes(), b""],
@@ -129,7 +132,7 @@ impl Write for Fd1 {
 
 /// Runs on descriptor 1 and standard error, with the arguments the process was started with.
 pub fn run(name: Str, update: Option<Update>, start: u64, grants: u64) -> i32 {
-    let args = std::env::args_os().len().saturating_sub(1);
+    let args: Vec<OsString> = std::env::args_os().skip(1).collect();
     run_with(
         &mut Fd1::default(),
         &mut io::stderr(),
@@ -137,12 +140,12 @@ pub fn run(name: Str, update: Option<Update>, start: u64, grants: u64) -> i32 {
         update,
         start,
         grants,
-        args,
+        &args,
     )
 }
 
 /// The run loop of ABI section 5, on any sinks. `name` is the decoded app name, `None` when it
-/// was refused; `args` counts the command-line arguments after the program's name.
+/// was refused; `args` are the command-line arguments after the program's name.
 pub(crate) fn run_with(
     out: &mut dyn Write,
     err: &mut dyn Write,
@@ -150,7 +153,7 @@ pub(crate) fn run_with(
     update: Option<Update>,
     start: u64,
     grants: u64,
-    args: usize,
+    args: &[OsString],
 ) -> i32 {
     let mut app: &[u8] = b"?";
     let caught = catch_unwind(AssertUnwindSafe(|| {
@@ -171,13 +174,11 @@ fn perform(
     update: Option<Update>,
     start: u64,
     grants: u64,
-    args: usize,
+    args: &[OsString],
 ) -> Result<(), Stop> {
     let grants = decode_grants(grants)?;
     let update = update.ok_or(Refused::UpdateNull)?;
-    if args != 0 {
-        return Err(Stop::Usage(args));
-    }
+    start_fields(&[], args).map_err(Stop::Usage)?;
     let mut slot = List::UNWRITTEN;
     let (called, trap) = on_runner(|| (call(update, start, &mut slot), take_trap()));
     let mut heap = called.heap;
@@ -256,9 +257,6 @@ fn stop(err: &mut dyn Write, app: &[u8], why: Stop) -> i32 {
     let [text, a, b] = why.pieces();
     let line = [app, b": ", text, a, b];
     let _ = line.iter().try_for_each(|piece| err.write_all(piece));
-    if let Stop::Usage(count) = why {
-        let _ = write!(err, "{count}");
-    }
     let _ = err.write_all(b"\n");
     why.status()
 }

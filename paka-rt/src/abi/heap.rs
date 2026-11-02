@@ -198,7 +198,7 @@ mod tests {
 
     fn run(update: Update) -> (i32, String, String) {
         let (mut out, mut err) = (vec![], vec![]);
-        let status = run_with(&mut out, &mut err, Some(b"app"), Some(update), 0, 1, 0);
+        let status = run_with(&mut out, &mut err, Some(b"app"), Some(update), 0, 1, &[]);
         let text = |b| String::from_utf8(b).unwrap();
         (status, text(out), text(err))
     }
