@@ -9,6 +9,7 @@ mod common;
 use common::{PAKA, Scratch, build_runtime};
 use paka::approvals::{Record, Store, records};
 use paka::hash::hex;
+use paka::notices::notices;
 use paka::sha256::sha256;
 use std::os::unix::fs::PermissionsExt;
 use std::path::{Path, PathBuf};
@@ -282,18 +283,20 @@ fn a_release_holds_the_binary_and_the_hashes_of_all_it_read_and_made() {
          released: dist  counter sha256 {binary}\n"
     );
     assert_eq!(out, expected);
-    assert_eq!(names(&tree.path("dist")), ["RELEASE", "counter"]);
+    assert_eq!(names(&tree.path("dist")), ["NOTICES", "RELEASE", "counter"]);
     let release = format!(
         "program    counter\n\
          source     main.paka  sha256:{}\n\
          build      paka build counter -o counter --examples bumps\n\
          binary     counter  sha256:{binary}\n\
+         notices    NOTICES  sha256:{}\n\
          compiler   {}\n\
          runtime    libpaka_rt.a  sha256:{}\n\
          approvals  serial 1  sha256:{}\n\
          example    bumps  pass\n\
          example    inc_then_dec  4 of 4 actions agree\n",
         hash(tree.path("tree/counter/main.paka")),
+        hash(tree.path("dist/NOTICES")),
         compiler(),
         hash(runtime()),
         hash(tree.path("tree/approvals")),
@@ -301,6 +304,10 @@ fn a_release_holds_the_binary_and_the_hashes_of_all_it_read_and_made() {
     assert_eq!(
         fs::read_to_string(tree.path("dist/RELEASE")).unwrap(),
         release
+    );
+    assert_eq!(
+        fs::read_to_string(tree.path("dist/NOTICES")).unwrap(),
+        notices(Path::new(env!("CARGO_MANIFEST_DIR")).parent().unwrap()).unwrap()
     );
     // Only the human-owned examples are built in.
     let guess = Command::new(tree.path("dist/counter"))
@@ -325,7 +332,10 @@ fn a_release_builds_each_granted_host_fresh() {
          released: dist  sum sha256 {binary}\n"
     );
     assert_eq!(out, expected);
-    assert_eq!(names(&tree.path("dist")), ["RELEASE", "sum", "sum.Sum"]);
+    assert_eq!(
+        names(&tree.path("dist")),
+        ["NOTICES", "RELEASE", "sum", "sum.Sum"]
+    );
     let release = format!(
         "program    sum\n\
          source     main.paka  sha256:{}\n\
@@ -334,6 +344,7 @@ fn a_release_builds_each_granted_host_fresh() {
          build      paka build sum -o sum --examples twice_two\n\
          binary     sum  sha256:{binary}\n\
          host       sum.Sum  sha256:{}\n\
+         notices    NOTICES  sha256:{}\n\
          compiler   {}\n\
          runtime    libpaka_rt.a  sha256:{}\n\
          approvals  serial 1  sha256:{}\n\
@@ -342,6 +353,7 @@ fn a_release_builds_each_granted_host_fresh() {
         hash(tree.path("tree/sum/sum.c")),
         hash(tree.path("tree/sum/sum.h")),
         hash(tree.path("dist/sum.Sum")),
+        hash(tree.path("dist/NOTICES")),
         compiler(),
         hash(runtime()),
         hash(tree.path("tree/approvals")),

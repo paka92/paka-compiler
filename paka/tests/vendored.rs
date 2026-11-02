@@ -1,8 +1,11 @@
-//! Every outside crate in a lock file is listed in .cargo/approved-crates.txt and vendored (M4-06).
+//! Every outside crate in a lock file is listed in `TRUSTED` and vendored (M4-06, M7-16), and so
+//! is every system library a release links.
 //! Crates a lock names only for other systems are listed in .cargo/stubbed-crates.txt and vendored
 //! as a manifest with no code, so cargo can resolve offline without them ever being built.
 //! The shipped font is the pinned Noto Sans file (M5-10).
 
+use paka::clang::SYSTEM_LIBS;
+use paka::notices::{Row, notices, rows};
 use std::collections::BTreeSet;
 use std::fs;
 use std::path::Path;
@@ -61,16 +64,30 @@ fn unlisted(locked: &Crates, approved: &Crates) -> Vec<String> {
         .collect()
 }
 
+fn trusted() -> String {
+    fs::read_to_string(root().join("TRUSTED")).unwrap()
+}
+
+/// The vendored crates `TRUSTED` names: neither system libraries nor files.
 fn approved() -> Crates {
-    listed(".cargo/approved-crates.txt")
+    let text = trusted();
+    let rows = rows(&text).unwrap();
+    (rows.iter().filter(|r| !r.is_system() && !r.is_file()))
+        .map(|r| (r.name.into(), r.version.into()))
+        .collect()
+}
+
+/// The library of each `-l` flag in `libs` that `rows` lists as no system library.
+fn unlisted_system(libs: &[&str], rows: &[Row]) -> Vec<String> {
+    let listed = |name: &str| rows.iter().any(|r| r.is_system() && r.name == name);
+    (libs.iter())
+        .map(|flag| format!("lib{}", flag.strip_prefix("-l").unwrap()))
+        .filter(|name| !listed(name))
+        .collect()
 }
 
 fn stubbed() -> Crates {
-    listed(".cargo/stubbed-crates.txt")
-}
-
-fn listed(file: &str) -> Crates {
-    let list = fs::read_to_string(root().join(file)).unwrap();
+    let list = fs::read_to_string(root().join(".cargo/stubbed-crates.txt")).unwrap();
     list.lines()
         .map(|l| {
             let (n, v) = l.split_once(' ').unwrap();
@@ -121,6 +138,28 @@ fn an_unlisted_crate_fails() {
                 [[package]]\nname = \"left-pad\"\nversion = \"1.0.0\"\n\
                 source = \"registry+https://github.com/rust-lang/crates.io-index\"\n";
     assert_eq!(unlisted(&outside(lock), &approved()), ["left-pad 1.0.0"]);
+}
+
+#[test]
+fn every_linked_system_library_is_trusted() {
+    let text = trusted();
+    let rows = rows(&text).unwrap();
+    assert_eq!(unlisted_system(&SYSTEM_LIBS, &rows), Vec::<String>::new());
+}
+
+#[test]
+fn an_unlisted_system_library_fails() {
+    let text = trusted();
+    let rows = rows(&text).unwrap();
+    assert_eq!(unlisted_system(&["-lc", "-lfoo"], &rows), ["libfoo"]);
+}
+
+#[test]
+fn the_notices_are_made_from_trusted() {
+    let made = notices(root()).unwrap();
+    assert!(made.contains("==== libc system\n"));
+    assert!(made.contains("==== gui/fonts/NotoSans-Regular.ttf 2.015\n"));
+    assert!(!made.contains("==== cranelift-codegen "), "a toolchain row");
 }
 
 #[test]
