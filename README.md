@@ -26,6 +26,8 @@ being built.
   reads a visual app's element tree, takes a screenshot and sends clicks and keys.
 - `paka approve`: the owner reviews and approves examples and grant changes.
 - `paka gate`: refuses a merged tree whose approvals differ or whose human-owned examples fail.
+- `paka release`: gates one program, builds it once, runs its human-owned examples against the
+  binary and writes the binary, its hosts and a `RELEASE` file of hashes to a new directory.
 
 ```paka
 enum Msg { Start }
@@ -67,6 +69,7 @@ usage: paka run <path> [argument...]
        paka serve <path>
        paka approve <path> [--adopt <name>] [--drop <name>] [--key <file>]
        paka gate <tree> --base <tree> [--json]
+       paka release <path> -o <dir> [--key <file>]
 ```
 
 ## Benchmark

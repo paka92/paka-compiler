@@ -29,9 +29,19 @@ const SYSTEM_LIBS: [&str; 7] = [
     "-lc",
 ];
 
-/// Writes the executable for `core` to `output` with `checks`; `path` is the source path for
-/// diagnostics.
+/// Writes the executable for `core` to `output` with `checks`, its hosts from the host cache
+/// beside it; `path` is the source path for diagnostics.
 pub fn build(
+    path: &str,
+    core: &mut Program,
+    output: &OsStr,
+    checks: Checks,
+) -> Result<(), Diagnostic> {
+    compile(path, core, output, checks).map(|()| hosts(core, output))
+}
+
+/// As `build`, without the hosts.
+pub fn compile(
     path: &str,
     core: &mut Program,
     output: &OsStr,
@@ -74,7 +84,7 @@ pub fn build(
         .map_err(write_failed)
         .and_then(|()| link(path, &ir, &runtime, output));
     let _ = fs::remove_file(&ir);
-    result.map(|()| hosts(core, output))
+    result
 }
 
 /// Puts the host of each granted declaration of `core` beside `output` as `<output>.<name>`; one
