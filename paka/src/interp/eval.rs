@@ -12,14 +12,13 @@ use crate::core_form::{
 pub use overlap::Detector;
 use overlap::{held_in_register, spans};
 use paka_rt::ops::{self, Float, Int, Text};
-use paka_rt::route::Event;
 use paka_rt::tree::{self, Edit, Node};
 use std::cmp::Ordering;
 use std::fmt::Write;
 use std::sync::Arc;
 use std::sync::atomic::{self, AtomicBool};
 use std::{mem, panic, thread};
-pub use ui::{Left, Ui};
+pub use ui::{Logged, Ui};
 
 mod overlap;
 mod ui;
@@ -112,9 +111,9 @@ pub enum Stop {
     Return(Value),
     Break,
     Continue,
-    /// A UI example's app stopped with this line: an effect it does not grant, or start fields
-    /// with no arguments to fill them.
-    Ended(String),
+    /// A UI example's app stopped with this status and line: an effect it does not grant, or
+    /// start fields with no arguments to fill them.
+    Ended(u8, String),
     /// The interrupt was set: the run is past its time limit (docs/decisions/M4-04.md).
     Time,
 }
@@ -227,8 +226,8 @@ pub struct Machine<'a> {
     /// Of a UI example: the first frame that held an error node, as the call that drew it and
     /// the node's line.
     pub broken: Option<(Site, String)>,
-    /// Of a UI example, when kept: each action's events from its start and what it left.
-    pub ui_log: Option<Vec<(Vec<Event>, Left)>>,
+    /// Of a UI example, when kept: each action with its events from the start and what it left.
+    pub ui_log: Option<Vec<Logged>>,
     /// The run-time overlap detector, when the run asks for it.
     pub detector: Option<Detector>,
     /// Polled at each call and loop turn, when the run has a time limit.

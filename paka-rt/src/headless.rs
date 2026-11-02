@@ -6,9 +6,7 @@ use crate::abi::dev::windowless::{Code, Windowless};
 use crate::abi::dev::{Context, MEMORY, Trap};
 use crate::abi::heap::lend;
 use crate::abi::shown::Shapes;
-use crate::abi::{
-    ANSWER, App, HANDLER, NO_START, STATE, Trapped, Typed, VIEW, peek_trap, take_trap,
-};
+use crate::abi::{ANSWER, App, HANDLER, NO_START, STATE, Trapped, Typed, VIEW, take_trap};
 use crate::effects::{Dropped, End, Grant, Host, World, arguments};
 use crate::foreign::{self, Function};
 use crate::rt::{Fd1, INTERNAL_ERROR, STOPPED, on_runner};
@@ -138,7 +136,11 @@ pub fn drawn(
 ) -> Result<End, Stopped> {
     let shapes = Shapes::new(types);
     let mut show = |t, at| shapes.show(t, at);
-    let at = |_: &Trap| peek_trap().map_or(String::new(), |t| format!("trap {}", text(t)));
+    let at = |t: &Trap| match take_trap() {
+        Some(trap) => format!("trap {}", text(trap)),
+        None if t.kind == MEMORY => "trap memory".into(),
+        None => String::new(),
+    };
     let code = Code {
         call,
         show: &mut show,
@@ -148,22 +150,19 @@ pub fn drawn(
         let mut dropped = Dropped;
         let mut ui = Windowless::start(ctx, code, app, start, &mut dropped);
         let lines = io::stdin().lines().map(Result::unwrap_or_default);
-        return ui.replay(lines, &mut io::stdout().lock(), |t| report(app.name, t));
+        return ui.replay(lines, &mut io::stdout().lock());
     }
     let mut world = Host(Fd1::default());
     let mut ui = Windowless::start(ctx, code, app, start, &mut world);
     if let Some(end) = windowed(app.name, &mut ui) {
         return end;
     }
-    let (end, trap) = (ui.end.clone(), ui.traps.last().map(|t| t.kind));
+    let (end, trap) = (ui.end.clone(), ui.traps.last().map(|(_, at)| at.clone()));
     let tree = ui.drawing.root.to_string();
     drop(ui);
     match (end, trap) {
         (Some(end), _) => end,
-        (None, Some(kind)) => {
-            ctx.trap.kind = kind;
-            Err(Stopped::Trap)
-        }
+        (None, Some(at)) => Ok((STOPPED as u8, format!("{}: {at}\n", app.name))),
         (None, None) => {
             let _ = io::stdout().write_all(tree.as_bytes());
             Ok((0, String::new()))
@@ -194,16 +193,10 @@ fn windowed<W: World>(name: &str, ui: &mut Windowless<W>) -> Option<Result<End, 
 /// Writes the line of the last trap `ui` kept past its first `seen` to standard error; the count
 /// it keeps now.
 fn reported<W>(name: &str, ui: &Windowless<W>, seen: usize) -> usize {
-    if let Some(trap) = ui.traps.get(seen..).and_then(<[Trap]>::last) {
-        report(name, trap);
+    if let Some((_, at)) = ui.traps.get(seen..).and_then(<[_]>::last) {
+        let _ = writeln!(io::stderr(), "{name}: {at}");
     }
     ui.traps.len()
-}
-
-/// Writes the line of `trap` to standard error.
-fn report(name: &str, trap: &Trap) {
-    let (_, line) = trapped(name, take_trap(), trap.kind);
-    let _ = io::stderr().write_all(line.as_bytes());
 }
 
 /// The grants of `word`'s bits, or `None` when an unknown bit is set.

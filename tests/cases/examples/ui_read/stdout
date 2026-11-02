@@ -1,0 +1,3 @@
+read_then_quit agent-written pass
+read_then_save agent-written pass
+typed_text agent-written pass
