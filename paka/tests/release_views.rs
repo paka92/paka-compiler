@@ -1,6 +1,7 @@
 //! Visual apps built by `paka build` (M6-18): the hole-free counter of paka/src/llvm/views.rs
 //! takes clicks on standard input with no display (`--paka-replay`) and writes each action's full
-//! result (M7-11c), keeps its old tree when a handler traps, and opens a window. The window test is skipped with no Wayland display.
+//! result (M7-11c), keeps its old tree when a handler traps, and opens a window. The window test
+//! is skipped with no Wayland display.
 
 #[allow(dead_code)]
 mod common;
@@ -118,6 +119,20 @@ fn a_trapping_handler_keeps_the_old_tree_and_performs_none_of_its_effects() {
     let trap = "trapped counter: trap divide_by_zero at main.paka:9:31\n\n";
     let want = [&counters(&["0", "1", "2"]), trap, &counters(&["3"])].concat();
     assert_eq!((status, out, err), (Some(0), want, String::new()));
+}
+
+/// A start message and the first view both trap: the launch shows the first trap, its kind and
+/// its text.
+#[test]
+fn a_launch_with_two_traps_shows_the_first() {
+    let source = COUNTER
+        .replace("Reset => s.count = 0", "Reset => s.count = 1 / s.count")
+        .replace("Text(\"{s.count}\")", "Text(\"{2 / s.count}\")")
+        .replace("update: update", "start:  Reset\n  update: update");
+    let scratch = Scratch::new("release-counter-launch-traps");
+    let exe = built(&scratch, &source);
+    let trap = "trapped counter: trap divide_by_zero at main.paka:7:26\n\n";
+    assert_eq!(replay(&exe, ""), (Some(0), trap.into(), String::new()));
 }
 
 /// `Exit` shows the tree it left and ends the replay; lines after it are not read.

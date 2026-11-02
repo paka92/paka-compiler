@@ -56,7 +56,7 @@ example read_then_quit {
 example typed_text {
   var ui = ui_start(notes)
   ui_click(&ui, "'text'")
-  ui_type(&ui, "a\"\\\{\}\té\n")
+  ui_type(&ui, "a\"\\\{\}\té\r\n")
   ui_click(&ui, "#1/#1")
   ui_text(ui, "'text'") == "a\"\\\{\}é" && ui_text(ui, "#2") == "saved 0"
 }

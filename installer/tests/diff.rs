@@ -270,9 +270,26 @@ fn ui(plant: &str) -> (String, String, Option<i32>) {
     (text, total, out.status.code())
 }
 
+/// The UI examples of the cases under tests/cases/examples that release builds, each with its
+/// number of actions: those of every `Ui` value it starts or copies.
+const BUILT: [(&str, &str, usize); 12] = [
+    ("ui_ends_built", "answer_dropped", 3),
+    ("ui_ends_built", "error_node", 2),
+    ("ui_ends_built", "quits", 2),
+    ("ui_ends_built", "refused", 2),
+    ("ui_ends_built", "typed", 5),
+    ("ui_ends_built", "view_traps", 3),
+    ("ui_read", "read_then_quit", 3),
+    ("ui_read", "read_then_save", 3),
+    ("ui_read", "typed_text", 12),
+    ("ui_two", "a_copy_goes_its_own_way", 5),
+    ("ui_two", "exit_mid_text", 3),
+    ("ui_two", "two_values", 5),
+];
+
 /// Every UI example agrees in all three back ends, release where the program has no hole, each on
-/// all of its actions: past a dropped answer, `Exit` and typed escapes (M7-11c). A planted view
-/// fault in dev mode differs in each example.
+/// all of its actions: past a dropped answer, `Exit` and typed escapes, for each `Ui` value apart
+/// (M7-11c). A planted view fault in dev mode differs in each example.
 #[test]
 fn ui_examples_agree_and_a_planted_view_fault_differs_in_each() {
     build_paka_beside(Path::new(env!("CARGO_BIN_EXE_paka-diff")));
@@ -287,20 +304,13 @@ fn ui_examples_agree_and_a_planted_view_fault_differs_in_each() {
         ("typed", 5),
         ("view_traps", 3),
     ];
-    let read = [
-        ("read_then_quit", 3),
-        ("read_then_save", 3),
-        ("typed_text", 11),
-    ];
     let mut want: Vec<_> = ends
         .iter()
         .map(|(e, n)| format!("agree cases/examples/ui_ends {e}; {n} actions, {hole}\n"))
         .collect();
-    want.extend(
-        read.iter().map(|(e, n)| {
-            format!("agree cases/examples/ui_read {e}; {n} actions, {n} in release\n")
-        }),
-    );
+    want.extend(BUILT.iter().map(|(case, e, n)| {
+        format!("agree cases/examples/{case} {e}; {n} actions, {n} in release\n")
+    }));
     for line in want {
         assert!(text.contains(&line), "{line}{text}");
     }
@@ -336,13 +346,9 @@ fn ui_examples_agree_and_a_planted_view_fault_differs_in_each() {
 fn a_planted_release_view_fault_differs_in_each_example_built() {
     build_paka_beside(Path::new(env!("CARGO_BIN_EXE_paka-diff")));
     let (text, _, status) = ui("19");
-    for (example, n) in [
-        ("read_then_quit", 3),
-        ("read_then_save", 3),
-        ("typed_text", 11),
-    ] {
+    for (case, example, n) in BUILT {
         let want = format!(
-            "differ cases/examples/ui_read {example}: release compared on 0 of {n} actions: "
+            "differ cases/examples/{case} {example}: release compared on 0 of {n} actions: "
         );
         assert!(text.contains(&want), "{want}\n{text}");
     }
