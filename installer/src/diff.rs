@@ -50,8 +50,13 @@ pub fn release_verdict(reference: &Outcome, run: &Outcome) -> (usize, String) {
         .next()
         .is_some_and(|l| l.contains(" trap stack at "));
     match difference_in(reference, run, "release") {
-        // Release may finish or run on where the interpreter's stack ran out, not crash (M6-01).
-        _ if reference.status == Some(3) && stack && run.status.is_some() => {
+        // Release may finish or run on where the interpreter's stack ran out, not crash (M6-01),
+        // after the same output.
+        _ if reference.status == Some(3)
+            && stack
+            && run.status.is_some()
+            && run.stdout.starts_with(&reference.stdout) =>
+        {
             (2, "not compared: a stack trap".into())
         }
         Some(why) => (1, why),
