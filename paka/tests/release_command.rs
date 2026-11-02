@@ -262,6 +262,11 @@ fn compiler() -> String {
     format!("paka 0.0.0  sha256:{}  clang {}", hash(PAKA), clang.trim())
 }
 
+/// The runtime every binary links.
+fn runtime() -> PathBuf {
+    Path::new(PAKA).with_file_name("libpaka_rt.a")
+}
+
 #[test]
 fn a_release_holds_the_binary_and_the_hashes_of_all_it_read_and_made() {
     let tree = Tree::new("release_counter");
@@ -284,11 +289,13 @@ fn a_release_holds_the_binary_and_the_hashes_of_all_it_read_and_made() {
          build      paka build counter -o counter --examples bumps\n\
          binary     counter  sha256:{binary}\n\
          compiler   {}\n\
+         runtime    libpaka_rt.a  sha256:{}\n\
          approvals  serial 1  sha256:{}\n\
          example    bumps  pass\n\
          example    inc_then_dec  4 of 4 actions agree\n",
         hash(tree.path("tree/counter/main.paka")),
         compiler(),
+        hash(runtime()),
         hash(tree.path("tree/approvals")),
     );
     assert_eq!(
@@ -328,6 +335,7 @@ fn a_release_builds_each_granted_host_fresh() {
          binary     sum  sha256:{binary}\n\
          host       sum.Sum  sha256:{}\n\
          compiler   {}\n\
+         runtime    libpaka_rt.a  sha256:{}\n\
          approvals  serial 1  sha256:{}\n\
          example    twice_two  pass\n",
         hash(tree.path("tree/sum/main.paka")),
@@ -335,6 +343,7 @@ fn a_release_builds_each_granted_host_fresh() {
         hash(tree.path("tree/sum/sum.h")),
         hash(tree.path("dist/sum.Sum")),
         compiler(),
+        hash(runtime()),
         hash(tree.path("tree/approvals")),
     );
     assert_eq!(
@@ -463,4 +472,110 @@ fn a_binary_changed_after_it_was_hashed_is_refused() {
     tree.wrap_binary("#!/bin/sh\nprintf x >> \"$0\"\nexec 'REAL' \"$@\"\n");
     let why = "artefact: counter changed between the runs and the final path\n";
     tree.refuses("counter", why, true);
+}
+
+#[test]
+fn a_host_changed_after_it_was_hashed_is_refused() {
+    let tree = Tree::new("release_host_planted");
+    // The binary's example run grows the host beside it by a byte.
+    tree.wrap_binary("#!/bin/sh\nprintf x >> \"$0.Sum\"\nexec 'REAL' \"$@\"\n");
+    let why = "artefact: sum.Sum changed between the runs and the final path\n";
+    tree.refuses("sum", why, true);
+}
+
+#[test]
+fn a_file_the_build_left_unlisted_is_refused() {
+    let tree = Tree::new("release_extra");
+    let script = format!(
+        "#!/bin/sh\n[ \"$1\" = -O3 ] || exec '{clang}' \"$@\"\n\
+         for a in \"$@\"; do [ \"$prev\" = -o ] && out=$a; prev=$a; done\n\
+         '{clang}' \"$@\" || exit\necho 'not listed' > \"$(dirname \"$out\")/extra\"\n",
+        clang = clang().display(),
+    );
+    tree.fake_clang(&script);
+    tree.refuses(
+        "counter",
+        "artefact: extra is not a file RELEASE lists\n",
+        true,
+    );
+}
+
+#[test]
+fn a_link_that_fails_is_refused() {
+    let tree = Tree::new("release_link");
+    let script = format!(
+        "#!/bin/sh\n[ \"$1\" = -O3 ] && exit 1\nexec '{}' \"$@\"\n",
+        clang().display()
+    );
+    tree.fake_clang(&script);
+    let why = "tree/counter: error[clang-failed]: clang failed (exit status: 1)\n";
+    tree.refuses("counter", why, true);
+}
+
+#[test]
+fn a_missing_approvals_pub_is_refused() {
+    let tree = Tree::new("release_no_pub");
+    fs::remove_file(tree.path("tree/approvals.pub")).unwrap();
+    let why = "key: approvals.pub: No such file or directory (os error 2)\n";
+    tree.refuses("counter", why, true);
+}
+
+#[test]
+fn an_output_made_during_the_run_is_kept() {
+    let tree = Tree::new("release_raced");
+    let script = format!(
+        "#!/bin/sh\n'{}' \"$@\" || exit\n[ \"$1\" = -O3 ] && mkdir dist\nexit 0\n",
+        clang().display()
+    );
+    tree.fake_clang(&script);
+    let (_, err, status) = tree.release("counter", "owner");
+    assert_eq!(
+        (err.as_str(), status),
+        ("release: dist already exists\n", Some(1))
+    );
+    assert!(names(&tree.path("dist")).is_empty());
+}
+
+#[test]
+fn a_key_with_another_comment_matches() {
+    let tree = Tree::new("release_comment");
+    let key = fs::read_to_string(tree.path("owner.pub")).unwrap();
+    let commented = format!("{}  the owner\n", key.trim_end());
+    fs::write(tree.path("tree/approvals.pub"), commented).unwrap();
+    let (out, err, status) = tree.release("counter", "owner");
+    assert_eq!((err.as_str(), status), ("", Some(0)));
+    assert!(
+        out.starts_with("key: approvals.pub matches owner.pub\n"),
+        "{out}"
+    );
+}
+
+#[test]
+fn a_staging_directory_of_a_dead_run_is_removed() {
+    let tree = Tree::new("release_stale");
+    // No pid reaches 99999999; this test's own pid is alive.
+    let dead = tree.path(".dist.release-99999999");
+    let alive = tree.path(&format!(".dist.release-{}", std::process::id()));
+    for dir in [&dead, &alive] {
+        fs::create_dir(dir).unwrap();
+        fs::write(dir.join("counter"), "left").unwrap();
+    }
+    let (_, err, status) = tree.release("counter", "owner");
+    assert_eq!((err.as_str(), status), ("", Some(0)));
+    assert!(!dead.exists());
+    assert_eq!(names(&alive), ["counter"]);
+}
+
+#[test]
+fn a_refusal_shows_only_the_end_of_a_long_output() {
+    let tree = Tree::new("release_long");
+    tree.wrap_binary(
+        "#!/bin/sh\nif [ \"$1\" = --paka-examples ]; then\n  \
+         head -c 3000000 /dev/zero | tr '\\0' x >&2\nfi\nexec 'REAL' \"$@\"\n",
+    );
+    let why = format!(
+        "example bumps: status 0, standard output \"bumps pass\\n\", standard error \"…{}\"\n",
+        "x".repeat(200)
+    );
+    tree.refuses("counter", &why, true);
 }
