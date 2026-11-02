@@ -1,8 +1,9 @@
 //! `paka release <path> -o <dir>` (docs/decisions/M7-03.md sections 1.3, 1.5 and 2): one read of
 //! the program and its foreign files, the gate for that program on the read, one build, its
 //! human-owned examples against the binary, and `<dir>` with the binary, a fresh host per granted
-//! declaration and `RELEASE`, hashed again where it lands. A refusal leaves nothing at `<dir>`;
-//! a release killed partway may leave an unchecked `<dir>`, and is run again.
+//! declaration, the notices file (M7-16) and `RELEASE`, hashed again where it lands. A refusal
+//! leaves nothing at `<dir>`; a release killed partway may leave an unchecked `<dir>`, and is run
+//! again.
 
 use crate::build::{compile, runtime};
 use crate::llvm::Checks;
@@ -35,6 +36,7 @@ pub fn release(path: &OsStr, out: &Path, key: &Path) -> Result<(), String> {
     }
     let name = path.to_string_lossy();
     let compiler = compiler(&name)?;
+    let notices = notices()?;
     let shown = Path::new(path).display();
     let (root, program) = approvals::find(Path::new(path))
         .ok_or_else(|| format!("release: no approvals at or above {shown}\n"))?;
@@ -70,7 +72,9 @@ pub fn release(path: &OsStr, out: &Path, key: &Path) -> Result<(), String> {
     compile(&name, &mut core, bin.as_os_str(), Checks::All).map_err(|d| line(&source, d))?;
     println!("build: {command}");
     let hosts = hosts(&core, &dir, &app, &read)?;
-    let hashes = listed(&dir, &[vec![app.clone()], hosts.clone()].concat())?;
+    fs::write(dir.join(NOTICES), notices).map_err(|e| format!("release: {NOTICES}: {e}\n"))?;
+    let shipped = [vec![app.clone(), NOTICES.into()], hosts.clone()].concat();
+    let hashes = listed(&dir, &shipped)?;
     let results = examples(&bin, &functions, logs)?;
 
     let mut text = format!("program    {program}\n");
@@ -82,6 +86,7 @@ pub fn release(path: &OsStr, out: &Path, key: &Path) -> Result<(), String> {
     for host in &hosts {
         writeln!(text, "host       {host}  sha256:{}", hashes[host]).unwrap();
     }
+    writeln!(text, "notices    {NOTICES}  sha256:{}", hashes[NOTICES]).unwrap();
     text += &compiler;
     let (serial, approved) = (store.serial, hex(&sha256(&approved)));
     writeln!(text, "approvals  serial {serial}  sha256:{approved}").unwrap();
@@ -91,6 +96,18 @@ pub fn release(path: &OsStr, out: &Path, key: &Path) -> Result<(), String> {
     landed(made, out, &text, hashes.clone())?;
     println!("released: {}  {app} sha256 {}", out.display(), hashes[&app]);
     Ok(())
+}
+
+/// The third-party notices file of every artefact.
+const NOTICES: &str = "NOTICES";
+
+/// The notices made from the `TRUSTED` and `vendor/` this paka was built from, which built the
+/// runtime it links.
+fn notices() -> Result<String, String> {
+    let root = Path::new(env!("CARGO_MANIFEST_DIR"))
+        .parent()
+        .expect("the workspace");
+    paka::notices::notices(root).map_err(|why| format!("release: notices: {why}\n"))
 }
 
 fn exists(out: &Path) -> String {

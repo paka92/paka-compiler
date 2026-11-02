@@ -8,6 +8,17 @@ use std::process::{Command, Stdio};
 /// The pinned version; tests read the same file.
 pub const VERSION: &str = include_str!("../clang-version");
 
+/// The system libraries every release build links; each is a `TRUSTED` row (M7-16).
+pub const SYSTEM_LIBS: [&str; 7] = [
+    "-lgcc_s",
+    "-lutil",
+    "-lrt",
+    "-lpthread",
+    "-lm",
+    "-ldl",
+    "-lc",
+];
+
 /// Refuses any clang but the pinned one, read off the first line of `clang --version`.
 pub fn check(path: &str) -> Result<(), Diagnostic> {
     let out = Command::new("clang")

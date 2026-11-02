@@ -49,7 +49,7 @@ A program touches only what its `grants` allow; this one may write to the consol
 ## Build
 
 Needs Rust 1.96.1 (pinned in `rust-toolchain.toml`) and, for `paka build`, `clang` on the path.
-Outside crates are vendored in `vendor/`, each listed in `.cargo/approved-crates.txt`, and build
+Outside crates are vendored in `vendor/`, each listed in `TRUSTED` with its licence, and build
 offline; building needs no system package beyond the toolchain.
 
 Visual apps run in a Wayland session. A window loads `libwayland-client`,
