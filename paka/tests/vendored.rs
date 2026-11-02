@@ -1,5 +1,5 @@
 //! Every outside crate in a lock file is listed in `TRUSTED` and vendored (M4-06, M7-16), and so
-//! is every system library a release links.
+//! is every system library a release links or its code loads at run time.
 //! Crates a lock names only for other systems are listed in .cargo/stubbed-crates.txt and vendored
 //! as a manifest with no code, so cargo can resolve offline without them ever being built.
 //! The shipped font is the pinned Noto Sans file (M5-10).
@@ -77,12 +77,45 @@ fn approved() -> Crates {
         .collect()
 }
 
-/// The library of each `-l` flag in `libs` that `rows` lists as no system library.
-fn unlisted_system(libs: &[&str], rows: &[Row]) -> Vec<String> {
+/// Libraries vendored code can load at run time that paka's features leave out.
+const NOT_LOADED: [&str; 3] = [
+    "libwayland-server", // wayland-sys feature `server`, off
+    "libwayland-egl",    // wayland-sys feature `egl`, off
+    "libxkbcommon-x11",  // xkbcommon-dl feature `x11`, off
+];
+
+/// The names in `libs` that `rows` lists as no system library.
+fn unlisted_system(libs: &[String], rows: &[Row]) -> Vec<String> {
     let listed = |name: &str| rows.iter().any(|r| r.is_system() && r.name == name);
-    (libs.iter())
-        .map(|flag| format!("lib{}", flag.strip_prefix("-l").unwrap()))
-        .filter(|name| !listed(name))
+    libs.iter().filter(|name| !listed(name)).cloned().collect()
+}
+
+fn linked() -> Vec<String> {
+    let lib = |flag: &str| format!("lib{}", flag.strip_prefix("-l").unwrap());
+    SYSTEM_LIBS.iter().map(|f| lib(f)).collect()
+}
+
+/// The library names of the `"lib<name>.so…"` strings on the code lines of a Rust text.
+fn loaded(code: &str) -> BTreeSet<String> {
+    (code.lines())
+        .filter(|l| !l.trim_start().starts_with("//"))
+        .flat_map(|l| l.split('"').skip(1).step_by(2))
+        .filter_map(|s| Some(s.split_once(".so")?.0).filter(|n| n.starts_with("lib")))
+        .map(String::from)
+        .collect()
+}
+
+/// The `.rs` files under `dir`.
+fn sources(dir: &Path) -> Vec<std::path::PathBuf> {
+    let Ok(entries) = fs::read_dir(dir) else {
+        return vec![];
+    };
+    let paths = entries.map(|e| e.unwrap().path());
+    paths
+        .flat_map(|p| match p.is_dir() {
+            true => sources(&p),
+            false => (p.extension() == Some("rs".as_ref())).then_some(p).into_iter().collect(),
+        })
         .collect()
 }
 
@@ -144,22 +177,50 @@ fn an_unlisted_crate_fails() {
 fn every_linked_system_library_is_trusted() {
     let text = trusted();
     let rows = rows(&text).unwrap();
-    assert_eq!(unlisted_system(&SYSTEM_LIBS, &rows), Vec::<String>::new());
+    assert_eq!(unlisted_system(&linked(), &rows), Vec::<String>::new());
 }
 
 #[test]
 fn an_unlisted_system_library_fails() {
     let text = trusted();
     let rows = rows(&text).unwrap();
-    assert_eq!(unlisted_system(&["-lc", "-lfoo"], &rows), ["libfoo"]);
+    let libs = ["libc".into(), "libfoo".into()];
+    assert_eq!(unlisted_system(&libs, &rows), ["libfoo"]);
+}
+
+#[test]
+fn every_library_program_code_loads_is_trusted() {
+    let text = trusted();
+    let rows = rows(&text).unwrap();
+    let crates = rows.iter().filter(|r| r.runs == "programs" && !r.is_system() && !r.is_file());
+    let files = crates.flat_map(|r| sources(&r.dir(root()).join("src")));
+    let mut found = BTreeSet::new();
+    for file in files {
+        found.extend(loaded(&fs::read_to_string(file).unwrap_or_default()));
+    }
+    for name in NOT_LOADED {
+        assert!(found.remove(name), "{name} is no longer in the code");
+    }
+    let found = Vec::from_iter(found);
+    assert_eq!(found, ["libwayland-client", "libwayland-cursor", "libxkbcommon"]);
+    assert_eq!(unlisted_system(&found, &rows), Vec::<String>::new());
+}
+
+#[test]
+fn a_loaded_library_is_found_in_code_not_comments() {
+    let code = "/// dlopen(\"libdoc.so.1\")\nlet x = open(\"libfoo.so.2\", \"lib.rs\");\n";
+    assert_eq!(Vec::from_iter(loaded(code)), ["libfoo"]);
 }
 
 #[test]
 fn the_notices_are_made_from_trusted() {
     let made = notices(root()).unwrap();
-    assert!(made.contains("==== libc system\n"));
-    assert!(made.contains("==== gui/fonts/NotoSans-Regular.ttf 2.015\n"));
-    assert!(!made.contains("==== cranelift-codegen "), "a toolchain row");
+    assert!(made.contains("\nlibc system  -  C runtime  (from the system, not shipped)\n"));
+    assert!(made.contains("\ngui/fonts/NotoSans-Regular.ttf 2.015  OFL-1.1  the font\n"));
+    assert!(!made.contains("\ncranelift-codegen "), "a toolchain row");
+    let supplied = "\naccesskit 0.25.2  MIT, not in its package: vendor/ahash/LICENSE-MIT with the \
+                    copyright line from its authors\n";
+    assert!(made.contains(supplied));
 }
 
 #[test]
