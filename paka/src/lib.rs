@@ -26,6 +26,7 @@ pub mod owners;
 pub mod parser;
 pub mod pending;
 pub mod print;
+pub mod release;
 mod resolve;
 pub mod results;
 pub mod serve;

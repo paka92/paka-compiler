@@ -61,7 +61,12 @@ fn build(scratch: &Scratch, source: &str, extra: &[&str]) -> (Output, PathBuf) {
     let (path, exe) = (scratch.path("main.paka"), scratch.path("main"));
     fs::write(&path, source).unwrap();
     let out = Command::new(PAKA)
-        .args(["build".as_ref(), path.as_os_str(), "-o".as_ref(), exe.as_os_str()])
+        .args([
+            "build".as_ref(),
+            path.as_os_str(),
+            "-o".as_ref(),
+            exe.as_os_str(),
+        ])
         .args(extra)
         .output()
         .unwrap();
@@ -159,7 +164,11 @@ fn a_plain_build_holds_no_example() {
     for name in ["example.", "examples.call", "paka_rt1_examples"] {
         assert!(!symbols.contains(name), "{name}");
     }
-    let named = built(&scratch, &(TALLY.to_owned() + EXAMPLES), &["--examples", "halves"]);
+    let named = built(
+        &scratch,
+        &(TALLY.to_owned() + EXAMPLES),
+        &["--examples", "halves"],
+    );
     let nm = Command::new("nm").arg(&named).output().unwrap();
     assert!(String::from_utf8_lossy(&nm.stdout).contains("paka_rt1_examples"));
 }
@@ -180,7 +189,10 @@ fn the_runner_reports_each_outcome_of_a_built_binary() {
     assert_eq!(Ran::Pass.to_string(), "pass");
     assert_eq!(Ran::Fail.to_string(), "fail");
     assert_eq!(Ran::TimedOut.to_string(), "timed out");
-    assert_eq!(Ran::Trapped(trap.into()).to_string(), format!("trapped: {trap}"));
+    assert_eq!(
+        Ran::Trapped(trap.into()).to_string(),
+        format!("trapped: {trap}")
+    );
     assert_eq!(Ran::Other(seen.into()).to_string(), seen);
 }
 
@@ -197,23 +209,55 @@ fn fake(scratch: &Scratch, name: &str, body: &str) -> PathBuf {
 #[test]
 fn the_runner_trusts_only_the_exact_pass() {
     let scratch = Scratch::new("examples-planted");
-    let pass = fake(&scratch, "pass", "test \"$1 $2\" = \"--paka-examples e\" && echo 'e pass'");
+    let pass = fake(
+        &scratch,
+        "pass",
+        "test \"$1 $2\" = \"--paka-examples e\" && echo 'e pass'",
+    );
     assert_eq!(run(&pass, "e").unwrap(), Ran::Pass);
     let fail = fake(&scratch, "fail", "echo 'e fail'");
     assert_eq!(run(&fail, "e").unwrap(), Ran::Fail);
     let planted = [
-        ("status", "echo 'e pass'; exit 3", "status 3, standard output \"e pass\\n\", standard error \"\""),
-        ("stderr", "echo 'e pass'; echo warning >&2", "status 0, standard output \"e pass\\n\", standard error \"warning\\n\""),
-        ("more", "echo 'e pass'; echo 'e pass'", "status 0, standard output \"e pass\\ne pass\\n\", standard error \"\""),
-        ("other", "echo 'f pass'", "status 0, standard output \"f pass\\n\", standard error \"\""),
-        ("unended", "printf 'e pass'", "status 0, standard output \"e pass\", standard error \"\""),
-        ("signal", "echo 'e pass'; kill -9 $$", "killed by a signal, standard output \"e pass\\n\", standard error \"\""),
+        (
+            "status",
+            "echo 'e pass'; exit 3",
+            "status 3, standard output \"e pass\\n\", standard error \"\"",
+        ),
+        (
+            "stderr",
+            "echo 'e pass'; echo warning >&2",
+            "status 0, standard output \"e pass\\n\", standard error \"warning\\n\"",
+        ),
+        (
+            "more",
+            "echo 'e pass'; echo 'e pass'",
+            "status 0, standard output \"e pass\\ne pass\\n\", standard error \"\"",
+        ),
+        (
+            "other",
+            "echo 'f pass'",
+            "status 0, standard output \"f pass\\n\", standard error \"\"",
+        ),
+        (
+            "unended",
+            "printf 'e pass'",
+            "status 0, standard output \"e pass\", standard error \"\"",
+        ),
+        (
+            "signal",
+            "echo 'e pass'; kill -9 $$",
+            "killed by a signal, standard output \"e pass\\n\", standard error \"\"",
+        ),
     ];
     for (name, body, seen) in planted {
         let exe = fake(&scratch, name, body);
         assert_eq!(run(&exe, "e").unwrap(), Ran::Other(seen.into()), "{name}");
     }
-    let trapped = fake(&scratch, "trap", "echo 'e pass'; echo 'a: trap stack at main.paka:1:1' >&2; exit 3");
+    let trapped = fake(
+        &scratch,
+        "trap",
+        "echo 'e pass'; echo 'a: trap stack at main.paka:1:1' >&2; exit 3",
+    );
     let seen = "status 3, standard output \"e pass\\n\", standard error \"a: trap stack at main.paka:1:1\\n\"";
     assert_eq!(run(&trapped, "e").unwrap(), Ran::Other(seen.into()));
 }
