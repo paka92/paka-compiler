@@ -382,9 +382,11 @@ unreachable()                         traps assert when reached
 
 - White space is exactly six characters: code points 9 to 13 and 32.
 - Text is matched exactly, left to right, without overlap. No patterns.
-- The sort is stable: `before(a, b)` says whether `a` must come before `b`; other items keep their order.
+- The sort is stable: `before(a, b)` says whether `a` must come before `b`; ties keep their
+  order.
 - Map: `m[key]` reads and traps `out_of_bounds` when the key is missing. `m[key] = v` adds or
-  replaces. Other uses need the key present: `m[key] += 1` on a new key traps. The count idiom is `counts[w] = unwrap_or(get(counts, w), 0) + 1`.
+  replaces. Other uses need the key present: `m[key] += 1` on a new key traps. The count idiom
+  is `counts[w] = unwrap_or(get(counts, w), 0) + 1`.
 - A bad position, a count below zero, `pop` on an empty List, a shift count or `digits` out of
   range trap `out_of_bounds`.
 - There is no `map`, `filter`, `fold`, `sum`, `sorted` or `clamp`: loop.
@@ -432,7 +434,8 @@ How a program runs:
   effects are performed in list order. Each file answer joins the back of the queue.
 - Answers arrive in the order their effects were performed. Answers carry no path: keep in the
   state what you wait for.
-- `Exit` and `ExitWith` end the program at once. Later effects are not performed, and a queued answer is dropped.
+- `Exit` and `ExitWith` end the program at once. Later effects are not performed, and a queued
+  answer is dropped.
 - A trap in a handler performs none of that handler's effects.
 - There is no standard input: data comes through arguments and files.
 
@@ -447,7 +450,8 @@ Four stops end a program with one line on standard error and status 3:
 
 A grant is tested as its effect is performed. Every path must reach `Exit` or
 `ExitWith`: an empty queue without one is the fourth stop. A literal status outside 0 or 5 to 255
-is the check error `literal-out-of-range`. A program without an app checks; `paka run` and `paka build` refuse it (`no-app`).
+is the check error `literal-out-of-range`. A program without an app checks; `paka run` and
+`paka build` refuse it (`no-app`).
 
 ## 11. Traps, holes, examples
 
