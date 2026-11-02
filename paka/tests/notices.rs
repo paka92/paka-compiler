@@ -78,19 +78,29 @@ fn the_notices_hold_each_program_row_with_its_licence_texts() {
 #[test]
 fn a_row_without_five_fields_is_refused() {
     let why = "TRUSTED line 2: not a name, version, licence, runs in and purpose two spaces apart";
-    assert_eq!(rows("# name\ndemo 1.0.0  MIT  programs  drawing\n").err(), Some(why.into()));
+    assert_eq!(
+        rows("# name\ndemo 1.0.0  MIT  programs  drawing\n").err(),
+        Some(why.into())
+    );
 }
 
 #[test]
 fn a_row_that_runs_elsewhere_is_refused() {
     let why = "TRUSTED line 1: runs in is programs or toolchain, not everywhere";
-    assert_eq!(rows("demo  1.0.0  MIT  everywhere  drawing\n").err(), Some(why.into()));
+    assert_eq!(
+        rows("demo  1.0.0  MIT  everywhere  drawing\n").err(),
+        Some(why.into())
+    );
 }
 
 #[test]
 fn a_program_row_with_no_package_is_refused() {
     let tree = tree("notices_ghost");
-    fs::write(tree.path("TRUSTED"), "ghost  1.0.0  MIT  programs  nothing\n").unwrap();
+    fs::write(
+        tree.path("TRUSTED"),
+        "ghost  1.0.0  MIT  programs  nothing\n",
+    )
+    .unwrap();
     let why = notices(&tree.path("")).unwrap_err();
     assert!(why.starts_with("vendor/ghost: "), "{why}");
 }
