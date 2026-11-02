@@ -23,15 +23,20 @@ pub struct Called {
 
 /// Calls `update` on `msg` with a new heap.
 pub fn call(update: Update, msg: u64, out: &mut List) -> Called {
-    CONTEXT.set(Some(Context::new(u64::MAX)));
-    BROKEN.set(false);
-    let status = update(msg, out);
-    let ctx = CONTEXT.take().expect("the call's context");
+    let (status, heap, broken) = fresh(|| update(msg, out));
     Called {
         status,
-        heap: ctx.heap,
-        broken: BROKEN.take(),
+        heap,
+        broken,
     }
+}
+
+/// Runs `f` with a new heap as the call's context: what it gave, the heap it left, and whether
+/// an entry broke.
+pub fn fresh<R>(f: impl FnOnce() -> R) -> (R, Heap, bool) {
+    let mut ctx = Context::new(u64::MAX);
+    let (r, broken) = lend(&mut ctx, f);
+    (r, ctx.heap, broken)
 }
 
 /// Runs `f` with `ctx` as the call's context, as a headless app's loop does for each compiled

@@ -10,7 +10,7 @@
 //! contract, or by compiled code under the contract of `paka_rt1_run`.
 
 use crate::headless::drawn;
-use crate::{Decoded, Refused, run, run_app};
+use crate::{Decoded, Refused, examples, run, run_app};
 use std::cell::Cell;
 use std::sync::atomic::AtomicU64;
 use std::{ptr, slice};
@@ -247,6 +247,36 @@ pub unsafe extern "C" fn paka_rt1_run(
     // `from_raw` asks for.
     let name = unsafe { Str::from_raw(name, name_len) };
     measure::around(|| run(name, update, start, grants))
+}
+
+/// What runs a binary's function example `id`, its Bool result into `out` (M7-11b).
+pub type Example = extern "C" fn(id: u64, out: &mut u64) -> i32;
+
+/// The entry `main` calls first in a build with function examples (M7-11b): it runs the example
+/// `--paka-examples` names and gives the process status, or -1 when the app is to run.
+///
+/// # Safety
+///
+/// `name` and `name_len`, and `names` and `names_len`, are strings as ABI section 2 defines them;
+/// `call` is null or keeps ABI section 3 for every id, writing only the 8 bytes of `out`.
+// SAFETY: as for `paka_rt1_run`.
+#[unsafe(no_mangle)]
+pub unsafe extern "C" fn paka_rt1_examples(
+    name: *const u8,
+    name_len: u64,
+    names: *const u8,
+    names_len: u64,
+    call: Option<Example>,
+) -> i32 {
+    ignore_signals();
+    // SAFETY: the caller promises two ABI strings, which is what `from_raw` asks for.
+    let [name, names] = unsafe {
+        [
+            Str::from_raw(name, name_len),
+            Str::from_raw(names, names_len),
+        ]
+    };
+    examples::run(name, names, call)
 }
 
 /// What runs an app's compiled code (ABI sections 13 and 14): the handler for `id` `HANDLER`,
