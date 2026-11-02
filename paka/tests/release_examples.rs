@@ -7,9 +7,12 @@ mod common;
 use common::{PAKA, Scratch, build_runtime};
 use paka::release::{Ran, run};
 use std::fs;
+use std::io;
 use std::os::unix::fs::PermissionsExt;
 use std::path::{Path, PathBuf};
 use std::process::{Command, Output};
+use std::thread;
+use std::time::Duration;
 
 const EXAMPLES: &str = "
 example halves { ratio(4, 2) == 2 }
@@ -185,13 +188,13 @@ fn the_runner_reports_each_outcome_of_a_built_binary() {
     let scratch = Scratch::new("examples-runner");
     let names = ["--examples", "halves", "wrong", "divides"];
     let exe = built(&scratch, &(TALLY.to_owned() + EXAMPLES), &names);
-    assert_eq!(run(&exe, "halves").unwrap(), Ran::Pass);
-    assert_eq!(run(&exe, "wrong").unwrap(), Ran::Fail);
+    assert_eq!(outcome(&exe, "halves"), Ran::Pass);
+    assert_eq!(outcome(&exe, "wrong"), Ran::Fail);
     let trap = "tally: trap divide_by_zero at main.paka:5:37";
-    assert_eq!(run(&exe, "divides").unwrap(), Ran::Trapped(trap.into()));
+    assert_eq!(outcome(&exe, "divides"), Ran::Trapped(trap.into()));
     let seen = "status 2, standard output \"\", standard error \
         \"tally: --paka-examples: no function example named nope\\n\"";
-    assert_eq!(run(&exe, "nope").unwrap(), Ran::Other(seen.into()));
+    assert_eq!(outcome(&exe, "nope"), Ran::Other(seen.into()));
     assert_eq!(Ran::Pass.to_string(), "pass");
     assert_eq!(Ran::Fail.to_string(), "fail");
     assert_eq!(Ran::TimedOut.to_string(), "timed out");
@@ -200,6 +203,19 @@ fn the_runner_reports_each_outcome_of_a_built_binary() {
         format!("trapped: {trap}")
     );
     assert_eq!(Ran::Other(seen.into()).to_string(), seen);
+}
+
+/// `run`, retried while a fork in another test still holds the fake's write handle (ETXTBSY).
+fn outcome(exe: &Path, name: &str) -> Ran {
+    for _ in 0..100 {
+        match run(exe, name) {
+            Err(e) if e.kind() == io::ErrorKind::ExecutableFileBusy => {
+                thread::sleep(Duration::from_millis(10))
+            }
+            outcome => return outcome.unwrap(),
+        }
+    }
+    panic!("{} stayed busy", exe.display())
 }
 
 /// A fake binary: a shell script with `body`.
@@ -220,9 +236,9 @@ fn the_runner_trusts_only_the_exact_pass() {
         "pass",
         "test \"$1 $2\" = \"--paka-examples e\" && echo 'e pass'",
     );
-    assert_eq!(run(&pass, "e").unwrap(), Ran::Pass);
+    assert_eq!(outcome(&pass, "e"), Ran::Pass);
     let fail = fake(&scratch, "fail", "echo 'e fail'");
-    assert_eq!(run(&fail, "e").unwrap(), Ran::Fail);
+    assert_eq!(outcome(&fail, "e"), Ran::Fail);
     let planted = [
         (
             "status",
@@ -257,7 +273,7 @@ fn the_runner_trusts_only_the_exact_pass() {
     ];
     for (name, body, seen) in planted {
         let exe = fake(&scratch, name, body);
-        assert_eq!(run(&exe, "e").unwrap(), Ran::Other(seen.into()), "{name}");
+        assert_eq!(outcome(&exe, "e"), Ran::Other(seen.into()), "{name}");
     }
     let trapped = fake(
         &scratch,
@@ -265,7 +281,7 @@ fn the_runner_trusts_only_the_exact_pass() {
         "echo 'e pass'; echo 'a: trap stack at main.paka:1:1' >&2; exit 3",
     );
     let seen = "status 3, standard output \"e pass\\n\", standard error \"a: trap stack at main.paka:1:1\\n\"";
-    assert_eq!(run(&trapped, "e").unwrap(), Ran::Other(seen.into()));
+    assert_eq!(outcome(&trapped, "e"), Ran::Other(seen.into()));
 }
 
 /// A run past the fixed limit is stopped and reported as timed out.
@@ -273,5 +289,5 @@ fn the_runner_trusts_only_the_exact_pass() {
 fn the_runner_stops_a_run_past_the_limit() {
     let scratch = Scratch::new("examples-slow");
     let slow = fake(&scratch, "slow", "exec sleep 600");
-    assert_eq!(run(&slow, "e").unwrap(), Ran::TimedOut);
+    assert_eq!(outcome(&slow, "e"), Ran::TimedOut);
 }
