@@ -110,11 +110,14 @@ fn folders(dir: &Path) -> io::Result<Vec<PathBuf>> {
     Ok(folders)
 }
 
-/// Writes the expectations of run case `dir`: what `run` left.
+/// Writes the expectations of run case `dir`: what `run` left. A run killed or stopped past its
+/// limit shows speed, not meaning, and is refused.
 pub fn expect(dir: &Path, run: &Outcome) -> io::Result<()> {
-    let status = run
-        .status
-        .ok_or_else(|| io::Error::other("the interpreter was killed"))?;
+    let status = match run.status {
+        None => return Err(io::Error::other("the interpreter was killed")),
+        Some(4) => return Err(io::Error::other("the interpreter was stopped")),
+        Some(status) => status,
+    };
     fs::create_dir_all(dir)?;
     fs::write(dir.join("stdout"), &run.stdout)?;
     fs::write(dir.join("status"), format!("{status}\n"))?;
