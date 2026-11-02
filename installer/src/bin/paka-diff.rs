@@ -37,7 +37,8 @@ use paka::interp;
 use paka::source::{Source, read};
 use paka_installer::dev::Dev;
 use paka_installer::diff::{
-    Outcome, cases, difference, difference_in, no_core_dumps, shrink, stage, ui_examples,
+    Outcome, cases, compiled_limit, difference, difference_in, no_core_dumps, shrink, stage,
+    ui_examples,
 };
 use paka_installer::release;
 use paka_rt::abi::dev::app::Stopped;
@@ -369,7 +370,7 @@ fn fuzz(seeds: Range<u64>, keep: &Path, release: bool) -> io::Result<ExitCode> {
 /// built and run in release, which must agree with the interpreter.
 fn judged_release(dirs: &[PathBuf; 2], built: &Path, name: &str) -> io::Result<(usize, String)> {
     let ((verdict, line), reference) = judged(dirs, name, FUZZ_LIMIT, &[])?;
-    if stopped(&reference) {
+    if reference.stopped() {
         return Ok((verdict, line));
     }
     let (release, note) = released(built, &reference)?;
@@ -402,7 +403,8 @@ fn released(built: &Path, reference: &Outcome) -> io::Result<(usize, String)> {
             false => (1, format!("build failed: {why:?}")),
         });
     }
-    let run = native(&built.with_extension("prog"), built, &[], FUZZ_LIMIT)?;
+    let limit = compiled_limit(FUZZ_LIMIT);
+    let run = native(&built.with_extension("prog"), built, &[], limit)?;
     let trap = String::from_utf8_lossy(&reference.stderr);
     let stack = trap
         .lines()
@@ -568,11 +570,6 @@ fn kind(line: &str) -> String {
     reason.split(' ').take(words).collect::<Vec<_>>().join(" ")
 }
 
-/// Whether a run was stopped past its limit.
-fn stopped(o: &Outcome) -> bool {
-    o.status == Some(4) && o.stderr == b"stopped: time\n"
-}
-
 /// The verdict on the program staged in `dirs`, 0 agree, 1 differ or 2 unsupported, and its line.
 fn judge(
     dirs: &[PathBuf; 2],
@@ -592,14 +589,12 @@ fn judged(
 ) -> io::Result<((usize, String), Outcome)> {
     let start = Instant::now();
     let (reference, _) = run(&dirs[0], ENGINES[0], limit, args)?;
-    // Compiled code outruns the interpreter, so a dev run far slower than it has hung.
-    let slow = (start.elapsed() * 4).max(Duration::from_millis(20));
     // How far a stopped run got depends on speed, not meaning.
-    if stopped(&reference) {
+    if reference.stopped() {
         let why = format!("unsupported {name}: the interpreter ran past the limit");
         return Ok(((2, why), reference));
     }
-    let (dev, note) = run(&dirs[1], ENGINES[1], limit.min(slow), args)?;
+    let (dev, note) = run(&dirs[1], ENGINES[1], compiled_limit(start.elapsed()), args)?;
     let verdict = match (
         note.strip_prefix("unsupported: "),
         difference(&reference, &dev),

@@ -34,6 +34,19 @@ impl From<Output> for Outcome {
     }
 }
 
+impl Outcome {
+    /// Whether the run was stopped past its limit, maybe just after it printed a trap.
+    pub fn stopped(&self) -> bool {
+        self.status == Some(4) && self.stderr.ends_with(b"stopped: time\n")
+    }
+}
+
+/// The time a compiled run gets after an interpreter run of `interp`: compiled code outruns the
+/// interpreter, but a stack trap first fills the 64 MiB runner stack, and a busy machine stalls.
+pub fn compiled_limit(interp: Duration) -> Duration {
+    (interp * 4).max(Duration::from_secs(1))
+}
+
 /// How the dev run of `b` differs in meaning from the reference run `a`; `None` when they agree.
 pub fn difference(a: &Outcome, b: &Outcome) -> Option<String> {
     difference_in(a, b, "dev")
