@@ -2386,11 +2386,13 @@ or merged during review. Ids with a letter were added during review.
 
 ### M7-11a · L2 · Reserve `--paka-examples` and `--paka-replay` in all three modes
 
+- status: done
 - needs: M7-03
 - flags: none
 - done when: In the interpreter, dev mode and release, an app whose first argument is `--paka-examples` or `--paka-replay` never sees its arguments: where the switch is not served (the interpreter, dev mode, a binary without that example, `--paka-replay` in a headless app), or a served one is given in another shape, the run writes one usage line naming the switch and ends with status 2 before the start message, and no handler runs; a visual release binary still serves `--paka-replay`. A conformance case under tests/conformance/apps, with its expected output written first, gives the same output and status in the three modes. docs/decisions/M2-15.md section 1.4 names both switches with a dated amendment line, and the reference says so.
 - why this level: One argument rule at the three entry points the run loops already have, and one case; nothing is silent.
 - note: Per M7-03 section 2 and review change 4. Today only a visual release binary takes `--paka-replay` (paka-rt/src/headless.rs); a headless app and the other modes hand both words to the app.
+- note: Done: the rule sits in `paka_rt::effects::arguments`, which the interpreter, dev mode and release all call; the usage line is `NAME: SWITCH cannot be used here`. Cases `apps/args_switch_examples` and `apps/args_switch_replay`; `paka-diff --release` reports 447 agree, 0 differ. M2-15 section 1.4 and spec/paka.md amended (the reference was trimmed elsewhere to stay in its token limit).
 
 ### M7-11b · L4 · Lower named function examples for release and run each in its own process
 
