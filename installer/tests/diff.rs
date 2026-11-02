@@ -125,6 +125,22 @@ fn a_release_run_past_a_stack_trap_must_keep_what_was_printed_before_it() {
 }
 
 #[test]
+fn a_note_that_cannot_be_written_fails_the_harness() {
+    let dir = env::temp_dir().join(format!("paka-note-{}", process::id()));
+    fs::create_dir_all(dir.join("note")).unwrap();
+    let case = Path::new(ROOT).join("core/early_return/main.paka");
+    fs::copy(case, dir.join("main.paka")).unwrap();
+    let out = Command::new(env!("CARGO_BIN_EXE_paka-diff"))
+        .args(["--one", "dev", "note", "1000"])
+        .current_dir(&dir)
+        .output()
+        .unwrap();
+    fs::remove_dir_all(&dir).unwrap();
+    assert_eq!(out.status.code(), Some(2));
+    assert!(out.stderr.starts_with(b"paka-diff: cannot write note: "));
+}
+
+#[test]
 fn every_run_case_is_listed_once() {
     // The foreign cases build their hosts in this cache.
     let cache = std::env::temp_dir().join(format!("paka-diff-cache-{}", std::process::id()));
