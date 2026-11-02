@@ -4,9 +4,10 @@
 //! differs in each (M5-26). A planted release fault is found, shrunk and kept as a case (M6-20),
 //! and each of a fast subset of the others is found (M6-21).
 
-use paka_installer::diff::{Outcome, cases, difference};
+use paka_installer::diff::{Outcome, cases, compiled_limit, difference};
 use std::path::Path;
 use std::process::Command;
+use std::time::Duration;
 
 const ROOT: &str = concat!(env!("CARGO_MANIFEST_DIR"), "/../tests/conformance");
 
@@ -66,6 +67,25 @@ fn death_by_signal_differs() {
         ..Outcome::default()
     };
     assert!(difference(&clean, &killed).is_some());
+}
+
+#[test]
+fn a_run_stopped_after_its_trap_line_counts_as_stopped() {
+    let stopped = |stderr: &str| Outcome {
+        status: Some(4),
+        ..trapped(stderr)
+    };
+    assert!(stopped("stopped: time\n").stopped());
+    assert!(stopped("a: trap stack at main.paka:3:5\nstopped: time\n").stopped());
+    assert!(!trapped("stopped: time\n").stopped());
+    assert!(!stopped(TRAP).stopped());
+}
+
+#[test]
+fn a_compiled_run_outlasts_a_stack_fill_past_a_fast_interpreter() {
+    // A stack trap fills the 64 MiB runner stack (M4-05), slower than the interpreter's depth cap.
+    assert!(compiled_limit(Duration::from_millis(10)) >= Duration::from_secs(1));
+    assert!(compiled_limit(Duration::from_secs(2)) >= Duration::from_secs(8));
 }
 
 #[test]
