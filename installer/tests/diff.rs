@@ -6,8 +6,9 @@
 //! others is found (M6-21).
 
 use paka_installer::diff::{
-    Outcome, cases, compiled_limit, difference, expect, release_verdict, stop, stopped,
+    Outcome, cases, compiled_limit, difference, expect, release_verdict, room, stop, stopped,
 };
+use std::os::unix::fs::PermissionsExt;
 use std::path::Path;
 use std::process::{self, Command};
 use std::time::Duration;
@@ -427,4 +428,17 @@ fn a_planted_release_view_fault_differs_in_each_example_built() {
     assert_eq!(text.lines().filter(built).count(), 0, "{text}");
     assert!(text.contains("agree cases/examples/ui_ends answer_dropped; 3 actions"));
     assert_eq!(status, Some(1));
+}
+
+#[test]
+fn a_folder_with_no_room_for_a_build_fails_the_harness() {
+    let dir = env::temp_dir().join(format!("paka-room-{}", process::id()));
+    fs::create_dir_all(&dir).unwrap();
+    room(&dir).unwrap();
+    assert_eq!(fs::read_dir(&dir).unwrap().count(), 0);
+    fs::set_permissions(&dir, fs::Permissions::from_mode(0o555)).unwrap();
+    let full = room(&dir);
+    fs::set_permissions(&dir, fs::Permissions::from_mode(0o755)).unwrap();
+    fs::remove_dir_all(&dir).unwrap();
+    assert!(full.is_err());
 }
