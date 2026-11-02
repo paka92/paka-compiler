@@ -482,7 +482,7 @@ A hole `??name` stands for code not yet written; it takes the type its position 
 
 An example is `example name { ... }`: statements, then one Bool expression. It takes no
 arguments, performs no effects and may not use `?`. Examples may call `update` on a `var` state
-and compare effect lists with `==`. They are checked with the program and run only by
+and compare effect lists with `==`. They are checked with the program and run by
 `paka examples`. Each gets one status: `pass` (true), `fail` (false), `trapped` (a trap) or
 `unfinished` (a hole reached). Its line reads name, label, status; the label is `human-owned` when
 the signed approval store holds it, else `agent-written`.

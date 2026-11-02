@@ -61,7 +61,7 @@ cargo build --release --locked
 
 ```
 usage: paka run <path> [argument...]
-       paka build <path> -o <output>
+       paka build <path> -o <output> [--examples <name>...]
        paka check <path> [--json]
        paka examples <path>
        paka serve <path>
