@@ -382,14 +382,14 @@ unreachable()                         traps assert when reached
 
 - White space is exactly six characters: code points 9 to 13 and 32.
 - Text is matched exactly, left to right, without overlap. No patterns.
-- The sort is stable: `before(a, b)` says whether `a` must come before `b`, and items for which
-  it never says so keep their order.
+- The sort is stable: `before(a, b)` says whether `a` must come before `b`; ties keep their
+  order.
 - Map: `m[key]` reads and traps `out_of_bounds` when the key is missing. `m[key] = v` adds or
-  replaces. Every other use needs the key present: `m[key] += 1` on a new key traps. The count
-  idiom is `counts[w] = unwrap_or(get(counts, w), 0) + 1`.
+  replaces. Other uses need the key present: `m[key] += 1` on a new key traps. The count idiom
+  is `counts[w] = unwrap_or(get(counts, w), 0) + 1`.
 - A bad position, a count below zero, `pop` on an empty List, a shift count or `digits` out of
   range trap `out_of_bounds`.
-- There is no `map`, `filter`, `fold`, `sum`, `sorted` or `clamp`: write a loop.
+- There is no `map`, `filter`, `fold`, `sum`, `sorted` or `clamp`: loop.
 
 ## 10. Apps and effects
 
@@ -417,26 +417,27 @@ fn update(m: Msg) -> List<Effect<Msg>>                 // without state:
 | `Exit` | none | ends with status 0 |
 | `ExitWith(status)` | none | ends with that status: 0 or 5 to 255 |
 
-`then:` of `WriteFile` is a message value, which may carry context:
+`then:` of `WriteFile` is a message value that may carry context:
 `WriteFile(path, text, then: Saved(path), or: Failed)`.
 
-Effects are plain values; only the list the app's `update` returns is performed. `then:` and `or:`
+Effects are plain values; only the list `update` returns is performed. `then:` and `or:`
 are both required. A reason is one of `not found`, `no permission`, `not a file`, `not text`,
-`no space`, `failed`. `WriteFile` replaces the whole file; `ReadFile` gives the whole file.
+`no space`, `failed`. `WriteFile` replaces the whole file; `ReadFile` reads it all.
 
 How a program runs:
 
 - The command-line arguments fill the fields of the `start:` variant by position. A wrong count
   ends the run with status 2 and a usage line such as `wc: expected 1 argument (path), got 0`.
-- The state starts from its defaults. The start message is the first in one queue.
+  A first argument `--paka-examples` or `--paka-replay` is the tool's: unless served, status 2 too.
+- The state starts from its defaults; the start message is first in the queue.
 - The runtime takes the front message and calls `update`. When the handler has returned, its
   effects are performed in list order. Each file answer joins the back of the queue.
 - Answers arrive in the order their effects were performed. Answers carry no path: keep in the
   state what you wait for.
-- `Exit` and `ExitWith` end the program at once. Later effects are not performed, and an answer
-  queued at Exit is dropped.
+- `Exit` and `ExitWith` end the program at once. Later effects are not performed, and a queued
+  answer is dropped.
 - A trap in a handler performs none of that handler's effects.
-- There is no standard input: data comes in through arguments and files.
+- There is no standard input: data comes through arguments and files.
 
 Four stops end a program with one line on standard error and status 3:
 
@@ -447,9 +448,9 @@ Four stops end a program with one line on standard error and status 3:
 <app>: ended without Exit
 ```
 
-A grant is tested when its effect is about to be performed. Every path must reach `Exit` or
+A grant is tested as its effect is performed. Every path must reach `Exit` or
 `ExitWith`: an empty queue without one is the fourth stop. A literal status outside 0 or 5 to 255
-is the check error `literal-out-of-range`. A program without an app checks, but `paka run` and
+is the check error `literal-out-of-range`. A program without an app checks; `paka run` and
 `paka build` refuse it (`no-app`).
 
 ## 11. Traps, holes, examples

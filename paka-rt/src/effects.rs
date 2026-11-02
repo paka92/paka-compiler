@@ -57,9 +57,19 @@ pub enum Next<F, M> {
     Answer(F, String),
 }
 
+/// The tool's switches (M2-15 section 1.4): a first argument that is one never reaches the app.
+const SWITCHES: [&str; 2] = ["--paka-examples", "--paka-replay"];
+
 /// The start message's fields from the command-line arguments, or the usage line.
 pub fn arguments(app: &str, fields: &[&str], args: &[OsString]) -> Result<Vec<String>, End> {
     let usage = |line: String| (2, format!("{app}: {line}\n"));
+    if let Some(switch) = args
+        .first()
+        .and_then(|a| a.to_str())
+        .filter(|a| SWITCHES.contains(a))
+    {
+        return Err(usage(format!("{switch} cannot be used here")));
+    }
     if args.len() != fields.len() {
         let plural = if fields.len() == 1 { "" } else { "s" };
         let names = match fields {
