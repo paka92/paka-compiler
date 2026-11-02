@@ -2152,12 +2152,13 @@ or merged during review. Ids with a letter were added during review.
 
 ### M6-23 · L5 · Decide whether release IR may promise no overlap for inout
 
+- status: done
 - needs: M6-01, M6-22
 - flags: decision, owner, native-only
 - done when: Owner signs a written decision citing the suite's results, the exact attribute placement and the plan if a hole appears later.
 - why this level: Turns a checker rule into undefined behaviour if wrong; a trust decision only the owner can take.
 - note: Process: one evidence report and one reviewer told to break it, then the owner; not three proposals. If the owner declines, M6-24 is dropped.
-- note: A draft proposal is in docs/decisions/M6-23.md, awaiting the owner: `noalias` on the inout and read-only pointer parameters of user functions, signed by the hash of the overlap rules; stencil 5.0 s to 1.15 s with it added by hand.
+- note: Done: approved by the owner on 2026-11-02 with the review's five changes; see docs/decisions/M6-23.md. `noalias` on the inout and read-only pointer parameters of user functions, signed by the hash of the overlap rules and the two emitter files that decide what reaches them; stencil 5.0 s to 1.15 s with it added by hand.
 
 ### M6-24 · L4 · Emit the no-overlap promise on inout parameters as signed
 
@@ -2167,6 +2168,7 @@ or merged during review. Ids with a letter were added during review.
 - why this level: LLVM's noalias rules are subtle; one misplaced attribute miscompiles only under optimization.
 - note: Dropped if the owner declines in M6-23.
 - note: Per M6-01: adds the `noalias` row and its linter rule together, only as M6-23 signs.
+- note: Per M6-23: the promise covers read-only pointer parameters as well as inout ones, at its 1.2 places, with 1.3's hash test and exemption test. 'A two-array kernel vectorizes without a run-time overlap check' becomes 'stencil's `sweep` vectorizes with no bounds check in its loop body'; the item block comparison LLVM adds stays (1.2).
 
 ### M6-25 · L2 · Run the 24-hour three-back-end fuzz and file each divergence
 

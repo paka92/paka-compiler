@@ -17,7 +17,7 @@ money. Each of those needs the owner's own yes; such points are marked "owner mu
 - Downloads allowed: the TypeScript compiler (M3-05) and the Cranelift crates (M4-01b). LLVM 21 is
   already on the build machine. Each task still names what it fetches before it fetches.
 
-Not decided, because each waits on a measurement or a result: M3-21, M3-23, M4-01b, M4-04, M4-05, M5-08, M5-09, M6-23.
+Not decided, because each waits on a measurement or a result: M3-21, M3-23, M4-01b, M4-04, M4-05, M5-08, M5-09.
 
 ## At a glance
 
@@ -200,6 +200,10 @@ Not decided, because each waits on a measurement or a result: M3-21, M3-23, M4-0
 | M6-02 | What is timed, and how? | Whole process, timed outside |
 | M6-02 | How does the published table state that Rust is optimized by LLVM 22 and Paka and C++ by LLVM 21? | State it; C++ is control |
 | M6-02 | Which measured ratio is called 'parity'? | Parity means within 10% |
+| M6-23 | May release IR promise LLVM's `noalias` on function parameters? | Yes: user functions' pointer parameters |
+| M6-23 | Where is `noalias` written, and where never? | User `define` parameters only |
+| M6-23 | What ties the promise to the checker that was tested? | Hash of three files, run recorded |
+| M6-23 | What happens when a hole is found later? | Promise off the same day |
 | M7-01 | What makes an approval something an agent cannot produce? | Signature from owner's key |
 | M7-01 | Where do approvals live, and what exactly is signed? | One signed file, repository root |
 | M7-01 | What stops a pull request from weakening the gate itself? | Gate runs from target branch |
