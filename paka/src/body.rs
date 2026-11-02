@@ -10,6 +10,7 @@ use crate::ast::{self, Block, Def, Expr, ExprKind as K, Pos, Program};
 use crate::diagnostic::Diagnostic;
 use crate::resolve::Resolved;
 use crate::sig::{Defs, Item, Node, Sig, Table, Ty, Types};
+pub use own::BY_VALUE;
 #[cfg(test)]
 pub(crate) use own::RULE_A_OFF;
 use std::collections::{BTreeMap, BTreeSet};

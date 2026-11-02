@@ -22,6 +22,10 @@ const OVERLAP: &str = "inout-overlap";
 const READ: &str = "changed-while-read";
 const WALKED: &str = "changed-while-walked";
 
+/// The named types whose reads are fresh values, as with function types: a read of one holds no
+/// place. Each is passed by value in release IR, never reaching a `noalias` parameter (M6-23 1.3).
+pub const BY_VALUE: [&str; 3] = ["Int", "Float", "Bool"];
+
 #[cfg(test)]
 thread_local! {
     /// Switches Rule A off on this thread, so a test can show the overlap run fail (M6-22).
@@ -269,7 +273,7 @@ impl Cx<'_, '_> {
         let &ty = self.info.get(&span(e))?;
         let fresh = self.is_var(ty)
             || matches!(self.types.node(ty), Node::Fn(..))
-            || ["Int", "Float", "Bool"].iter().any(|n| self.is(ty, n));
+            || BY_VALUE.iter().any(|n| self.is(ty, n));
         if fresh { None } else { self.rooted(e) }
     }
 
