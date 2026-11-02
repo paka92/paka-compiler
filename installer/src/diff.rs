@@ -150,6 +150,15 @@ pub fn expect(dir: &Path, run: &Outcome) -> io::Result<()> {
     Ok(())
 }
 
+/// Fails when `dir` has no room for a build's files (16 MiB), so a full disk ends the run instead
+/// of reading as a divergence.
+pub fn room(dir: &Path) -> io::Result<()> {
+    let probe = dir.join("room");
+    let written = fs::write(&probe, vec![0; 16 << 20]);
+    let _ = fs::remove_file(&probe);
+    written
+}
+
 /// Copies case `case` into the empty folder `to`: its own files, then the contents of `files/`
 /// (tests/conformance/README.md).
 pub fn stage(case: &Path, to: &Path) -> io::Result<()> {
