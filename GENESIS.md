@@ -2,7 +2,7 @@
 
 **A programming language for code written by AI agents.**
 
-Genesis paper · draft 1 · 15 October 2026 · Status: language and interpreter built; dev mode next
+Genesis paper · draft 1 · 15 October 2026 · Status: language, interpreter, dev mode and live GUI built; release mode next
 
 ---
 
@@ -21,7 +21,7 @@ Paka stands on six pillars:
 
 The first three are what Paka must deliver. The last three make them possible and safe to rely on.
 
-Built so far: the language reference, a parser, a type checker and a slow interpreter, plus native builds for a small subset. Dev mode, the live GUI and release mode are not built. Every other number about Paka is a target or an estimate until it is measured. Figures cited from other work are the sources' own.
+Built so far: the language reference, a parser, a type checker, an interpreter, dev mode and the live GUI on Linux. Release mode is being built and its speed is not yet published. Every other number about Paka is a target or an estimate until it is measured. Figures cited from other work are the sources' own.
 
 **First result.** One model wrote the same tasks in Paka, Rust and TypeScript. With no Paka code in its training, it wrote Paka nearly as correctly as Rust, at 2.3 times the output tokens. Cutting that cost is the aim of the next stage ([section 9](#9-the-first-measurement)).
 

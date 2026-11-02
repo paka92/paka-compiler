@@ -3,7 +3,7 @@
 Every task needed to build Paka, cut by milestone and graded by how capable an agent it needs.
 A caller reads a task, starts an agent of that level, and checks the result against `done when`.
 
-Status: nothing is built yet. This list was cut by six planning agents and corrected after three rounds
+Status: milestones 1 to 5 have passed their exit checks; 6 and 7 are under way. This list was cut by six planning agents and corrected after three rounds
 of independent checks (one checker did a real trial build of milestone 1).
 
 ## Levels

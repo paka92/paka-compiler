@@ -5,8 +5,9 @@ A programming language for code written by AI agents.
 People describe what they want and decide what a program may do; an agent writes and reads the
 code. The design and its reasons are in the [genesis paper](GENESIS.md).
 
-**Status:** the language is defined, and a checker and an interpreter run it. Dev mode, the live
-GUI and release mode are being built, in that order.
+**Status:** the language, its interpreter, dev mode and the live GUI are built; milestones 1 to 5
+have passed their exit checks. Release mode (milestone 6) and the evidence gates (milestone 7) are
+being built.
 
 ## What works
 
@@ -14,12 +15,17 @@ GUI and release mode are being built, in that order.
   adds visual apps.
 - `paka check`: parses and type-checks the full language of the reference.
 - `paka run`: runs headless programs in an interpreter.
-- `paka build`: compiles the milestone 1 subset to a native binary through LLVM IR and `clang`.
+- `paka build`: compiles a program to a native release binary through LLVM IR and `clang`; a
+  visual app built this way runs without a window so far.
 - `paka examples`: runs a program's in-file examples.
 - `paka serve`: the agent tool interface, JSON lines on standard input and output; requests are
   checked and dispatched. `find` lists definitions by name, user, kind, state or type shape;
   `view` shows one with the signatures it uses, both within a token budget; `edit` replaces, adds
-  or deletes one definition against its version and writes the files. Run is being built.
+  or deletes one definition against its version and writes the files; `run` runs the program in
+  dev mode, where an edit is compiled with Cranelift and swapped into the running program; `look`
+  reads a visual app's element tree, takes a screenshot and sends clicks and keys.
+- `paka approve`: the owner reviews and approves examples and grant changes.
+- `paka gate`: refuses a merged tree whose approvals differ or whose human-owned examples fail.
 
 ```paka
 enum Msg { Start }
@@ -43,7 +49,7 @@ Needs Rust 1.96.1 (pinned in `rust-toolchain.toml`) and, for `paka build`, `clan
 Outside crates are vendored in `vendor/`, each listed in `.cargo/approved-crates.txt`, and build
 offline; building needs no system package beyond the toolchain.
 
-Visual apps, being built, run in a Wayland session. A window loads `libwayland-client`,
+Visual apps run in a Wayland session. A window loads `libwayland-client`,
 `libwayland-cursor` and `libxkbcommon` at run time (Debian and Ubuntu: `libwayland-client0`,
 `libwayland-cursor0`, `libxkbcommon0`). The font is Noto Sans Regular, shipped in `gui/fonts/`
 under the SIL Open Font License 1.1.
@@ -59,6 +65,8 @@ usage: paka run <path> [argument...]
        paka check <path> [--json]
        paka examples <path>
        paka serve <path>
+       paka approve <path> [--adopt <name>] [--drop <name>] [--key <file>]
+       paka gate <tree> --base <tree> [--json]
 ```
 
 ## Benchmark
