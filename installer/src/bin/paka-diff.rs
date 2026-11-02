@@ -6,8 +6,11 @@
 //! `paka-diff --release [ROOT]` adds release mode (M6-06): each case is also built with the `paka`
 //! next to this binary and run, and must agree with the interpreter. A case with a hole must be
 //! refused by the holes' names instead; a case is skipped while one of its tags (release.rs) is in
-//! ROOT's `release-skip`. ROOT's `release-exempt` must list exactly the cases with a hole and the
-//! example-status cases.
+//! ROOT's `release-skip`. Each example-status case is built with all its function examples
+//! (`paka build --examples`, M7-11b) and each example run in its own process by the binary's
+//! `--paka-examples`; it must end as the interpreter's run of it does. ROOT's `release-exempt` must
+//! list exactly the run cases with a hole (`hole`) and the example-status cases with one
+//! (`unfinished`), which stay interpreter and dev only.
 //!
 //! `paka-diff --fuzz FIRST COUNT KEEP` does the same for the generated programs of COUNT seeds
 //! from FIRST (M4-41). Each that differs is shrunk while it keeps that kind of difference and
@@ -39,6 +42,7 @@
 
 use paka::interp;
 use paka::interp::Logged;
+use paka::release::Ran;
 use paka::source::{Source, read};
 use paka_installer::dev::Dev;
 use paka_installer::diff::{
@@ -55,7 +59,7 @@ use std::ffi::OsString;
 use std::fs;
 use std::io::{self, Write};
 use std::ops::Range;
-use std::os::unix::ffi::OsStringExt;
+use std::os::unix::ffi::{OsStrExt, OsStringExt};
 use std::os::unix::fs::PermissionsExt;
 use std::path::{Path, PathBuf};
 use std::process::{self, Command, ExitCode, Stdio};
@@ -120,18 +124,9 @@ fn compare_release(root: &Path) -> io::Result<ExitCode> {
     let file = |name| fs::read_to_string(root.join(name));
     let invalid = |why| io::Error::new(io::ErrorKind::InvalidData, why);
     let skip = release::skipped(&file("release-skip")?).map_err(invalid)?;
-    let [holes, examples] = release::exempt(&file("release-exempt")?).map_err(invalid)?;
+    let [holes, unfinished] = release::exempt(&file("release-exempt")?).map_err(invalid)?;
     let named = |dir: &Path| dir.strip_prefix(root).unwrap_or(dir).display().to_string();
     let command = |dir: &Path| fs::read_to_string(dir.join("command")).unwrap_or_default();
-    let found: BTreeSet<_> = (programs(root)?.iter())
-        .filter(|dir| command(dir).starts_with("examples "))
-        .map(|dir| named(dir))
-        .collect();
-    if found != examples {
-        return Err(invalid(format!(
-            "release-exempt lists examples {examples:?}, not {found:?}"
-        )));
-    }
     let paka = env::current_exe()?.with_file_name("paka");
     let scratch = scratch();
     let (mut tally, mut skipped, mut seen) = (Tally::default(), 0, BTreeSet::new());
@@ -167,10 +162,40 @@ fn compare_release(root: &Path) -> io::Result<ExitCode> {
         }
         tally.add((verdict, line))?;
     }
+    let mut unseen = BTreeSet::new();
+    for case in programs(root)? {
+        let Some(target) = command(&case)
+            .strip_prefix("examples ")
+            .map(|t| t.trim().to_owned())
+        else {
+            continue;
+        };
+        let name = named(&case);
+        let dir = scratch.join(name.replace('/', "-"));
+        stage(&case, &dir)?;
+        let Some(result) = examples_released(&paka, &dir, &target)? else {
+            unseen.insert(name.clone());
+            writeln!(
+                tally.out,
+                "skipped {name}: unfinished, interpreter and dev only"
+            )?;
+            skipped += 1;
+            continue;
+        };
+        tally.add(match result {
+            Ok(note) => (0, format!("agree {name}; release {note}")),
+            Err(why) => (1, format!("differ {name}: release {why}")),
+        })?;
+    }
     let _ = fs::remove_dir_all(&scratch);
     if seen != holes {
         return Err(invalid(format!(
             "release-exempt lists holes {holes:?}, not {seen:?}"
+        )));
+    }
+    if unseen != unfinished {
+        return Err(invalid(format!(
+            "release-exempt lists unfinished {unfinished:?}, not {unseen:?}"
         )));
     }
     writeln!(tally.out, "{skipped} skipped in release")?;
@@ -190,7 +215,13 @@ fn refused(
             "has a hole but is not a `hole` line of release-exempt".into()
         ));
     }
-    let out = Outcome::from(build(paka, dir, &dir.with_extension("prog"))?);
+    let out = Outcome::from(build(
+        paka,
+        dir,
+        "main.paka",
+        &dir.with_extension("prog"),
+        &[],
+    )?);
     let text = String::from_utf8_lossy(&out.stderr);
     let named = names.iter().all(|n| text.contains(&format!("??{n}")));
     Ok(
@@ -212,7 +243,7 @@ fn ran(
     reference: &Outcome,
     args: &[OsString],
 ) -> io::Result<Result<String, String>> {
-    let out = build(paka, dir, &dir.with_extension("prog"))?;
+    let out = build(paka, dir, "main.paka", &dir.with_extension("prog"), &[])?;
     if !out.status.success() {
         let why = String::from_utf8_lossy(&out.stderr).into_owned();
         let stale = match why.contains("undefined") && why.contains("paka_rt1_") {
@@ -228,15 +259,116 @@ fn ran(
     })
 }
 
-/// `paka build main.paka` in `dir`, written to `exe`.
-fn build(paka: &Path, dir: &Path, exe: &Path) -> io::Result<process::Output> {
+/// An app for a program of function examples without one, which a build needs.
+const EXAMPLES_APP: &str = "
+enum ReleaseMsg { ReleaseStart }
+
+fn release_update(m: ReleaseMsg) -> List<Effect<ReleaseMsg>> { [Exit] }
+
+app release_examples {
+  start: ReleaseStart
+  update: release_update
+  grants: []
+}
+";
+
+/// Builds the examples case staged in `dir`, whose command names `target`, with all its function
+/// examples (M7-11b), and runs each in its own process: it must end as the interpreter's run of it
+/// does. A program that does not check must be refused; none when it has a hole.
+fn examples_released(
+    paka: &Path,
+    dir: &Path,
+    target: &str,
+) -> io::Result<Option<Result<String, String>>> {
+    // Named as the case's run from `dir` names them.
+    let at = dir.join(target);
+    let (read, found) = read(at.as_os_str());
+    let mut source = Source::default();
+    for file in &read.files {
+        let rest = &file.path.as_bytes()[at.as_os_str().len()..];
+        let path = OsString::from_vec([target.as_bytes(), rest].concat());
+        source.add(path, read.text[file.bytes.clone()].to_vec());
+    }
+    let Ok((core, ..)) = found.and_then(|()| paka::check(target, &source)) else {
+        let status = build(paka, dir, target, &dir.with_extension("prog"), &[])?.status;
+        return Ok(Some(match status.code() {
+            Some(1) => Ok("refused, as the program does not check".into()),
+            _ => Err(format!(
+                "build of a program that does not check ended {status}"
+            )),
+        }));
+    };
+    if core.sites.iter().any(|s| s.hole.is_some()) {
+        return Ok(None);
+    }
+    let names: Vec<_> = core.examples.iter().map(|e| e.name.as_str()).collect();
+    if names.is_empty() {
+        return Ok(Some(Ok("has no function example".into())));
+    }
+    if core.app.is_none() {
+        let file = dir.join(if target == "." {
+            "release_app.paka"
+        } else {
+            target
+        });
+        let mut file = fs::OpenOptions::new()
+            .create(true)
+            .append(true)
+            .open(file)?;
+        file.write_all(EXAMPLES_APP.as_bytes())?;
+    }
+    let out = build(paka, dir, target, &dir.with_extension("prog"), &names)?;
+    if !out.status.success() {
+        let why = String::from_utf8_lossy(&out.stderr);
+        return Ok(Some(Err(format!("build failed: {why:?}"))));
+    }
+    for name in &names {
+        let Some(Ok((_, want))) = interp::example(&core, name) else {
+            return Ok(Some(Err(format!(
+                "example {name}: the interpreter faulted"
+            ))));
+        };
+        let ran = paka::release::run(&dir.with_extension("prog"), name)?;
+        if !example_agrees(&want, &ran) {
+            let want = want.lines().next().unwrap_or_default();
+            return Ok(Some(Err(format!("example {want}; release {ran}"))));
+        }
+    }
+    Ok(Some(Ok(format!("examples agree: {}", names.len()))))
+}
+
+/// Whether a release run ended as the interpreter's entry `want` of the same example.
+fn example_agrees(want: &str, ran: &Ran) -> bool {
+    let mut lines = want.lines();
+    let head = lines.next().unwrap_or_default();
+    let verdict = head.split_once(' ').map_or("", |(_, v)| v);
+    let (verdict, at) = verdict.split_once(" at ").unwrap_or((verdict, ""));
+    match (verdict, ran) {
+        ("pass", Ran::Pass) | ("fail", Ran::Fail) => true,
+        // Stack and memory trap positions may differ between engines (M2-06 section 1.4).
+        ("trapped", Ran::Trapped(line)) => (lines.next())
+            .and_then(|l| l.strip_prefix("  trap "))
+            .is_some_and(|kind| match kind {
+                "stack" | "memory" => line.contains(&format!(": trap {kind} at ")),
+                _ => line.ends_with(&format!(": trap {kind} at {at}")),
+            }),
+        _ => false,
+    }
+}
+
+/// `paka build TARGET` in `dir`, written to `exe`, with function examples `examples` built in.
+fn build(
+    paka: &Path,
+    dir: &Path,
+    target: &str,
+    exe: &Path,
+    examples: &[&str],
+) -> io::Result<process::Output> {
     let mut command = Command::new(paka);
-    command.current_dir(dir).args([
-        "build".as_ref(),
-        "main.paka".as_ref(),
-        "-o".as_ref(),
-        exe.as_os_str(),
-    ]);
+    (command.current_dir(dir).args(["build", target, "-o"])).arg(exe);
+    if !examples.is_empty() {
+        command.arg("--examples").args(examples);
+    }
     if let Some(plant) = release_plant() {
         command.env("PATH", planted_clang(plant)?);
     }
@@ -406,7 +538,9 @@ fn released(built: &Path, reference: &Outcome) -> io::Result<(usize, String)> {
     let out = build(
         &env::current_exe()?.with_file_name("paka"),
         built,
+        "main.paka",
         &built.with_extension("prog"),
+        &[],
     )?;
     let why = String::from_utf8_lossy(&out.stderr);
     let refused = ["[unsupported-form]", "[hole-in-build]"]
@@ -553,7 +687,9 @@ fn built_here() -> Result<Option<PathBuf>, String> {
         build(
             &env::current_exe()?.with_file_name("paka"),
             ".".as_ref(),
+            "main.paka",
             &exe,
+            &[],
         )
     });
     match built {
@@ -819,4 +955,29 @@ fn one(args: &[OsString]) -> ExitCode {
         }
     };
     ExitCode::from(status)
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    fn trapped(kind: &str, at: &str) -> Ran {
+        Ran::Trapped(format!("app: trap {kind} at main.paka:{at}"))
+    }
+
+    #[test]
+    fn a_trap_agrees_by_kind_and_position_but_stack_and_memory_by_kind_alone() {
+        for kind in ["stack", "memory"] {
+            let want = format!("deep trapped at main.paka:11:53\n  trap {kind}\n  in down\n");
+            assert!(example_agrees(&want, &trapped(kind, "11:4")), "{kind}");
+            assert!(
+                !example_agrees(&want, &trapped("overflow", "11:53")),
+                "{kind}"
+            );
+        }
+        let want = "big trapped at main.paka:12:29\n  trap overflow\n  in big\n";
+        assert!(example_agrees(want, &trapped("overflow", "12:29")));
+        assert!(!example_agrees(want, &trapped("overflow", "12:30")));
+        assert!(!example_agrees(want, &trapped("stack", "12:29")));
+    }
 }

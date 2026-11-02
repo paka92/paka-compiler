@@ -52,6 +52,8 @@ pub const MAP: &str = "declare i32 @paka_rt1_map(i64, ptr, i64, ptr, i64, ptr, p
 pub const APP: &str = "declare i32 @paka_rt1_app(ptr)";
 /// A visual app's entry (M6-18).
 pub const VISUAL: &str = "declare i32 @paka_rt1_visual(ptr)";
+/// A build's function examples (M7-11b).
+pub const EXAMPLES: &str = "declare i32 @paka_rt1_examples(ptr, i64, ptr, i64, ptr)";
 /// A view's op (M6-18a).
 pub const VIEW: &str = "declare i32 @paka_rt1_view(i64, i64, i64, i64, i64, i64) nounwind";
 pub const ENTRIES: &[&str] = &[
@@ -65,6 +67,7 @@ pub const ENTRIES: &[&str] = &[
     MAP,
     APP,
     VISUAL,
+    EXAMPLES,
     VIEW,
 ];
 
@@ -77,8 +80,8 @@ mod tests {
         paka_rt1_alloc, paka_rt1_copy, paka_rt1_drop, paka_rt1_map, paka_rt1_text, paka_rt1_view,
     };
     use super::super::{
-        App, Update, paka_rt1_app, paka_rt1_run, paka_rt1_stack_limit, paka_rt1_trap,
-        paka_rt1_visual,
+        App, Example, Update, paka_rt1_app, paka_rt1_examples, paka_rt1_run, paka_rt1_stack_limit,
+        paka_rt1_trap, paka_rt1_visual,
     };
     use super::*;
     use std::slice;
@@ -109,6 +112,9 @@ mod tests {
     impl Ir for Option<Update> {
         const IR: &str = "ptr";
     }
+    impl Ir for Option<Example> {
+        const IR: &str = "ptr";
+    }
 
     /// An entry's declaration, from its Rust signature.
     trait Declared {
@@ -127,6 +133,7 @@ mod tests {
     declared!(A);
     declared!(A, B);
     declared!(A, B, C);
+    declared!(A, B, C, D, E);
     declared!(A, B, C, D, E, F);
     declared!(A, B, C, D, E, F, G);
     declared!(A, B, C, D, E, F, G, H);
@@ -154,6 +161,9 @@ mod tests {
         assert_eq!(APP, app.declared("paka_rt1_app"));
         let visual = paka_rt1_visual as unsafe extern "C" fn(&'static App) -> _;
         assert_eq!(VISUAL, visual.declared("paka_rt1_visual"));
+        let examples = paka_rt1_examples
+            as unsafe extern "C" fn(*const u8, _, *const u8, _, Option<Example>) -> _;
+        assert_eq!(EXAMPLES, examples.declared("paka_rt1_examples"));
         for (line, made) in lines.iter().zip(made) {
             assert_eq!(*line, format!("{made} nounwind"));
         }

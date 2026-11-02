@@ -63,13 +63,18 @@ const SWITCHES: [&str; 2] = ["--paka-examples", "--paka-replay"];
 
 /// The start message's fields from the command-line arguments, or the usage line.
 pub fn arguments(app: &str, fields: &[&str], args: &[OsString]) -> Result<Vec<String>, End> {
-    let usage = |line: String| (2, format!("{app}: {line}\n"));
+    start_fields(fields, args).map_err(|why| (2, format!("{app}: {why}\n")))
+}
+
+/// The start message's fields from the command-line arguments, or the usage line's text after
+/// `<app>: `.
+pub fn start_fields(fields: &[&str], args: &[OsString]) -> Result<Vec<String>, String> {
     if let Some(switch) = args
         .first()
         .and_then(|a| a.to_str())
         .filter(|a| SWITCHES.contains(a))
     {
-        return Err(usage(format!("{switch} cannot be used here")));
+        return Err(format!("{switch} cannot be used here"));
     }
     if args.len() != fields.len() {
         let plural = if fields.len() == 1 { "" } else { "s" };
@@ -78,13 +83,13 @@ pub fn arguments(app: &str, fields: &[&str], args: &[OsString]) -> Result<Vec<St
             _ => format!(" ({})", fields.join(", ")),
         };
         let (want, got) = (fields.len(), args.len());
-        return Err(usage(format!(
+        return Err(format!(
             "expected {want} argument{plural}{names}, got {got}"
-        )));
+        ));
     }
     let text = |(i, arg): (usize, &OsString)| match arg.to_str() {
         Some(text) => Ok(text.to_string()),
-        None => Err(usage(format!("argument {} is not text", i + 1))),
+        None => Err(format!("argument {} is not text", i + 1)),
     };
     args.iter().enumerate().map(text).collect()
 }
