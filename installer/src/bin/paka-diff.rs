@@ -47,7 +47,7 @@ use paka::source::{Source, read};
 use paka_installer::dev::Dev;
 use paka_installer::diff::{
     Outcome, cases, compiled_limit, difference, difference_in, in_release, no_core_dumps, shrink,
-    stage, ui_examples,
+    stage, stop, stopped, ui_examples,
 };
 use paka_installer::release;
 use paka_rt::abi::dev::app::Stopped;
@@ -429,12 +429,7 @@ fn planted_clang(n: usize) -> io::Result<OsString> {
 /// Runs `exe` in `dir` with no display, killed past `limit`.
 fn native(exe: &Path, dir: &Path, args: &[OsString], limit: Duration) -> io::Result<Outcome> {
     let command = &mut headless(exe, dir);
-    let stopped = |o| Outcome {
-        stderr: b"stopped: time\n".to_vec(),
-        status: Some(4),
-        ..o
-    };
-    Ok(exec(command.args(args), b"", limit)?.unwrap_or_else(stopped))
+    Ok(exec(command.args(args), b"", limit)?.unwrap_or_else(stop))
 }
 
 /// `exe` to run in `dir` with no display.
@@ -491,7 +486,7 @@ fn fuzz(seeds: Range<u64>, keep: &Path, release: bool) -> io::Result<ExitCode> {
 /// built and run in release, which must agree with the interpreter.
 fn judged_release(dirs: &[PathBuf; 2], built: &Path, name: &str) -> io::Result<(usize, String)> {
     let ((verdict, line), reference, limit) = judged(dirs, name, FUZZ_LIMIT, &[])?;
-    if reference.stopped() {
+    if stopped(&reference) {
         return Ok((verdict, line));
     }
     let (release, note) = released(built, &reference, limit)?;
@@ -765,7 +760,7 @@ fn judged(
     let (reference, _) = run(&dirs[0], ENGINES[0], limit, args)?;
     let compiled = compiled_limit(start.elapsed());
     // How far a stopped run got depends on speed, not meaning.
-    if reference.stopped() {
+    if stopped(&reference) {
         let why = format!("unsupported {name}: the interpreter ran past the limit");
         return Ok(((2, why), reference, compiled));
     }

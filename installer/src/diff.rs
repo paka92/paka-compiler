@@ -16,6 +16,20 @@ use std::ops::Range;
 use std::path::{Path, PathBuf};
 use std::time::Duration;
 
+/// `run` as stopped past its limit: status 4 and `stopped: time` its whole standard error.
+pub fn stop(run: Outcome) -> Outcome {
+    Outcome {
+        stderr: b"stopped: time\n".to_vec(),
+        status: Some(4),
+        ..run
+    }
+}
+
+/// Whether `run` was stopped past its limit, maybe just after it printed a trap.
+pub fn stopped(run: &Outcome) -> bool {
+    run.status == Some(4) && run.stderr.ends_with(b"stopped: time\n")
+}
+
 /// The time a compiled run gets after an interpreter run of `interp`: compiled code outruns the
 /// interpreter, but a stack trap first fills the 64 MiB runner stack, and a busy machine stalls.
 pub fn compiled_limit(interp: Duration) -> Duration {

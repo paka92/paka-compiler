@@ -60,13 +60,6 @@ impl From<Output> for Outcome {
     }
 }
 
-impl Outcome {
-    /// Whether the run was stopped past its limit, maybe just after it printed a trap.
-    pub fn stopped(&self) -> bool {
-        self.status == Some(4) && self.stderr.ends_with(b"stopped: time\n")
-    }
-}
-
 /// The status a run ended with, `None` when a signal ended it.
 fn code(status: ExitStatus) -> Option<i32> {
     status.code().filter(|_| status.signal().is_none())

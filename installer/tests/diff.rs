@@ -5,7 +5,7 @@
 //! release fault is found, shrunk and kept as a case (M6-20), and each of a fast subset of the
 //! others is found (M6-21).
 
-use paka_installer::diff::{Outcome, cases, compiled_limit, difference};
+use paka_installer::diff::{Outcome, cases, compiled_limit, difference, stop, stopped};
 use std::path::Path;
 use std::process::Command;
 use std::time::Duration;
@@ -72,14 +72,17 @@ fn death_by_signal_differs() {
 
 #[test]
 fn a_run_stopped_after_its_trap_line_counts_as_stopped() {
-    let stopped = |stderr: &str| Outcome {
+    let four = |stderr: &str| Outcome {
         status: Some(4),
         ..trapped(stderr)
     };
-    assert!(stopped("stopped: time\n").stopped());
-    assert!(stopped("a: trap stack at main.paka:3:5\nstopped: time\n").stopped());
-    assert!(!trapped("stopped: time\n").stopped());
-    assert!(!stopped(TRAP).stopped());
+    assert!(stopped(&four("stopped: time\n")));
+    assert!(stopped(&four(
+        "a: trap stack at main.paka:3:5\nstopped: time\n"
+    )));
+    assert!(!stopped(&trapped("stopped: time\n")));
+    assert!(!stopped(&four(TRAP)));
+    assert!(stopped(&stop(trapped(TRAP))));
 }
 
 #[test]
