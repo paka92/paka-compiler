@@ -42,7 +42,7 @@
 
 use paka::interp;
 use paka::interp::Logged;
-use paka::release::Ran;
+use paka::release::{Ran, exec};
 use paka::source::{Source, read};
 use paka_installer::dev::Dev;
 use paka_installer::diff::{
@@ -62,7 +62,7 @@ use std::ops::Range;
 use std::os::unix::ffi::{OsStrExt, OsStringExt};
 use std::os::unix::fs::PermissionsExt;
 use std::path::{Path, PathBuf};
-use std::process::{self, Command, ExitCode, Stdio};
+use std::process::{self, Command, ExitCode};
 use std::thread;
 use std::time::{Duration, Instant};
 
@@ -252,7 +252,7 @@ fn ran(
         };
         return Ok(Err(format!("build failed{stale}: {why:?}")));
     }
-    let release = native(&dir.with_extension("prog"), dir, args, Stdio::null(), LIMIT)?;
+    let release = native(&dir.with_extension("prog"), dir, args, LIMIT)?;
     Ok(match difference_in(reference, &release, "release") {
         Some(why) => Err(why),
         None => Ok("agree".into()),
@@ -426,47 +426,22 @@ fn planted_clang(n: usize) -> io::Result<OsString> {
     Ok(path)
 }
 
-/// Runs `exe` in `dir` on `stdin` with no display, killed past `limit`, its output in files beside
-/// `dir`.
-fn native(
-    exe: &Path,
-    dir: &Path,
-    args: &[OsString],
-    stdin: Stdio,
-    limit: Duration,
-) -> io::Result<Outcome> {
-    let [stdout, stderr] = ["stdout", "stderr"].map(|e| dir.with_extension(e));
-    let mut child = (Command::new(exe).current_dir(dir).args(args))
-        .env_remove("WAYLAND_DISPLAY")
-        .stdin(stdin)
-        .stdout(fs::File::create(&stdout)?)
-        .stderr(fs::File::create(&stderr)?)
-        .spawn()?;
-    let start = Instant::now();
-    let status = loop {
-        if let Some(status) = child.try_wait()? {
-            break Some(status);
-        }
-        if start.elapsed() > limit {
-            child.kill()?;
-            child.wait()?;
-            break None;
-        }
-        thread::sleep(Duration::from_millis(2));
+/// Runs `exe` in `dir` with no display, killed past `limit`.
+fn native(exe: &Path, dir: &Path, args: &[OsString], limit: Duration) -> io::Result<Outcome> {
+    let command = &mut headless(exe, dir);
+    let stopped = |o| Outcome {
+        stderr: b"stopped: time\n".to_vec(),
+        status: Some(4),
+        ..o
     };
-    let Some(status) = status else {
-        return Ok(Outcome {
-            stdout: fs::read(&stdout)?,
-            stderr: b"stopped: time\n".to_vec(),
-            status: Some(4),
-        });
-    };
-    Ok(process::Output {
-        status,
-        stdout: fs::read(&stdout)?,
-        stderr: fs::read(&stderr)?,
-    }
-    .into())
+    Ok(exec(command.args(args), b"", limit)?.unwrap_or_else(stopped))
+}
+
+/// `exe` to run in `dir` with no display.
+fn headless(exe: &Path, dir: &Path) -> Command {
+    let mut command = Command::new(exe);
+    command.current_dir(dir).env_remove("WAYLAND_DISPLAY");
+    command
 }
 
 fn fuzz(seeds: Range<u64>, keep: &Path, release: bool) -> io::Result<ExitCode> {
@@ -555,13 +530,7 @@ fn released(built: &Path, reference: &Outcome) -> io::Result<(usize, String)> {
             false => (1, format!("build failed: {why:?}")),
         });
     }
-    let run = native(
-        &built.with_extension("prog"),
-        built,
-        &[],
-        Stdio::null(),
-        FUZZ_LIMIT,
-    )?;
+    let run = native(&built.with_extension("prog"), built, &[], FUZZ_LIMIT)?;
     let trap = String::from_utf8_lossy(&reference.stderr);
     let stack = trap
         .lines()
@@ -707,19 +676,10 @@ fn built_here() -> Result<Option<PathBuf>, String> {
 
 /// Replays `example`'s `log` on the release build `exe`, one run per history, compared with the log.
 fn replay(exe: &Path, example: &str, log: &[Logged]) -> Result<usize, String> {
-    let mut runs = 0;
+    let dir = scratch().join(example);
+    fs::create_dir_all(&dir).map_err(|e| format!("release replay failed: {e}"))?;
     in_release(log, |history| {
-        runs += 1;
-        let dir = scratch().join(example).join(runs.to_string());
-        let actions = dir.with_extension("actions");
-        let lines: String = history.iter().map(|a| format!("{a}\n")).collect();
-        let run = || {
-            fs::create_dir_all(&dir)?;
-            fs::write(&actions, lines)?;
-            let args = ["--paka-replay".into()];
-            native(exe, &dir, &args, fs::File::open(&actions)?.into(), LIMIT)
-        };
-        run().map_err(|e| format!("release replay failed: {e}"))
+        paka::release::replay(&mut headless(exe, &dir), history)
     })
 }
 
