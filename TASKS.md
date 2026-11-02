@@ -2396,11 +2396,13 @@ or merged during review. Ids with a letter were added during review.
 
 ### M7-11b · L4 · Lower named function examples for release and run each in its own process
 
+- status: done
 - needs: M7-11a
 - flags: unsafe, native-only
 - done when: `paka build <path> -o <output> --examples <name>...` compiles in exactly the named function examples; a name that is not a function example of the program refuses the build naming it; a plain build's binary holds no example symbol. Started with `--paka-examples <name>`, the binary runs that example at depth 1 with no app, no state and no effects and prints `<name> pass` or `<name> fail` with status 0; a trap gives the trap line and status 3, a leak status 4, an unknown name a usage line and status 2. A test shows the example's calls into the program stay calls in the optimized IR. A runner in paka runs one example per process under one fixed time limit and reports `pass` only for status 0, standard output exactly `<name> pass` and an empty standard error; otherwise `fail`, `trapped`, `timed out` or the output seen; each outcome has a test, a planted wrong pass among them. The `examples` cases in tests/conformance/release-exempt are compared in release through `--examples` and the switch, except `unfinished` ones, which stay interpreter and dev only.
 - why this level: An example body lowered wrong, or a runner that misreads a run, reports `pass` with no error anywhere; that is false release evidence. The runtime gains an entry that walks a table of example functions.
 - note: Per M7-03 1.1, 1.4 and section 2, review changes 5 and 7. Ends the M6-06 exception for example-status cases. If its unsafe turns out to be only an export attribute, the flag drops; the level stays.
+- note: Done: `paka_rt1_examples` (paka-rt/src/examples.rs) runs the example `--paka-examples` names; `paka build --examples` keeps the named examples as `@p_example.NAME`, calls marked `noinline`, and a build with examples always takes the app entry (docs/abi/m1.md section 15). `paka::release::run` is the runner, limit 10 s; paka/tests/release_examples.rs covers each outcome, planted wrong passes among them. `paka-diff --release` builds the 24 example-status cases without a hole (2 have no function example, 1 does not check and is refused) and reports 471 agree, 0 differ; `unfinished` lists the 2 with a hole. Open: call-site `noinline` keeps each call, but clang may still specialize a callee on constant arguments; a plain build on the M1 entry still answers `--paka-examples` with the argument-count line, not M7-11a's usage line.
 
 ### M7-11c · L4 · Fix UI replay: no queued answers, a full result per action, typed text, release in paka-diff
 
