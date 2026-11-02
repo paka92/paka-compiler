@@ -1,8 +1,9 @@
 //! `paka release <path> -o <dir>` (docs/decisions/M7-03.md sections 1.3, 1.5 and 2): one read of
 //! the program and its foreign files, the gate for that program on the read, one build, its
 //! human-owned examples against the binary, and `<dir>` with the binary, a fresh host per granted
-//! declaration, the notices file (M7-16) and `RELEASE`, hashed again where it lands. A refusal leaves nothing at `<dir>`;
-//! a release killed partway may leave an unchecked `<dir>`, and is run again.
+//! declaration, the notices file (M7-16) and `RELEASE`, hashed again where it lands. A refusal
+//! leaves nothing at `<dir>`; a release killed partway may leave an unchecked `<dir>`, and is run
+//! again.
 
 use crate::build::{compile, runtime};
 use crate::llvm::Checks;
