@@ -83,8 +83,8 @@ or merged during review. Ids with a letter were added during review.
 | M4 Dev mode for headless programs | 51 | 0 | 8 | 18 | 25 | 0 | 7 |
 | M5 Live GUI on Linux | 43 | 0 | 3 | 20 | 13 | 7 | 9 |
 | M6 Release mode | 34 | 1 | 7 | 10 | 14 | 2 | 3 |
-| M7 Evidence and gates | 17 | 1 | 4 | 3 | 7 | 2 | 3 |
-| **Total** | **230** | 3 | 44 | 81 | 76 | 26 | 40 |
+| M7 Evidence and gates | 20 | 1 | 5 | 2 | 10 | 2 | 3 |
+| **Total** | **233** | 3 | 45 | 80 | 79 | 26 | 40 |
 
 ## M1 — Let there be light
 
@@ -315,6 +315,7 @@ or merged during review. Ids with a letter were added during review.
 - done when: Owner approves trap kinds and reports, interpreter limits, hole typing, and example statuses including unfinished, with samples. It also fixes which parts of a trap report are part of the program's meaning (kind, source position) and which trap wins when two are possible.
 - why this level: Defines failure and evidence for the whole language; every later back end must copy it.
 - note: Decided: the full record, with the trap report, the limits, the hole rules and the `paka examples` output byte for byte, is docs/decisions/M2-06.md.
+- note: Per M7-03: `paka build` still drops examples; the switch that keeps them is `paka build --examples <name>...`, which keeps only the named function examples.
 
 ### M2-07 · L2 · Extend the lexer to every token in the approved grammar
 
@@ -405,6 +406,7 @@ or merged during review. Ids with a letter were added during review.
 - done when: Owner approves the app form, the effect list, refusal and failure behaviour, standard input, rollback visibility, sequencing and concurrency rulings, and wc rewritten under the rules; each provisional M1-06 start, end and missing-grant rule is named as kept or changed, with the new expected output and status of each affected M1 case stated in the decision.
 - why this level: Fixes the program model and permission boundary; settles or defers sequential notation and concurrency.
 - note: Follows docs/decisions/M2-12.md for Option, Result, `?` and unreachable(). Decided: the full record, with the run loop, the effect and reason tables, wc rewritten and the nine re-expected M1 cases, is docs/decisions/M2-15.md.
+- note: Per M7-03: the flags taken before counting are `--paka-examples` and `--paka-replay`, reserved in all three modes; a first argument that is either never reaches the app (M7-11a).
 
 ### M2-16 · L3 · Check signatures and type definitions into one signature table
 
@@ -1710,6 +1712,7 @@ or merged during review. Ids with a letter were added during review.
 - note: Per M5-06: comparing tree text now also catches a wrong message or gap.
 - status: done
 - note: Done: `paka-diff --ui [ROOT]` (ROOT is `tests` by default) finds every program under ROOT that checks and has UI examples, and runs each in a child. The interpreter runs each UI example and logs every action it takes (`ui_start`, each click, each typed code point) with the events sent since `ui_start` and what the action left: the tree text, the tree after `Exit`, a trap report's first line, or an end line. Dev mode replays each event list from launch through `Dev::play`, in a world that drops effects as M5-06 says, and must leave the same and free all it made. A line per example says agree with the number of actions compared, or differ with the first action that differs and its first unequal tree line; the status is 1 when one differs. `PAKA_PLANT=8` widens every compiled gap by one, and every example then differs. Dev mode does not run the example bodies: their reads and claims are interpreter code, and the trees they read are the ones compared. An effect that queues an answer (a read or write result) ends the comparison of that `Ui`, since a UI example drops the answer and an app handles it. New case `tests/cases/examples/ui_ends` covers a view trap, an error node, a handler hole, a refused effect, `Exit`, typing and a dropped answer. Test: installer/tests/diff.rs (all 19 UI examples under `tests` agree; with the plant all 19 differ). No disagreement was found.
+- note: Per M7-03: M7-11c ends the stop at a dropped answer, gives `--paka-replay` a full result per action and a typed-text action, and adds release as a third back end.
 
 ### M5-27 · L4 · Re-run the view after a code swap, between frames only
 
@@ -1915,9 +1918,9 @@ or merged during review. Ids with a letter were added during review.
 
 ## M6 — Release mode
 
-**Exit check.** `paka build` compiles a whole program ahead of time through the pinned clang at full optimization, with direct calls instead of slots, and refuses any program with a hole by naming it. The release skip file is deleted and the CI job fails if any conformance test differs in output, exit status or trap between interpreter, dev and release, with two fixed exceptions: a program with a hole must be refused by `paka build`, and example-status cases are compared in interpreter and dev only until M7-11. The owner-agreed benchmark set (float and array loops, integer loops checked and wrapping, pointer-heavy programs) is built in Paka, Rust and C++ with matching checksums, and a committed results table shows each measured number beside its section 3.2 expectation. The same table holds a measured figure for each section 8 cost: overflow and bounds checks, state copy per handler, dev-mode slowdown on a visual app. Reference counting and handle checks are listed as 'not built' with the reason (M2-10: no shared type, no pools), which counts as shown; the measured copy cost of owned trees stands in their place.
+**Exit check.** `paka build` compiles a whole program ahead of time through the pinned clang at full optimization, with direct calls instead of slots, and refuses any program with a hole by naming it. The release skip file is deleted and the CI job fails if any conformance test differs in output, exit status or trap between interpreter, dev and release, with two fixed exceptions: a program with a hole must be refused by `paka build`, and example-status cases are compared in interpreter and dev only until M7-11b; `unfinished` cases stay interpreter and dev only. The owner-agreed benchmark set (float and array loops, integer loops checked and wrapping, pointer-heavy programs) is built in Paka, Rust and C++ with matching checksums, and a committed results table shows each measured number beside its section 3.2 expectation. The same table holds a measured figure for each section 8 cost: overflow and bounds checks, state copy per handler, dev-mode slowdown on a visual app. Reference counting and handle checks are listed as 'not built' with the reason (M2-10: no shared type, no pools), which counts as shown; the measured copy cost of owned trees stands in their place.
 
-- `paka build` is the release command since M1; there is no second spelling.
+- `paka build` is the optimizing build since M1; per M7-03, `paka release` is the command that ships.
 - The lowering tasks M6-07 to M6-15 assume dev mode chose Cranelift. If it chose LLVM's JIT they shrink but keep their levels.
 - rustc carries LLVM 22 and clang is LLVM 21, so the Rust benchmarks are optimized by a newer LLVM. M6-02 must say how the published table states this.
 - A task whose done-when names a conformance group is done only when that group's tag is out of the skip file.
@@ -1979,6 +1982,7 @@ or merged during review. Ids with a letter were added during review.
 - why this level: Adds one more mode to an existing two-mode harness; the spec is clear.
 - status: done
 - note: Done: `paka-diff --release [ROOT]` runs each run case in interpreter and dev as before, then builds it with `paka build` and runs it, compared with the interpreter by the same meaning fields (`difference_in` in installer/src/diff.rs). installer/src/release.rs holds the fixed tag list and tags each case from its checked program, by the features it uses beyond M1's light program; tests/conformance/release-skip lists tags, and a case is skipped while any of its tags is listed. tests/conformance/release-exempt is the hand-written list of `hole` cases, which paka build must refuse naming each hole, and `examples` cases; the harness fails when either set is not exactly the cases it finds. Today 14 cases agree in release, 6 are refused by their holes' names and 415 are skipped.
+- note: Per M7-03: the example-status exception ends in M7-11b, through `paka build --examples` and `--paka-examples`; `unfinished` cases stay interpreter and dev only.
 
 ### M6-07 · L3 · Lower integers, booleans, control flow and calls with trap status returns
 
@@ -2088,6 +2092,7 @@ or merged during review. Ids with a letter were added during review.
 - note: Stays level 3 only while its unsafe is export attributes; any pointer work makes it level 4. The windowed test skips, and says so, when WAYLAND_DISPLAY is unset; the caller runs it once on the build machine inside the session.
 - status: done
 - note: Done: the element tree, layout, input and routing move from paka-rt into paka-gui, `quoted` with them; paka-rt depends on paka-gui and re-exports the four modules, so every `paka_rt::tree` path stands and the runtime can open a window without a crate cycle. A visual release app opens a window when a Wayland display lets one, performing its effects; closing it ends the app with status 0, and a handler trap writes its trap line to standard error and the app runs on. With no display it writes its first tree and exits 0 as before. With `--paka-replay` as the whole argument list (docs/decisions/M7-03.md) it runs with every effect dropped, takes one `click PATH` per line of standard input and writes the tree text after the launch and after each action (docs/abi/m1.md section 14). `paka build` takes visual apps on a second entry, `paka_rt1_visual`, the only path to the window, and links with `-Wl,--gc-sections`, so a headless binary carries no GUI: the light example is 5,529,160 bytes against 5,519,152 before, the counter 17,390,440. `paka run` still refuses visual apps. Wayland is loaded at run time, so no system library is added, and the only new unsafe is the entry's export attribute, so it stays level 3. The frame log is written only under `PAKA_FRAME_LOG`, which the window tests set. `views` leaves tests/conformance/release-skip; no run case carries it yet. paka/tests/release_views.rs builds the hole-free counter with `paka build`: a replayed + gives the hand-written trees at 0 and 1; a reset that sets the count and makes an `Exit` before it traps keeps the tree at 2, writes one trap line and does not exit, and the next + gives 3; the windowed run, with `PAKA_FRAME_LOG` set, logs its first frame and is then killed, and is skipped, saying so, without WAYLAND_DISPLAY. UI examples are not run in release before M7-11.
+- note: Per M7-03: M7-11c extends `--paka-replay` with a typed-text action and a full result per action, and queues no answer for a dropped effect.
 
 ### M6-18a · L4 · Lower views and element trees for release
 
@@ -2255,7 +2260,7 @@ or merged during review. Ids with a letter were added during review.
 **Exit check.** The example listing labels every example agent-written or human-owned, taken from the approval store and never from the agent. The store holds the approved version of each human-owned example and each app's grant list; the gate (a required CI check) and the release command both refuse when one differs. A rerun with no edit executes zero examples, and editing a dependency reruns only the examples that depend on it. The release command runs the human-owned examples against the very binary it ships, proven by file hash. A test C library can be called only under its own named grant and runs in a separate process in interpreter, dev and release. A test fails when a library Paka uses is missing from the trusted list, and every release contains the generated third-party notices file. An edit that changes a grant list or a human-owned example returns the pending item in the agreed shape, and the owner approves it with the approve command.
 
 - A separate process is not a sandbox: a C library keeps the user's operating-system rights.
-- M7-03 names the command that ships. Until then `paka build` is not gated by approvals.
+- Per M7-03: `paka release` is the command that ships and the only one gated by approvals; `paka build` never reads the store.
 - If approvals are stored in the repository, a pull request could change them together with the code; M7-01 must close that hole.
 - Can start first: M7-01, M7-02, M7-09.
 - The owner is needed in: M7-01, M7-02, M7-03, M7-06, M7-10, M7-11, M7-16.
@@ -2337,6 +2342,7 @@ or merged during review. Ids with a letter were added during review.
 - why this level: Unlisted cases (a deleted example, a new app with grants) pass silently; this gate stands in for code review.
 - note: Per M7-01: `paka gate <tree> --base <tree>`; 'a new app never approved' means one in a gated program. Adds the serial rule, owned files, the workflow-directory rule and the key-file refusal; runs human-owned examples in the interpreter.
 - note: Done: `paka gate <tree> --base <tree>` in paka/src/gate.rs. Refuses when the base has no `approvals.pub` or the tree's differs; when the tree's store does not verify with the base's key or does not follow the base's store; per gated program, each record its source no longer matches and each app never approved; each owned file (every recorded file, every file under `.github/workflows/`, `TRUSTED`) changed, gone or never approved; each human-owned example that does not pass in the interpreter; each symbolic link among the store files, the owned files and the files of gated programs, or on a directory of their paths, before it reads them. One line per refusal, then the line naming revert or `paka approve`, status 1; else `gate: passed`, status 0. `Store::file_changes` compares file records; foreign parts are compared with their grants record (M7-13). Tests: paka/tests/gate.rs.
+- note: Per M7-03: `paka release` needs the gate callable for one program on a given read, without a base tree (M7-12); `paka gate` itself is unchanged.
 
 ### M7-08 · L2 · Report pending approvals and refusals to the agent in the agreed shape
 
@@ -2369,22 +2375,47 @@ or merged during review. Ids with a letter were added during review.
 - note: Workflow written: .github/workflows/gate.yml, job `gate`. Runs on `pull_request_target` for `development` and `main` with `contents: read`; checks out the target branch and `refs/pull/<n>/merge` without keeping the token, builds paka from the target branch only, runs `paka gate merged --base base`, 30-minute limit. Until `approvals.pub` and a signed store recording both workflow files are on the target branch the gate refuses every pull request (`approvals.pub: missing on the base`); the check is not yet required, so this blocks nothing (M7-01 section 2: the first key goes in before the check is required). The workflow first runs on pull requests opened after it is on the target branch.
 - note: Owner steps left: (1) commit `approvals.pub` and a store signed with `paka approve` that records `.github/workflows/ci.yml` and `gate.yml`, and see `gate` go green on a pull request; (2) open the three test pull requests of the done-when and see each go red; (3) in Settings, Rules (or Branches), for `development`: require status checks to pass, add the check `gate` (source GitHub Actions), include administrators, allow no bypass; leave 'require branches to be up to date' off; on `main` after the M7 merge. Mark done after (3).
 
-### M7-11 · L3 · Run human-owned examples against the release binary itself
+### M7-11 · L2 · Run human-owned examples against the release binary itself
 
-- needs: M7-03, M7-06, M7-07, M6-18, M6-26, M5-26
+- needs: M7-12, M7-06, M6-18a, M6-26
 - flags: native-only, owner
-- done when: The owner has approved, through M7-06, at least one function example for each sample (wc, counter, to-do) and one UI example for each visual sample (counter, to-do); the counter is the hole-free copy from M6-18a. Every human-owned sample example, function and UI, passes against a release binary whose file hash equals the artefact's; M5-26's command, with release added, reports no tree difference on every UI example whose program has no hole; a planted failure is reported.
-- why this level: Drives a compiled binary from outside across runtime, release build and example runner.
-- note: Re-grade once M7-03 is approved: if examples are compiled into the binary, lowering them for release is split out as its own task.
+- done when: The owner has approved, through M7-06, at least one function example for each sample (wc, counter, to-do) and one UI example for each visual sample (counter, to-do); the counter is the hole-free copy from M6-18a. `paka release` releases each sample, and its `RELEASE` shows every human-owned example, function and UI, passing against the binary whose hash it records; `paka-diff --ui`, with release added (M7-11c), reports no difference on every UI example whose program has no hole; a planted failure in one sample is reported and refused.
+- why this level: Runs commands built in M7-11b, M7-11c and M7-12 on three samples and plants one failure; a difference found is split off by cause.
 - note: Per M7-01: the owner first approves each sample's grant list, the empty ones too.
+- note: Per M7-03: re-graded from level 3; the lowering, the replay and the release command are M7-11b, M7-11c and M7-12. The store is keyed by path, so the hole-free counter gets its own approval records.
 
-### M7-12 · L2 · Make the release command refuse unless gate and binary examples pass
+### M7-11a · L2 · Reserve `--paka-examples` and `--paka-replay` in all three modes
 
-- needs: M7-07, M7-11
+- needs: M7-03
+- flags: none
+- done when: In the interpreter, dev mode and release, an app whose first argument is `--paka-examples` or `--paka-replay` never sees its arguments: where the switch is not served (the interpreter, dev mode, a binary without that example, `--paka-replay` in a headless app), or a served one is given in another shape, the run writes one usage line naming the switch and ends with status 2 before the start message, and no handler runs; a visual release binary still serves `--paka-replay`. A conformance case under tests/conformance/apps, with its expected output written first, gives the same output and status in the three modes. docs/decisions/M2-15.md section 1.4 names both switches with a dated amendment line, and the reference says so.
+- why this level: One argument rule at the three entry points the run loops already have, and one case; nothing is silent.
+- note: Per M7-03 section 2 and review change 4. Today only a visual release binary takes `--paka-replay` (paka-rt/src/headless.rs); a headless app and the other modes hand both words to the app.
+
+### M7-11b · L4 · Lower named function examples for release and run each in its own process
+
+- needs: M7-11a
+- flags: unsafe, native-only
+- done when: `paka build <path> -o <output> --examples <name>...` compiles in exactly the named function examples; a name that is not a function example of the program refuses the build naming it; a plain build's binary holds no example symbol. Started with `--paka-examples <name>`, the binary runs that example at depth 1 with no app, no state and no effects and prints `<name> pass` or `<name> fail` with status 0; a trap gives the trap line and status 3, a leak status 4, an unknown name a usage line and status 2. A test shows the example's calls into the program stay calls in the optimized IR. A runner in paka runs one example per process under one fixed time limit and reports `pass` only for status 0, standard output exactly `<name> pass` and an empty standard error; otherwise `fail`, `trapped`, `timed out` or the output seen; each outcome has a test, a planted wrong pass among them. The `examples` cases in tests/conformance/release-exempt are compared in release through `--examples` and the switch, except `unfinished` ones, which stay interpreter and dev only.
+- why this level: An example body lowered wrong, or a runner that misreads a run, reports `pass` with no error anywhere; that is false release evidence. The runtime gains an entry that walks a table of example functions.
+- note: Per M7-03 1.1, 1.4 and section 2, review changes 5 and 7. Ends the M6-06 exception for example-status cases. If its unsafe turns out to be only an export attribute, the flag drops; the level stays.
+
+### M7-11c · L4 · Fix UI replay: no queued answers, a full result per action, typed text, release in paka-diff
+
+- needs: M7-11a, M5-26, M6-18
 - flags: native-only
-- done when: Release leaves an artefact only after the gate and the binary examples pass; tests show a refusal and no artefact for each failing case. M1's light check and M6's three-mode conformance still pass unchanged; a test shows the artefact's file hash equals the hash of the binary the examples ran against, and a rebuild planted between the two is refused.
-- why this level: Sequences existing steps and checks their exit codes.
+- done when: Under a world that drops effects, no effect queues an answer, built-in or foreign, in dev mode's play and in a release `--paka-replay`; the interpreter's UI log then no longer stops at a dropped answer, so every action of a UI example is logged with its action line. `--paka-replay` takes `click PATH` and a typed-text action that carries every code point `ui_type` takes, and prints after the launch and after each action, on standard output, M5-26's full result: the tree text, the tree after `Exit`, the first trap line or the end line. `paka-diff --ui` compares release as a third back end through `--paka-replay` and reports, per example, how many of its actions were compared; one compared on fewer actions than it has differs. Tests: tests/cases/examples/ui_ends re-expected by hand first, its dropped answer now compared to the end; a file read followed by a click compared in all three back ends; a planted difference in release and a cut-short replay each caught; all UI examples under `tests` agree.
+- why this level: A replay that answers differently or stops early still reads as agreeing; the mistake is silent (review change 1).
+- note: Per M7-03 1.2 and section 2, review changes 1 and 6. Today an answer reaches the app as the failure `dropped` (paka-rt/src/effects.rs `Dropped::read`), which M5-26 avoids by ending the comparison there; the foreign path already queues none (`world.drops()` in paka-rt/src/abi/dev/app.rs). Updates docs/abi/m1.md section 14 and the M5-26 notes on the command's output.
+
+### M7-12 · L4 · Build `paka release`: one read, the gate, one build, examples against the binary, a hashed artefact
+
+- needs: M7-07, M7-11b, M7-11c
+- flags: native-only
+- done when: `paka release <path> -o <dir> [--key <file>]` follows docs/decisions/M7-03.md sections 1.3, 1.5 and 2. It reads the program's files once; the gate for that one program, with no base tree, and the build both use that read. It refuses with status 1 and leaves nothing at `<dir>` when `<dir>` exists, when `approvals.pub` differs from the public key beside the signing key, when the gate refuses, when the program has no records or no human-owned example, when the build or a foreign host fails, when a function example does not pass, when a UI example differs or is compared on fewer actions than it has, and when any file's hash changes between the runs and the final path; each case has a test. Otherwise `<dir>` holds the binary, one freshly built host per granted foreign declaration under the binary's name, and `RELEASE` with the SHA-256 of every source file read and every artefact file, the build command line, the compiler, the store's serial and hash, and each example's result. Tests show the artefact's hashes equal `RELEASE`'s and that a change planted in the binary between the runs is refused. M1's light check and M6's three-mode conformance still pass unchanged.
+- why this level: Read, hash and rename order is where a silent mistake lives: a source or binary changed between check and ship goes out under an approved name.
 - note: Per M7-02: a release of a program with foreign code also builds and ships one host per declaration.
+- note: Per M7-03: re-graded from level 2; review changes 2, 3 and 8. The gate gains a call for one program on a given read (M7-07 note); `paka build` stays ungated and never reads the store. Hosts are built fresh into the new directory, never taken from the host cache; a plain `paka build` keeps putting cached hosts beside its output (paka/src/build.rs). The owner runs it from a clean checkout of `main`.
 
 ### M7-13 · L3 · Add foreign library declarations and their named grants to the checker
 
@@ -2425,3 +2456,4 @@ or merged during review. Ids with a letter were added during review.
 - done when: The trusted list is the root file `TRUSTED`, moved from `.cargo/approved-crates.txt` with system libraries added and approved as an owned file in the M7-01 store; a test fails when a vendored or linked library is missing from it; releases include a generated notices file; owner approves the list.
 - why this level: Collects names and licence texts from the vendor directory in a fixed order.
 - note: Per M7-02: paka/tests/vendored.rs reads `TRUSTED`; the notices file is generated from it and `vendor/`.
+- note: Per M7-03: `paka release` writes the notices file into the artefact directory and lists its hash in `RELEASE`.
