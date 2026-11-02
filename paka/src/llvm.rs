@@ -143,7 +143,7 @@ pub fn app(core: &mut Program, checks: Checks) -> Option<String> {
         Some(_) => (VISUAL, "paka_rt1_visual"),
         None => (APP, "paka_rt1_app"),
     };
-    let (declared, first) = examples_first(core);
+    let (declared, first) = examples_first(core, app.name.len());
     let code = code::lower_app(core, checks)?;
     Some(format!(
         "target triple = \"x86_64-pc-linux-gnu\"
@@ -161,12 +161,12 @@ define i32 @main() {{
 
 /// In a build with function examples (M7-11b), the entry and names `main` needs and the start of
 /// `main`: the runtime runs the example asked for and gives its status, or -1 for the app to run.
-/// Both empty without examples.
-fn examples_first(core: &Program) -> (String, String) {
+/// `name_len` is the length of `@name`, the app name. Both empty without examples.
+fn examples_first(core: &Program, name_len: usize) -> (String, String) {
     let names: Vec<_> = core.examples.iter().map(|e| e.name.as_str()).collect();
-    let (Some(app), false) = (&core.app, names.is_empty()) else {
+    if names.is_empty() {
         return Default::default();
-    };
+    }
     let names = names.join(" ");
     let first = format!(
         "  %ex = call i32 @paka_rt1_examples(ptr @name, i64 {}, ptr @examples, i64 {}, ptr @examples.call)
@@ -176,7 +176,7 @@ done:
   ret i32 %ex
 run:
 ",
-        app.name.len(),
+        name_len,
         names.len(),
     );
     (

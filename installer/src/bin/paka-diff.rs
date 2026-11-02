@@ -53,7 +53,7 @@ use std::ffi::OsString;
 use std::fs;
 use std::io::{self, Write};
 use std::ops::Range;
-use std::os::unix::ffi::OsStringExt;
+use std::os::unix::ffi::{OsStrExt, OsStringExt};
 use std::os::unix::fs::PermissionsExt;
 use std::path::{Path, PathBuf};
 use std::process::{self, Command, ExitCode, Stdio};
@@ -268,11 +268,15 @@ fn examples_released(
     dir: &Path,
     target: &str,
 ) -> io::Result<Option<Result<String, String>>> {
-    // Read from `dir` as the case's run reads it, so the files are named alike.
-    let back = env::current_dir()?;
-    env::set_current_dir(dir)?;
-    let (source, found) = read(target.as_ref());
-    env::set_current_dir(back)?;
+    // Named as the case's run from `dir` names them.
+    let at = dir.join(target);
+    let (read, found) = read(at.as_os_str());
+    let mut source = Source::default();
+    for file in &read.files {
+        let rest = &file.path.as_bytes()[at.as_os_str().len()..];
+        let path = OsString::from_vec([target.as_bytes(), rest].concat());
+        source.add(path, read.text[file.bytes.clone()].to_vec());
+    }
     let Ok((core, ..)) = found.and_then(|()| paka::check(target, &source)) else {
         let status = build(paka, dir, target, &[])?.status;
         return Ok(Some(match status.code() {
@@ -329,9 +333,13 @@ fn example_agrees(want: &str, ran: &Ran) -> bool {
     let (verdict, at) = verdict.split_once(" at ").unwrap_or((verdict, ""));
     match (verdict, ran) {
         ("pass", Ran::Pass) | ("fail", Ran::Fail) => true,
+        // Stack and memory trap positions may differ between engines (M2-06 section 1.4).
         ("trapped", Ran::Trapped(line)) => (lines.next())
             .and_then(|l| l.strip_prefix("  trap "))
-            .is_some_and(|kind| line.ends_with(&format!(": trap {kind} at {at}"))),
+            .is_some_and(|kind| match kind {
+                "stack" | "memory" => line.contains(&format!(": trap {kind} at ")),
+                _ => line.ends_with(&format!(": trap {kind} at {at}")),
+            }),
         _ => false,
     }
 }

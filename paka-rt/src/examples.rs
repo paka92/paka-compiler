@@ -40,10 +40,10 @@ pub(crate) fn outcome(
         return None;
     }
     let usage = |why: String| Some((USAGE, format!("{app}: {why}\n")));
-    let [_, name] = args else {
-        return usage(format!("{SWITCH} takes one example name"));
+    let name = match args {
+        [_, name] if !name.is_empty() => name.to_string_lossy(),
+        _ => return usage(format!("{SWITCH} takes one example name")),
     };
-    let name = name.to_string_lossy();
     let Some(id) = names.split(' ').position(|n| n == name) else {
         return usage(format!("{SWITCH}: no function example named {name}"));
     };
