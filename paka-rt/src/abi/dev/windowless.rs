@@ -13,7 +13,9 @@ use super::view::{self, Drawing};
 use super::{Context, Trap, until};
 use crate::abi::measure::{self, Frame, Timed};
 use crate::effects::{End, World};
+use crate::replay::{Action, Left};
 use crate::route::{Event, Sent, focused, route};
+use crate::rt::INTERNAL_ERROR;
 use crate::tree::{self, Node};
 use std::collections::VecDeque;
 use std::io::Write;
@@ -22,7 +24,7 @@ use std::sync::atomic::Ordering;
 use std::time::Duration;
 
 /// How the loop reaches compiled code: its calls, a message's text from its type and address,
-/// and a trap's first line without the app's name.
+/// and a trap's first line without the app's name, called once as the trap is kept.
 pub struct Code<'a> {
     pub call: &'a mut Call<'a>,
     pub show: &'a mut dyn FnMut(u64, u64) -> String,
@@ -44,8 +46,9 @@ pub struct Windowless<'a, W> {
     queue: VecDeque<Queued>,
     /// The tree last drawn: one error node if the first view run trapped.
     pub drawing: Drawing,
-    /// The traps that leave the app running: in a handler or a view.
-    pub traps: Vec<Trap>,
+    /// The traps that leave the app running, in a handler or a view, each with its first line
+    /// without the app's name.
+    pub traps: Vec<(Trap, String)>,
     pub end: Option<Ended>,
 }
 
@@ -157,7 +160,7 @@ impl<'a, W: World> Windowless<'a, W> {
                 self.ctx.heap.sweep(made);
                 let drained = match stopped {
                     Stopped::Trap => {
-                        self.traps.push(mem::take(&mut self.ctx.trap));
+                        self.keep(code.at);
                         self.drain()
                     }
                     Stopped::Time if late => self.drain(),
@@ -169,37 +172,61 @@ impl<'a, W: World> Windowless<'a, W> {
         ran
     }
 
-    /// Plays `lines`, each `click PATH`, as `--paka-replay` does (M7-03): writes the tree text,
-    /// then an empty line, to `out` after the launch and after each action, and hands `report`
-    /// the last trap each kept. The end, or status 2 at a line that is no such click.
+    /// Plays `lines`, each an `Action`, as `--paka-replay` does (docs/decisions/M7-03.md 1.2):
+    /// writes to `out` what the launch and each action left. A trap that ends the app writes
+    /// nothing; no line after an end is read. The end, or status 2 at a line that is no action or
+    /// names no node.
     pub fn replay(
         &mut self,
         lines: impl IntoIterator<Item = String>,
         out: &mut impl Write,
-        mut report: impl FnMut(&Trap),
     ) -> Result<End, Stopped> {
         let mut lines = lines.into_iter();
         let mut seen = 0;
         loop {
-            if let Some(trap) = self.traps.get(seen..).and_then(<[Trap]>::last) {
-                report(trap);
+            if let Some(left) = self.left(seen) {
+                let _ = write!(out, "{left}");
             }
             seen = self.traps.len();
             if let Some(end) = &self.end {
                 return end.clone();
             }
-            let _ = writeln!(out, "{}", self.drawing.root);
-            let Some(line) = lines.next() else {
+            let Some(text) = lines.next() else {
                 return Ok((0, String::new()));
             };
-            let Some(event) = clicked(&self.drawing.root, &line) else {
+            let root = &self.drawing.root;
+            let Some(events) = Action::parse(&text).and_then(|a| a.events(root)) else {
                 return Ok((
                     2,
-                    format!("{}: not a replay action: {line}\n", self.app.name),
+                    format!("{}: not a replay action: {text}\n", self.app.name),
                 ));
             };
-            self.send([event]);
+            self.send(events);
         }
+    }
+
+    /// What the last action left, its first trap the one past the first `seen`; `None` for a
+    /// trap that ends the app.
+    fn left(&self, seen: usize) -> Option<Left> {
+        if let Some((_, at)) = self.traps.get(seen) {
+            return Some(Left::Trapped(format!("{}: {at}", self.app.name)));
+        }
+        let tree = || self.drawing.root.to_string();
+        Some(match &self.end {
+            None => Left::Tree(tree()),
+            Some(Ok((status, end))) if end.is_empty() => Left::Exited(*status, tree()),
+            Some(Ok((status, end))) => Left::Ended(*status, end.clone()),
+            Some(Err(Stopped::Time)) => Left::Ended(INTERNAL_ERROR as u8, "stopped: time".into()),
+            Some(Err(Stopped::Trap)) => return None,
+        })
+    }
+
+    /// Keeps the context's trap with its first line as `at` gives it; that line.
+    fn keep(&mut self, at: &dyn Fn(&Trap) -> String) -> String {
+        let trap = mem::take(&mut self.ctx.trap);
+        let line = at(&trap);
+        self.traps.push((trap, line.clone()));
+        line
     }
 
     fn ended(&mut self, done: Result<(), Ended>) {
@@ -262,7 +289,7 @@ impl<'a, W: World> Windowless<'a, W> {
                 if stopped != Stopped::Trap {
                     return Err(Err(stopped));
                 }
-                self.traps.push(mem::take(&mut self.ctx.trap));
+                self.keep(self.code.at);
                 return Ok(false);
             }
         };
@@ -360,11 +387,10 @@ impl<'a, W: World> Windowless<'a, W> {
                 mem::replace(&mut self.drawing, drawing).release(self.ctx);
             }
             Err(Stopped::Trap) => {
-                let trap = mem::take(&mut self.ctx.trap);
+                let line = self.keep(self.code.at);
                 if fresh {
-                    self.drawing.root = Node::Error((self.code.at)(&trap));
+                    self.drawing.root = Node::Error(line);
                 }
-                self.traps.push(trap);
             }
             Err(stopped) => return Err(Err(stopped)),
         }
@@ -384,13 +410,6 @@ impl<'a, W: World> Windowless<'a, W> {
             release(self.ctx, record, &mut self.state);
         }
     }
-}
-
-/// The click a replay line names, if its path reaches a node of `root`.
-fn clicked<M>(root: &Node<M>, line: &str) -> Option<Event> {
-    let path = tree::path(line.strip_prefix("click ")?)?;
-    let kind = root.at(&path)?.kind();
-    Some(Event::Click(path, kind))
 }
 
 /// `call`, each call of compiled code timed in a measure build.

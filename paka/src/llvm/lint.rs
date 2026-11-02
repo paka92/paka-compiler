@@ -3,9 +3,10 @@
 //! word, every use of an `inbounds` result must be a load or store address, no store may target a
 //! global, an instruction undefined on some inputs must take the operand its check made, and only
 //! intrinsics and the runtime's entries, line for line as its table gives them, are declared, so no
-//! call names a maths function LLVM can fold.
+//! call names a maths function LLVM can fold. `noalias` passes only where M6-23 signs it.
 
 use paka_rt::abi::table::ENTRIES;
+use std::collections::BTreeSet;
 
 /// The approved rows (M6-01 section 2). An entry starting `@llvm.` names an intrinsic and any of
 /// its typed forms, such as `@llvm.expect.i1`.
@@ -157,16 +158,18 @@ fn guarded(word: &str, inst: &str, body: &[(usize, &str)]) -> bool {
 pub fn lint(ir: &str) -> Vec<String> {
     let mut found = vec![];
     let mut body = vec![];
+    let runtime = runtime_called(ir);
     for (n, line) in (1..).zip(ir.lines()) {
         if ENTRIES.contains(&line) {
             continue;
         }
         let words = keywords(line);
         let inst = instruction(line);
+        let signed = |w: &&str| *w == "noalias" && signed(line, &runtime);
         let mut say = |why: String| found.push(format!("line {n}: {why}"));
         for word in words
             .iter()
-            .filter(|w| !allowed(w) && !guarded(w, inst, &body))
+            .filter(|w| !allowed(w) && !guarded(w, inst, &body) && !signed(w))
         {
             let why = match GUARDED.contains(word) {
                 true => "is not behind its check",
@@ -197,6 +200,59 @@ pub fn lint(ir: &str) -> Vec<String> {
         }
     }
     found
+}
+
+/// Whether every `noalias` on `line` is where M6-23 signs it: on a `ptr %a<n>` parameter in the
+/// `define` line of a user function the runtime does not call.
+fn signed(line: &str, runtime: &BTreeSet<&str>) -> bool {
+    let Some((name, rest)) = line
+        .strip_prefix("define internal i32 @p_")
+        .and_then(|l| l.split_once('('))
+    else {
+        return false;
+    };
+    let Some((params, _)) = rest.split_once(')') else {
+        return false;
+    };
+    let on_param = |p: &&str| {
+        let n = p.strip_prefix("ptr noalias %a").unwrap_or_default();
+        !n.is_empty() && n.bytes().all(|b| b.is_ascii_digit())
+    };
+    let marked = params.split(", ").filter(on_param).count();
+    !runtime.contains(name) && marked == line.matches("noalias").count()
+}
+
+/// The user functions, without `@p_`, whose arguments the runtime passes: those named in `@main`
+/// or `@app.call`, and those named in a `@v<t>` dispatcher `@app.call` names.
+fn runtime_called(ir: &str) -> BTreeSet<&str> {
+    let named_in = |function: &str| -> Vec<&str> {
+        let head = |l: &&str| {
+            let l = l
+                .strip_prefix("define internal ")
+                .or(l.strip_prefix("define "));
+            l.is_some_and(|l| l.starts_with(&format!("i32 @{function}(")))
+        };
+        let body = ir.lines().skip_while(|l| !head(l)).skip(1);
+        let globals = body
+            .take_while(|l| *l != "}")
+            .flat_map(|l| l.split('@').skip(1));
+        globals
+            .map(|g| {
+                &g[..g
+                    .find(|c: char| !c.is_ascii() || !name(c as u8))
+                    .unwrap_or(g.len())]
+            })
+            .collect()
+    };
+    let mut called = named_in("main");
+    called.extend(named_in("app.call"));
+    let dispatchers: Vec<&str> = called
+        .iter()
+        .copied()
+        .filter(|g| g.starts_with('v'))
+        .collect();
+    called.extend(dispatchers.into_iter().flat_map(named_in));
+    called.iter().filter_map(|g| g.strip_prefix("p_")).collect()
 }
 
 fn allowed(word: &str) -> bool {
@@ -441,6 +497,47 @@ attributes #0 = { nounwind inlinehint }
         }
         let attributes = "attributes #0 = { mustprogress willreturn }";
         assert!(names(attributes, "mustprogress") && names(attributes, "willreturn"));
+    }
+
+    #[test]
+    fn noalias_passes_only_where_m6_23_signs_it() {
+        let define = |head: &str, body: &str| format!("{head} {{\nentry:\n{body}  ret i32 0\n}}\n");
+        let user = define(
+            "define internal i32 @p_f(ptr noalias %a0, i64 %a1, ptr noalias %a2, ptr %out)",
+            "",
+        );
+        assert_eq!(lint(&user), Vec::<String>::new());
+        let unsigned = [
+            "define internal i32 @p_f(ptr noalias %out)",
+            "define internal i32 @p_f(ptr %a0) noalias",
+            "define internal i32 @p_f(ptr noalias noalias %a0)",
+            "define internal i32 @v7(i64 %id, ptr noalias %a0)",
+            "define internal i32 @s3(ptr noalias %xs, ptr %tmp, i64 %n)",
+            "define internal i1 @q3(ptr noalias %x, ptr %y)",
+            "define i32 @main(ptr noalias %a0)",
+        ];
+        for head in unsigned {
+            assert!(names(&define(head, ""), "noalias"), "{head}");
+        }
+        // A function the runtime calls, from `@main`, `@app.call` or a dispatcher it names.
+        let call = "  %r = call i32 @p_f(ptr %a, ptr %b)\n";
+        let reached = [
+            define(
+                "define i32 @main()",
+                "  %r = call i32 @paka_rt1_run(ptr @p_f)\n",
+            ),
+            define(
+                "define internal i32 @app.call(i64 %id, ptr %a, ptr %b)",
+                call,
+            ),
+            define(
+                "define internal i32 @app.call(i64 %id, ptr %a, ptr %b)",
+                "  %r = call i32 @v4(i64 %id, ptr %a)\n",
+            ) + &define("define internal i32 @v4(i64 %id, ptr %a)", call),
+        ];
+        for caller in reached {
+            assert!(names(&format!("{user}{caller}"), "noalias"), "{caller}");
+        }
     }
 
     #[test]

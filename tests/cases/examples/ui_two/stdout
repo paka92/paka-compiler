@@ -1,0 +1,7 @@
+a_copy_goes_its_own_way agent-written pass
+exit_mid_text agent-written trapped at main.paka:55:3
+  trap assert
+later agent-written unfinished at main.paka:59:17
+  ??later
+  in example later
+two_values agent-written pass

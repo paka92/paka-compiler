@@ -37,6 +37,7 @@ pub mod source;
 pub mod workspace;
 
 use ast::Def;
+pub use body::BY_VALUE;
 use core_form::Program;
 use diagnostic::Diagnostic;
 use source::Source;

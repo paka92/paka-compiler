@@ -621,6 +621,14 @@ app a {
             .collect()
     }
 
+    /// The text of function `@p_<name>` in `ir`, from its `define` line to its last instruction.
+    fn function<'a>(ir: &'a str, name: &str) -> &'a str {
+        let head = format!("@p_{name}(");
+        let mut functions = ir.split("\ndefine ");
+        let function = functions.find(|f| f.lines().next().unwrap().contains(&head));
+        function.unwrap().split("\n}").next().unwrap()
+    }
+
     #[test]
     fn the_loop_list_has_no_trap_branch_inside_a_loop() {
         let loops = include_str!("../tests/loops.paka");
@@ -640,16 +648,110 @@ app a {
         }
         let optimized = optimized(&ir);
         for k in kernels {
-            let head = format!("@p_{k}(");
-            let mut functions = optimized.split("\ndefine ");
-            let function = functions.find(|f| f.lines().next().unwrap().contains(&head));
-            let function = function.unwrap().split("\n}").next().unwrap();
+            let function = function(&optimized, k);
             assert_eq!(
                 trap_branches_in_loops(function),
                 Vec::<String>::new(),
                 "{k}: {function}"
             );
         }
+    }
+
+    /// With `noalias` on both Lists (M6-23), stencil's `sweep` vectorizes with no bounds check in
+    /// its vector loop: the checks are left to the scalar loop for the last items, and the one
+    /// comparison of the two item blocks LLVM adds before the vector loop stays (1.2).
+    #[test]
+    fn stencil_sweep_vectorizes_with_no_check_in_its_vector_loop() {
+        let stencil = include_str!("../../bench/programs/stencil/main.paka");
+        let ir = ir(&mut lowered(stencil), Checks::All).unwrap();
+        assert_eq!(lint::lint(&ir), Vec::<String>::new());
+        let head = "define internal i32 @p_sweep(ptr noalias %a0, ptr noalias %a1, i64 %a2)";
+        assert!(ir.contains(head), "{ir}");
+        let optimized = optimized(&ir);
+        let sweep = function(&optimized, "sweep");
+        assert!(sweep.contains("load <2 x double>"), "{sweep}");
+        assert!(sweep.contains("store <2 x double>"), "{sweep}");
+        let mut block = "";
+        let mut vector = Vec::new();
+        for line in sweep.lines().skip(1) {
+            match (line.strip_prefix("  "), line.split_once(':')) {
+                (Some(inst), _) if inst.contains("load <2 x double>") => vector.push(block),
+                (None, Some((name, _))) => block = name,
+                _ => {}
+            }
+        }
+        let checked = trap_branches_in_loops(sweep);
+        assert!(
+            vector.iter().all(|b| !checked.iter().any(|c| c == b)),
+            "{sweep}"
+        );
+    }
+
+    /// Every type a read exempts from Rule B is passed by value, so it never reaches a `noalias`
+    /// parameter (M6-23 1.3). `read()` also exempts a type variable and an expression with no
+    /// type; user code reaches neither, as an uninferred type is refused and Paka has no type
+    /// parameters.
+    #[test]
+    fn every_type_a_read_exempts_is_passed_by_value() {
+        let value = |t: &str| match t {
+            "Int" => "1",
+            "Float" => "1.0",
+            "Bool" => "true",
+            "fn(Int) -> Int" => "same",
+            t => panic!("no value of {t} here"),
+        };
+        let types: Vec<&str> = paka::BY_VALUE
+            .into_iter()
+            .chain(["fn(Int) -> Int"])
+            .collect();
+        let params: Vec<String> = (types.iter().enumerate())
+            .map(|(n, t)| format!("x{n}: {t}"))
+            .collect();
+        let args: Vec<&str> = types.iter().map(|t| value(t)).collect();
+        let source = format!(
+            "enum Msg {{ Start }}\n\
+             fn same(n: Int) -> Int {{ n }}\n\
+             fn f({}) -> Int {{ 0 }}\n\
+             fn update(msg: Msg) -> List<Effect<Msg>> {{ [Print(\"{{f({})}}\"), Exit] }}\n\
+             app t {{\n  start: Start\n  update: update\n  grants: [Console]\n}}\n",
+            params.join(", "),
+            args.join(", ")
+        );
+        let ir = ir(&mut lowered(&source), Checks::All).unwrap();
+        let head = ir
+            .lines()
+            .find(|l| l.starts_with("define internal i32 @p_f("))
+            .unwrap();
+        let params = head.split_once('(').unwrap().1.split(", ");
+        let passed: Vec<&str> = params.filter(|p| p.contains("%a")).collect();
+        assert_eq!(passed.len(), types.len(), "{head}");
+        assert!(passed.iter().all(|p| !p.starts_with("ptr")), "{head}");
+    }
+
+    /// The overlap rules are the ones M6-22's run tested: their hash is the emitter's constant and
+    /// a row of the run's results (M6-23 1.3).
+    #[test]
+    fn the_overlap_rules_are_the_ones_last_run() {
+        let files = [
+            "paka/src/body/own.rs",
+            "paka/src/llvm/code/owned.rs",
+            "paka/src/llvm/code/items.rs",
+        ];
+        let bytes: Vec<u8> = files
+            .iter()
+            .flat_map(|f| fs::read(root().join(f)).unwrap())
+            .collect();
+        let hash = format!("sha256:{}", paka::hash::hex(&paka::sha256::sha256(&bytes)));
+        let results = fs::read_to_string(root().join("docs/results/M6-22.md")).unwrap();
+        assert!(
+            hash == code::OVERLAP_RULES_SIGNED
+                && (results.lines()).any(|l| {
+                    l.starts_with("| ") && l.trim_end().ends_with(&format!("| {hash} |"))
+                }),
+            "the overlap rules changed to {hash}: rerun M6-22's million-program run, add its \
+             numbers and this hash as a row of docs/results/M6-22.md, and set \
+             OVERLAP_RULES_SIGNED in paka/src/llvm/code.rs to it"
+        );
     }
 
     /// Generated programs (M6-21): each without a hole builds in release, and together they give

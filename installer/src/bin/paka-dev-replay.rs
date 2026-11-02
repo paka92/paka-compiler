@@ -1,5 +1,5 @@
 //! `paka-dev-replay <path>`: the visual app at `path` compiled by the dev back end and run with no
-//! window on the clicks of standard input, as a release binary runs under `--paka-replay` (M7-03),
+//! window on the actions of standard input, as a release binary runs under `--paka-replay` (M7-03),
 //! so dev and release frames can be timed alike (M6-31). Built with paka's `measure` feature, it
 //! times them as a `measure` runtime does.
 
@@ -26,10 +26,10 @@ fn main() -> ExitCode {
     let status = measure::around(|| {
         let lines = io::stdin().lock().lines().map(Result::unwrap_or_default);
         let lines: Vec<_> = lines.collect();
-        let (mut out, mut err) = (io::stdout(), io::stderr());
-        let (status, line) = dev.replay(lines.into_iter(), &mut out, &mut err);
+        let mut out = io::stdout();
+        let (status, line) = dev.replay(lines.into_iter(), &mut out);
         let _ = out.flush();
-        let _ = err.write_all(line.as_bytes());
+        let _ = io::stderr().write_all(line.as_bytes());
         status.into()
     });
     ExitCode::from(status as u8)

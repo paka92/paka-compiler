@@ -1,0 +1,59 @@
+type S { n: Int = 0, text: String = "" }
+
+enum Msg { Inc, Edit(text: String) }
+
+fn update(s: inout S, m: Msg) -> List<Effect<Msg>> {
+  match m {
+    Inc => s.n += 1
+    Edit(text) => {
+      s.text = text
+      if text == "q" {
+        return [ExitWith(7)]
+      }
+    }
+  }
+  []
+}
+
+view v(s: S) -> View<Msg> {
+  Col(gap: 0) {
+    Text("{s.n}")
+    Button("inc", on: Inc)
+    Input(s.text, on_change: Edit, key: "in")
+  }
+}
+
+app a {
+  state:  S
+  update: update
+  view:   v
+  grants: []
+}
+
+example two_values {
+  var x = ui_start(a)
+  ui_click(&x, "#1")
+  var y = ui_start(a)
+  ui_click(&y, "#1")
+  ui_click(&y, "#1")
+  ui_text(x, "#0") == "1" && ui_text(y, "#0") == "2"
+}
+
+example a_copy_goes_its_own_way {
+  var x = ui_start(a)
+  ui_click(&x, "#1")
+  var y = x
+  ui_click(&x, "#1")
+  ui_click(&y, "'in'")
+  ui_type(&y, "a")
+  ui_text(x, "#0") == "2" && ui_text(y, "#0") == "1" && ui_text(y, "'in'") == "a"
+}
+
+example exit_mid_text {
+  var ui = ui_start(a)
+  ui_click(&ui, "'in'")
+  ui_type(&ui, "qz")
+  true
+}
+
+example later { ??later }
