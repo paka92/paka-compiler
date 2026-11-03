@@ -48,15 +48,14 @@ Files added by the `apps/` cases. Each is optional.
 - `absent`: paths, one per line, that must not exist after the command.
 - `present`: paths, one per line, that must exist after the command.
 
-Two files at the root serve release mode of the differential harness (M6-06, `paka-diff
---release`). `release-skip` lists feature tags, one per line, from the fixed list in
-`installer/src/release.rs`, which tags each case from its program; a run case is skipped in release
-while any of its tags is listed. `release-exempt` lists, as `hole CASE` lines, every run case with
-a hole, which `paka build` must refuse by the holes' names, and as `unfinished CASE` lines every
-example-status case with a hole, compared in interpreter and dev only. Every other example-status
-case is built with `paka build --examples` and each function example run in its own process
-through the binary's `--paka-examples` (M7-11b). `#` lines are comments. Build
-first with `cargo build --release -p paka -p paka-installer -p paka-rt`.
+One file at the root serves release mode of the differential harness (M6-06, `paka-diff
+--release`), which runs every case in interpreter, dev and release; CI runs it on each pull
+request. `release-exempt` lists, as `hole CASE` lines, every run case with a hole, which
+`paka build` must refuse by the holes' names, and as `unfinished CASE` lines every example-status
+case with a hole, compared in interpreter and dev only. Every other example-status case is built
+with `paka build --examples` and each function example run in its own process through the
+binary's `--paka-examples` (M7-11b). `#` lines are comments. Build first with
+`cargo build --release -p paka -p paka-installer -p paka-rt`.
 
 ## Pass rules
 
