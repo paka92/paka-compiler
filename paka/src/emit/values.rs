@@ -321,7 +321,7 @@ impl Gen<'_> {
     }
 
     /// `unwrap_or(opt, fallback)`: the payload when `opt` is `Some`, read either way and
-    /// dropped by a select. The result borrows from one of the two.
+    /// dropped by a select, then copied, as a later write through `inout` may change either.
     pub(super) fn unwrap_or(&mut self, opt: Ty, at: Value, fallback: Value) -> Value {
         let payload = self.l.get(opt).alternatives[0][0];
         let tag = self
@@ -329,7 +329,9 @@ impl Gen<'_> {
             .ins()
             .load(types::I64, MemFlagsData::trusted(), at, 0);
         let v = self.get(payload.ty, at, payload.offset);
-        self.b.ins().select(tag, fallback, v)
+        let v = self.b.ins().select(tag, fallback, v);
+        let v = self.owned(payload.ty, v);
+        self.temp(payload.ty, v)
     }
 
     /// `ok_or(opt, error)`: `Some` and `Ok` share tag 0, `None` and `Err` tag 1. The result's
