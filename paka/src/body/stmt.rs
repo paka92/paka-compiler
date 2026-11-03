@@ -269,7 +269,11 @@ impl Cx<'_, '_> {
 
     /// The element type of the list a `for` goes over.
     pub(super) fn elements(&mut self, list: &Expr) -> Res<Ty> {
-        let ty = self.expr_val(list, None)?;
+        // A list that leaves, as `unreachable()` does, has no item type to walk.
+        let ty = match self.expr(list, None)? {
+            Out::Never => return Err(self.open_part(list, None)),
+            out => self.val(out, list)?,
+        };
         if self.free(ty) {
             return Err(self.open_value(list, None));
         }
