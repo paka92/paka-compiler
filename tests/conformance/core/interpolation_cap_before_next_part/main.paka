@@ -1,0 +1,15 @@
+enum Msg { Start }
+
+fn update(msg: Msg) -> List<Effect<Msg>> {
+  let a = repeat("a", 8388608)
+  let b = repeat("b", 8388608)
+  let z = 0
+  let s = "{a}{b}!{7 / z}"
+  [Print("not reached"), Exit]
+}
+
+app core {
+  start: Start
+  update: update
+  grants: [Console]
+}

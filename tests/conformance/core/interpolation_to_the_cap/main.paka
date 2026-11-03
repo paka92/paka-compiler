@@ -1,0 +1,18 @@
+enum Msg { Start }
+
+fn update(msg: Msg) -> List<Effect<Msg>> {
+  let a = repeat("a", 8388600)
+  let e = repeat("é", 4194300)
+  let empty = ""
+  let n = 1234567
+  let s = "{a}{empty}{e}{n}{true}xyzé"
+  let k = len(s)
+  let from = k - 15
+  [Print("{k}"), Print(s[from..<k]), Exit]
+}
+
+app core {
+  start: Start
+  update: update
+  grants: [Console]
+}

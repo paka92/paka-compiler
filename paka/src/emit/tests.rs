@@ -105,3 +105,31 @@ fn every_definition_compiles_to_code() {
         assert!(!emitter.code(&p, &l, def).unwrap().is_empty());
     }
 }
+
+/// An interpolation of two or more parts makes one `JOIN_ALL` call and no pairwise `JOIN`
+/// (M6-25d).
+#[test]
+fn an_interpolation_is_one_join() {
+    use paka_rt::abi::dev::words::{JOIN, JOIN_ALL};
+    let source = "fn f(s: String, n: Int, b: Bool) -> String { \"{s}<{n}|{b}>{s}\" }\n";
+    let (mut p, ..) = crate::check("main.paka", &Source::file("main.paka", source.into())).unwrap();
+    let l = Layouts::new(&mut p);
+    let f = Emitter::new().unwrap().ir(&p, &l, 0).unwrap();
+    let row = |inst| {
+        let args = f.dfg.inst_args(inst);
+        let ValueDef::Result(i, _) = f.dfg.value_def(*args.get(2)?) else {
+            return None;
+        };
+        match f.dfg.insts[i] {
+            InstructionData::UnaryImm { imm, .. } => Some(imm.bits() as u64),
+            _ => None,
+        }
+    };
+    let rows: Vec<u64> = (f.layout.blocks())
+        .flat_map(|b| f.layout.block_insts(b))
+        .filter(|&i| f.dfg.insts[i].opcode() == Opcode::CallIndirect)
+        .filter_map(row)
+        .filter(|&r| r == JOIN || r == JOIN_ALL)
+        .collect();
+    assert_eq!(rows, [JOIN_ALL], "{}", f.display());
+}

@@ -1,0 +1,19 @@
+enum Msg { Start }
+
+fn clear(t: inout String) -> String {
+  t = "zz"
+  "x"
+}
+
+fn update(msg: Msg) -> List<Effect<Msg>> {
+  var s = "hello"
+  let none: Option<String> = None
+  let joined = "{0}{unwrap_or(none, s)}{clear(&s)}"
+  [Print(joined), Print(s), Exit]
+}
+
+app ownership {
+  start: Start
+  update: update
+  grants: [Console]
+}

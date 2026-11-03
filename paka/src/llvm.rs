@@ -539,6 +539,52 @@ app a {
         assert!(optimized.contains("store double"), "{optimized}");
     }
 
+    /// An interpolation's parts are joined by one `JOIN_ALL` call, and each running byte count is
+    /// frozen before its cap check: unfrozen, the chain of adds with a trap exit per part makes
+    /// LLVM's loop passes take minutes on a few hundred parts in a loop (M6-25d).
+    #[test]
+    fn an_interpolation_is_one_join_and_its_byte_counts_are_frozen() {
+        use paka_rt::abi::dev::words::{JOIN, JOIN_ALL};
+        let source = "enum Msg { Start }
+fn update(m: Msg) -> List<Effect<Msg>> {
+  var s = \"\"
+  for i in 0..<3 {
+    let flag = i > 1
+    s = \"{s}<{i}|{flag}>{s}\"
+  }
+  [Print(s), Exit]
+}
+app a {
+  start: Start
+  update: update
+  grants: [Console]
+}
+";
+        let ir = emit(&view(&mut lowered(source), Checks::All).unwrap());
+        assert_eq!(lint::lint(&ir), Vec::<String>::new());
+        let update = function(&ir, "update");
+        let calls = |row: u64| {
+            let call = format!("@paka_rt1_text(i64 {row}, ");
+            update.matches(&call).count()
+        };
+        assert_eq!((calls(JOIN_ALL), calls(JOIN)), (1, 0), "{update}");
+        let frozen: Vec<&str> = (update.lines())
+            .filter_map(|l| {
+                l.trim()
+                    .strip_suffix(", 16777216")?
+                    .split_once("icmp ugt i64 ")
+            })
+            .map(|(_, v)| v)
+            .collect();
+        assert_eq!(frozen.len(), 7, "{update}");
+        for v in frozen {
+            assert!(
+                update.contains(&format!("{v} = freeze i64 ")),
+                "{v}: {update}"
+            );
+        }
+    }
+
     /// `ir` at the optimization `paka build` uses.
     fn optimized(ir: &str) -> String {
         let mut clang = Command::new("clang")

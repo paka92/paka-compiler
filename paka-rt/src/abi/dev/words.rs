@@ -65,6 +65,9 @@ pub const UPPER: u64 = 27;
 pub const LOWER: u64 = 28;
 /// The Float with bits `a` to `b` places.
 pub const FIXED: u64 = 29;
+/// The `b` Strings whose words' addresses are the `b` words at `a`, joined in order: an
+/// interpolation's parts.
+pub const JOIN_ALL: u64 = 30;
 
 /// What a row makes.
 enum Made {
@@ -96,10 +99,16 @@ pub unsafe extern "sysv64" fn rt_text(
         let sep = (row == SPLIT).then(|| text(b));
         return pieces(ctx, row, &text(a), sep.as_ref(), site, out.cast());
     }
-    if row == JOIN {
-        // SAFETY: the caller vouches `a` and `b` are Strings' words.
-        let chars = unsafe { words(a).chars + words(b).chars };
-        let made = new_text_of(ctx, &[str(a), str(b)], chars);
+    if row == JOIN || row == JOIN_ALL {
+        let pair = [a, b];
+        let parts = match row {
+            JOIN => &pair[..],
+            // SAFETY: the caller vouches `a` holds `b` words, `b` at least 1.
+            _ => unsafe { slice::from_raw_parts(ptr::with_exposed_provenance(a as usize), b as _) },
+        };
+        // SAFETY: the caller vouches each part is a String's words.
+        let chars = parts.iter().map(|&p| unsafe { words(p).chars }).sum();
+        let made = new_text_of(ctx, parts.iter().map(|&p| str(p)), chars);
         return put(ctx, made, site, out);
     }
     let word = |b: bool| Ok(Made::Word(b.into()));
@@ -314,13 +323,19 @@ fn fail(ctx: &mut Context, kind: u64, site: u64, operands: [u64; 3]) -> i32 {
 
 /// A new String block holding `s`; `None` past the cap or when the heap refuses.
 pub(super) fn new_text(ctx: &mut Context, s: &str) -> Option<TextWords> {
-    new_text_of(ctx, &[s], s.chars().count() as u64)
+    new_text_of(ctx, [s].into_iter(), s.chars().count() as u64)
 }
 
 /// A new String block holding `parts` in turn, `chars` characters in all; `None` past the cap,
 /// checked before the block is made, or when the heap refuses.
-fn new_text_of(ctx: &mut Context, parts: &[&str], chars: u64) -> Option<TextWords> {
-    let bytes: usize = parts.iter().map(|p| p.len()).sum();
+fn new_text_of<'a>(
+    ctx: &mut Context,
+    parts: impl Iterator<Item = &'a str> + Clone,
+    chars: u64,
+) -> Option<TextWords> {
+    let bytes = parts
+        .clone()
+        .fold(0, |n: usize, p| n.saturating_add(p.len()));
     if bytes > CAP {
         return None;
     }

@@ -9,9 +9,10 @@ use crate::layout::{self, CONSTANT, LIST, STRING};
 use cranelift_codegen::ir::condcodes::IntCC;
 use cranelift_codegen::ir::{InstBuilder, MemFlagsData, Value, types};
 use paka_rt::abi::dev::words::{
-    CODE_AT, COMPARE, CONTAINS, ENDS_WITH, FIND, JOIN, LINES, PARSE_FLOAT, SHOW, WORDS,
+    CODE_AT, COMPARE, CONTAINS, ENDS_WITH, FIND, JOIN, JOIN_ALL, LINES, PARSE_FLOAT, SHOW, WORDS,
 };
 use paka_rt::abi::dev::{self as rt, Rt};
+use paka_rt::ops;
 use std::mem::offset_of;
 
 /// A place step, its operands already evaluated.
@@ -254,10 +255,13 @@ impl Gen<'_> {
         at.expect("the List<String> type")
     }
 
-    /// Interpolation: the parts joined in order, an Int in decimal and a Bool as `true` or
-    /// `false`; a `memory` trap at the opening quote past the cap.
+    /// Interpolation: the parts joined in order by one row, an Int in decimal and a Bool as
+    /// `true` or `false`; a `memory` trap at the opening quote as soon as the parts so far pass
+    /// the cap, before the next one is evaluated, as in the interpreter.
     pub(super) fn interpolate(&mut self, parts: &[Expr], site: Site) -> Result<Value, Refusal> {
-        let mut text = None;
+        let flags = MemFlagsData::trusted();
+        let mut made = vec![];
+        let mut bytes = self.int_const(0);
         for part in parts {
             let v = self.value(part)?;
             let v = match self.p.types[ty(part)] {
@@ -268,12 +272,25 @@ impl Gen<'_> {
                 }
                 _ => v,
             };
-            text = Some(match text {
-                None => v,
-                Some(t) => self.text(JOIN, site, &[t, v]),
-            });
+            let len = self.b.ins().load(types::I64, flags, v, LEN);
+            bytes = self.b.ins().iadd(bytes, len);
+            let past =
+                (self.b.ins()).icmp_imm_s(IntCC::UnsignedGreaterThan, bytes, ops::CAP as i64);
+            self.check(past, rt::MEMORY, site, &[]);
+            made.push(v);
         }
-        Ok(text.unwrap_or_else(|| self.literal("")))
+        Ok(match made[..] {
+            [] => self.literal(""),
+            [v] => v,
+            _ => {
+                let list = slot(&mut self.b, 8 * made.len());
+                for (i, &v) in made.iter().enumerate() {
+                    self.b.ins().store(flags, v, list, 8 * i as i32);
+                }
+                let count = self.int_const(made.len() as i64);
+                self.text(JOIN_ALL, site, &[list, count])
+            }
+        })
     }
 
     /// `x + y`, `x == y` and the order of two Strings.
