@@ -36,11 +36,7 @@ impl Cx<'_, '_> {
         let mut cur = match (&head.kind, links.last().copied().map(|l| &l.kind)) {
             (K::Name(_), Some(K::Call(_, args))) => {
                 prev = links.pop().expect("a call");
-                let out = self.call_named(head, args, hint(&links))?;
-                if let (Out::Never, Some(ty)) = (&out, hint(&links)) {
-                    self.info.insert(span(prev), ty);
-                }
-                out
+                self.call_named(head, args, hint(&links))?
             }
             (K::Hole(_), Some(K::Binary(BinOp::And | BinOp::Or, ..) | K::Unary(UnOp::Not, _))) => {
                 Out::Val(self.prim("Bool"))
@@ -49,6 +45,10 @@ impl Cx<'_, '_> {
             (K::Hole(_), _) => self.hole(head, if links.is_empty() { raw } else { None })?,
             _ => self.leaf(head, hint(&links))?,
         };
+        // A call, `if` or `match` that leaves still has the type its place wants.
+        if let (Out::Never, Some(ty)) = (&cur, hint(&links)) {
+            self.info.insert(span(prev), ty);
+        }
         self.note(prev, &cur);
         while let Some(link) = links.pop() {
             cur = self.link(link, prev, cur, hint(&links))?;
