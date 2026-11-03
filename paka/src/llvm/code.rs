@@ -42,7 +42,7 @@ const MAX_FRAME: usize = 256 << 10;
 /// in that order: the overlap rules M6-22's run tested (M6-23 1.3); a changed file must be run again.
 #[cfg(test)]
 pub(super) const OVERLAP_RULES_SIGNED: &str =
-    "sha256:ad15f9a8ebdcda1b83e6b310d6f8af7c90f9618ffe4416af438a0753f6bcf261";
+    "sha256:7ff9bace4313b31ee9228753c088302ba34e9d192426ae237bcfde7831f62ead";
 
 /// The IR of `update`'s body, and of every other function with the constants and declarations
 /// they need; `None` when any of it is beyond this lowering. With `computed`, the body builds the
