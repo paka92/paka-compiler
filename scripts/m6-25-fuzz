@@ -2,7 +2,9 @@
 # M6-25: the three-back-end fuzz. Runs `paka-diff --fuzz-release` on WORKERS processes over
 # consecutive seed blocks until HOURS have passed. OUT/run.txt records the commit and settings,
 # OUT/blocks.log one line per block (first seed, count, status, seconds), and every divergence is
-# kept, shrunk, as a run case under OUT/kept. Builds' scratch goes to OUT/tmp, on OUT's disk.
+# kept, shrunk, as a run case under OUT/kept. A seed that is slow or whose program does not check
+# fails its block too; it is kept unshrunk and marked by OUT/kept/SEED.slow or
+# SEED.does-not-check. Builds' scratch goes to OUT/tmp, on OUT's disk.
 set -u
 usage="usage: scripts/m6-25-fuzz OUT [HOURS] [WORKERS] [FIRST] [BLOCK]"
 out=${1:?$usage}
@@ -41,5 +43,7 @@ worker() {
 for (( w = 0; w < workers; w++ )); do worker "$w" & done
 wait
 echo "ended $(date -u +%FT%TZ)" >> "$out/run.txt"
+marked() { find "$out/kept" -maxdepth 1 -name "*.$1" | wc -l; }
 echo "blocks: $(wc -l < "$out/blocks.log"), failed: $(awk '$3 != 0' "$out/blocks.log" | wc -l)," \
-    "kept: $(ls "$out/kept" | wc -l)" | tee -a "$out/run.txt"
+    "kept: $(find "$out/kept" -mindepth 1 -maxdepth 1 -type d | wc -l)," \
+    "slow: $(marked slow), do not check: $(marked does-not-check)" | tee -a "$out/run.txt"

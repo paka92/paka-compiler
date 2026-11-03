@@ -2,6 +2,7 @@
 //! letters from the arguments and then from the type asked for (M2-09 section 1.3); a letter
 //! neither fixes is `cannot-infer`, unless the row's result carries it to the call's position.
 
+use super::stmt::values;
 use super::text::{article, float_fix, render};
 use super::{Cx, Out, Res, span};
 use crate::ast::{Arg, Expr, ExprKind as K};
@@ -755,13 +756,14 @@ impl<'a> Cx<'_, 'a> {
     }
 }
 
-/// Whether a hole sits in `e` as an item or an argument, at any depth.
+/// Whether a hole sits in `e` as an item, an argument or a branch's value, at any depth.
 fn holds_hole(e: &Expr) -> bool {
     match &e.kind {
         K::Hole(_) => true,
         K::List(items) => items.iter().any(holds_hole),
         K::Map(pairs) => pairs.iter().any(|(k, v)| holds_hole(k) || holds_hole(v)),
         K::Call(_, args) => args.iter().any(|a| holds_hole(&a.value)),
+        K::If { .. } | K::Match { .. } => values(e).into_iter().any(holds_hole),
         _ => false,
     }
 }
