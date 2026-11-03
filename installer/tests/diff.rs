@@ -266,9 +266,7 @@ fn the_release_fuzz_loop_keeps_a_planted_release_fault_as_a_case() {
     );
     let kept = std::fs::read_to_string(root.join("fuzz/0/main.paka")).unwrap();
     assert!(kept.lines().count() < 20, "{kept}");
-    for list in ["release-skip", "release-exempt"] {
-        std::fs::write(root.join(list), "").unwrap();
-    }
+    std::fs::write(root.join("release-exempt"), "").unwrap();
     let release = |plant| diff(plant, &["--release".as_ref(), root.as_ref()]);
     let (text, status) = release("0");
     assert!(
