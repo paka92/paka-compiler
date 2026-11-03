@@ -512,8 +512,18 @@ fn a_for_over_a_value_that_leaves_is_cannot_infer() {
     let walk = |head: &str| format!("for x in {head} {{}}");
     let leaves = walk("if c { unreachable() } else { unreachable() }");
     rejects(&[
-        st("cannot-infer", "in ^unreachable", None, &[&walk("unreachable()")]),
-        df("cannot-infer", "in ^if", None, &["fn f(c: Bool) {", &leaves, "}"]),
+        st(
+            "cannot-infer",
+            "in ^unreachable",
+            None,
+            &[&walk("unreachable()")],
+        ),
+        df(
+            "cannot-infer",
+            "in ^if",
+            None,
+            &["fn f(c: Bool) {", &leaves, "}"],
+        ),
     ]);
 }
 
