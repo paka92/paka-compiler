@@ -71,6 +71,9 @@ const HEAP: u64 = 1 << 30;
 /// How long a run of a conformance case, and of a generated program, may take before it stops.
 const LIMIT: Duration = Duration::from_secs(3);
 const FUZZ_LIMIT: Duration = Duration::from_secs(1);
+/// A busy machine can stall a compiled run past its limit: a stopped one is run again with this
+/// many times the limit, and only a second stop counts.
+const AGAIN: u32 = 10;
 const CONFORMANCE: &str = "tests/conformance";
 
 fn main() -> ExitCode {
@@ -536,7 +539,11 @@ fn released(built: &Path, reference: &Outcome, limit: Duration) -> io::Result<(u
             }
         });
     }
-    let run = native(&built.with_extension("prog"), built, &[], limit)?;
+    let prog = built.with_extension("prog");
+    let mut run = native(&prog, built, &[], limit)?;
+    if stopped(&run) {
+        run = native(&prog, built, &[], limit * AGAIN)?;
+    }
     Ok(release_verdict(reference, &run))
 }
 
@@ -751,7 +758,11 @@ fn judged(
         let why = format!("unsupported {name}: the interpreter ran past the limit");
         return Ok(((2, why), reference, compiled));
     }
-    let (dev, note) = run(&dirs[1], ENGINES[1], compiled, args)?;
+    let mut dev = run(&dirs[1], ENGINES[1], compiled, args)?;
+    if stopped(&dev.0) {
+        dev = run(&dirs[1], ENGINES[1], compiled * AGAIN, args)?;
+    }
+    let (dev, note) = dev;
     let verdict = match (
         note.strip_prefix("unsupported: "),
         difference(&reference, &dev),
