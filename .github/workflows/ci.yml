@@ -19,6 +19,8 @@ jobs:
           echo "$RUNNER_TEMP/LLVM-$v-Linux-X64/bin" >> "$GITHUB_PATH"
       - run: clang --version
       - run: cargo build --release --locked --offline
+      - name: Conformance in interpreter, dev and release
+        run: target/release/paka-diff --release
       - run: cargo test --release --locked --offline
       - run: cargo clippy --locked --offline --all-targets -- -D warnings
       - run: cargo fmt --check

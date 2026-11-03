@@ -13,10 +13,6 @@ block=${5:-200}
 root=$(cd "$(dirname "$0")/.." && pwd)
 bin=${CARGO_TARGET_DIR:-$root/target}/release
 
-if grep -qvE '^(#|$)' "$root/tests/conformance/release-skip"; then
-    echo "release-skip is not empty; the run must start with it empty" >&2
-    exit 1
-fi
 cargo build --release --locked --offline --manifest-path "$root/Cargo.toml" || exit 1
 mkdir -p "$out/kept" "$out/logs" "$out/tmp"
 export TMPDIR

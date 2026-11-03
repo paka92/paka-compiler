@@ -2201,6 +2201,7 @@ or merged during review. Ids with a letter were added during review.
 - flags: native-only, owner
 - done when: The skip file, already empty, is gone; a planted pull request with one differing conformance case shows the three-mode job red; the owner sees it and marks the job as required.
 - why this level: Deletes a file and adds given commands to CI; no decisions.
+- note: Built: tests/conformance/release-skip is gone, and with it the feature tags in installer/src/release.rs that only it read; `paka-diff --release` runs every case in release, and scripts/m6-25-fuzz no longer checks the file. The `ci` job of .github/workflows/ci.yml runs `target/release/paka-diff --release` after its release build, comparing every conformance case in interpreter, dev and release; it fails on any difference. Locally: 471 agree, 0 differ; the two `unfinished` cases stay interpreter and dev only. Owner steps left: (1) approve the changed ci.yml with `paka approve` once the gate's store exists (M7-10), since workflow files are owned; (2) open a pull request with one case planted to differ in release and see `ci` go red; (3) mark `ci` as a required check on `development`, as for `gate` in M7-10. Mark done after (3).
 
 ### M6-27 · L2 · Build the benchmark runner: pinned compilers, fixed flags, repeated runs, checksum agreement
 

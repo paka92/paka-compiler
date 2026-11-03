@@ -5,12 +5,11 @@
 //!
 //! `paka-diff --release [ROOT]` adds release mode (M6-06): each case is also built with the `paka`
 //! next to this binary and run, and must agree with the interpreter. A case with a hole must be
-//! refused by the holes' names instead; a case is skipped while one of its tags (release.rs) is in
-//! ROOT's `release-skip`. Each example-status case is built with all its function examples
-//! (`paka build --examples`, M7-11b) and each example run in its own process by the binary's
-//! `--paka-examples`; it must end as the interpreter's run of it does. ROOT's `release-exempt` must
-//! list exactly the run cases with a hole (`hole`) and the example-status cases with one
-//! (`unfinished`), which stay interpreter and dev only.
+//! refused by the holes' names instead. Each example-status case is built with all its function
+//! examples (`paka build --examples`, M7-11b) and each example run in its own process by the
+//! binary's `--paka-examples`; it must end as the interpreter's run of it does. ROOT's
+//! `release-exempt` must list exactly the run cases with a hole (`hole`) and the example-status
+//! cases with one (`unfinished`), which stay interpreter and dev only.
 //!
 //! `paka-diff --fuzz FIRST COUNT KEEP` does the same for the generated programs of COUNT seeds
 //! from FIRST (M4-41). Each that differs is shrunk while it keeps that kind of difference and
@@ -123,7 +122,6 @@ fn compare(root: &Path) -> io::Result<ExitCode> {
 fn compare_release(root: &Path) -> io::Result<ExitCode> {
     let file = |name| fs::read_to_string(root.join(name));
     let invalid = |why| io::Error::new(io::ErrorKind::InvalidData, why);
-    let skip = release::skipped(&file("release-skip")?).map_err(invalid)?;
     let [holes, unfinished] = release::exempt(&file("release-exempt")?).map_err(invalid)?;
     let named = |dir: &Path| dir.strip_prefix(root).unwrap_or(dir).display().to_string();
     let command = |dir: &Path| fs::read_to_string(dir.join("command")).unwrap_or_default();
@@ -148,13 +146,10 @@ fn compare_release(root: &Path) -> io::Result<ExitCode> {
         let result = if !names.is_empty() {
             seen.insert(name.clone());
             refused(&paka, &dirs[1], &names, holes.contains(&name))?
-        } else if release::tags(&core).is_disjoint(&skip) {
+        } else {
             let built = scratch.join(&flat);
             stage(&case, &built)?;
             ran(&paka, &built, &reference, &args)?
-        } else {
-            skipped += 1;
-            Ok("skipped".into())
         };
         match result {
             Ok(note) => line += &format!("; release {note}"),
