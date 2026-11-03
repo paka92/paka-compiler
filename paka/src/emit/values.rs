@@ -334,8 +334,8 @@ impl Gen<'_> {
         self.temp(payload.ty, v)
     }
 
-    /// `ok_or(opt, error)`: `Some` and `Ok` share tag 0, `None` and `Err` tag 1. The result's
-    /// payload borrows from `opt` or `error`.
+    /// `ok_or(opt, error)`: `Some` and `Ok` share tag 0, `None` and `Err` tag 1. The result is a copy,
+    /// so a later write to `opt` or `error` leaves it whole.
     pub(super) fn ok_or(&mut self, (opt, at): (Ty, Value), result: Ty, error: Value) -> Value {
         let size = self.size(result);
         let to = slot(&mut self.b, size);
@@ -359,7 +359,8 @@ impl Gen<'_> {
         self.put(err.ty, to, err.offset, error);
         self.b.ins().jump(merge, &[]);
         self.b.switch_to_block(merge);
-        to
+        let v = self.owned(result, to);
+        self.temp(result, v)
     }
 }
 
