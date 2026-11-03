@@ -26,26 +26,26 @@ impl Body<'_, '_> {
     }
 
     /// A List literal of type `t`: a new block owned first, then each item stored as it is
-    /// evaluated.
+    /// evaluated. The length counts the items stored, so an item that leaves drops only those.
     pub(super) fn list(&mut self, t: Ty, items: &[Expr]) -> Option<String> {
         let item = self.item_ty(t);
         let ptr = match items.len() * self.size(item) {
             0 => "null".into(),
             bytes => self.alloc(bytes),
         };
-        let count = items.len().to_string();
-        let cap = if items.is_empty() {
-            CONSTANT.to_string()
-        } else {
-            count.clone()
+        let cap = match items.len() {
+            0 => CONSTANT.to_string(),
+            n => n.to_string(),
         };
-        let out = self.list_words(t, &ptr, &count, &cap);
+        let out = self.list_words(t, &ptr, "0", &cap);
         let out = self.temp(t, out);
+        let len = self.offset(&out, LIST.len);
         for (i, e) in items.iter().enumerate() {
             let v = self.expr(e)??;
             let v = self.owned(item, &v);
             let at = self.nth(&ptr, item, &i.to_string());
             self.put(item, &v, &at);
+            self.store("i64", &(i + 1).to_string(), &len);
         }
         Some(out)
     }
