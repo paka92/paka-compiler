@@ -1,12 +1,14 @@
 //! The differential harness (M4-40): planted differences in output, status, trap kind and trap
-//! position each differ, as does a run ended by a signal; and the command lists every run case of
+//! position each differ, as does a run ended by a signal; a stalled compiled run runs again, and is
+//! slow when it needed more than its limit (M6-25c); and the command lists every run case of
 //! the conformance suite once. Every UI example agrees in all three back ends, a planted dev view
 //! fault differs in each (M5-26) and a planted release one in each built (M7-11c). A planted
 //! release fault is found, shrunk and kept as a case (M6-20), and each of a fast subset of the
 //! others is found (M6-21).
 
 use paka_installer::diff::{
-    Outcome, cases, compiled_limit, difference, expect, release_verdict, room, stop, stopped,
+    AGAIN, Outcome, cases, compiled_limit, difference, expect, release_verdict, room, stop,
+    stopped, verdict,
 };
 use std::os::unix::fs::PermissionsExt;
 use std::path::Path;
@@ -95,6 +97,39 @@ fn a_compiled_run_outlasts_a_stack_fill_past_a_fast_interpreter() {
     let ms = |interp| compiled_limit(Duration::from_millis(interp)).as_millis();
     assert_eq!(ms(10), 1000);
     assert_eq!(ms(2000), 8000);
+}
+
+#[test]
+fn a_stalled_run_runs_again_and_one_that_needed_more_than_its_limit_is_slow() {
+    let limit = Duration::from_secs(1);
+    let ended = |stdout: &str| Outcome {
+        stdout: stdout.into(),
+        status: Some(0),
+        ..Outcome::default()
+    };
+    let stalled = |stdout: &str| stop(ended(stdout));
+    let reference = ended("a\nb\n");
+    let judged = |first: Outcome, rerun: Outcome, took: Duration| {
+        let again = |more| {
+            assert_eq!(more, limit * AGAIN);
+            Ok(((rerun, ()), took))
+        };
+        let run = verdict(&reference, (first, ()), limit, again).unwrap();
+        run.map(|(run, ())| (run.stdout, run.status))
+    };
+    let ms = Duration::from_millis;
+    // A stall, then a run within the limit: the rerun stands.
+    let passed = judged(stalled("a\n"), ended("a\nb\n"), ms(300));
+    assert_eq!(passed, Ok((b"a\nb\n".to_vec(), Some(0))));
+    // A stall, then a run that needed more than the limit: slow, a failure.
+    let slow = judged(stalled("a\n"), ended("a\nb\n"), ms(4000));
+    assert!(slow.unwrap_err().contains("then took 4000 ms"));
+    // A stall after output the reference lacks: the first run stands, and differs.
+    let wrong = judged(stalled("x\n"), ended("a\nb\n"), ms(300));
+    assert_eq!(wrong, Ok((b"x\n".to_vec(), Some(4))));
+    // Two stalls: the second stop stands, and differs.
+    let twice = judged(stalled("a\n"), stalled("a\n"), limit * AGAIN);
+    assert_eq!(twice, Ok((b"a\n".to_vec(), Some(4))));
 }
 
 #[test]

@@ -945,4 +945,28 @@ mod tests {
         assert!(!example_agrees(want, &trapped("overflow", "12:30")));
         assert!(!example_agrees(want, &trapped("stack", "12:29")));
     }
+
+    #[test]
+    fn a_generated_program_that_does_not_check_is_kept_marked_and_fails() {
+        let keep = env::temp_dir().join(format!("paka-unchecked-{}", process::id()));
+        let text = "fn f() -> Int {\n  \"a\"\n}\n";
+        let line = format!("does not check seed 7: {}", checks(text).unwrap_err());
+        for (release, program) in [(false, "7.paka"), (true, "7/main.paka")] {
+            let failed = (UNCHECKED, line.as_str());
+            let kept = keep_failing(&keep, 7, release, failed, text, Path::new("")).unwrap();
+            assert_eq!(kept, keep.join(program));
+            assert_eq!(fs::read_to_string(&kept).unwrap(), text);
+            let mark = fs::read_to_string(keep.join("7.does-not-check")).unwrap();
+            assert_eq!(mark, line);
+            fs::remove_dir_all(&keep).unwrap();
+        }
+        let text = |counts| summary(counts).0;
+        assert_eq!(text([2, 0, 1, 0, 0]), "2 agree, 0 differ, 1 unsupported");
+        let failing = "2 agree, 0 differ, 0 unsupported, 1 slow, 1 do not check";
+        assert_eq!(text([2, 0, 0, 1, 1]), failing);
+        assert!(!summary([2, 0, 1, 0, 0]).1);
+        for counts in [[2, 1, 0, 0, 0], [2, 0, 0, 1, 0], [2, 0, 0, 0, 1]] {
+            assert!(summary(counts).1, "{counts:?}");
+        }
+    }
 }
