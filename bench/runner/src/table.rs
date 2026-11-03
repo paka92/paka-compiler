@@ -298,8 +298,8 @@ fn section8(
     let _ = writeln!(
         w,
         "\nM6-19's check, per kernel: at `clang -O3`, as `paka build` makes the program, does a \
-         block on a loop of these functions branch to a trap? Held by a test in \
-         paka/src/llvm.rs; a check may be an overflow check as well as a bounds check.\n\n\
+         block on a loop still branch to a bounds or overflow trap? The functions hold the hot \
+         loops. Held by a test in paka/src/llvm.rs.\n\n\
          | Kernel | Functions | Trap branch left in a loop |\n|---|---|---|"
     );
     for (name, ..) in list {
