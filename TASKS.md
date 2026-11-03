@@ -2195,6 +2195,14 @@ or merged during review. Ids with a letter were added during review.
 - why this level: Each divergence is a miscompile or meaning bug across three back ends.
 - note: The 37 seeds the M6-25 run had kept by seed 1,125,392 had two causes, neither a meaning bug: every status 4 was the harness's own `stopped: time`. (1) The harness's limits were too tight for a busy machine: a dev run got four times the interpreter's time, often under the 0.1 to 0.3 s a stack trap takes to fill the 64 MiB runner stack (24 `status 3, dev 4` seeds), and a release run 250 ms, which a stall sometimes passes (1005562, 1008608, 1045216, 1106028); an interpreter run stopped just after printing its trap was taken as the reference (1021297, 1054249); and the run writing a kept case's expectations could itself be stopped (1052738 and 1081185 expect `stopped: time`). The interpreter now gets 1 s and each compiled run four times its time, at least 1 s; such a run counts as stopped; and expectations are written under the 3 s run-case limit. (2) The runtime's String join copied each operand about five times and built an over-cap result before refusing it, so compiled programs building long Strings ran three to four times slower than interpreted (1021324, 1036549, 1060244, 1074110, 1098803, 1101930, and dev in 1054764); it now checks the cap first and makes one block. Every kept seed now agrees, also on a CPU shared with two busy loops, and seeds 5,000,000 to 5,001,999 all agree. The 47 later seeds of that run (1,126,559 to 1,185,400) are the same kinds and all agree on rerun; its `no ledger` and `clang-failed` cases came from a full temp disk, where the dev run's ledger note could not be written. A note that cannot be written, or a failed release build with no room left on the disk, now ends its block with status 2 instead of filing a divergence, and the fuzz script keeps its temp files under OUT/tmp. The installer diff tests, once stopped by the 250 ms interpreter limit, passed 13 runs in a row on a CPU shared with 24 busy loops. Open: interpolation still joins its parts pairwise, about twice the interpreter's time on long Strings; joining all parts at once needs a new runtime row taking a list of parts, emitted by both the dev and the release back end. Done needs a clean rerun of M6-25.
 
+### M6-25c · L4 · Fix the divergences the M6-25 rerun filed
+
+- needs: M6-25b
+- flags: native-only
+- done when: Every seed the rerun kept agrees or is reported as the harness's own fault; each real bug has a conformance or checker case that passes in all three back ends.
+- why this level: Each divergence is a checker, dev or release bug, or a harness fault.
+- note: In progress.
+
 ### M6-26 · L1 · Delete the release skip file and require three-mode conformance in CI
 
 - needs: M6-25b

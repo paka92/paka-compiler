@@ -237,6 +237,47 @@ fn a_hole_after_the_first_argument_takes_the_bound_type() {
     }
 }
 
+/// A branch of an `if` or `match` argument has the type its argument takes, so a hole in a
+/// later branch does too, though the first branch carries no type (M2-06 1.5).
+#[test]
+fn a_hole_in_a_branch_of_a_variant_argument_takes_the_bound_type() {
+    let programs = [
+        func(
+            "f(c: Bool)",
+            &[
+                "let r: Result<Option<Int>, Float> = Ok(if c { None } else { ??a })",
+                "_ = r",
+            ],
+        ),
+        func(
+            "f(c: Bool)",
+            &[
+                "let o: Option<Option<Int>> = Some(if c { None } else { Some(??a) })",
+                "_ = o",
+            ],
+        ),
+        func(
+            "f(c: Bool)",
+            &[
+                "let r: Result<Result<Int, String>, Float> = Ok((if c { Ok(2) } else if c { Err(\"a\") } else { Ok(??a) }))",
+                "_ = r",
+            ],
+        ),
+        func(
+            "f(n: Int) -> Result<Option<String>, Float>",
+            &["Ok(match n {", "  0 => None", "  _ => ??a", "})"],
+        ),
+    ];
+    settled(&programs);
+    for (src, want) in programs
+        .iter()
+        .zip(["Option<Int>", "Int", "Int", "Option<String>"])
+    {
+        let pos = at(src, "^??").unwrap();
+        assert_eq!(type_at(src, pos, 3).as_deref(), Some(want), "{}", head(src));
+    }
+}
+
 #[test]
 fn a_letter_fixed_by_neither_is_cannot_infer() {
     rejects(&[
