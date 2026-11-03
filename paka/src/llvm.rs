@@ -630,7 +630,7 @@ app a {
 
     /// The blocks of `function` on a cycle that branch to a trap.
     fn trap_branches_in_loops(function: &str) -> Vec<String> {
-        let mut blocks: Vec<(&str, Vec<&str>, bool)> = Vec::new();
+        let mut blocks: Vec<(&str, Vec<&str>, bool)> = vec![("entry", Vec::new(), false)];
         for line in function.lines().skip(1) {
             match (line.strip_prefix("  "), line.split_once(':')) {
                 (Some(inst), _) => {
@@ -701,6 +701,41 @@ app a {
                 "{k}: {function}"
             );
         }
+    }
+
+    /// bench/programs/loops gives M6-19's yes or no per benchmark kernel (M6-02 section 3, item
+    /// 2): whether a loop of the program as `paka build` makes it still branches to a trap.
+    #[test]
+    fn each_benchmark_kernel_has_its_recorded_trap_answer() {
+        let root = Path::new(env!("CARGO_MANIFEST_DIR")).join("../bench/programs");
+        let answers = fs::read_to_string(root.join("loops")).unwrap();
+        let mut wrong = Vec::new();
+        for line in answers.lines().filter(|l| !l.starts_with('#')) {
+            let (name, answer) = line.split_once(' ').unwrap();
+            let source = fs::read_to_string(root.join(name).join("main.paka")).unwrap();
+            let mut optimized = optimized(&ir(&mut lowered(&source), Checks::All).unwrap());
+            // Only bounds and overflow checks count: a stack or memory check guards a call or an
+            // allocation, which these inner loops do not make.
+            let others: Vec<_> = optimized
+                .lines()
+                .filter(|l| l.starts_with("@t") && l.contains(" c\""))
+                .filter(|l| !l.contains(" c\"out_of_bounds at ") && !l.contains(" c\"overflow at "))
+                .map(|l| l.split(' ').next().unwrap().to_string())
+                .collect();
+            for text in others {
+                optimized = optimized.replace(&format!("@paka_rt1_trap(ptr nonnull {text},"), "(");
+            }
+            let left: Vec<_> = optimized
+                .split("\ndefine ")
+                .skip(1)
+                .filter(|f| !trap_branches_in_loops(f.split("\n}").next().unwrap()).is_empty())
+                .map(|f| f.split(['@', '(']).nth(1).unwrap())
+                .collect();
+            if answer.starts_with("yes") == left.is_empty() {
+                wrong.push(format!("{name} {left:?}"));
+            }
+        }
+        assert_eq!(wrong, Vec::<String>::new());
     }
 
     /// With `noalias` on both Lists (M6-23), stencil's `sweep` vectorizes with no bounds check in

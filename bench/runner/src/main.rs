@@ -6,8 +6,13 @@
 //! `text` gets the path of the text `text::make` writes as its one argument.
 //!
 //! `paka-bench ui <apps> <results> <normal-tools>` gives the visual-app costs; see `ui`.
+//! `paka-bench costs <programs> <results> <normal-tools>` gives the costs that need builds of
+//! their own; see `costs`. `paka-bench table <results-dir> <programs>` prints the published
+//! table; see `table`.
 
+mod costs;
 mod machine;
+mod table;
 mod text;
 mod tools;
 mod ui;
@@ -36,6 +41,12 @@ fn main() -> ExitCode {
                 .and_then(|()| run(Path::new(programs), Path::new(results), here.join("paka"))),
             [command, apps, results, normal] if command == "ui" => idle()
                 .and_then(|()| ui::run(Path::new(apps), Path::new(results), here, normal.into())),
+            [command, programs, results, normal] if command == "costs" => idle().and_then(|()| {
+                costs::run(Path::new(programs), Path::new(results), here, normal.into())
+            }),
+            [command, dir, programs] if command == "table" => {
+                table::print(Path::new(dir), Path::new(programs))
+            }
             _ => return usage(),
         };
     match ran {
@@ -50,6 +61,8 @@ fn main() -> ExitCode {
 fn usage() -> ExitCode {
     eprintln!("usage: paka-bench run <programs-dir> <results-file>");
     eprintln!("       paka-bench ui <apps-dir> <results-file> <normal-tools-dir>");
+    eprintln!("       paka-bench costs <programs-dir> <results-file> <normal-tools-dir>");
+    eprintln!("       paka-bench table <results-dir> <programs-dir>");
     ExitCode::from(2)
 }
 
@@ -88,7 +101,8 @@ fn run(programs: &Path, results: &Path, paka: PathBuf) -> Result<(), String> {
             .filter(|&l| l != Lang::RustChecked || kind == "integer")
             .map(|l| {
                 let bin = dir.0.join(format!("{name}-{}", l.name()));
-                l.build(&tools.paka, &source, &bin).map(|()| (l, bin))
+                l.build(&tools.paka, &source, &bin)
+                    .map(|()| (l.name(), bin))
             })
             .collect::<Result<Vec<_>, _>>()?;
         text += &format!("{name} kind {kind}\n");
@@ -141,7 +155,7 @@ fn header(tools: &Toolchain, programs: &Path, cpu: usize) -> String {
 /// is rerun once. The last attempt's medians are the result.
 fn program(
     name: &str,
-    bins: &[(Lang, PathBuf)],
+    bins: &[(&str, PathBuf)],
     cpu: usize,
     args: &[&Path],
 ) -> Result<String, String> {
@@ -152,8 +166,7 @@ fn program(
         for ((lang, _), t) in bins.iter().zip(&times) {
             let raw: Vec<_> = t.iter().map(|x| format!("{x:.6}")).collect();
             text += &format!(
-                "{name} attempt {attempt} {} median {:.6} s spread {:.1}% times {}\n",
-                lang.name(),
+                "{name} attempt {attempt} {lang} median {:.6} s spread {:.1}% times {}\n",
                 median(t),
                 spread(t) * 100.0,
                 raw.join(" ")
@@ -169,13 +182,13 @@ fn program(
 /// The one Int line every binary prints, refused unless all agree.
 fn agree(
     name: &str,
-    bins: &[(Lang, PathBuf)],
+    bins: &[(&str, PathBuf)],
     cpu: usize,
     args: &[&Path],
 ) -> Result<String, String> {
     let outs = bins
         .iter()
-        .map(|(_, bin)| time(bin, cpu, args).map(|(_, out)| out))
+        .map(|(_, bin)| time(bin, cpu, args).map(|(_, out, _)| out))
         .collect::<Result<Vec<_>, _>>()?;
     let first = &outs[0];
     if first.parse::<i64>().is_ok() && outs.iter().all(|o| o == first) {
@@ -184,7 +197,7 @@ fn agree(
     let got: Vec<_> = bins
         .iter()
         .zip(&outs)
-        .map(|((l, _), o)| format!("{} {o:?}", l.name()))
+        .map(|((l, _), o)| format!("{l} {o:?}"))
         .collect();
     Err(format!(
         "{name}: the checksums differ or are not one Int line: {}",
@@ -194,7 +207,7 @@ fn agree(
 
 /// Seconds per run, one list per binary.
 fn rounds(
-    bins: &[(Lang, PathBuf)],
+    bins: &[(&str, PathBuf)],
     cpu: usize,
     args: &[&Path],
     checksum: &str,
@@ -202,7 +215,7 @@ fn rounds(
     let mut times = vec![Vec::with_capacity(ROUNDS); bins.len()];
     for _ in 0..ROUNDS {
         for ((_, bin), t) in bins.iter().zip(&mut times) {
-            let (took, out) = time(bin, cpu, args)?;
+            let (took, out, _) = time(bin, cpu, args)?;
             if out != checksum {
                 return Err(format!("{} printed {out:?}, not {checksum}", bin.display()));
             }
@@ -212,8 +225,9 @@ fn rounds(
     Ok(times)
 }
 
-/// Runs `bin args` pinned to `cpu`, timed from start to exit; returns its trimmed standard output.
-fn time(bin: &Path, cpu: usize, args: &[&Path]) -> Result<(Duration, String), String> {
+/// Runs `bin args` pinned to `cpu`, timed from start to exit; returns its trimmed standard output
+/// and its standard error.
+fn time(bin: &Path, cpu: usize, args: &[&Path]) -> Result<(Duration, String, String), String> {
     let start = Instant::now();
     let out = Command::new("taskset")
         .arg("-c")
@@ -233,7 +247,11 @@ fn time(bin: &Path, cpu: usize, args: &[&Path]) -> Result<(Duration, String), St
         ));
     }
     let stdout = String::from_utf8_lossy(&out.stdout).trim_end().to_string();
-    Ok((took, stdout))
+    Ok((
+        took,
+        stdout,
+        String::from_utf8_lossy(&out.stderr).into_owned(),
+    ))
 }
 
 fn sorted(times: &[f64]) -> Vec<f64> {

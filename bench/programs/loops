@@ -1,0 +1,13 @@
+# M6-19's check per kernel (docs/decisions/M6-02.md section 3, item 2): `<name> yes|no <function>...`.
+# yes when, in the program at `clang -O3` as `paka build` makes it, a block on a loop still branches
+# to a bounds or overflow trap; the functions hold the hot loops. A test in paka/src/llvm.rs holds
+# each answer; they are the ones in M6-19's note.
+saxpy_dot no saxpy dot
+matmul no multiply
+stencil yes sweep
+nbody no advance energy
+sieve yes count_primes
+sieve_wrap no count_primes
+collatz yes chain
+collatz_wrap no chain
+mix no hash
