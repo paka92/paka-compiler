@@ -5,6 +5,7 @@ use super::{Body, order};
 use crate::core_form::{Bin, Effect, Expr, ExprKind, Site, Tag, Ty, Type};
 use paka_rt::abi::dev::words::*;
 use paka_rt::abi::table::{self, TEXT};
+use paka_rt::ops::CAP;
 
 /// The String builtins that are one row each.
 const ROWS: &[(&str, u64)] = &[
@@ -150,10 +151,12 @@ impl Body<'_, '_> {
         Some(self.text(row, Some(site), &operands))
     }
 
-    /// Interpolation: the parts joined in order, an Int in decimal and a Bool as `true` or
-    /// `false`.
+    /// Interpolation: the parts joined in order by one row, an Int in decimal and a Bool as
+    /// `true` or `false`; a `memory` trap as soon as the parts so far pass the cap, before the
+    /// next one is evaluated, as in the interpreter.
     pub(super) fn interpolate(&mut self, parts: &[Expr], site: Site) -> Option<String> {
-        let mut text: Option<String> = None;
+        let mut made = vec![];
+        let mut bytes = "0".to_string();
         for part in parts {
             let v = self.expr(part)??;
             let v = match self.module.core.types[part.ty?] {
@@ -162,12 +165,27 @@ impl Body<'_, '_> {
                 Type::String => v,
                 _ => return None,
             };
-            text = Some(match text {
-                None => v,
-                Some(t) => self.text(JOIN, Some(site), &[("ptr", &t), ("ptr", &v)]),
-            });
+            let len = self.offset(&v, table::STRING.len);
+            let len = self.load("i64", &len);
+            bytes = self.op(format!("add i64 {bytes}, {len}"));
+            let past = self.op(format!("icmp ugt i64 {bytes}, {CAP}"));
+            self.check(&past, "memory", site);
+            made.push(v);
         }
-        Some(text.unwrap_or_else(|| self.literal("")))
+        Some(match &made[..] {
+            [] => self.literal(""),
+            [v] => v.clone(),
+            _ => {
+                let list = self.name("%p");
+                self.bytes(&list, 8 * made.len());
+                for (i, v) in made.iter().enumerate() {
+                    let at = self.offset(&list, 8 * i);
+                    self.store("ptr", v, &at);
+                }
+                let count = made.len().to_string();
+                self.text(JOIN_ALL, Some(site), &[("ptr", &list), ("i64", &count)])
+            }
+        })
     }
 
     /// A String's count of code points.
