@@ -15,6 +15,7 @@
 //! `paka-diff --fuzz FIRST COUNT KEEP` does the same for the generated programs of COUNT seeds
 //! from FIRST (M4-41). Each that differs is shrunk while it keeps that kind of difference and
 //! written to `KEEP/SEED.paka`. `PAKA_PLANT` plants a fault in the dev back end, for a self-test.
+//! A generated program that does not check is the harness's own failure: no back end can run it.
 //! `paka-diff --fuzz-release FIRST COUNT KEEP` also builds each program in release (M6-20) and
 //! keeps each that differs as the run case `KEEP/SEED`, its expectations the interpreter's run.
 //! Where the interpreter ends in a stack trap, release may finish or run on: that run is cut by
@@ -457,6 +458,10 @@ fn fuzz(seeds: Range<u64>, keep: &Path, release: bool) -> io::Result<ExitCode> {
     let mut tally = Tally::default();
     for seed in seeds {
         let text = paka_gen::program(seed);
+        if let Err(why) = checks(&text) {
+            let why = format!("seed {seed}: the generated program does not check: {why}");
+            return Err(io::Error::other(why));
+        }
         write(&text)?;
         let (verdict, line) = judge(&format!("seed {seed}"))?;
         let want = (verdict == 1).then(|| kind(&line));
@@ -465,9 +470,8 @@ fn fuzz(seeds: Range<u64>, keep: &Path, release: bool) -> io::Result<ExitCode> {
             continue;
         };
         let small = shrink(&text, |t| {
-            let checks = paka::check("main.paka", &Source::file("main.paka", t.into())).is_ok();
             let judged = || write(t).and_then(|()| judge(""));
-            checks && judged().is_ok_and(|(v, line)| v == 1 && kind(&line) == want)
+            checks(t).is_ok() && judged().is_ok_and(|(v, line)| v == 1 && kind(&line) == want)
         });
         fs::create_dir_all(keep)?;
         let kept = match release {
@@ -480,6 +484,13 @@ fn fuzz(seeds: Range<u64>, keep: &Path, release: bool) -> io::Result<ExitCode> {
     }
     let _ = fs::remove_dir_all(&scratch);
     tally.end()
+}
+
+/// Whether `text` checks as `main.paka`; the error when not.
+fn checks(text: &str) -> Result<(), String> {
+    let source = Source::file("main.paka", text.into());
+    let checked = paka::check("main.paka", &source);
+    checked.map(drop).map_err(|d| d.to_string())
 }
 
 /// `judged`'s verdict on the generated program staged in `dirs`, with the copy in `built` also
@@ -675,9 +686,7 @@ fn edits(seeds: Range<u64>, keep: &Path) -> io::Result<ExitCode> {
     for seed in seeds {
         let _ = fs::remove_dir_all(&before);
         fs::create_dir(&before)?;
-        let versions = paka_gen::edit::versions(seed, STEPS, |t| {
-            paka::check("main.paka", &Source::file("main.paka", t.into())).is_ok()
-        });
+        let versions = paka_gen::edit::versions(seed, STEPS, |t| checks(t).is_ok());
         for (step, v) in versions.iter().enumerate() {
             let counts = kinds.entry(v.kind).or_default();
             counts.0 += 1;
