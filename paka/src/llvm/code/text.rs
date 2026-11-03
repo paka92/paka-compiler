@@ -167,7 +167,10 @@ impl Body<'_, '_> {
             };
             let len = self.offset(&v, table::STRING.len);
             let len = self.load("i64", &len);
-            bytes = self.op(format!("add i64 {bytes}, {len}"));
+            let sum = self.op(format!("add i64 {bytes}, {len}"));
+            // Frozen, the chain of sums is opaque to LLVM's loop passes, which otherwise take
+            // minutes on a few hundred parts in a loop.
+            bytes = self.op(format!("freeze i64 {sum}"));
             let past = self.op(format!("icmp ugt i64 {bytes}, {CAP}"));
             self.check(&past, "memory", site);
             made.push(v);

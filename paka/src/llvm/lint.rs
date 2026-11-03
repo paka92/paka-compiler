@@ -84,6 +84,7 @@ const PLAIN: &[&str] = &[
     "une",
     // Control, aggregates, casts and memory.
     "select",
+    "freeze",
     "phi",
     "br",
     "switch",
