@@ -82,9 +82,9 @@ or merged during review. Ids with a letter were added during review.
 | M3 The first measurement | 22 | 0 | 6 | 5 | 6 | 5 | 6 |
 | M4 Dev mode for headless programs | 51 | 0 | 8 | 18 | 25 | 0 | 7 |
 | M5 Live GUI on Linux | 43 | 0 | 3 | 20 | 13 | 7 | 9 |
-| M6 Release mode | 34 | 1 | 7 | 10 | 14 | 2 | 3 |
+| M6 Release mode | 35 | 1 | 7 | 10 | 15 | 2 | 3 |
 | M7 Evidence and gates | 20 | 1 | 5 | 2 | 10 | 2 | 3 |
-| **Total** | **233** | 3 | 45 | 80 | 79 | 26 | 40 |
+| **Total** | **234** | 3 | 45 | 80 | 80 | 26 | 40 |
 
 ## M1 — Let there be light
 
@@ -2194,6 +2194,14 @@ or merged during review. Ids with a letter were added during review.
 - done when: Every filed regression test passes; rerunning M6-25 files nothing.
 - why this level: Each divergence is a miscompile or meaning bug across three back ends.
 - note: The 37 seeds the M6-25 run had kept by seed 1,125,392 had two causes, neither a meaning bug: every status 4 was the harness's own `stopped: time`. (1) The harness's limits were too tight for a busy machine: a dev run got four times the interpreter's time, often under the 0.1 to 0.3 s a stack trap takes to fill the 64 MiB runner stack (24 `status 3, dev 4` seeds), and a release run 250 ms, which a stall sometimes passes (1005562, 1008608, 1045216, 1106028); an interpreter run stopped just after printing its trap was taken as the reference (1021297, 1054249); and the run writing a kept case's expectations could itself be stopped (1052738 and 1081185 expect `stopped: time`). The interpreter now gets 1 s and each compiled run four times its time, at least 1 s; such a run counts as stopped; and expectations are written under the 3 s run-case limit. (2) The runtime's String join copied each operand about five times and built an over-cap result before refusing it, so compiled programs building long Strings ran three to four times slower than interpreted (1021324, 1036549, 1060244, 1074110, 1098803, 1101930, and dev in 1054764); it now checks the cap first and makes one block. Every kept seed now agrees, also on a CPU shared with two busy loops, and seeds 5,000,000 to 5,001,999 all agree. The 47 later seeds of that run (1,126,559 to 1,185,400) are the same kinds and all agree on rerun; its `no ledger` and `clang-failed` cases came from a full temp disk, where the dev run's ledger note could not be written. A note that cannot be written, or a failed release build with no room left on the disk, now ends its block with status 2 instead of filing a divergence, and the fuzz script keeps its temp files under OUT/tmp. The installer diff tests, once stopped by the 250 ms interpreter limit, passed 13 runs in a row on a CPU shared with 24 busy loops. Open: interpolation still joins its parts pairwise, about twice the interpreter's time on long Strings; joining all parts at once needs a new runtime row taking a list of parts, emitted by both the dev and the release back end. Done needs a clean rerun of M6-25.
+
+### M6-25d · L4 · Join an interpolation's parts in one runtime call
+
+- needs: M6-25b
+- flags: native-only, unsafe
+- done when: Dev and release join an interpolation's parts with one String row call that makes one block; the cap is checked before each next part is evaluated, as the interpreter does, and before the block is made; conformance cases for exactly the cap, one byte past it, a part crossing it, many parts, empty parts and multibyte text agree in interpreter, dev and release.
+- why this level: The row reads a list of String addresses compiled code builds, and a wrong cap check is a silent divergence.
+- note: Open from M6-25b: pairwise joins make k − 1 blocks for k parts, about twice the interpreter's time on long Strings.
 
 ### M6-26 · L1 · Delete the release skip file and require three-mode conformance in CI
 
