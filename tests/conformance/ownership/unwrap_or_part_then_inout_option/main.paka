@@ -1,0 +1,21 @@
+enum Msg { Start }
+
+fn reset(o: inout Option<String>) -> String {
+  o = None
+  ""
+}
+
+fn fill(n: Int) -> String { repeat("q", n) }
+
+fn update(msg: Msg) -> List<Effect<Msg>> {
+  let s = "fallback"
+  var o: Option<String> = Some(repeat("abc", 1000))
+  let joined = "{1}{unwrap_or(o, s)}{reset(&o)}{fill(3000)}"
+  [Print("{len(joined)}"), Print(joined[0..<10]), Print(unwrap_or(o, s)), Exit]
+}
+
+app ownership {
+  start: Start
+  update: update
+  grants: [Console]
+}
