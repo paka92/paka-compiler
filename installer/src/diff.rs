@@ -36,6 +36,39 @@ pub fn compiled_limit(interp: Duration) -> Duration {
     (interp * 4).max(Duration::from_secs(1))
 }
 
+/// A busy machine can stall a compiled run past its limit: a stopped one runs again with this many
+/// times the limit.
+pub const AGAIN: u32 = 10;
+
+/// The compiled run to compare with `reference`, or why it is slow. `first`, stopped past `limit`
+/// after a prefix of the reference's output, runs again by `again`, which gets the longer limit
+/// and says how long the run took. That run stands unless it ended but needed more than `limit`.
+pub fn verdict<T>(
+    reference: &Outcome,
+    first: (Outcome, T),
+    limit: Duration,
+    again: impl FnOnce(Duration) -> io::Result<((Outcome, T), Duration)>,
+) -> io::Result<Result<(Outcome, T), String>> {
+    if !stopped(&first.0) || !reference.stdout.starts_with(&first.0.stdout) {
+        return Ok(Ok(first));
+    }
+    let (run, took) = again(limit * AGAIN)?;
+    if stopped(&run.0) || took <= limit {
+        return Ok(Ok(run));
+    }
+    let ms = |d: Duration| d.as_millis();
+    let (limit, took) = (ms(limit), ms(took));
+    Ok(Err(format!("stopped past {limit} ms, then took {took} ms")))
+}
+
+/// Makes folder `to` a copy of folder `from`, so a run can start again from what was staged.
+pub fn mirror(from: &Path, to: &Path) -> io::Result<()> {
+    if to.exists() {
+        fs::remove_dir_all(to)?;
+    }
+    copy_tree(from, to)
+}
+
 /// How the dev run of `b` differs in meaning from the reference run `a`; `None` when they agree.
 pub fn difference(a: &Outcome, b: &Outcome) -> Option<String> {
     difference_in(a, b, "dev")

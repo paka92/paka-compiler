@@ -1,7 +1,9 @@
 //! `paka-diff [ROOT]`: runs every run case under ROOT, `tests/conformance` by default, on the
 //! interpreter and in dev mode, and lists each as agree, differ or unsupported, with whether the
-//! dev run's ledger ended clean (M4-40); one that did not differs. The status is 1 when a case
-//! differs.
+//! dev run's ledger ended clean (M4-40); one that did not differs. A busy machine can stall a
+//! compiled run past its limit: one stopped after a prefix of the interpreter's output runs again,
+//! restaged, with ten times the limit, and is slow when it needed more than the limit (M6-25c). The
+//! status is 1 when a case differs or is slow.
 //!
 //! `paka-diff --release [ROOT]` adds release mode (M6-06): each case is also built with the `paka`
 //! next to this binary and run, and must agree with the interpreter. A case with a hole must be
@@ -14,7 +16,9 @@
 //! `paka-diff --fuzz FIRST COUNT KEEP` does the same for the generated programs of COUNT seeds
 //! from FIRST (M4-41). Each that differs is shrunk while it keeps that kind of difference and
 //! written to `KEEP/SEED.paka`. `PAKA_PLANT` plants a fault in the dev back end, for a self-test.
-//! A generated program that does not check is the harness's own failure: no back end can run it.
+//! A generated program that does not check fails as `does not check`, the generator's fault, and
+//! one that is slow as `slow`; each is kept unshrunk and marked by `KEEP/SEED.does-not-check` or
+//! `KEEP/SEED.slow`, holding its line.
 //! `paka-diff --fuzz-release FIRST COUNT KEEP` also builds each program in release (M6-20) and
 //! keeps each that differs as the run case `KEEP/SEED`, its expectations the interpreter's run.
 //! Where the interpreter ends in a stack trap, release may finish or run on: that run is cut by
@@ -46,8 +50,8 @@ use paka::release::{Ran, exec};
 use paka::source::{Source, read};
 use paka_installer::dev::Dev;
 use paka_installer::diff::{
-    Outcome, cases, compiled_limit, difference, difference_in, expect, in_release, no_core_dumps,
-    release_verdict, room, shrink, stage, stop, stopped, ui_examples,
+    Outcome, cases, compiled_limit, difference, difference_in, expect, in_release, mirror,
+    no_core_dumps, release_verdict, room, shrink, stage, stop, stopped, ui_examples, verdict,
 };
 use paka_installer::release;
 use paka_rt::abi::dev::app::Stopped;
@@ -71,9 +75,6 @@ const HEAP: u64 = 1 << 30;
 /// How long a run of a conformance case, and of a generated program, may take before it stops.
 const LIMIT: Duration = Duration::from_secs(3);
 const FUZZ_LIMIT: Duration = Duration::from_secs(1);
-/// A busy machine can stall a compiled run past its limit: a stopped one is run again with this
-/// many times the limit, and only a second stop counts.
-const AGAIN: u32 = 10;
 const CONFORMANCE: &str = "tests/conformance";
 
 fn main() -> ExitCode {
@@ -456,32 +457,67 @@ fn fuzz(seeds: Range<u64>, keep: &Path, release: bool) -> io::Result<ExitCode> {
     let mut tally = Tally::default();
     for seed in seeds {
         let text = paka_gen::program(seed);
-        if let Err(why) = checks(&text) {
-            let why = format!("seed {seed}: the generated program does not check: {why}");
-            return Err(io::Error::other(why));
-        }
-        write(&text)?;
-        let (verdict, line) = judge(&format!("seed {seed}"))?;
-        let want = (verdict == 1).then(|| kind(&line));
+        let (verdict, line) = match checks(&text) {
+            Err(why) => (UNCHECKED, format!("does not check seed {seed}: {why}")),
+            Ok(()) => write(&text).and_then(|()| judge(&format!("seed {seed}")))?,
+        };
+        let failed = fails(verdict).then(|| line.clone());
         tally.add((verdict, line))?;
-        let Some(want) = want else {
+        let Some(line) = failed else {
             continue;
         };
-        let small = shrink(&text, |t| {
-            let judged = || write(t).and_then(|()| judge(""));
-            checks(t).is_ok() && judged().is_ok_and(|(v, line)| v == 1 && kind(&line) == want)
-        });
-        fs::create_dir_all(keep)?;
-        let kept = match release {
-            true => keep_case(&keep.join(seed.to_string()), &small, &dirs[0])?,
-            false => keep.join(format!("{seed}.paka")),
+        // Only a difference is shrunk: a slow run or a check error need not stay one as it shrinks.
+        let small = match verdict {
+            1 => {
+                let want = kind(&line);
+                shrink(&text, |t| {
+                    let judged = || write(t).and_then(|()| judge(""));
+                    let same = |(v, l): (usize, String)| v == 1 && kind(&l) == want;
+                    checks(t).is_ok() && judged().is_ok_and(same)
+                })
+            }
+            _ => text,
         };
-        fs::write(&kept, &small)?;
+        let kept = keep_failing(keep, seed, release, (verdict, &line), &small, &dirs[0])?;
         let lines = small.lines().count();
         writeln!(tally.out, "  kept {} ({lines} lines)", kept.display())?;
     }
     let _ = fs::remove_dir_all(&scratch);
     tally.end()
+}
+
+/// Keeps the failing program `text` of `seed` in `keep`, as `SEED.paka`, or with `release` as the
+/// run case `SEED` expecting what its run on the interpreter staged in `interp` leaves; a program
+/// that does not check has no expectations. A failure that is not a difference is marked by a
+/// file `SEED.slow` or `SEED.does-not-check` holding its line. The path of the kept program.
+fn keep_failing(
+    keep: &Path,
+    seed: u64,
+    release: bool,
+    (verdict, line): (usize, &str),
+    text: &str,
+    interp: &Path,
+) -> io::Result<PathBuf> {
+    fs::create_dir_all(keep)?;
+    let case = keep.join(seed.to_string());
+    let kept = match release {
+        false => keep.join(format!("{seed}.paka")),
+        true if verdict == UNCHECKED => {
+            fs::create_dir_all(&case)?;
+            case.join("main.paka")
+        }
+        true => keep_case(&case, text, interp)?,
+    };
+    fs::write(&kept, text)?;
+    let mark = match verdict {
+        SLOW => Some("slow"),
+        UNCHECKED => Some("does-not-check"),
+        _ => None,
+    };
+    if let Some(mark) = mark {
+        fs::write(keep.join(format!("{seed}.{mark}")), line)?;
+    }
+    Ok(kept)
 }
 
 /// Whether `text` checks as `main.paka`; the error when not.
@@ -499,16 +535,15 @@ fn judged_release(dirs: &[PathBuf; 2], built: &Path, name: &str) -> io::Result<(
         return Ok((verdict, line));
     }
     let (release, note) = released(built, &reference, limit)?;
-    if release == 1 {
-        return Ok((1, format!("differ {name}: release {note}")));
+    if release == 1 || (release == SLOW && verdict != 1) {
+        let word = WORDS[release];
+        return Ok((release, format!("{word} {name}: release {note}")));
     }
-    let verdict = if verdict == 1 {
-        1
-    } else {
-        verdict.min(release)
+    let verdict = match fails(verdict) {
+        true => verdict,
+        false => verdict.min(release),
     };
-    let rest = line.split_once(' ').map_or("", |(_, r)| r);
-    let word = ["agree", "differ", "unsupported"][verdict];
+    let (word, rest) = (WORDS[verdict], line.split_once(' ').map_or("", |(_, r)| r));
     Ok((verdict, format!("{word} {rest}; release {note}")))
 }
 
@@ -539,12 +574,22 @@ fn released(built: &Path, reference: &Outcome, limit: Duration) -> io::Result<(u
             }
         });
     }
-    let prog = built.with_extension("prog");
-    let mut run = native(&prog, built, &[], limit)?;
-    if stopped(&run) {
-        run = native(&prog, built, &[], limit * AGAIN)?;
+    let (prog, staged) = (built.with_extension("prog"), built.with_extension("staged"));
+    mirror(built, &staged)?;
+    let first = native(&prog, built, &[], limit)?;
+    // Where the interpreter's stack ran out, a release run stopped past its limit is not compared.
+    let compared = release_verdict(reference, &first);
+    if compared.0 == 2 {
+        return Ok(compared);
     }
-    Ok(release_verdict(reference, &run))
+    let rerun = verdict(reference, (first, ()), limit, |more| {
+        mirror(&staged, built)?;
+        timed(|| native(&prog, built, &[], more).map(|run| (run, ())))
+    })?;
+    Ok(match rerun {
+        Ok((run, ())) => release_verdict(reference, &run),
+        Err(slow) => (SLOW, slow),
+    })
 }
 
 /// Writes the run case `dir` of program `text`, expecting what its run on the interpreter staged
@@ -699,7 +744,7 @@ fn edits(seeds: Range<u64>, keep: &Path) -> io::Result<ExitCode> {
                 let name = format!("seed {seed} step {step} {}", v.kind);
                 let (verdict, line) = judge(&dirs, &name, FUZZ_LIMIT, &[])?;
                 tally.add((verdict, line))?;
-                if verdict == 1 {
+                if fails(verdict) {
                     let kept = keep.join(seed.to_string());
                     fs::create_dir_all(kept.join("edits"))?;
                     fs::write(kept.join("main.paka"), &v.text)?;
@@ -758,11 +803,20 @@ fn judged(
         let why = format!("unsupported {name}: the interpreter ran past the limit");
         return Ok(((2, why), reference, compiled));
     }
-    let mut dev = run(&dirs[1], ENGINES[1], compiled, args)?;
-    if stopped(&dev.0) {
-        dev = run(&dirs[1], ENGINES[1], compiled * AGAIN, args)?;
-    }
-    let (dev, note) = dev;
+    let staged = dirs[1].with_extension("staged");
+    mirror(&dirs[1], &staged)?;
+    let first = run(&dirs[1], ENGINES[1], compiled, args)?;
+    let rerun = verdict(&reference, first, compiled, |more| {
+        mirror(&staged, &dirs[1])?;
+        timed(|| run(&dirs[1], ENGINES[1], more, args))
+    })?;
+    let (dev, note) = match rerun {
+        Ok(dev) => dev,
+        Err(slow) => {
+            let line = format!("slow {name}: dev {slow}");
+            return Ok(((SLOW, line), reference, compiled));
+        }
+    };
     let verdict = match (
         note.strip_prefix("unsupported: "),
         difference(&reference, &dev),
@@ -776,6 +830,12 @@ fn judged(
         (None, Some(why)) => (1, format!("differ {name}: {why}; {}", ledger(&note))),
     };
     Ok((verdict, reference, compiled))
+}
+
+/// What `f` gives, and how long it took.
+fn timed<T>(f: impl FnOnce() -> io::Result<T>) -> io::Result<(T, Duration)> {
+    let start = Instant::now();
+    Ok((f()?, start.elapsed()))
 }
 
 /// Runs `main.paka` in `dir` on `engine` in a child, stopped past `limit`: its outcome and note.
@@ -803,17 +863,30 @@ fn run(
     Ok((output.into(), note))
 }
 
+/// A verdict past the three of a comparison, 0 agree, 1 differ and 2 unsupported: a compiled run
+/// that needed more than its limit when run again, and a generated program that does not check.
+const SLOW: usize = 3;
+const UNCHECKED: usize = 4;
+
+/// The word each verdict starts its line with.
+const WORDS: [&str; 5] = ["agree", "differ", "unsupported", "slow", "does not check"];
+
+/// Whether a verdict fails the run.
+fn fails(verdict: usize) -> bool {
+    matches!(verdict, 1 | SLOW | UNCHECKED)
+}
+
 /// The verdicts so far, each listed as it comes.
 struct Tally {
     out: io::StdoutLock<'static>,
-    counts: [usize; 3],
+    counts: [usize; 5],
 }
 
 impl Default for Tally {
     fn default() -> Tally {
         Tally {
             out: io::stdout().lock(),
-            counts: [0; 3],
+            counts: [0; 5],
         }
     }
 }
@@ -824,15 +897,24 @@ impl Tally {
         writeln!(self.out, "{line}")
     }
 
-    /// The summary line; the status is 1 when a program differs.
+    /// The summary line; the status is 1 when a program fails.
     fn end(mut self) -> io::Result<ExitCode> {
-        let [agree, differ, unsupported] = self.counts;
-        writeln!(
-            self.out,
-            "{agree} agree, {differ} differ, {unsupported} unsupported"
-        )?;
-        Ok(ExitCode::from(u8::from(differ > 0)))
+        let (line, failed) = summary(self.counts);
+        writeln!(self.out, "{line}")?;
+        Ok(ExitCode::from(u8::from(failed)))
     }
+}
+
+/// The summary line of verdict counts `counts`, slow and unchecked ones only when there are any,
+/// and whether one fails.
+fn summary(counts: [usize; 5]) -> (String, bool) {
+    let [agree, differ, unsupported, slow, unchecked] = counts;
+    let mut line = format!("{agree} agree, {differ} differ, {unsupported} unsupported");
+    if slow + unchecked > 0 {
+        line += &format!(", {slow} slow, {unchecked} do not check");
+    }
+    let failed = (0..counts.len()).any(|v| fails(v) && counts[v] > 0);
+    (line, failed)
 }
 
 /// The case's arguments: one per line of its `args` file.
