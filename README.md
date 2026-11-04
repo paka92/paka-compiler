@@ -7,7 +7,7 @@ code. The design and its reasons are in the [genesis paper](GENESIS.md).
 
 **Status:** the language, its interpreter, dev mode and the live GUI are built; milestones 1 to 5
 have passed their exit checks. Release mode (milestone 6) and the evidence gates (milestone 7) are
-being built.
+built and wait for the owner's sign-off.
 
 ## What works
 

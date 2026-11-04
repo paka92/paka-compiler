@@ -2181,14 +2181,17 @@ or merged during review. Ids with a letter were added during review.
 
 ### M6-25 · L2 · Run the 24-hour three-back-end fuzz and file each divergence
 
+- status: done
 - needs: M6-08, M6-16, M6-18, M6-21, M6-24, M6-11b, M6-19
 - flags: owner, native-only
 - done when: The skip file is empty when the run starts. A 24-hour, 24-core run from recorded seeds finishes; every divergence is saved, shrunk, and in the known-failing list.
 - why this level: Starts a given command and files its output; no design.
 - note: The caller's script starts the run; no agent waits 24 hours.
+- note: Done. The confirmation run on commit c449a0c5 (24 workers, 9007 blocks of 200 seeds from 10,000,000 up to 11,804,799, 2026-11-03T20:04Z to 2026-11-04T20:06Z): none failed, nothing kept, nothing slow, every generated program checked. The release skip file is gone (M6-26). Its summary is in docs/results/M6-25.md.
 
 ### M6-25b · L4 · Fix the filed fuzz divergences until a rerun is clean
 
+- status: done
 - needs: M6-25
 - flags: native-only, open-ended
 - done when: Every filed regression test passes; rerunning M6-25 files nothing.
@@ -2197,6 +2200,7 @@ or merged during review. Ids with a letter were added during review.
 
 ### M6-25c · L4 · Fix the divergences the M6-25 rerun filed
 
+- status: done
 - needs: M6-25b
 - flags: native-only
 - done when: Every seed the rerun kept agrees or is reported as the harness's own fault; each real bug has a conformance or checker case that passes in all three back ends.
@@ -2205,6 +2209,7 @@ or merged during review. Ids with a letter were added during review.
 
 ### M6-25d · L4 · Join an interpolation's parts in one runtime call
 
+- status: done
 - needs: M6-25b
 - flags: native-only, unsafe
 - done when: Dev and release join an interpolation's parts with one String row call that makes one block; the cap is checked before each next part is evaluated, as the interpreter does, and before the block is made; conformance cases for exactly the cap, one byte past it, a part crossing it, many parts, empty parts and multibyte text agree in interpreter, dev and release.
