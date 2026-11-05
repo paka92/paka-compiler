@@ -70,22 +70,6 @@ fn interpreted(source: &Path, dir: &Path, args: &[String]) -> Command {
     command
 }
 
-/// The cases the milestone 1 back end refuses with `unsupported-form` (a state, a start message
-/// with fields, `ExitWith`); the interpreter alone runs them. paka-rt's run tests list the same.
-const UNSUPPORTED: [&str; 11] = [
-    "exit_with_computed_four",
-    "exit_with_computed_high",
-    "exit_with_computed_negative",
-    "exit_with_five",
-    "exit_with_max",
-    "exit_with_skips_rest",
-    "exit_with_zero",
-    "start_two_fields",
-    "start_with_argument",
-    "state_in_handler",
-    "variant_payload",
-];
-
 #[test]
 fn every_runnable_case_runs_natively() {
     let cases = accept_cases();
@@ -97,22 +81,17 @@ fn every_runnable_case_runs_natively() {
         let source = case.join("main.paka");
         let exe = scratch.path(name);
         let built = build_native(source.to_str().unwrap(), &exe);
-        let refused = built.status.code() == Some(1)
-            && String::from_utf8_lossy(&built.stderr).contains("error[unsupported-form]");
-        let expected = UNSUPPORTED.contains(&name);
-        if !refused && built.status.code() != Some(0) || refused != expected {
-            failures.push(format!(
-                "{name}: build {built:?}, unsupported-form expected: {expected}"
-            ));
+        if !built.status.success() {
+            failures.push(format!("{name}: build {built:?}"));
             continue;
         }
         let args = case_args(case);
         let mut native = Command::new(&exe);
         native.args(&args).current_dir(case);
-        let mut runs = vec![("interpreter", interpreted(&source, case, &args))];
-        if !expected {
-            runs.push(("native", native));
-        }
+        let runs = [
+            ("interpreter", interpreted(&source, case, &args)),
+            ("native", native),
+        ];
         for (back_end, mut command) in runs {
             let seen = Seen::from(command.output().unwrap());
             if seen != *want {

@@ -1,0 +1,21 @@
+enum Msg { Start }
+
+type Pair { left: List<Int> = [], right: List<Int> = [] }
+
+type Wrap { p: Pair = Pair {}, n: Int = 0 }
+
+fn absorb(p: inout Pair, more: List<Int>) {
+  for x in more { append(&p.left, x) }
+}
+
+fn update(msg: Msg) -> List<Effect<Msg>> {
+  var w = Wrap { p: Pair { left: [1], right: [2] } }
+  absorb(&w.p, w.p.right)
+  [Print("done"), Exit]
+}
+
+app ownership {
+  start: Start
+  update: update
+  grants: [Console]
+}

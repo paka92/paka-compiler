@@ -6,7 +6,7 @@ use super::eval::{CAP, Kind, Trap, bound, compare, out_of_bounds};
 use super::value::{Items, Key, Value, equals, number, position};
 use crate::builtins::{ROWS, name};
 use crate::core_form::{Cmp, Site, Tag};
-use paka_rt::ops::Int;
+use paka_rt::ops::{Int, sorted};
 use std::convert::Infallible;
 use std::mem;
 use std::sync::OnceLock;
@@ -62,9 +62,8 @@ pub fn call(name: &str, args: &mut [Value], site: Site) -> Option<Out> {
             Ok(Value::Unit)
         }
         ("sort", [Value::List(xs)]) => {
-            let mut scratch = Vec::with_capacity(xs.0.len());
-            let mut less = |a: &mut Value, b: &mut Value| Ok(compare(&Cmp::Lt, a, b));
-            let Ok(()) = merge_sort::<Infallible>(&mut xs.0, &mut scratch, &mut less);
+            let less = |a: &mut Value, b: &mut Value| Ok(compare(&Cmp::Lt, a, b));
+            let Ok(()) = merge_sort::<Infallible>(&mut xs.0, less);
             Ok(Value::Unit)
         }
         ("list_of", [item, n]) => list_of(item, n.int(), site),
@@ -171,34 +170,21 @@ fn list_of(item: &mut Value, n: Int, site: Site) -> Out {
     Ok(list(items))
 }
 
-/// M2-14 section 1.13's procedure. `before(right, left)` says whether the right item must come
-/// first; the left one is taken on `false`. `scratch` is the range merged into.
+/// Sorts `xs` by M2-14 section 1.13's procedure, shared with compiled code (`ops::sorted`).
+/// `before(right, left)` says whether the right item must come first.
 pub fn merge_sort<E>(
-    xs: &mut [Value],
-    scratch: &mut Vec<Value>,
-    before: &mut impl FnMut(&mut Value, &mut Value) -> Result<bool, E>,
+    xs: &mut Vec<Value>,
+    mut before: impl FnMut(&mut Value, &mut Value) -> Result<bool, E>,
 ) -> Result<(), E> {
-    if xs.len() < 2 {
-        return Ok(());
-    }
-    let (left, right) = xs.split_at_mut(xs.len() / 2);
-    merge_sort(left, scratch, before)?;
-    merge_sort(right, scratch, before)?;
-    let (mut i, mut j) = (0, 0);
-    while i < left.len() && j < right.len() {
-        let (side, at) = if before(&mut right[j], &mut left[i])? {
-            (&mut *right, &mut j)
-        } else {
-            (&mut *left, &mut i)
-        };
-        scratch.push(mem::take(&mut side[*at]));
-        *at += 1;
-    }
-    scratch.extend(left[i..].iter_mut().map(mem::take));
-    scratch.extend(right[j..].iter_mut().map(mem::take));
-    for (slot, item) in xs.iter_mut().zip(scratch.drain(..)) {
-        *slot = item;
-    }
+    let order = sorted(xs.len(), |r, l| {
+        let (low, high) = xs.split_at_mut(r.max(l));
+        let (here, there) = (&mut high[0], &mut low[r.min(l)]);
+        match r > l {
+            true => before(here, there),
+            false => before(there, here),
+        }
+    })?;
+    *xs = order.into_iter().map(|i| mem::take(&mut xs[i])).collect();
     Ok(())
 }
 

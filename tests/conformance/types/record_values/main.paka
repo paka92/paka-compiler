@@ -1,0 +1,51 @@
+enum Msg { Start }
+
+enum Kind { Small, Big(scale: Float) }
+
+type Point { x: Int, y: Int = 2 }
+
+type Box {
+  low: Point,
+  high: Point,
+  solid: Bool = true,
+  ratio: Float = 0.5,
+  kind: Kind = Small
+}
+
+fn moved(p: Point, by: Int) -> Point {
+  Point { x: p.x + by, y: p.y + by }
+}
+
+fn width(b: Box) -> Int {
+  b.high.x - b.low.x
+}
+
+fn grown(b: Box) -> Box {
+  var c = b
+  c.high = moved(c.high, 10)
+  c.kind = Big(2.5)
+  c
+}
+
+fn update(msg: Msg) -> List<Effect<Msg>> {
+  var a = Point { x: 1 }
+  let b = a
+  a.x = 9
+  assert(b.x == 1 && b.y == 2 && a.x == 9)
+  let c = moved(a, 1)
+  assert(c.x == 10 && c.y == 3 && a.x == 9)
+  var box = Box { low: b, high: Point { x: 5, y: 6 } }
+  assert(width(box) == 4 && box.solid && box.ratio == 0.5)
+  let big = grown(box)
+  assert(width(big) == 14 && width(box) == 4)
+  box.low.y = 7
+  assert(box.low.y == 7 && b.y == 2 && big.low.y == 2)
+  assert(Point { x: 3, y: 4 }.y == 4 && grown(box).high.y == 16)
+  [Print("records agree"), Exit]
+}
+
+app types {
+  start: Start
+  update: update
+  grants: [Console]
+}

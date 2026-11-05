@@ -1,0 +1,3 @@
+# The runner's own test sample: one small kernel per language (M6-27). `<name> <kind>` per line,
+# kind float, integer or pointer (M6-02 section 1.3); integer kernels also build checked Rust.
+steps integer

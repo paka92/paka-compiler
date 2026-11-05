@@ -1,7 +1,7 @@
 //! Hand-written programs and the signature table they must give.
 
 use super::*;
-use crate::builtins::{Kind, ROWS, arity, name};
+use crate::builtins::{Kind, ROWS, UI, arity, name};
 use crate::parser::parse;
 use crate::resolve::resolve;
 use std::collections::BTreeSet;
@@ -23,7 +23,7 @@ fn with<T>(src: &str, f: impl FnOnce(&Program, &Table) -> T) -> T {
     let program = parse("main.paka", src.as_bytes()).unwrap();
     let resolved = resolve("main.paka", &program).unwrap();
     let table = Table::build("main.paka", &program, &resolved);
-    assert_eq!(table.defs.len(), program.defs.len());
+    assert_eq!(table.defs.all.len(), program.defs.len());
     f(&program, &table)
 }
 
@@ -92,7 +92,13 @@ fn lines_of(src: &str, errors: bool) -> Vec<String> {
                     format!("enum {name} {{ {} }}", vs.join(", "))
                 }
                 Item::Fn(sig) => format!("fn {}", sig_text(t, name, sig, false)),
+                Item::View(sig) => format!("view {}", sig_text(t, name, sig, false)),
                 Item::Example => format!("example {name}"),
+                Item::Foreign(sigs) => {
+                    let effects = def.names().into_iter().skip(1).zip(sigs);
+                    let effects: Vec<_> = effects.map(|(n, s)| sig_text(t, n, s, false)).collect();
+                    format!("foreign {name} {{ {} }}", effects.join(", "))
+                }
                 Item::App { state, update } => {
                     let state = state.map(|s| format!("state: {}", t.types.show(s)));
                     let update = update.map(|u| format!("update: {}", program.defs[u].name().text));
@@ -101,7 +107,7 @@ fn lines_of(src: &str, errors: bool) -> Vec<String> {
                 }
             }
         };
-        program.defs.iter().zip(&t.defs).map(line).collect()
+        program.defs.iter().zip(&t.defs.all).map(line).collect()
     })
 }
 
@@ -179,6 +185,18 @@ fn a_record_keeps_fields_types_and_which_have_a_default() {
             "type Empty {}",
             "type Job { done: fn(Int) -> Counter, later: List<fn(String)> }",
         ]
+    );
+}
+
+#[test]
+fn a_view_gives_a_view_of_its_message_type() {
+    let src = program(&[
+        "enum Msg { Inc }",
+        "view counter(n: Int, label: String) -> View<Msg> { Text(label) }",
+    ]);
+    assert_eq!(
+        shown(&src)[1],
+        "view counter(n: Int, label: String) -> View<Msg>"
     );
 }
 
@@ -671,7 +689,11 @@ fn an_app_records_a_state_that_holds_a_function_type_without_judging_it() {
 fn an_app_records_a_state_that_is_not_a_record_without_judging_it() {
     let src = app(&["type Tally {}"], &["  state: Msg"]);
     assert_eq!(app_line(&src), "app wc { state: Msg, update: update }");
-    assert!(with(&src, |_, t| t.defs.iter().all(|c| c.error.is_none())));
+    assert!(with(&src, |_, t| t
+        .defs
+        .all
+        .iter()
+        .all(|c| c.error.is_none())));
 }
 
 #[test]
@@ -688,7 +710,7 @@ fn an_unknown_state_name_is_left_to_the_resolvers_entry_error() {
     let program = parse("main.paka", src.as_bytes()).unwrap();
     let resolved = resolve("main.paka", &program).unwrap();
     let table = Table::build("main.paka", &program, &resolved);
-    let last = table.defs.last().unwrap();
+    let last = table.defs.all.last().unwrap();
     assert!(last.error.is_none());
     assert!(matches!(last.item, Item::App { state: None, .. }));
     let named = at(&src, 7, "state: ^Nope");
@@ -745,7 +767,7 @@ fn a_definition_with_an_error_keeps_every_well_formed_part() {
 fn a_definition_without_an_error_has_none() {
     let src = program(&["type A { n: Int = 0 }", "fn f(a: A) -> A { a }"]);
     with(&src, |_, t| {
-        assert!(t.defs.iter().all(|c| c.error.is_none()))
+        assert!(t.defs.all.iter().all(|c| c.error.is_none()))
     });
 }
 
@@ -794,7 +816,7 @@ fn chain(n: usize, back: bool) -> String {
 #[test]
 fn a_very_long_chain_of_types_is_walked_by_loops() {
     with(&chain(20_000, false), |_, t| {
-        assert!(t.defs.iter().all(|c| c.error.is_none()));
+        assert!(t.defs.all.iter().all(|c| c.error.is_none()));
     });
 }
 
@@ -806,14 +828,14 @@ fn a_very_long_cycle_of_types_is_walked_by_loops() {
         src += &format!("type T{i} {{ next: Option<T{}> }}\n", (i + 1) % n);
     }
     with(&src, |_, t| {
-        assert!(t.defs.iter().all(|c| c.error.is_none()));
+        assert!(t.defs.all.iter().all(|c| c.error.is_none()));
     });
     let mut bad = String::new();
     for i in 0..n {
         bad += &format!("type T{i} {{ next: T{} }}\n", (i + 1) % n);
     }
     with(&bad, |_, t| {
-        assert!(t.defs.iter().all(|c| c.error.is_some()))
+        assert!(t.defs.all.iter().all(|c| c.error.is_some()))
     });
 }
 
@@ -821,7 +843,7 @@ fn a_very_long_cycle_of_types_is_walked_by_loops() {
 fn a_long_chain_that_leads_back_through_a_list_is_grounded_in_linear_time() {
     let start = std::time::Instant::now();
     with(&chain(20_000, true), |_, t| {
-        assert!(t.defs.iter().all(|c| c.error.is_none()));
+        assert!(t.defs.all.iter().all(|c| c.error.is_none()));
     });
     assert!(start.elapsed().as_secs() < 5, "{:?}", start.elapsed());
 }
@@ -850,10 +872,10 @@ fn built_in_rows() -> Vec<String> {
 }
 
 #[test]
-fn the_table_holds_63_functions_in_76_rows_and_9_variants() {
+fn the_table_holds_69_functions_in_82_rows_and_9_variants() {
     with("", |_, t| {
-        assert_eq!(t.fns.len(), 63);
-        assert_eq!(t.fns.values().map(Vec::len).sum::<usize>(), 76);
+        assert_eq!(t.fns.len(), 69);
+        assert_eq!(t.fns.values().map(Vec::len).sum::<usize>(), 82);
         assert_eq!(t.variants.len(), 9);
     });
 }
@@ -950,6 +972,11 @@ const DECIDED: [&str; 85] = [
 #[test]
 fn the_rows_are_exactly_the_signatures_of_the_decision() {
     let (mut have, mut want) = (built_in_rows(), DECIDED.map(String::from).to_vec());
+    want.extend(
+        UI.iter()
+            .filter(|r| r.0 == Kind::Fn)
+            .map(|r| r.1.to_string()),
+    );
     have.sort();
     want.sort();
     assert_eq!(have, want);
@@ -1000,6 +1027,7 @@ fn the_rows_follow_the_rules_of_the_decision() {
         }
         let no_result = [
             "append", "extend", "insert", "swap", "reverse", "sort", "sort_by", "remove", "assert",
+            "ui_click", "ui_type",
         ];
         for (name, sigs) in &t.fns {
             let gives = sigs.iter().all(|s| s.result.is_some());
@@ -1015,11 +1043,12 @@ fn the_names_of_the_table_are_the_names_the_resolver_binds() {
         table.extend(t.fns.keys().copied());
         table.extend(t.variants.keys().copied());
     });
-    let named = |kind| ROWS.iter().filter(move |r| r.0 == kind).map(|r| name(r.1));
+    let rows = || ROWS.iter().chain(UI);
+    let named = |kind| rows().filter(move |r| r.0 == kind).map(|r| name(r.1));
     let mut want: BTreeSet<_> = named(Kind::Fn).chain(named(Kind::Variant)).collect();
     assert_eq!(table, want);
     want.extend(named(Kind::Type).chain(named(Kind::Grant)));
-    assert_eq!(want.len(), 84);
+    assert_eq!(want.len(), 91);
 }
 
 #[test]

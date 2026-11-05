@@ -1,18 +1,18 @@
-e_eq fail at main.paka:1:18
+e_eq agent-written fail at main.paka:1:18
   left: 1
   right: 2
-e_ge fail at main.paka:6:18
+e_ge agent-written fail at main.paka:6:18
   left: 1
   right: 2
-e_gt fail at main.paka:5:18
+e_gt agent-written fail at main.paka:5:18
   left: 1
   right: 2
-e_le fail at main.paka:4:18
+e_le agent-written fail at main.paka:4:18
   left: 2
   right: 1
-e_lt fail at main.paka:3:18
+e_lt agent-written fail at main.paka:3:18
   left: 2
   right: 1
-e_ne fail at main.paka:2:18
+e_ne agent-written fail at main.paka:2:18
   left: 1
   right: 1

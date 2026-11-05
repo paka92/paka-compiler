@@ -1,0 +1,103 @@
+type Tagged { name: String, tags: List<String> }
+enum Note { Plain(text: String), Pair(a: String, b: Tagged), Empty }
+
+fn first_long(ws: List<String>, n: Int) -> String {
+  for w in ws {
+    let copy = w + "!"
+    if len(w) >= n {
+      return copy
+    }
+  }
+  "none"
+}
+
+fn joined(ws: List<String>, stop: String) -> String {
+  var out = ""
+  var i = 0
+  while i < len(ws) {
+    let w = ws[i]
+    i += 1
+    if w == "" {
+      continue
+    }
+    if w == stop {
+      break
+    }
+    out += w + ","
+  }
+  out
+}
+
+fn keep(s: String) -> String { s }
+
+fn text(n: Note) -> String {
+  match n {
+    Plain(t) => t
+    Pair(a, b) => {
+      let all = a + ":" + b.name
+      all
+    }
+    Empty => "-"
+  }
+}
+
+fn relabel(n: Note) -> Note {
+  var m = n
+  match m {
+    Plain(t) => {
+      m = Plain(t + t)
+      m
+    }
+    Pair(_, _) => m
+    Empty => m
+  }
+}
+
+fn tagged(name: String, k: Int) -> Tagged {
+  var t = Tagged { name: name, tags: [] }
+  for i in 0..<k {
+    t.tags = [t.name + "{i}", "t{i}"]
+  }
+  t
+}
+
+example early_exits {
+  first_long(["a", "bcd", "ef"], 2) == "bcd!" && first_long(["a"], 3) == "none"
+}
+example break_and_continue {
+  joined(["a", "", "b", "x", "c"], "x") == "a,b,"
+}
+example match_arms {
+  let p = Pair("k", Tagged { name: "v", tags: ["q"] })
+  text(p) == "k:v" && text(Plain("p")) == "p" && text(Empty) == "-"
+}
+example arm_writes_its_subject {
+  text(relabel(Plain("ab"))) == "abab" && text(relabel(Empty)) == "-"
+}
+example loops_build_and_overwrite {
+  var ws = ["x", "y"]
+  for i in 0..<3 {
+    ws[0] = ws[0] + "{i}"
+    ws[1] = ws[0]
+  }
+  let s = ws[0..<2]
+  var t = s[0]
+  t = t
+  ws[0] == "x012" && s[1] == "x012" && keep(t) == "x012"
+}
+example nested_owners {
+  let t = tagged("n", 2)
+  let u = t
+  let v = if len(u.tags) > 0 {
+    let w = Tagged { name: u.name + "2", tags: u.tags[1..<2] }
+    w
+  } else {
+    u
+  }
+  len(t.tags) == 2 && v.tags[0] == "t1" && v.name == "n2"
+}
+example a_branch_value {
+  let w = "kept"
+  let s = if len(w) > 9 { "long" } else { w + "?" }
+  s == "kept?"
+}

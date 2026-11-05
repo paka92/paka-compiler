@@ -1,4 +1,4 @@
-dec_from_two pass
-dec_stops_at_zero pass
-first_of_none pass
-inc_once pass
+dec_from_two agent-written pass
+dec_stops_at_zero agent-written pass
+first_of_none agent-written pass
+inc_once agent-written pass

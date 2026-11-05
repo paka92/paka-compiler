@@ -1,0 +1,55 @@
+// Breadth-first shortest paths on a random graph held as lists of neighbours, from several sources.
+
+enum Msg { Start }
+
+fn graph(n: Int, edges: Int) -> List<List<Int>> {
+  var adj: List<List<Int>> = list_of([], count: n)
+  var s = 1
+  for e in 0..<edges {
+    s = wrap_add(wrap_mul(s, 6364136223846793005), 1442695040888963407)
+    let a = bit_and(shift_right(s, 11), 9007199254740991) % n
+    s = wrap_add(wrap_mul(s, 6364136223846793005), 1442695040888963407)
+    let b = bit_and(shift_right(s, 11), 9007199254740991) % n
+    append(&adj[a], b)
+    append(&adj[b], a)
+  }
+  adj
+}
+
+fn distances(adj: List<List<Int>>, source: Int) -> Int {
+  var dist = list_of(-1, count: len(adj))
+  var queue = list_of(0, count: len(adj))
+  dist[source] = 0
+  queue[0] = source
+  var head = 0
+  var tail = 1
+  var total = 0
+  while head < tail {
+    let v = queue[head]
+    head += 1
+    total += dist[v]
+    for w in adj[v] {
+      if dist[w] < 0 {
+        dist[w] = dist[v] + 1
+        queue[tail] = w
+        tail += 1
+      }
+    }
+  }
+  total
+}
+
+fn update(m: Msg) -> List<Effect<Msg>> {
+  let adj = graph(1000000, 3000000)
+  var total = 0
+  for source in 0..<8 {
+    total += distances(adj, source)
+  }
+  [Print("{total}"), Exit]
+}
+
+app bfs {
+  start: Start
+  update: update
+  grants: [Console]
+}

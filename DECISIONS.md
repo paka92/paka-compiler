@@ -17,7 +17,7 @@ money. Each of those needs the owner's own yes; such points are marked "owner mu
 - Downloads allowed: the TypeScript compiler (M3-05) and the Cranelift crates (M4-01b). LLVM 21 is
   already on the build machine. Each task still names what it fetches before it fetches.
 
-Not decided, because each waits on a measurement or a result: M3-21, M3-23, M4-01b, M4-04, M4-05, M5-08, M5-09, M6-23.
+Not decided, because each waits on a measurement or a result: M3-21, M3-23, M4-01b, M4-04, M4-05, M5-08, M5-09.
 
 ## At a glance
 
@@ -200,6 +200,10 @@ Not decided, because each waits on a measurement or a result: M3-21, M3-23, M4-0
 | M6-02 | What is timed, and how? | Whole process, timed outside |
 | M6-02 | How does the published table state that Rust is optimized by LLVM 22 and Paka and C++ by LLVM 21? | State it; C++ is control |
 | M6-02 | Which measured ratio is called 'parity'? | Parity means within 10% |
+| M6-23 | May release IR promise LLVM's `noalias` on function parameters? | Yes: user functions' pointer parameters |
+| M6-23 | Where is `noalias` written, and where never? | User `define` parameters only |
+| M6-23 | What ties the promise to the checker that was tested? | Hash of three files, run recorded |
+| M6-23 | What happens when a hole is found later? | Promise off the same day |
 | M7-01 | What makes an approval something an agent cannot produce? | Signature from owner's key |
 | M7-01 | Where do approvals live, and what exactly is signed? | One signed file, repository root |
 | M7-01 | What stops a pull request from weakening the gate itself? | Gate runs from target branch |
@@ -214,10 +218,11 @@ Not decided, because each waits on a measurement or a result: M3-21, M3-23, M4-0
 | M7-02 | What does the owner's approval of a foreign grant cover? | Declaration and named files |
 | M7-02 | What holds the host's unchecked code? | Generated C, pinned clang |
 | M7-02 | Where is the list of trusted libraries kept, and how does it change? | One owned text file |
-| M7-03 | How are human-owned examples run against the release binary? | Compiled in, one switch |
+| M7-03 | How are human-owned function examples run against the release binary? | Compiled in, one process each |
+| M7-03 | How are human-owned UI examples run against the release binary? | Replayed, every action compared |
 | M7-03 | Which command ships? | A new `paka release` |
-| M7-03 | Which builds carry examples inside the binary? | Release and test builds only |
-| M7-03 | How is the tested binary shown to be the shipped one? | One build, hash, run, rename |
+| M7-03 | Which builds carry examples inside the binary? | Named ones, under `--examples` |
+| M7-03 | How is the tested binary shown to be the shipped one? | Fresh directory, hashed, renamed |
 
 ## M1-06 · Write the M1 subset spec: grammar, start, end and grant rules, hand-written cases
 
@@ -4719,6 +4724,7 @@ example    count_words_two_lines  pass
 - The merge gate and release binaries: The pull-request gate never builds or runs a release binary; binary examples run only inside `paka release`. This keeps compiled code from a pull request out of the gate job (M7-01).
 - Conformance after M7-11: Example-status cases are compared in release by building with `--all-examples` and reading the switch's output. This ends the 'interpreter and dev only' exception in M6-06 and the M6 exit check.
 - Caching: Results of examples run in the binary are not taken from the cache at release; they are always run. M7-09's cache keeps serving the interpreter and dev modes.
+- Changed in the final record: The full record is docs/decisions/M7-03.md, approved by the owner on 2026-11-02 with its review's nine changes. 3.2 stands. 3.1 is amended: function examples are compiled in and each runs in a process of its own under a time limit, and UI examples are replayed against the binary through `--paka-replay`, compared on every action, with no answer queued for a dropped effect. 3.3 is amended: `paka build --examples <name>...` compiles in only the named function examples, and release passes the store's names. 3.4 is amended: the whole artefact, freshly built hosts included, is built into a new directory, hashed before the runs and again at the final path after the directory is renamed into place; release refuses if `-o` exists. Release also reads the program once for both the gate and the build, and refuses unless `approvals.pub` equals the public key beside the signing key. Both switches are reserved in all three modes. TASKS.md follows the full record (M7-11a, M7-11b, M7-11c, M7-12).
 
 ### M7-03 · what this changes in TASKS.md
 

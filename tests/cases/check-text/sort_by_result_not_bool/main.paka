@@ -1,10 +1,10 @@
 enum Msg { Start }
 
-type Row { n: Int }
+type Rec { n: Int }
 
-fn cmp(a: Row, b: Row) -> Int { a.n - b.n }
+fn cmp(a: Rec, b: Rec) -> Int { a.n - b.n }
 
-fn probe(xs: List<Row>) -> List<Row> {
+fn probe(xs: List<Rec>) -> List<Rec> {
   var out = xs
   sort_by(&out, cmp)
   out

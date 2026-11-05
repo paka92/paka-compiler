@@ -14,3 +14,48 @@ example dec_stops_at_zero {
   update(&s, Dec)
   s.count == 0
 }
+
+view counter_view(s: Counter) -> View<Msg> {
+  Col(gap: 8) {
+    Text("{s.count}")
+    Row(gap: 8) {
+      Button("-", on: Dec)
+      Button("+", on: Inc)
+    }
+    ??reset
+  }
+}
+
+app counter {
+  state:  Counter
+  update: update
+  view:   counter_view
+  grants: []
+}
+
+example inc_once {
+  var ui = ui_start(counter)
+  ui_click(&ui, "#1/#1")
+  ui_text(ui, "#0") == "1"
+}
+
+example inc_then_dec {
+  var ui = ui_start(counter)
+  ui_click(&ui, "#1/#1")
+  ui_click(&ui, "#1/#1")
+  ui_click(&ui, "#1/#0")
+  ui_text(ui, "#0") == "1"
+}
+
+example dec_at_zero_stays {
+  var ui = ui_start(counter)
+  ui_click(&ui, "#1/#0")
+  ui_text(ui, "#0") == "0"
+}
+
+example reset_to_zero {
+  var ui = ui_start(counter)
+  ui_click(&ui, "#1/#1")
+  ui_click(&ui, "#2")
+  ui_text(ui, "#0") == "0"
+}

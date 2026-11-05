@@ -97,6 +97,13 @@ impl Cx<'_, '_> {
             }
             Ok(out)
         })?;
-        Ok(joined.ty.or(hint))
+        let ty = joined.ty.or(hint);
+        // An item that never returns takes the item type.
+        if let Some(t) = ty {
+            for i in 0..n {
+                self.info.entry(span(item(i))).or_insert(t);
+            }
+        }
+        Ok(ty)
     }
 }

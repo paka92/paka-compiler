@@ -4,18 +4,22 @@
 use crate::ast::{self, BinOp, Def, Entry, ExprKind as K, Pos, StmtKind};
 use crate::body::Bodies;
 use crate::core_form::{
-    self, App, Enum, Expr, ExprKind, Field, Fn, Grant, Local, Param, Program, Record, Site, Tag,
-    TrapSite, Ty, Type, Variant,
+    self, App, Enum, Expr, ExprKind, Field, Fn, Foreign, Grant, Local, Param, Program, Record,
+    Site, Tag, TrapSite, Ty, Type, Variant,
 };
 use crate::resolve::{Binding, Resolved};
 use crate::sig::{self, Item, Node, Table};
-use std::collections::BTreeMap;
+use crate::source::{Source, in_file};
+use crate::{builtins, coverage, foreign};
+use std::collections::{BTreeMap, BTreeSet};
+use std::path::Path;
 
 mod arms;
 mod expr;
 mod stmt;
 #[cfg(test)]
 mod tests;
+mod view;
 
 struct Cx<'t, 'a> {
     core: Program,
@@ -23,10 +27,11 @@ struct Cx<'t, 'a> {
     resolved: &'t Resolved,
     table: &'t Table<'a>,
     bodies: &'t Bodies,
-    source: &'t [u8],
+    source: &'t Source,
     /// The offset of each line's start in `source`.
     starts: Vec<usize>,
-    /// Each definition's place in the list of its kind: records, enums, functions, examples.
+    /// Each definition's place in the list of its kind: records, enums, functions, examples, UI
+    /// examples.
     ids: Vec<usize>,
     /// The definition being lowered, which `bodies.types` is indexed by.
     def: usize,
@@ -34,28 +39,35 @@ struct Cx<'t, 'a> {
     /// The local of each name, by the position that declares it.
     slots: BTreeMap<Pos, Local>,
     result: Option<Ty>,
+    /// While lowering a view's element lines: how the next one is numbered.
+    lines: Option<view::Lines>,
 }
 
-/// Runs on a program that `body::check` accepted: every lookup succeeds.
+/// Runs on a program that `body::check` accepted: every lookup succeeds. Gives the signatures
+/// each definition read, by name, with the core form (M4-09).
 pub fn lower<'a>(
-    files: Vec<(String, usize)>,
-    source: &[u8],
+    source: &Source,
     program: &ast::Program<'a>,
     resolved: &Resolved,
     table: &Table<'a>,
     bodies: &Bodies,
-) -> Program {
-    let newlines = source.iter().enumerate().filter(|&(_, &b)| b == b'\n');
+) -> (Program, Vec<BTreeSet<String>>) {
+    let newlines = source.text.iter().enumerate().filter(|&(_, &b)| b == b'\n');
     let mut cx = Cx {
         core: Program {
-            files,
+            files: (source.files.iter())
+                .map(|f| (f.name.clone(), f.line))
+                .collect(),
             types: vec![],
             records: vec![],
             enums: vec![],
             fns: vec![],
             examples: vec![],
+            ui_examples: vec![],
             app: None,
             sites: vec![],
+            foreign: vec![],
+            libraries: vec![],
         },
         program,
         resolved,
@@ -70,28 +82,40 @@ pub fn lower<'a>(
         locals: vec![],
         slots: BTreeMap::new(),
         result: None,
+        lines: None,
     };
+    let mut reads = vec![];
     for (i, def) in program.defs.iter().enumerate() {
         cx.def = i;
+        table.defs.take_reads();
         cx.definition(def);
+        reads.push(table.defs.take_reads());
     }
-    cx.core
+    (cx.core, reads)
 }
 
+/// Each definition's index in its core list; a foreign declaration's is its first effect's.
 fn ids(program: &ast::Program) -> Vec<usize> {
-    let mut counts = [0; 4];
+    let mut counts = [0; 6];
     let place = |def: &Def| {
-        let list = match def {
-            Def::Type { .. } => 0,
-            Def::Enum { .. } => 1,
-            Def::Fn { .. } => 2,
-            Def::Example { .. } => 3,
+        let (list, size) = match def {
+            Def::Type { .. } => (0, 1),
+            Def::Enum { .. } => (1, 1),
+            Def::Fn { .. } | Def::View { .. } => (2, 1),
+            Def::Example { .. } if drives_ui(def) => (4, 1),
+            Def::Example { .. } => (3, 1),
+            Def::Foreign { .. } => (5, def.names().len() - 1),
             Def::App { .. } => return 0,
         };
-        counts[list] += 1;
-        counts[list] - 1
+        counts[list] += size;
+        counts[list] - size
     };
     program.defs.iter().map(place).collect()
+}
+
+/// An example that drives a UI, which only the interpreter runs.
+fn drives_ui(def: &Def) -> bool {
+    matches!(def, Def::Example { .. }) && coverage::names(def).iter().any(|n| builtins::is_ui(n))
 }
 
 impl<'a> Cx<'_, 'a> {
@@ -123,11 +147,40 @@ impl<'a> Cx<'_, 'a> {
             }
             (Def::Example { name, body }, _) => {
                 let f = self.function(name, &[], None, body);
-                self.core.examples.push(f);
+                let core = &mut self.core;
+                let list = if drives_ui(def) {
+                    &mut core.ui_examples
+                } else {
+                    &mut core.examples
+                };
+                list.push(f);
+            }
+            (
+                Def::View {
+                    name, params, body, ..
+                },
+                Item::View(sig),
+            ) => {
+                let f = self.function(name, params, Some(sig), body);
+                self.core.fns.push(f);
             }
             (Def::App { name, entries }, _) => {
                 let app = self.app(name, entries);
                 self.core.app = Some(app);
+            }
+            (Def::Foreign { name, lines }, _) => {
+                let library = self.core.libraries.len();
+                let effects = def.names().into_iter().skip(1).enumerate();
+                let effects = effects.map(|(number, effect)| Foreign {
+                    name: effect.into(),
+                    library,
+                    number,
+                });
+                self.core.foreign.extend(effects);
+                let (file, _) = in_file(&self.source.files, |f| f.line, name.at.0);
+                let dir = Path::new(&file.path).parent().unwrap_or(Path::new(""));
+                let library = foreign::library(name.text, dir, lines);
+                self.core.libraries.push(library);
             }
             _ => unreachable!("a definition and its table row agree"),
         }
@@ -166,7 +219,10 @@ impl<'a> Cx<'_, 'a> {
             Some(s) => s.result.map(|r| self.ty(r)),
             None => Some(self.core.ty(Type::Bool)),
         };
-        let block = self.block(body, self.result.is_some());
+        let block = match self.result.map(|r| &self.core.types[r]) {
+            Some(Type::View(_)) => self.root(body),
+            _ => self.block(body, self.result.is_some()),
+        };
         let claims = if sig.is_none() {
             self.claims(body)
         } else {
@@ -219,9 +275,11 @@ impl<'a> Cx<'_, 'a> {
         let mut app = App {
             name: name.text.into(),
             state: None,
-            start: 0,
+            start: None,
             update: 0,
+            view: None,
             grants: Default::default(),
+            foreign: Default::default(),
         };
         for entry in entries {
             match entry {
@@ -230,18 +288,29 @@ impl<'a> Cx<'_, 'a> {
                     let Some(Binding::Variant(_, v)) = self.resolved.get(e.at) else {
                         unreachable!("start names a variant");
                     };
-                    app.start = v;
+                    app.start = Some(v);
                 }
-                Entry::Update(_, n) => {
-                    let Some(Binding::Def(f)) = self.resolved.get(n.at) else {
-                        unreachable!("update names a function");
-                    };
-                    app.update = self.ids[f];
+                Entry::Update(_, n) => app.update = self.def(n),
+                Entry::View(_, n) => app.view = Some(self.def(n)),
+                Entry::Grants(_, names) => {
+                    for n in names {
+                        match self.resolved.get(n.at) {
+                            Some(Binding::Def(_)) => app.foreign.insert(n.text.into()),
+                            _ => app.grants.insert(grant(n)),
+                        };
+                    }
                 }
-                Entry::Grants(_, names) => app.grants = names.iter().map(grant).collect(),
             }
         }
         app
+    }
+
+    /// The function or view `n` names.
+    fn def(&self, n: &ast::Name) -> usize {
+        let Some(Binding::Def(f)) = self.resolved.get(n.at) else {
+            unreachable!("an app entry names a definition");
+        };
+        self.ids[f]
     }
 
     /// The record `n` names, built from its defaults.
@@ -278,6 +347,8 @@ impl<'a> Cx<'_, 'a> {
                     ("Option", &[x]) => Type::Option(x),
                     ("Result", &[x, e]) => Type::Result(x, e),
                     ("Effect", &[m]) => Type::Effect(m),
+                    ("View", &[m]) => Type::View(m),
+                    ("Ui", []) => Type::Ui,
                     _ => unreachable!("a built-in type and its arguments"),
                 }
             }
@@ -344,7 +415,7 @@ impl<'a> Cx<'_, 'a> {
     fn after(&self, e: &ast::Expr) -> Pos {
         let mut at = self.offset(e.at) + e.len;
         loop {
-            match self.source.get(at..) {
+            match self.source.text.get(at..) {
                 Some([b' ' | b'\n', ..]) => at += 1,
                 Some(rest @ [b'/', b'/', ..]) => {
                     at += rest.iter().position(|&b| b == b'\n').unwrap_or(rest.len());

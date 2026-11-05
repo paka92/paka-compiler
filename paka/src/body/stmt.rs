@@ -75,6 +75,9 @@ pub(super) fn values<'x>(e: &'x Expr<'x>) -> Vec<&'x Expr<'x>> {
 impl Cx<'_, '_> {
     /// `used` says how the last line counts: as the block's value or as nothing.
     pub(super) fn block(&mut self, b: &Block, used: Use) -> Res<Out> {
+        if let Use::Elements = used {
+            return self.children(b).map(|()| Out::Unit);
+        }
         let mut ended = false;
         for (i, s) in b.stmts.iter().enumerate() {
             if ended {
@@ -265,8 +268,12 @@ impl Cx<'_, '_> {
     }
 
     /// The element type of the list a `for` goes over.
-    fn elements(&mut self, list: &Expr) -> Res<Ty> {
-        let ty = self.expr_val(list, None)?;
+    pub(super) fn elements(&mut self, list: &Expr) -> Res<Ty> {
+        // A list that leaves, as `unreachable()` does, has no item type to walk.
+        let ty = match self.expr(list, None)? {
+            Out::Never => return Err(self.open_part(list, None)),
+            out => self.val(out, list)?,
+        };
         if self.free(ty) {
             return Err(self.open_value(list, None));
         }

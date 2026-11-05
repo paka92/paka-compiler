@@ -1,0 +1,32 @@
+name: gate
+
+# docs/decisions/M7-01.md section 1.3: this file, the paka that runs and the old store all come
+# from the target branch. Nothing from the pull request is built; only its human-owned examples
+# run, in the interpreter, which grants them no effects.
+on:
+  pull_request_target:
+    branches: [development, main]
+
+permissions:
+  contents: read
+
+jobs:
+  gate:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 30
+    steps:
+      - name: Check out the target branch
+        uses: actions/checkout@v4
+        with:
+          path: base
+          persist-credentials: false
+      - name: Check out the pull request merged into it
+        uses: actions/checkout@v4
+        with:
+          ref: refs/pull/${{ github.event.pull_request.number }}/merge
+          path: merged
+          persist-credentials: false
+      - name: Build paka from the target branch
+        working-directory: base
+        run: cargo build --release --locked --offline -p paka
+      - run: base/target/release/paka gate merged --base base

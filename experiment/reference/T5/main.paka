@@ -8,7 +8,7 @@ type Sorter { keys: List<Key> = [] }
 // millionths, or a text that is not a number.
 enum Cell { Plain(text: String, down: Bool), Num(value: Int, down: Bool), NotNum(down: Bool) }
 
-type Row { text: String, cells: List<Cell> }
+type Line { text: String, cells: List<Cell> }
 
 fn is_digit(c: String) -> Bool {
   c >= "0" && c <= "9"
@@ -116,7 +116,7 @@ fn is_down(c: Cell) -> Bool {
   }
 }
 
-fn before(a: Row, b: Row) -> Bool {
+fn before(a: Line, b: Line) -> Bool {
   for k in 0..<len(a.cells) {
     var o = order(a.cells[k], b.cells[k])
     if is_down(a.cells[k]) { o = -o }
@@ -126,13 +126,13 @@ fn before(a: Row, b: Row) -> Bool {
 }
 
 fn sorted(text: String, keys: List<Key>) -> List<Effect<Msg>> {
-  var rows: List<Row> = []
+  var rows: List<Line> = []
   for line in lines(text) {
     var cells: List<Cell> = []
     for key in keys {
       append(&cells, cell(line, key))
     }
-    append(&rows, Row { text: line, cells: cells })
+    append(&rows, Line { text: line, cells: cells })
   }
   sort_by(&rows, before)
   var effects: List<Effect<Msg>> = []

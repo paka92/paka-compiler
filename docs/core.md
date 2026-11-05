@@ -217,6 +217,28 @@ The app is a name, an optional initial state, the start message, the handler and
   order and performs its effects in list order. An answer's `then` or `or` is called through its
   function value when the answer reaches the front, its name being the outermost frame.
 
+### 8.1 Views
+
+A view lowers to a function whose result type is `View<M>` (M5-01, M5-02). Its body is a block of
+element lines ending in `Root`, which gives the one node those lines add.
+
+- **Element lines.** Each line is a `Child`: its line number among the element lines of its child
+  block (counted from 0 through `if`, `match` and `for` bodies), whether a `for` holds it, its key
+  if written, and its node: an `Element`, a view call or a `Placeholder`. Running it adds the node
+  to the child list being built; its step is the key, else `#n.r` for a placeholder in a loop, else
+  the line number.
+- **Elements.** `Element` names its table row, holds its arguments in table order with each
+  default written in, and its child block. A negative gap traps `assert` at the element. Siblings
+  sharing a key become one error node at the first one's place (M5-02 §1.7).
+- **Messages.** A node's message keeps its value and its value text form.
+- **Traps.** A trap in a view ends the view; the caller keeps its message, `trap kind at place`.
+- **Dev code.** A compiled view writes each node as it is made into a buffer of words in the run's
+  context, through `rt.view`: an op, then its operands, a String as its byte length and its
+  packed bytes. A child list opens before its children and closes into its Row, Col or root; a
+  child line follows its node with its line, loop flag and key. A message's words follow its
+  node, copied with the blocks they own. The runtime decodes the buffer into the same tree, its
+  rules as above, and frees the messages when the tree is released.
+
 ## 9. Points the records left open
 
 Each is the smallest reading consistent with M2-03, M2-05 and M2-06.

@@ -1,0 +1,4 @@
+main.paka:25:5: note[hole]: ??reset takes View<Msg>
+  definition: counter_view
+  bytes: 428..435
+  text: "??reset"

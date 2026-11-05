@@ -1,0 +1,28 @@
+Served program: views/before; the file after matches views/after. Views travel through find,
+view and edit with kind `view` (M5-14): shape queries match views, elements are built-ins, and a
+variant that appears wakes the view waiting on it.
+
+> {"v":1,"id":1,"call":"find","kind":"view"}
+< {"v":1,"id":1,"ok":true,"found":[{"name":"counter_view","kind":"view","sig":"view counter_view(s: Counter) -> View<Msg>","version":"4b7640c2fbdf"},{"name":"step","kind":"view","sig":"view step(label: String, m: Msg) -> View<Msg>","version":"2cb5e8643354"}],"more":0}
+> {"v":1,"id":2,"call":"find","takes":["Counter"],"gives":"View<Msg>"}
+< {"v":1,"id":2,"ok":true,"found":[{"name":"counter_view","kind":"view","sig":"view counter_view(s: Counter) -> View<Msg>","version":"4b7640c2fbdf"}],"more":0}
+> {"v":1,"id":3,"call":"find","users_of":"step"}
+< {"v":1,"id":3,"ok":true,"found":[{"name":"counter_view","kind":"view","sig":"view counter_view(s: Counter) -> View<Msg>","version":"4b7640c2fbdf"}],"more":0}
+> {"v":1,"id":4,"call":"find","users_of":"Button"}
+< {"v":1,"id":4,"ok":true,"found":[{"name":"step","kind":"view","sig":"view step(label: String, m: Msg) -> View<Msg>","version":"2cb5e8643354"}],"more":0}
+> {"v":1,"id":5,"call":"find","name":"Row"}
+< {"v":1,"id":5,"ok":true,"found":[{"name":"Row","kind":"builtin","sig":"Row(; gap: Int = 0) -> View<M>","version":null}],"more":0}
+> {"v":1,"id":6,"call":"find","name":"Input"}
+< {"v":1,"id":6,"ok":true,"found":[{"name":"Input","kind":"builtin","sig":"Input(text: String; on_change: fn(String) -> M) -> View<M>","version":null}],"more":0}
+> {"v":1,"id":7,"call":"view","name":"counter_view"}
+< {"v":1,"id":7,"ok":true,"name":"counter_view","kind":"view","version":"4b7640c2fbdf","text":"view counter_view(s: Counter) -> View<Msg> {\n  Col(gap: 8) {\n    Text(\"{s.count}\")\n    Row(gap: 8) {\n      step(\"-\", Dec)\n      step(\"+\", Inc)\n    }\n    ??reset\n  }\n}","uses":[{"name":"Counter","kind":"type","sig":"type Counter { count: Int = 0 }","version":"dc69fead84c9"},{"name":"Msg","kind":"enum","sig":"enum Msg { Inc, Dec }","version":"f3c3d5742e0c"},{"name":"step","kind":"view","sig":"view step(label: String, m: Msg) -> View<Msg>","version":"2cb5e8643354"}],"more":0,"errors":[]}
+> {"v":1,"id":8,"call":"edit","name":"counter_view","base":"4b7640c2fbdf","text":"view counter_view(s: Counter) -> View<Msg> {\n  Col(gap: 8) {\n    Text(\"{s.count}\")\n    Row(gap: 8) {\n      step(\"-\", Dec)\n      step(\"+\", Inc)\n    }\n    step(\"reset\", Reset)\n  }\n}"}
+< {"v":1,"id":8,"ok":true,"name":"counter_view","version":"1ad5803a970a","text":"view counter_view(s: Counter) -> View<Msg> {\n  Col(gap: 8) {\n    Text(\"{s.count}\")\n    Row(gap: 8) {\n      step(\"-\", Dec)\n      step(\"+\", Inc)\n    }\n    step(\"reset\", Reset)\n  }\n}","errors":[{"kind":"unknown-name","definition":"counter_view","message":"Reset is not defined here","file":null,"start":167,"end":172,"line":8,"column":19,"text":"Reset","expected":null,"found":null,"fix":null}],"broke":[],"installed":false}
+> {"v":1,"id":9,"call":"edit","name":"Msg","base":"f3c3d5742e0c","text":"enum Msg { Inc, Dec, Reset }"}
+< {"v":1,"id":9,"ok":true,"name":"Msg","version":"d9489bacc0af","text":"enum Msg { Inc, Dec, Reset }","errors":[],"broke":["update"],"installed":false}
+> {"v":1,"id":10,"call":"edit","name":"update","base":"b8320f7a24b8","text":"fn update(s: inout Counter, m: Msg) {\n  match m {\n    Inc => s.count += 1\n    Dec => s.count = max(0, s.count - 1)\n    Reset => s.count = 0\n  }\n}"}
+< {"v":1,"id":10,"ok":true,"name":"update","version":"221eedfc77bb","text":"fn update(s: inout Counter, m: Msg) {\n  match m {\n    Inc => s.count += 1\n    Dec => s.count = max(0, s.count - 1)\n    Reset => s.count = 0\n  }\n}","errors":[],"broke":[],"installed":true}
+> {"v":1,"id":11,"call":"edit","name":"step","base":"2cb5e8643354","text":"view step(m: Msg, label: String) -> View<Msg> {\n  Button(label, on: m)\n}"}
+< {"v":1,"id":11,"ok":true,"name":"step","version":"c7fe908066a9","text":"view step(m: Msg, label: String) -> View<Msg> {\n  Button(label, on: m)\n}","errors":[],"broke":["counter_view"],"installed":false}
+> {"v":1,"id":12,"call":"edit","name":"counter","base":"281e0b3c463d","text":"app counter {\n  state:  Counter\n  update: update\n  view:   step\n  grants: []\n}"}
+< {"v":1,"id":12,"ok":true,"name":"counter","version":"bc5ee97883f3","text":"app counter {\n  state: Counter\n  update: update\n  view: step\n  grants: []\n}","errors":[{"kind":"bad-view-signature","definition":"counter","message":"view must be view(s: Counter) -> View<Msg>","file":null,"start":56,"end":60,"line":4,"column":9,"text":"step","expected":null,"found":null,"fix":null}],"broke":[],"installed":false}

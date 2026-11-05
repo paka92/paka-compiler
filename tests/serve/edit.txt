@@ -1,0 +1,31 @@
+Served program: edit/before/main.paka; the file after matches edit/after. Refusals store nothing;
+versions are per definition, so edits to two definitions from one base both land.
+
+> {"v":1,"id":1,"call":"edit","name":"count_words","base":"8f37a8d7c74b","text":null}
+< {"v":1,"id":1,"ok":false,"error":{"kind":"stale_base","message":"count_words has moved","version":"a5848e4ee70f","text":"fn count_words(text: String) -> Int {\n  // four spaces\n  len(words(text))\n}"}}
+> {"v":1,"id":2,"call":"edit","name":"count_words","base":"a5848e4ee70f","text":"fn count_words(text: String)  -> String {\n      text\n}"}
+< {"v":1,"id":2,"ok":true,"name":"count_words","version":"48baed379965","text":"fn count_words(text: String) -> String {\n  text\n}","errors":[],"broke":["update"],"installed":false}
+> {"v":1,"id":3,"call":"edit","name":"update","base":"f23b373eb267","text":"fn update(s: inout Tally, m: Msg) -> List<Effect<Msg>> {\n  match m {\n    Start(path) => [ReadFile(path, then: Loaded, or: Failed)]\n    Loaded(text) => {\n      s.words = len(words(count_words(text)))\n      [Print(\"{s.words} words\"), Exit]\n    }\n    Failed(why) => [Print(\"cannot read file: {why}\"), ExitWith(20)]\n  }\n}"}
+< {"v":1,"id":3,"ok":true,"name":"update","version":"57d465a3dd35","text":"fn update(s: inout Tally, m: Msg) -> List<Effect<Msg>> {\n  match m {\n    Start(path) => [ReadFile(path, then: Loaded, or: Failed)]\n    Loaded(text) => {\n      s.words = len(words(count_words(text)))\n      [Print(\"{s.words} words\"), Exit]\n    }\n    Failed(why) => [Print(\"cannot read file: {why}\"), ExitWith(20)]\n  }\n}","errors":[],"broke":[],"installed":true}
+> {"v":1,"id":4,"call":"edit","name":"count_words","base":"a5848e4ee70f","text":"fn count_words(text: String) -> Int {\n  0\n}"}
+< {"v":1,"id":4,"ok":false,"error":{"kind":"stale_base","message":"count_words has moved","version":"48baed379965","text":"fn count_words(text: String) -> String {\n  text\n}"}}
+> {"v":1,"id":5,"call":"edit","name":"counts_two","base":null,"text":"example counts_two {\n  len(words(count_words(\"a b\"))) == 2\n}"}
+< {"v":1,"id":5,"ok":true,"name":"counts_two","version":"d2c0a37abd1f","text":"example counts_two {\n  len(words(count_words(\"a b\"))) == 2\n}","errors":[],"broke":[],"installed":true}
+> {"v":1,"id":6,"call":"edit","name":"counts_two","base":null,"text":"example counts_two {\n  true\n}"}
+< {"v":1,"id":6,"ok":false,"error":{"kind":"name_taken","message":"counts_two already exists; send its version as base to replace it"}}
+> {"v":1,"id":7,"call":"edit","name":"len","base":null,"text":"fn len(x: Int) -> Int {\n  x\n}"}
+< {"v":1,"id":7,"ok":false,"error":{"kind":"conflict","message":"len is a built-in; rename it; nothing was stored"}}
+> {"v":1,"id":8,"call":"edit","name":"Msg","base":"fb4881575e98","text":"enum Msg { Start(path: String), Loaded(text: String), Failed(why: String), Tally }"}
+< {"v":1,"id":8,"ok":false,"error":{"kind":"conflict","message":"Tally is already declared; nothing was stored"}}
+> {"v":1,"id":9,"call":"edit","name":"wc","base":"a0fc527c3499","text":"fn wc() -> Int {\n  0\n}"}
+< {"v":1,"id":9,"ok":true,"name":"wc","version":"fcf85432b77a","text":"fn wc() -> Int {\n  0\n}","errors":[],"broke":[],"installed":true}
+> {"v":1,"id":10,"call":"edit","name":"counts_two","base":"0f0f0f0f0f0f","text":null}
+< {"v":1,"id":10,"ok":false,"error":{"kind":"stale_base","message":"counts_two has moved","version":"d2c0a37abd1f","text":"example counts_two {\n  len(words(count_words(\"a b\"))) == 2\n}"}}
+> {"v":1,"id":11,"call":"edit","name":"counts_two","base":"d2c0a37abd1f","text":null}
+< {"v":1,"id":11,"ok":true,"name":"counts_two","version":null,"text":null,"errors":[],"broke":[],"installed":true}
+> {"v":1,"id":12,"call":"edit","name":"count_words","base":"48baed379965","text":null}
+< {"v":1,"id":12,"ok":true,"name":"count_words","version":null,"text":null,"errors":[],"broke":["update"],"installed":false}
+> {"v":1,"id":13,"call":"edit","name":"count_words","base":null,"text":"fn count_words(text: String) -> String {\n  text\n}"}
+< {"v":1,"id":13,"ok":true,"name":"count_words","version":"48baed379965","text":"fn count_words(text: String) -> String {\n  text\n}","errors":[],"broke":[],"installed":true}
+> {"v":1,"id":14,"call":"edit","name":"count_words","base":"48baed379965","text":"fn count_words(text: String) -> String {\n  1\n}"}
+< {"v":1,"id":14,"ok":true,"name":"count_words","version":"ac13eed7ae44","text":"fn count_words(text: String) -> String {\n  1\n}","errors":[{"kind":"type-mismatch","definition":"count_words","message":"expected `String`, found `Int`","file":null,"start":43,"end":44,"line":2,"column":3,"text":"1","expected":"String","found":"Int","fix":null}],"broke":[],"installed":false}

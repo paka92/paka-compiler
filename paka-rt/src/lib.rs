@@ -10,8 +10,22 @@
 #[allow(unsafe_code)]
 pub mod abi;
 #[forbid(unsafe_code)]
+pub mod effects;
+#[forbid(unsafe_code)]
+mod examples;
+#[forbid(unsafe_code)]
+pub mod foreign;
+#[forbid(unsafe_code)]
+mod headless;
+#[forbid(unsafe_code)]
+pub mod limit;
+#[forbid(unsafe_code)]
 pub mod ops;
+#[forbid(unsafe_code)]
+pub mod replay;
 #[forbid(unsafe_code)]
 mod rt;
 
+pub use headless::run_app;
+pub use paka_gui::{input, layout, route, tree};
 pub use rt::*;

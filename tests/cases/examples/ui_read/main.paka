@@ -1,0 +1,62 @@
+type Notes { text: String = "", saved: Int = 0 }
+
+enum Msg { Read, Got(text: String), Save, Saved, Edit(text: String), Quit }
+
+fn update(s: inout Notes, m: Msg) -> List<Effect<Msg>> {
+  match m {
+    Read => {
+      return [ReadFile("notes.txt", then: Got, or: Got)]
+    }
+    Got(text) => s.text = text
+    Save => {
+      return [WriteFile("notes.txt", s.text, then: Saved, or: Got)]
+    }
+    Saved => s.saved += 1
+    Edit(text) => s.text = text
+    Quit => {
+      return [Exit]
+    }
+  }
+  []
+}
+
+view notes_view(s: Notes) -> View<Msg> {
+  Col(gap: 4) {
+    Input(s.text, on_change: Edit, key: "text")
+    Row(gap: 2) {
+      Button("read", on: Read)
+      Button("save", on: Save)
+      Button("quit", on: Quit)
+    }
+    Text("saved {s.saved}")
+  }
+}
+
+app notes {
+  state:  Notes
+  update: update
+  view:   notes_view
+  grants: [ReadFiles, WriteFiles]
+}
+
+example read_then_save {
+  var ui = ui_start(notes)
+  ui_click(&ui, "#1/#0")
+  ui_click(&ui, "#1/#1")
+  ui_text(ui, "'text'") == "" && ui_text(ui, "#2") == "saved 0"
+}
+
+example read_then_quit {
+  var ui = ui_start(notes)
+  ui_click(&ui, "#1/#0")
+  ui_click(&ui, "#1/#2")
+  ui_text(ui, "#2") == "saved 0"
+}
+
+example typed_text {
+  var ui = ui_start(notes)
+  ui_click(&ui, "'text'")
+  ui_type(&ui, "a\"\\\{\}\té\r\n")
+  ui_click(&ui, "#1/#1")
+  ui_text(ui, "'text'") == "a\"\\\{\}é" && ui_text(ui, "#2") == "saved 0"
+}

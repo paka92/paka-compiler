@@ -4,12 +4,13 @@
 //! left to the checker. A local no use names is the `unused-name` warning (M2-02 section 5).
 
 use crate::ast::{
-    Arm, ArmBody, Block, Def, Entry, Expr, ExprKind, Field, Name, Pat, PatKind, Pos, Program, Stmt,
-    StmtKind, StrPart, Type,
+    Arm, ArmBody, Block, Def, Entry, Expr, ExprKind, Field, ForeignLine, Name, Param, Pat, PatKind,
+    Pos, Program, Stmt, StmtKind, StrPart, Type,
 };
 use crate::builtins::{self, Kind};
 use crate::diagnostic::Diagnostic;
 use crate::source::in_file;
+use std::cell::RefCell;
 use std::collections::{BTreeMap, BTreeSet};
 
 type Res<T = ()> = Result<T, Diagnostic>;
@@ -19,9 +20,10 @@ type Res<T = ()> = Result<T, Diagnostic>;
 pub enum Binding {
     /// A `let`, `var`, parameter, `for` name or pattern name, by the position of its name.
     Local(Pos),
-    /// A `type`, `enum`, `fn`, `example` or `app`, by its index in `Program::defs`.
+    /// A definition, by its index in `Program::defs`.
     Def(usize),
-    /// A variant: its enum's index in `Program::defs`, then its index in the enum.
+    /// A variant or a foreign effect: its definition's index in `Program::defs`, then its index
+    /// among the definition's variants or effects.
     Variant(usize, usize),
     /// A name of the built-in table.
     Builtin(&'static str),
@@ -38,6 +40,9 @@ pub struct Resolved {
     entries: BTreeMap<Pos, Diagnostic>,
     /// An `unused-name` warning per local that no use names, in source order.
     pub unused: Vec<Diagnostic>,
+    /// The names each definition looked up: the definitions they name, as for a variant its
+    /// enum, and as written those that name nothing (M4-09). Built-ins and locals are left out.
+    pub reads: Vec<BTreeSet<String>>,
 }
 
 impl Resolved {
@@ -73,16 +78,19 @@ pub fn resolve<'a>(path: &'a str, program: &'a Program<'a>) -> Res<Resolved> {
         bound: Vec::new(),
         uses: BTreeMap::new(),
         entries: BTreeMap::new(),
+        reads: RefCell::default(),
+        example: false,
     };
     for (i, def) in program.defs.iter().enumerate() {
         resolver
             .declare_def(i, def)
             .map_err(|d| d.in_definition(def.name().text))?;
     }
-    let (mut defs, mut bound) = (Vec::new(), Vec::new());
+    let (mut defs, mut bound, mut reads) = (Vec::new(), Vec::new(), Vec::new());
     for def in &program.defs {
         let name = def.name().text;
         defs.push(resolver.def(def).map_err(|d| d.in_definition(name)));
+        reads.push(resolver.reads.take());
         bound.extend(resolver.bound.drain(..).map(|local| (local, name)));
     }
     let used: BTreeSet<Pos> = (resolver.uses.values())
@@ -101,25 +109,39 @@ pub fn resolve<'a>(path: &'a str, program: &'a Program<'a>) -> Res<Resolved> {
         defs,
         entries: resolver.entries,
         unused: unused.map(warn).collect(),
+        reads,
     })
 }
 
 fn builtins<'a>() -> BTreeMap<&'a str, (Kind, Binding)> {
-    let rows = builtins::ROWS.iter().map(|&(kind, row)| {
-        let name = builtins::name(row);
-        (name, (kind, Binding::Builtin(name)))
-    });
-    rows.collect()
+    let rows = builtins::ROWS
+        .iter()
+        .map(|&(kind, row)| (kind, builtins::name(row)));
+    let elements = builtins::ELEMENTS.iter().map(|e| (Kind::Fn, e.name));
+    let ui = builtins::UI
+        .iter()
+        .map(|&(kind, row)| (kind, builtins::name(row)));
+    let all = rows
+        .chain(elements)
+        .chain(ui)
+        .chain([(Kind::Other, "View")]);
+    all.map(|(kind, name)| (name, (kind, Binding::Builtin(name))))
+        .collect()
 }
 
 /// The candidate closest to `name` by edit distance, if within a third of its length. Ties go to
 /// the first in byte order; only names of the same letter case count (case carries meaning,
 /// M2-02.3).
 fn nearest<'n>(name: &str, candidates: impl Iterator<Item = &'n str>) -> Option<&'n str> {
+    let near = candidates.filter_map(|c| near(name, c).map(|d| (d, c)));
+    near.min().map(|(_, best)| best)
+}
+
+/// The distance from `name` to `candidate` when it is near enough to be suggested.
+pub(crate) fn near(name: &str, candidate: &str) -> Option<usize> {
     let upper = |s: &str| s.starts_with(char::is_uppercase);
-    let near = candidates.filter(|c| upper(c) == upper(name));
-    let (d, best) = near.map(|c| (distance(name, c), c)).min()?;
-    (d <= name.len() / 3).then_some(best)
+    let d = (upper(name) == upper(candidate)).then(|| distance(name, candidate))?;
+    (d <= name.len() / 3).then_some(d)
 }
 
 /// An error at `name` with the message `head`; when a candidate is near, the message ends with
@@ -191,6 +213,9 @@ struct Resolver<'a> {
     bound: Vec<(&'a str, Pos)>,
     uses: BTreeMap<Pos, Binding>,
     entries: BTreeMap<Pos, Diagnostic>,
+    reads: RefCell<BTreeSet<String>>,
+    /// Whether the definition being resolved is an example, the one place for UI names.
+    example: bool,
 }
 
 impl<'a> Resolver<'a> {
@@ -207,11 +232,27 @@ impl<'a> Resolver<'a> {
         candidates: impl Iterator<Item = &'n str>,
     ) -> Diagnostic {
         let head = format!("{name} is {what}");
-        suggestion(self.path, code, (at, name), &head, candidates)
+        let near = nearest(name, candidates);
+        if let Some(near) = near.filter(|n| self.pool.contains_key(n)) {
+            self.pool_get(near, |_, _| true);
+        }
+        suggestion(self.path, code, (at, name), &head, near.into_iter())
     }
 
+    /// Logs the lookup in `reads`: the definition found, or `name` when nothing is.
     fn pool_get(&self, name: &str, keep: impl Fn(Kind, Binding) -> bool) -> Option<Binding> {
-        let &(kind, binding) = self.pool.get(name)?;
+        let found = self.pool.get(name);
+        let read = match found {
+            Some((_, Binding::Def(i) | Binding::Variant(i, _))) => {
+                Some(self.program.defs[*i].name().text)
+            }
+            Some(_) => None,
+            None => Some(name),
+        };
+        if let Some(read) = read.filter(|r| !self.reads.borrow().contains(*r)) {
+            self.reads.borrow_mut().insert(read.into());
+        }
+        let &(kind, binding) = found?;
         keep(kind, binding).then_some(binding)
     }
 
@@ -226,6 +267,15 @@ impl<'a> Resolver<'a> {
     fn record(&mut self, at: Pos, found: Binding) -> Res {
         self.uses.insert(at, found);
         Ok(())
+    }
+
+    /// A UI name is for example bodies only (M5-06 section 2).
+    fn ui_only(&self, name: &str, at: Pos) -> Res {
+        if self.example || !builtins::is_ui(name) {
+            return Ok(());
+        }
+        let message = format!("{name} is only for example bodies");
+        Err(self.fail(at, name.len(), "ui-outside-example", message))
     }
 
     /// Looks `name` up in the pool and records the use.
@@ -250,20 +300,23 @@ impl<'a> Resolver<'a> {
         let name = def.name();
         let kind = match def {
             Def::Type { .. } | Def::Enum { .. } => Kind::Type,
-            Def::Fn { .. } => Kind::Fn,
+            Def::Fn { .. } | Def::View { .. } => Kind::Fn,
             Def::Example { .. } | Def::App { .. } => Kind::Other,
+            Def::Foreign { .. } => Kind::Grant,
         };
         self.declare(name.text, name.at, kind, Binding::Def(i))?;
-        let Def::Enum { variants, .. } = def else {
-            return Ok(());
+        let variants: Vec<_> = match def {
+            Def::Enum { variants, .. } => variants.iter().map(|v| &v.name).collect(),
+            Def::Foreign { lines, .. } => (lines.iter())
+                .filter_map(|line| match line {
+                    ForeignLine::Function { name, .. } => Some(name),
+                    ForeignLine::File(..) => None,
+                })
+                .collect(),
+            _ => return Ok(()),
         };
-        for (j, v) in variants.iter().enumerate() {
-            self.declare(
-                v.name.text,
-                v.name.at,
-                Kind::Variant,
-                Binding::Variant(i, j),
-            )?;
+        for (j, v) in variants.into_iter().enumerate() {
+            self.declare(v.text, v.at, Kind::Variant, Binding::Variant(i, j))?;
         }
         Ok(())
     }
@@ -285,10 +338,61 @@ impl<'a> Resolver<'a> {
                 result.iter().try_for_each(|t| r.ty(t))?;
                 r.block(body)
             }),
-            Def::Example { body, .. } => self.block(body),
+            Def::Example { body, .. } => {
+                self.example = true;
+                let done = self.block(body);
+                self.example = false;
+                done
+            }
             Def::App { name, entries } => {
                 self.app(name.text, entries);
                 Ok(())
+            }
+            Def::Foreign { name, lines } => self.foreign(name, lines),
+            Def::View {
+                params,
+                result,
+                body,
+                ..
+            } => self.scoped(|r| {
+                for p in params {
+                    r.view_param(p)?;
+                    r.ty(&p.ty)?;
+                    r.bind(p.name.text, p.name.at)?;
+                }
+                r.view_result(result)?;
+                r.block(body)
+            }),
+        }
+    }
+
+    /// A view reads its parameters, and every view call takes `key:` (M5-01, M5-02).
+    fn view_param(&self, p: &Param) -> Res {
+        let (at, len) = (p.name.at, p.name.text.len());
+        if p.inout {
+            let message = "a view reads its parameters; drop inout";
+            return Err(self.fail(at, len, "bad-view-signature", message.into()));
+        }
+        if p.name.text == "key" {
+            let message = "key is the key every view call takes; rename it".into();
+            return Err(self.fail(at, len, "duplicate-name", message));
+        }
+        Ok(())
+    }
+
+    /// A view gives `View<Msg>`, the one place that type is written.
+    fn view_result(&mut self, t: &'a Type<'a>) -> Res {
+        match t {
+            Type::Name { name, args } if name.text == "View" && args.len() == 1 => {
+                self.ty(&args[0])
+            }
+            Type::Name { name, .. } => {
+                let message = "a view gives View<Msg>; write -> View<Msg>".into();
+                Err(self.fail(name.at, name.text.len(), "bad-view-signature", message))
+            }
+            Type::Fn { at, .. } => {
+                let message = "a view gives View<Msg>; write -> View<Msg>".into();
+                Err(self.fail(*at, 2, "bad-view-signature", message))
             }
         }
     }
@@ -318,6 +422,7 @@ impl<'a> Resolver<'a> {
                     let grant = |n: &Name| (n.at, self.grant(n.text, n.at));
                     names.iter().map(grant).collect()
                 }
+                Entry::View(_, n) => vec![(n.at, self.view(n.text, n.at))],
             };
             for (at, result) in results {
                 if let Err(d) = result {
@@ -328,13 +433,30 @@ impl<'a> Resolver<'a> {
     }
 
     fn update(&mut self, name: &str, at: Pos) -> Res {
-        let own = |k, b| k == Kind::Fn && matches!(b, Binding::Def(_));
+        self.own_def(
+            name,
+            at,
+            |d| matches!(d, Def::Fn { .. }),
+            "not a function of the program",
+        )
+    }
+
+    fn view(&mut self, name: &str, at: Pos) -> Res {
+        self.own_def(
+            name,
+            at,
+            |d| matches!(d, Def::View { .. }),
+            "not a view of the program",
+        )
+    }
+
+    /// `name` is a definition of the program that `keep` picks.
+    fn own_def(&mut self, name: &str, at: Pos, keep: fn(&Def) -> bool, what: &str) -> Res {
+        let defs = &self.program.defs;
+        let own = |_, b| matches!(b, Binding::Def(i) if keep(&defs[i]));
         match self.pool_get(name, own) {
             Some(found) => self.record(at, found),
-            None => {
-                let what = "not a function of the program";
-                Err(self.suggest("unknown-name", (at, name), what, self.names(own)))
-            }
+            None => Err(self.suggest("unknown-name", (at, name), what, self.names(own))),
         }
     }
 
@@ -350,6 +472,7 @@ impl<'a> Resolver<'a> {
 
     fn ty_name(&mut self, name: &str, at: Pos) -> Res {
         match self.pool_use(name, at, TYPES) {
+            Some(Binding::Builtin(b)) => self.ui_only(b, at),
             Some(_) => Ok(()),
             None => {
                 let near = self.names(of(TYPES));
@@ -361,6 +484,10 @@ impl<'a> Resolver<'a> {
     /// Outside in: the name, then the number of arguments, then the arguments.
     fn ty(&mut self, t: &'a Type<'a>) -> Res {
         match t {
+            Type::Name { name, .. } if name.text == "View" => {
+                let message = "View<Msg> is only a view's result type".into();
+                Err(self.fail(name.at, 4, "element-outside-view", message))
+            }
             Type::Name { name, args } => {
                 self.ty_name(name.text, name.at)?;
                 let want = builtins::arity(name.text);
@@ -458,7 +585,19 @@ impl<'a> Resolver<'a> {
             ExprKind::Binary(_, _, _, x) | ExprKind::Range(_, x) | ExprKind::Index(_, x) => {
                 self.expr(x)
             }
-            ExprKind::Call(_, args) => args.iter().try_for_each(|a| self.expr(&a.value)),
+            // `ui_start` takes an app's bare name (M5-06 section 2).
+            ExprKind::Call(callee, args) => args.iter().try_for_each(|a| match &a.value.kind {
+                ExprKind::Name(name)
+                    if matches!(
+                        self.uses.get(&callee.at),
+                        Some(Binding::Builtin("ui_start"))
+                    ) =>
+                {
+                    let app = |d: &Def| matches!(d, Def::App { .. });
+                    self.own_def(name, a.value.at, app, "not an app of the program")
+                }
+                _ => self.expr(&a.value),
+            }),
             _ => Ok(()),
         }
     }
@@ -494,6 +633,10 @@ impl<'a> Resolver<'a> {
                 self.expr(subject)?;
                 arms.iter().try_for_each(|a| self.arm(a))
             }
+            ExprKind::Children(call, children) => {
+                self.expr(call)?;
+                self.block(children)
+            }
             // Links of a chain: `expr` walks them.
             ExprKind::Unary(..)
             | ExprKind::Try(..)
@@ -512,6 +655,10 @@ impl<'a> Resolver<'a> {
         let local = self.locals.iter().rfind(|l| l.0 == name);
         let local = local.map(|&(_, declared)| Binding::Local(declared));
         match local.or_else(|| self.pool_get(name, of(VALUES))) {
+            Some(found @ Binding::Builtin(b)) => {
+                self.ui_only(b, at)?;
+                self.record(at, found)
+            }
             Some(found) => self.record(at, found),
             None => {
                 if let Some(message) = habit(name) {
@@ -576,5 +723,6 @@ impl<'a> Resolver<'a> {
     }
 }
 
+mod foreign;
 #[cfg(test)]
 mod tests;

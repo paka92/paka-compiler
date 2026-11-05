@@ -14,7 +14,9 @@ use crate::ast::{self, Def, Entry, Pos, Program, Type};
 use crate::builtins::{self, Kind};
 use crate::diagnostic::Diagnostic;
 use crate::resolve::{Binding, Resolved};
-use std::collections::BTreeMap;
+use std::cell::RefCell;
+use std::collections::{BTreeMap, BTreeSet};
+use std::ops::Index;
 
 mod check;
 mod default;
@@ -195,7 +197,11 @@ pub enum Item<'a> {
     Record(Vec<Field<'a>>),
     Enum(Vec<Variant<'a>>),
     Fn(Sig<'a>),
+    /// Its result is `View<M>`.
+    View(Sig<'a>),
     Example,
+    /// The signature of each effect of a foreign declaration (docs/decisions/M7-02.md section 2).
+    Foreign(Vec<Sig<'a>>),
     /// The type after the first `state:` and the function after the first `update:`, when those
     /// name any; the rules of an app are the app task's (M2-32).
     App {
@@ -232,12 +238,58 @@ pub struct Checked<'a> {
     pub error: Option<Diagnostic>,
 }
 
+/// Each definition's `Checked`, in program order. Every one read through `Index` is logged by
+/// name, so a definition's check knows the signatures it read (M4-09).
+pub struct Defs<'a> {
+    all: Vec<Checked<'a>>,
+    names: Vec<&'a str>,
+    reads: RefCell<BTreeSet<String>>,
+}
+
+impl<'a> Defs<'a> {
+    /// Logs a name read without reading a definition: one that may name nothing.
+    pub fn note(&self, name: &str) {
+        let mut reads = self.reads.borrow_mut();
+        if !reads.contains(name) {
+            reads.insert(name.into());
+        }
+    }
+
+    /// The name of definition `i`, read.
+    pub fn name(&self, i: usize) -> &'a str {
+        self.note(self.names[i]);
+        self.names[i]
+    }
+
+    /// The first definition `keep` picks, read; the others are not.
+    pub fn find(&self, keep: impl Fn(&Checked) -> bool) -> Option<&Checked<'a>> {
+        let i = self.all.iter().position(keep)?;
+        Some(&self[i])
+    }
+
+    /// The names read since the last call.
+    pub fn take_reads(&self) -> BTreeSet<String> {
+        self.reads.take()
+    }
+}
+
+impl<'a> Index<usize> for Defs<'a> {
+    type Output = Checked<'a>;
+
+    fn index(&self, i: usize) -> &Checked<'a> {
+        self.note(self.names[i]);
+        &self.all[i]
+    }
+}
+
 /// One entry per definition of the program, in order, and the built-in rows.
 pub struct Table<'a> {
     pub types: Types<'a>,
-    pub defs: Vec<Checked<'a>>,
+    pub defs: Defs<'a>,
     pub fns: BTreeMap<&'static str, Vec<Sig<'static>>>,
     pub variants: BTreeMap<&'static str, Sig<'static>>,
+    /// Each element's arguments, `key:` apart, giving `View<M>` (M5-04 section 2).
+    pub elements: BTreeMap<&'static str, Sig<'static>>,
 }
 
 /// Keeps `d` in `slot` when it comes before what is there in the source.
@@ -250,11 +302,12 @@ fn earliest(slot: &mut Option<Diagnostic>, d: Diagnostic) {
 type BuiltIns = (
     BTreeMap<&'static str, Vec<Sig<'static>>>,
     BTreeMap<&'static str, Sig<'static>>,
+    BTreeMap<&'static str, Sig<'static>>,
 );
 
 fn built_ins(types: &mut Types) -> BuiltIns {
     let (mut fns, mut variants) = (BTreeMap::new(), BTreeMap::new());
-    for &(kind, text) in builtins::ROWS {
+    for &(kind, text) in builtins::ROWS.iter().chain(builtins::UI) {
         let name = builtins::name(text);
         match kind {
             Kind::Fn => fns
@@ -265,13 +318,32 @@ fn built_ins(types: &mut Types) -> BuiltIns {
             _ => {}
         }
     }
-    (fns, variants)
+    let m = types.intern(Node::Var('M'));
+    let view = types.named("View", &[m]);
+    let element = |e: &builtins::Element| {
+        let param = |&(name, ty, _): &(&'static str, _, _)| Param {
+            name: name.trim_end_matches(':'),
+            inout: false,
+            labelled: name.ends_with(':'),
+            ty: row::ty(types, ty),
+        };
+        let params = e.args.iter().map(param).collect();
+        (
+            e.name,
+            Sig {
+                params,
+                result: Some(view),
+            },
+        )
+    };
+    let elements = builtins::ELEMENTS.iter().map(element).collect();
+    (fns, variants, elements)
 }
 
 impl<'a> Table<'a> {
     pub fn build(path: &str, program: &'a Program<'a>, resolved: &Resolved) -> Table<'a> {
         let mut types = Types::new(&program.defs);
-        let (fns, variants) = built_ins(&mut types);
+        let (fns, variants, elements) = built_ins(&mut types);
         let mut convert = Convert {
             path,
             program,
@@ -289,11 +361,17 @@ impl<'a> Table<'a> {
         for (i, d) in check::finite_values(path, program, &types, &defs) {
             earliest(&mut defs[i].error, d);
         }
+        let defs = Defs {
+            all: defs,
+            names: program.defs.iter().map(|d| d.name().text).collect(),
+            reads: RefCell::default(),
+        };
         Table {
             types,
             defs,
             fns,
             variants,
+            elements,
         }
     }
 }
@@ -347,6 +425,17 @@ impl<'a> Convert<'_, 'a> {
             Def::Fn { params, result, .. } => Item::Fn(self.sig(params, result.as_ref())),
             Def::Example { .. } => Item::Example,
             Def::App { entries, .. } => self.app(entries),
+            Def::View { params, result, .. } => Item::View(self.sig(params, Some(result))),
+            Def::Foreign { lines, .. } => Item::Foreign(
+                (lines.iter())
+                    .filter_map(|line| match line {
+                        ast::ForeignLine::Function { params, result, .. } => {
+                            Some(self.foreign(params, result.as_ref()))
+                        }
+                        ast::ForeignLine::File(..) => None,
+                    })
+                    .collect(),
+            ),
         };
         if let Err(d) = &self.resolved.defs[i] {
             earliest(&mut self.error, d.clone());
@@ -389,6 +478,27 @@ impl<'a> Convert<'_, 'a> {
         }
     }
 
+    /// `Name(params; then: fn(R) -> M, or: fn(String) -> M) -> Effect<M>`, `then: M` with no `R`.
+    fn foreign(&mut self, params: &[ast::Param<'a>], result: Option<&Type<'a>>) -> Sig<'a> {
+        let mut sig = self.sig(params, result);
+        let m = self.types.intern(Node::Var('M'));
+        let string = self.types.named("String", &[]);
+        let then = match sig.result {
+            Some(r) => self.types.intern(Node::Fn([r].into(), Some(m))),
+            None => m,
+        };
+        let or = self.types.intern(Node::Fn([string].into(), Some(m)));
+        let label = |(name, ty)| Param {
+            name,
+            inout: false,
+            labelled: true,
+            ty,
+        };
+        sig.params.extend([("then", then), ("or", or)].map(label));
+        sig.result = Some(self.types.named("Effect", &[m]));
+        sig
+    }
+
     fn fields(&mut self, fields: &[ast::Field<'a>]) -> Vec<Field<'a>> {
         let field = |f: &ast::Field<'a>| {
             let ty = self.ty(&f.ty);
@@ -408,6 +518,9 @@ impl<'a> Convert<'_, 'a> {
     fn ty(&mut self, t: &Type<'a>) -> Ty {
         let lost = self.lost;
         let node = match t {
+            Type::Name { name, args } if name.text == "View" && args.len() == 1 => {
+                Node::Name("View", [self.ty(&args[0])].into())
+            }
             Type::Name { name, args } => match self.named.get(name.text) {
                 Some(&Binding::Def(i)) if args.is_empty() => Node::User(i),
                 Some(&Binding::Builtin(b)) if args.len() == builtins::arity(b) => {

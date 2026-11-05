@@ -1,6 +1,11 @@
 #!/bin/sh
-# Stand-in for clang in the build tests. With FAKE_CLANG_LOG set: writes its arguments, one per
-# line, to that file and exits 0. Without it: writes to both streams and exits 7.
+# Stand-in for clang in the build tests. `--version` reports FAKE_CLANG_VERSION. With
+# FAKE_CLANG_LOG set: writes its arguments, one per line, to that file and exits 0. Without it:
+# writes to both streams and exits 7.
+if [ "$1" = --version ]; then
+    echo "fake clang version $FAKE_CLANG_VERSION"
+    exit 0
+fi
 if [ -n "$FAKE_CLANG_LOG" ]; then
     printf '%s\n' "$@" > "$FAKE_CLANG_LOG"
     exit 0

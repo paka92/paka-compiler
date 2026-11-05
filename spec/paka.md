@@ -1,7 +1,7 @@
 # Paka language reference
 
-All of Paka is on this page. A block fenced as `paka` is a whole program that `paka check` accepts.
-Any other block is a fragment, refused code or tool output.
+All of Paka is on this page, except visual apps: `spec/screens.md`. A block fenced as `paka` is a
+whole program that `paka check` accepts. Any other block is a fragment, refused code or tool output.
 
 ## 1. A program
 
@@ -45,8 +45,8 @@ globals, references or shared data. Functions cannot see anything but their para
 - UTF-8. Non-ASCII characters only inside strings and comments. No tab, no carriage return.
 - Names are ASCII letters, digits and `_`, and start with a letter. Upper first letter: types,
   variants, effects, grants. Lower: functions, apps, examples, locals, parameters, fields, labels.
-- Keywords, never names: `app break continue else enum example false fn for if in inout let match
-  migrate return true type var view while`.
+- Keywords, never names: `app break continue else enum example false fn for foreign if in inout let
+  match migrate return true type var view while`.
 - `//` starts a comment that runs to the line end. No block comments.
 - A line break ends a statement. A line continues only inside an open `(` or `[`, after a line
   ending in `,` `=` `->` `=>` `|` `{` or a two-sided operator, or before a line starting with
@@ -382,14 +382,14 @@ unreachable()                         traps assert when reached
 
 - White space is exactly six characters: code points 9 to 13 and 32.
 - Text is matched exactly, left to right, without overlap. No patterns.
-- The sort is stable: `before(a, b)` says whether `a` must come before `b`, and items for which
-  it never says so keep their order.
+- The sort is stable: `before(a, b)` says whether `a` must come before `b`; ties keep their
+  order.
 - Map: `m[key]` reads and traps `out_of_bounds` when the key is missing. `m[key] = v` adds or
-  replaces. Every other use needs the key present: `m[key] += 1` on a new key traps. The count
-  idiom is `counts[w] = unwrap_or(get(counts, w), 0) + 1`.
+  replaces. Other uses need the key present: `m[key] += 1` on a new key traps. The count idiom
+  is `counts[w] = unwrap_or(get(counts, w), 0) + 1`.
 - A bad position, a count below zero, `pop` on an empty List, a shift count or `digits` out of
   range trap `out_of_bounds`.
-- There is no `map`, `filter`, `fold`, `sum`, `sorted` or `clamp`: write a loop.
+- There is no `map`, `filter`, `fold`, `sum`, `sorted` or `clamp`: loop.
 
 ## 10. Apps and effects
 
@@ -417,26 +417,27 @@ fn update(m: Msg) -> List<Effect<Msg>>                 // without state:
 | `Exit` | none | ends with status 0 |
 | `ExitWith(status)` | none | ends with that status: 0 or 5 to 255 |
 
-`then:` of `WriteFile` is a message value, which may carry context:
+`then:` of `WriteFile` is a message value that may carry context:
 `WriteFile(path, text, then: Saved(path), or: Failed)`.
 
-Effects are plain values; only the list the app's `update` returns is performed. `then:` and `or:`
+Effects are plain values; only the list `update` returns is performed. `then:` and `or:`
 are both required. A reason is one of `not found`, `no permission`, `not a file`, `not text`,
-`no space`, `failed`. `WriteFile` replaces the whole file; `ReadFile` gives the whole file.
+`no space`, `failed`. `WriteFile` replaces the whole file; `ReadFile` reads it all.
 
 How a program runs:
 
 - The command-line arguments fill the fields of the `start:` variant by position. A wrong count
   ends the run with status 2 and a usage line such as `wc: expected 1 argument (path), got 0`.
-- The state starts from its defaults. The start message is the first in one queue.
+  A first argument `--paka-examples` or `--paka-replay` is the tool's: unless served, status 2 too.
+- The state starts from its defaults; the start message is first in the queue.
 - The runtime takes the front message and calls `update`. When the handler has returned, its
   effects are performed in list order. Each file answer joins the back of the queue.
 - Answers arrive in the order their effects were performed. Answers carry no path: keep in the
   state what you wait for.
-- `Exit` and `ExitWith` end the program at once. Later effects are not performed, and an answer
-  queued at Exit is dropped.
+- `Exit` and `ExitWith` end the program at once. Later effects are not performed, and a queued
+  answer is dropped.
 - A trap in a handler performs none of that handler's effects.
-- There is no standard input: data comes in through arguments and files.
+- There is no standard input: data comes through arguments and files.
 
 Four stops end a program with one line on standard error and status 3:
 
@@ -447,9 +448,9 @@ Four stops end a program with one line on standard error and status 3:
 <app>: ended without Exit
 ```
 
-A grant is tested when its effect is about to be performed. Every path must reach `Exit` or
+A grant is tested as its effect is performed. Every path must reach `Exit` or
 `ExitWith`: an empty queue without one is the fourth stop. A literal status outside 0 or 5 to 255
-is the check error `literal-out-of-range`. A program without an app checks, but `paka run` and
+is the check error `literal-out-of-range`. A program without an app checks; `paka run` and
 `paka build` refuse it (`no-app`).
 
 ## 11. Traps, holes, examples
@@ -481,9 +482,10 @@ A hole `??name` stands for code not yet written; it takes the type its position 
 
 An example is `example name { ... }`: statements, then one Bool expression. It takes no
 arguments, performs no effects and may not use `?`. Examples may call `update` on a `var` state
-and compare effect lists with `==`. They are checked with the program and run only by
+and compare effect lists with `==`. They are checked with the program and run by
 `paka examples`. Each gets one status: `pass` (true), `fail` (false), `trapped` (a trap) or
-`unfinished` (a hole reached).
+`unfinished` (a hole reached). Its line reads name, label, status; the label is `human-owned` when
+the signed approval store holds it, else `agent-written`.
 
 ## 12. Tools
 
@@ -493,12 +495,14 @@ and compare effect lists with `==`. They are checked with the program and run on
 | `paka run <path> [arguments]` | checks, then runs the app |
 | `paka examples <path>` | checks, then runs every example |
 | `paka build <path> -o <output>` | checks, then writes an executable |
+| `paka gate <tree> --base <tree> [--json]` | refuses a merge whose approvals differ or owned examples fail; lists each |
+| `paka approve <path>` | the owner's: signs approved changes |
 
-Exit status: 0 good; 1 an error in the program; 2 bad usage; 3 a trap, a stop or an example that
+Exit status: 0 good; 1 a program error; 2 bad usage; 3 a trap, a stop or an example that
 did not pass; 4 an internal error.
 
-`paka build` lists every hole, one line each; every other command reports the first error only,
-as one line. `paka check` adds one line per field:
+`paka build` lists every hole, one line each; the others report only the first error, as one
+line. `paka check` adds one line per field:
 
 ```
 main.paka:4:3: error[type-mismatch]: expected `List<Effect<Msg>>`, found `String`
@@ -512,3 +516,17 @@ main.paka:4:3: error[type-mismatch]: expected `List<Effect<Msg>>`, found `String
 A `fix:` line follows when the error knows its repair. With `--json` the same error is one object
 with the keys `kind`, `definition`, `message`, `file`, `start`, `end`, `line`, `column`, `text`,
 `expected`, `found`, `fix`. Lines and columns start at 1; columns count bytes.
+
+## 16. Foreign code
+
+```
+foreign Sum {
+  source: "sum.c"   // or library: "z"; beside the program
+  header: "sum.h"
+  Add(a: Int) -> Int = "add"
+}
+```
+
+Each line is an effect under grant `Sum`, answered like `ReadFile`; `then: Msg` with no result.
+Arguments: Int, Float, Bool, String; result: Int, Float, Bool. The owner approves the grant,
+declaration and files. For now it answers `or("no host")`.

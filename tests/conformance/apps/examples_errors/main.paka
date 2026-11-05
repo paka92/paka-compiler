@@ -1,0 +1,56 @@
+type Reading { value: Int, ok: Bool }
+
+fn half(n: Int) -> Option<Int> {
+  if n % 2 == 0 { Some(n / 2) } else { None }
+}
+
+fn quarter(n: Int) -> Option<Int> {
+  half(half(n)?)
+}
+
+fn read(n: Int) -> Result<Reading, Int> {
+  if n < 0 { Err(n) } else { Ok(Reading { value: n, ok: n > 10 }) }
+}
+
+fn sum_until_bad(n: Int) -> Result<Int, Int> {
+  var total = 0
+  for i in 0..<n {
+    total += read(5 - i)?.value
+  }
+  Ok(total)
+}
+
+fn eighth(n: Int) -> Result<Int, Int> {
+  let q = ok_or(quarter(n), -1)?
+  ok_or(half(q), -2)
+}
+
+fn sign(n: Int) -> Int {
+  match read(n) {
+    Ok(r) => if r.ok { 1 } else { 0 }
+    Err(_) => -1
+  }
+}
+
+fn pick(r: Result<Int, Int>) -> Int {
+  match r {
+    Ok(v) => v
+    Err(e) => if e < 0 { e } else { unreachable() }
+  }
+}
+
+example pass_up_on_option {
+  unwrap_or(quarter(12), 0) == 3 && unwrap_or(quarter(6), 0) == 0 && unwrap_or(half(5), 7) == 7
+}
+
+example pass_up_in_a_loop {
+  pick(sum_until_bad(3)) == 12 && pick(sum_until_bad(9)) == -1
+}
+
+example ok_or_names_the_error {
+  pick(eighth(16)) == 2 && pick(eighth(6)) == -1 && pick(eighth(12)) == -2
+}
+
+example field_after_pass_up {
+  sign(20) == 1 && sign(3) == 0 && sign(-4) == -1
+}

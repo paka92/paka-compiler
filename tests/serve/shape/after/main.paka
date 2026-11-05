@@ -1,0 +1,37 @@
+type Point { x: Int, y: Int }
+
+fn count_words(text: String) -> Int {
+  len(words(text))
+}
+
+fn again(text: String, times: Int) -> String {
+  if times <= 0 { "" } else { text + again(text, times - 1) }
+}
+
+fn add(a: Int, b: Int) -> Int {
+  a + b
+}
+
+fn total(xs: List<Int>) -> Int {
+  var sum = 0
+  for x in xs {
+    sum = sum + x
+  }
+  sum
+}
+
+fn apply(f: fn(Int) -> Int, x: Int) -> Int {
+  f(x)
+}
+
+fn bump(n: inout Int) {
+  n = n + 1
+}
+
+fn lookup(m: Map<String, List<Int>>, key: String) -> Option<List<Int>> {
+  get(m, key)
+}
+
+fn origin() -> Point {
+  Point { x: 0, y: 0 }
+}

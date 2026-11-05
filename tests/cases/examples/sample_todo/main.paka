@@ -1,0 +1,96 @@
+type Todo { id: Int, title: String, done: Bool = false }
+
+type Todos { draft: String = "", items: List<Todo> = [] }
+
+enum Msg { Draft(text: String), Add, Toggle(id: Int) }
+
+fn update(s: inout Todos, m: Msg) {
+  match m {
+    Draft(text) => s.draft = text
+    Add         => add_item(&s)
+    Toggle(id)  => toggle(&s, id)
+  }
+}
+
+fn add_item(s: inout Todos) {
+  append(&s.items, Todo { id: len(s.items) + 1, title: s.draft })
+  s.draft = ""
+}
+
+fn toggle(s: inout Todos, id: Int) {
+  for i in 0..<len(s.items) {
+    if s.items[i].id == id {
+      s.items[i].done = !s.items[i].done
+    }
+  }
+}
+
+fn mark(done: Bool) -> String {
+  if done { "[x]" } else { "[ ]" }
+}
+
+view todo_row(t: Todo) -> View<Msg> {
+  Row(gap: 8) {
+    Button(mark(t.done), on: Toggle(t.id))
+    Text(t.title)
+  }
+}
+
+view todo_view(s: Todos) -> View<Msg> {
+  Col(gap: 8) {
+    Input(s.draft, on_change: Draft, key: "new")
+    Button("Add", on: Add)
+    if len(s.items) == 0 { Text("Nothing to do") }
+    for t in s.items {
+      todo_row(t, key: t.id)
+    }
+  }
+}
+
+app todo {
+  state:  Todos
+  update: update
+  view:   todo_view
+  grants: []
+}
+
+example add_one_item {
+  var ui = ui_start(todo)
+  ui_click(&ui, "'new'")
+  ui_type(&ui, "milk")
+  ui_click(&ui, "#1")
+  ui_text(ui, "'new'") == "" && ui_text(ui, "1/#1") == "milk"
+}
+
+example tree_after_add {
+  var ui = ui_start(todo)
+  ui_click(&ui, "'new'")
+  ui_type(&ui, "milk")
+  ui_click(&ui, "#1")
+  ui_tree(ui) == "Col gap=8\n  Input 'new' \"\" cursor=0 on_change=Draft focus\n  Button #1 \"Add\" on=Add\n  Row 1 gap=8\n    Button #0 \"[ ]\" on=Toggle(1)\n    Text #1 \"milk\"\n"
+}
+
+example empty_list_says_so {
+  let ui = ui_start(todo)
+  ui_text(ui, "#2") == "Nothing to do" && !ui_has(ui, "1")
+}
+
+example toggle_marks_done {
+  var ui = ui_start(todo)
+  ui_click(&ui, "'new'")
+  ui_type(&ui, "milk")
+  ui_click(&ui, "#1")
+  ui_click(&ui, "1/#0")
+  ui_text(ui, "1/#0") == "[x]"
+}
+
+example rows_keep_their_ids {
+  var ui = ui_start(todo)
+  ui_click(&ui, "'new'")
+  ui_type(&ui, "milk")
+  ui_click(&ui, "#1")
+  ui_type(&ui, "eggs")
+  ui_click(&ui, "#1")
+  ui_click(&ui, "2/#0")
+  ui_text(ui, "1/#0") == "[ ]" && ui_text(ui, "2/#0") == "[x]" && ui_text(ui, "2/#1") == "eggs"
+}

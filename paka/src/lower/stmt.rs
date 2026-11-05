@@ -11,6 +11,9 @@ impl<'a> Cx<'_, 'a> {
     }
 
     pub(super) fn stmts(&mut self, list: &[ast::Stmt<'a>], valued: bool) -> Block {
+        if self.lines.is_some() {
+            return self.element_lines(list);
+        }
         let Some((last, init)) = list.split_last() else {
             return Block {
                 stmts: vec![],
@@ -28,7 +31,7 @@ impl<'a> Cx<'_, 'a> {
         Block { stmts, value }
     }
 
-    fn stmt(&mut self, s: &ast::Stmt<'a>) -> Stmt {
+    pub(super) fn stmt(&mut self, s: &ast::Stmt<'a>) -> Stmt {
         match &s.kind {
             S::Let { name, value, .. } => {
                 let value = self.expr(value);

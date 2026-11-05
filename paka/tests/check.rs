@@ -5,7 +5,7 @@
 #[allow(dead_code)]
 mod common;
 
-use common::Scratch;
+use common::{EXAMPLE_CACHE, Scratch};
 use std::fs;
 use std::path::{Path, PathBuf};
 use std::process::{Command, Output};
@@ -24,6 +24,7 @@ fn cases() -> Vec<PathBuf> {
 fn paka(dir: &Path, args: &[&str]) -> Output {
     Command::new(env!("CARGO_BIN_EXE_paka"))
         .args(args)
+        .env("XDG_CACHE_HOME", EXAMPLE_CACHE)
         .current_dir(dir)
         .output()
         .unwrap()
@@ -208,6 +209,46 @@ fn check_usage_is_checked() {
             paka(Path::new(ROOT), &args).status.code(),
             Some(2),
             "{args:?}"
+        );
+    }
+}
+
+/// docs/decisions/M4-47.md section 3: `check` judges meaning, not layout; a harmless wrong
+/// spelling stays an error with its fix.
+#[test]
+fn other_layouts_are_accepted_and_wrong_spellings_refused() {
+    let messy = "enum Msg {Start}\nfn three()->Int{ 3 }\nfn update(m:Msg)->List<Effect<Msg>>{\
+        match m { Start=>[ExitWith(three( ))] }}\napp a { start:Start\n update:update\n grants:[] }\n";
+    let dir = program_in("layout-messy", messy);
+    let out = paka(&dir.path(""), &["check", "main.paka"]);
+    assert_eq!((out.status.code(), stderr(&out)), (Some(0), String::new()));
+
+    let program = |body: &str| {
+        format!(
+            "enum Msg {{ Start }}\n\nfn three() -> Int {{\n{body}}}\n\n\
+             fn update(m: Msg) -> List<Effect<Msg>> {{\n  match m {{\n    \
+             Start => [ExitWith(three())]\n  }}\n}}\n\napp a {{\n  start: Start\n  \
+             update: update\n  grants: []\n}}\n"
+        )
+    };
+    for (name, body, want) in [
+        (
+            "layout-return",
+            "  return 3\n",
+            "error[return-last]: return on the last line; drop return: the last line is the value",
+        ),
+        (
+            "layout-semicolon",
+            "  let x = 3;\n  x\n",
+            "error[unexpected-token]: remove the ;: a line break ends the statement",
+        ),
+    ] {
+        let dir = program_in(name, &program(body));
+        let out = paka(&dir.path(""), &["check", "main.paka"]);
+        assert_eq!(out.status.code(), Some(1), "{name}");
+        assert!(
+            stderr(&out).lines().next().unwrap().ends_with(want),
+            "{name}"
         );
     }
 }

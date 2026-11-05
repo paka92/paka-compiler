@@ -1,0 +1,17 @@
+enum Msg { Start }
+
+fn made(go: Bool) -> Result<List<Int>, Int> {
+  if go { Ok([unreachable()]) } else { Err(0) }
+}
+
+fn update(msg: Msg) -> List<Effect<Msg>> {
+  let early = made(false)
+  let late = made(true)
+  [Print("not reached"), Exit]
+}
+
+app builtins {
+  start: Start
+  update: update
+  grants: [Console]
+}

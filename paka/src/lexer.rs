@@ -15,6 +15,8 @@ pub enum Kind {
     False,
     Fn,
     For,
+    /// Reserved for C library declarations (M7-02); no definition uses it yet.
+    Foreign,
     If,
     In,
     Inout,
@@ -165,6 +167,7 @@ const KEYWORDS: &[(&str, Kind)] = &[
     ("false", Kind::False),
     ("fn", Kind::Fn),
     ("for", Kind::For),
+    ("foreign", Kind::Foreign),
     ("if", Kind::If),
     ("in", Kind::In),
     ("inout", Kind::Inout),
@@ -641,11 +644,11 @@ mod tests {
     #[test]
     fn keywords() {
         use Kind::*;
-        let src = "app break continue else enum example false fn for if in inout let match \
-                   migrate return true type var view while";
+        let src = "app break continue else enum example false fn for foreign if in inout let \
+                   match migrate return true type var view while";
         let want = [
-            App, Break, Continue, Else, Enum, Example, False, Fn, For, If, In, Inout, Let, Match,
-            Migrate, Return, True, Type, Var, View, While, Newline, End,
+            App, Break, Continue, Else, Enum, Example, False, Fn, For, Foreign, If, In, Inout, Let,
+            Match, Migrate, Return, True, Type, Var, View, While, Newline, End,
         ];
         assert_eq!(kinds(src), want);
     }

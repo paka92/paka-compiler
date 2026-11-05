@@ -8,7 +8,7 @@ mod common;
 #[path = "conformance/gate.rs"]
 mod gate;
 
-use common::{PAKA, Scratch, build_runtime};
+use common::{EXAMPLE_CACHE, PAKA, Scratch, build_runtime};
 use std::collections::{BTreeMap, BTreeSet};
 use std::ffi::OsStr;
 use std::fs;
@@ -37,8 +37,20 @@ const KNOWN: &[&str] = &[
 const ENVIRONMENT: &[&str] = &[
     "file-unreadable",
     "clang-missing",
+    "clang-version",
     "clang-failed",
     "runtime-missing",
+];
+
+/// Kinds no program file reaches: a migrate's, which paka/tests/migrate.rs tests, and
+/// `unsupported-form`, as the back end builds every case since M7-15 and refuses only a program
+/// it cannot lower, such as one whose frame is too big.
+const UNREACHED: &[&str] = &[
+    "bad-migrate-signature",
+    "migrate-needs-reset",
+    "effect-in-migrate",
+    "old-value-use",
+    "unsupported-form",
 ];
 
 fn read(dir: &Path, name: &str) -> Option<Vec<u8>> {
@@ -88,6 +100,7 @@ fn stage(case: &Path, run: &Path) {
 /// `command` words, or `run main.paka` and the raw `args` lines.
 fn command(case: &Path) -> Command {
     let mut command = Command::new(PAKA);
+    command.env("XDG_CACHE_HOME", EXAMPLE_CACHE);
     match read(case, "command") {
         Some(words) => {
             command.args(text(&words).split_whitespace());
@@ -319,8 +332,9 @@ fn via_prefix(run: &Path, want: &BTreeMap<String, Json>, kind: &str) -> Result<S
 }
 
 fn paka(dir: &Path, args: &[&str]) -> Output {
-    let out = Command::new(PAKA).args(args).current_dir(dir).output();
-    out.unwrap()
+    let mut command = Command::new(PAKA);
+    command.args(args).env("XDG_CACHE_HOME", EXAMPLE_CACHE);
+    command.current_dir(dir).output().unwrap()
 }
 
 fn run_case(case: &Path) -> Result<(), String> {
@@ -414,7 +428,11 @@ fn every_error_kind_has_a_case() {
         .collect();
     let missing: Vec<_> = kinds
         .iter()
-        .filter(|k| !covered.contains(*k) && !ENVIRONMENT.contains(&k.as_str()))
+        .filter(|k| {
+            !covered.contains(*k)
+                && !ENVIRONMENT.contains(&k.as_str())
+                && !UNREACHED.contains(&k.as_str())
+        })
         .collect();
     let unknown: Vec<_> = covered.iter().filter(|k| !kinds.contains(k)).collect();
     assert!(missing.is_empty(), "kinds without a case: {missing:?}");

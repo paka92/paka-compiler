@@ -3,9 +3,9 @@ enum Msg { Start(path: String, order: String), Loaded(text: String), Failed(why:
 type Sorting { down: Bool = false }
 
 // A number chunk has its value; a text chunk its text in lower case.
-enum Chunk { Number(value: Int), Text(text: String) }
+enum Chunk { Number(value: Int), Plain(text: String) }
 
-type Row { text: String, chunks: List<Chunk> }
+type Line { text: String, chunks: List<Chunk> }
 
 fn is_digit(c: String) -> Bool {
   c >= "0" && c <= "9"
@@ -21,7 +21,7 @@ fn chunks(line: String, n: Int) -> Result<List<Chunk>, String> {
     while i < len(cs) && is_digit(cs[i]) == digit { i += 1 }
     let part = line[start..<i]
     if !digit {
-      append(&out, Text(lower(part)))
+      append(&out, Plain(lower(part)))
     } else if len(part) > 15 {
       return Err("error: line {n}: number too long")
     } else {
@@ -37,19 +37,19 @@ fn compare_chunks(a: Chunk, b: Chunk) -> Int {
     Number(x) => {
       match b {
         Number(y) => if x < y { -1 } else if x > y { 1 } else { 0 }
-        Text(_) => -1
+        Plain(_) => -1
       }
     }
-    Text(x) => {
+    Plain(x) => {
       match b {
         Number(_) => 1
-        Text(y) => if x < y { -1 } else if x > y { 1 } else { 0 }
+        Plain(y) => if x < y { -1 } else if x > y { 1 } else { 0 }
       }
     }
   }
 }
 
-fn compare(a: Row, b: Row) -> Int {
+fn compare(a: Line, b: Line) -> Int {
   let shared = min(len(a.chunks), len(b.chunks))
   for i in 0..<shared {
     let c = compare_chunks(a.chunks[i], b.chunks[i])
@@ -58,19 +58,19 @@ fn compare(a: Row, b: Row) -> Int {
   len(a.chunks) - len(b.chunks)
 }
 
-fn rising(a: Row, b: Row) -> Bool {
+fn rising(a: Line, b: Line) -> Bool {
   compare(a, b) < 0
 }
 
-fn falling(a: Row, b: Row) -> Bool {
+fn falling(a: Line, b: Line) -> Bool {
   compare(a, b) > 0
 }
 
 fn sorted_lines(text: String, down: Bool) -> Result<List<String>, String> {
   let rows = lines(text)
-  var items: List<Row> = []
+  var items: List<Line> = []
   for i in 0..<len(rows) {
-    append(&items, Row { text: rows[i], chunks: chunks(rows[i], i + 1)? })
+    append(&items, Line { text: rows[i], chunks: chunks(rows[i], i + 1)? })
   }
   if down {
     sort_by(&items, falling)

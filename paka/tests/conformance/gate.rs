@@ -1,5 +1,5 @@
 //! The M2 exit gate (tests/conformance/README.md, "Exit gate"): every reference sample checks and
-//! runs, the reference fits its size budget, and every syntax node kind and built-in occurs in a
+//! runs, each reference page fits its size budget, and every syntax node kind and built-in occurs in a
 //! passing conformance case. The self-tests plant one fault each and expect the gate to fail.
 
 use super::*;
@@ -8,8 +8,17 @@ use paka::coverage::{self, Uses};
 use paka::parser::parse;
 use std::sync::atomic::{AtomicUsize, Ordering};
 
-const BUDGET: usize = 8000;
-const REFERENCE: &str = include_str!("../../../spec/paka.md");
+/// The reference pages: name, text and token budget.
+type Page<'a> = (&'a str, &'a str, usize);
+
+const PAGES: [Page<'static>; 2] = [
+    ("spec/paka.md", include_str!("../../../spec/paka.md"), 8000),
+    (
+        "spec/screens.md",
+        include_str!("../../../spec/screens.md"),
+        2500,
+    ),
+];
 
 /// The blocks fenced as `paka`, each ended by a line feed.
 fn samples(reference: &str) -> Vec<String> {
@@ -28,10 +37,12 @@ fn sample_runs(source: &str) -> Result<(), String> {
     fs::write(dir.join("main.paka"), source).unwrap();
     fs::write(dir.join("words.txt"), "a b c").unwrap();
     let app = source.lines().any(|l| l.starts_with("app "));
+    // `paka run` does not run a visual app yet (`no-app`).
+    let visual = source.lines().any(|l| l.trim_start().starts_with("view:"));
     let runs: [(bool, &[&str]); 3] = [
         (true, &["check", "main.paka"]),
         (true, &["examples", "main.paka"]),
-        (app, &["run", "main.paka", "words.txt"]),
+        (app && !visual, &["run", "main.paka", "words.txt"]),
     ];
     for (_, args) in runs.iter().filter(|(wanted, _)| *wanted) {
         status_is(&paka(&dir, args), 0).map_err(|e| format!("paka {}: {e}", args.join(" ")))?;
@@ -57,15 +68,17 @@ fn used_by(cases: &[&Path]) -> Uses {
 }
 
 /// Every way the gate fails, one message each; empty when it passes.
-fn problems(reference: &str, kinds: &[&str], builtins: &[&str], used: &Uses) -> Vec<String> {
+fn problems(pages: &[Page<'_>], kinds: &[&str], builtins: &[&str], used: &Uses) -> Vec<String> {
     let mut problems = vec![];
-    let size = tokens(reference);
-    if size > BUDGET {
-        problems.push(format!("the reference is {size} tokens, limit {BUDGET}"));
-    }
-    for (i, source) in samples(reference).iter().enumerate() {
-        if let Err(e) = sample_runs(source) {
-            problems.push(format!("reference sample {} fails: {e}", i + 1));
+    for (name, text, budget) in pages {
+        let size = tokens(text);
+        if size > *budget {
+            problems.push(format!("{name} is {size} tokens, limit {budget}"));
+        }
+        for (i, source) in samples(text).iter().enumerate() {
+            if let Err(e) = sample_runs(source) {
+                problems.push(format!("{name} sample {} fails: {e}", i + 1));
+            }
         }
     }
     let unused: Vec<_> = kinds.iter().filter(|k| !used.kinds.contains(**k)).collect();
@@ -94,7 +107,7 @@ fn exit_gate() {
     let passed = results().iter().filter(|(_, result)| result.is_ok());
     let passing: Vec<_> = passed.map(|(case, _)| case.as_path()).collect();
     let problems = problems(
-        REFERENCE,
+        &PAGES,
         coverage::NODE_KINDS,
         &coverage::builtin_names(),
         &used_by(&passing),
@@ -105,8 +118,12 @@ fn exit_gate() {
 mod self_test {
     use super::*;
 
-    const GOOD: &str = "# Reference\n\n```paka\nfn f(x: String) -> Int {\n  len(x)\n}\n\nexample e {\n  f(\"ab\") == 2\n}\n```\n";
-    const BAD: &str = "```paka\nfn f( {\n```\n";
+    const GOOD: &[Page<'static>] = &[("ref", GOOD_TEXT, 8000)];
+    const GOOD_TEXT: &str = "# Reference\n\n```paka\nfn f(x: String) -> Int {\n  len(x)\n}\n\nexample e {\n  f(\"ab\") == 2\n}\n```\n";
+
+    fn page(text: &str) -> [Page<'_>; 1] {
+        [("ref", text, 8000)]
+    }
 
     fn used() -> Uses {
         let source = "fn f(x: String) -> Int {\n  len(x)\n}\n";
@@ -140,18 +157,15 @@ mod self_test {
 
     #[test]
     fn a_failing_sample_fails() {
-        let found = problems(BAD, &[], &[], &used());
+        let found = problems(&page("```paka\nfn f( {\n```\n"), &[], &[], &used());
         assert_eq!(found.len(), 1);
-        assert!(
-            found[0].starts_with("reference sample 1 fails"),
-            "{found:?}"
-        );
+        assert!(found[0].starts_with("ref sample 1 fails"), "{found:?}");
     }
 
     #[test]
     fn a_sample_that_does_not_run_fails() {
         let trapping = "```paka\nexample e {\n  1 / 0 == 0\n}\n```\n";
-        let found = problems(trapping, &[], &[], &used());
+        let found = problems(&page(trapping), &[], &[], &used());
         assert_eq!(found.len(), 1);
         assert!(found[0].contains("paka examples"), "{found:?}");
     }
@@ -161,7 +175,7 @@ mod self_test {
         let exiting = "```paka\ntype T { n: Int = 0 }\n\nenum Msg { Start(path: String) }\n\n\
             fn update(s: inout T, m: Msg) -> List<Effect<Msg>> {\n  [ExitWith(7)]\n}\n\n\
             app a {\n  state: T\n  start: Start\n  update: update\n  grants: [Console]\n}\n```\n";
-        let found = problems(exiting, &[], &[], &used());
+        let found = problems(&page(exiting), &[], &[], &used());
         assert_eq!(found.len(), 1);
         assert!(found[0].contains("paka run"), "{found:?}");
     }
@@ -189,7 +203,8 @@ mod self_test {
 
     #[test]
     fn an_oversize_reference_fails() {
-        let found = problems(&"a".repeat(3 * BUDGET + 1), &[], &[], &used());
+        let text = "a".repeat(3 * 8000 + 1);
+        let found = problems(&[("ref", &text, 8000)], &[], &[], &used());
         assert_eq!(found.len(), 1);
         assert!(found[0].contains("limit 8000"), "{found:?}");
     }

@@ -8,6 +8,10 @@ use std::sync::Once;
 
 pub const PAKA: &str = env!("CARGO_BIN_EXE_paka");
 
+/// The example cache every test that runs `paka examples` points `XDG_CACHE_HOME` at, so no
+/// test writes into the home directory (M7-09).
+pub const EXAMPLE_CACHE: &str = concat!(env!("CARGO_TARGET_TMPDIR"), "/example-cache");
+
 /// The one counting rule for the size of a text: a token is three bytes, rounded up.
 pub fn tokens(text: &str) -> usize {
     text.len().div_ceil(3)
@@ -15,7 +19,7 @@ pub fn tokens(text: &str) -> usize {
 
 pub const LIGHT: &str = concat!(env!("CARGO_MANIFEST_DIR"), "/../examples/light.paka");
 
-/// Builds `libpaka_rt.a` beside the `paka` binary under test. The profile and target directory
+/// Builds `libpaka_rt.a` beside the `paka` binary under test, with that binary's `measure` feature. The profile and target directory
 /// are read off that binary's path, so `cargo test` and `cargo test --release` each get their own.
 /// Once per test binary: parallel tests wait on the one nested cargo run.
 pub fn build_runtime() {
@@ -34,6 +38,9 @@ pub fn build_runtime() {
         cargo.arg(profile_dir.parent().unwrap());
         if profile_dir.ends_with("release") {
             cargo.arg("--release");
+        }
+        if cfg!(feature = "measure") {
+            cargo.args(["--features", "measure"]);
         }
         assert!(cargo.status().unwrap().success(), "building paka-rt failed");
     });

@@ -1,0 +1,36 @@
+Served program: tests/cases/run-interp/sample_wc_count. Lines starting `>` are sent in order; each
+`<` line is the reply expected to the request above it. Other lines are notes.
+
+Not a JSON object, an empty line, bytes that are not UTF-8 written as \xff, a list, and a repeated key:
+> find update
+< {"v":1,"id":null,"ok":false,"error":{"kind":"bad_request","message":"a request is one JSON object per line"}}
+> 
+< {"v":1,"id":null,"ok":false,"error":{"kind":"bad_request","message":"a request is one JSON object per line"}}
+> {"v":1,"id":1,"call":"find","name":"\xff"}
+< {"v":1,"id":null,"ok":false,"error":{"kind":"bad_request","message":"a request is one JSON object per line"}}
+> [{"v":1,"id":1,"call":"find"}]
+< {"v":1,"id":null,"ok":false,"error":{"kind":"bad_request","message":"a request is one JSON object per line"}}
+> {"v":1,"id":1,"id":2,"call":"find"}
+< {"v":1,"id":null,"ok":false,"error":{"kind":"bad_request","message":"a request is one JSON object per line"}}
+
+The id: missing, or neither a number nor a string:
+> {"v":1,"call":"find"}
+< {"v":1,"id":null,"ok":false,"error":{"kind":"bad_request","message":"`id` must be a number or a string"}}
+> {"v":1,"id":[1],"call":"find"}
+< {"v":1,"id":null,"ok":false,"error":{"kind":"bad_request","message":"`id` must be a number or a string"}}
+
+The version: another number, then not a number; a version is judged before the fields, which it may change:
+> {"v":2,"id":21,"call":"find","name":"update"}
+< {"v":1,"id":21,"ok":false,"error":{"kind":"bad_version","message":"this server speaks version 1"}}
+> {"v":0,"id":"s","call":"find","shape":1}
+< {"v":1,"id":"s","ok":false,"error":{"kind":"bad_version","message":"this server speaks version 1"}}
+> {"v":"1","id":2,"call":"find"}
+< {"v":1,"id":2,"ok":false,"error":{"kind":"bad_request","message":"`v` must be a number"}}
+> {"id":2,"call":"find"}
+< {"v":1,"id":2,"ok":false,"error":{"kind":"bad_request","message":"`v` must be a number"}}
+
+The call:
+> {"v":1,"id":22,"call":"delete","name":"update"}
+< {"v":1,"id":22,"ok":false,"error":{"kind":"unknown_call","message":"no call `delete`; calls are find, view, edit, run, look_tree, look_screenshot, look_click, look_key"}}
+> {"v":1,"id":3}
+< {"v":1,"id":3,"ok":false,"error":{"kind":"bad_request","message":"`call` must be a string"}}

@@ -1,7 +1,8 @@
 //! The run loop, driven by fake update functions and captured sinks. Nothing here is unsafe.
 
 use super::{Stop, buffer, run_with, stop};
-use crate::abi::{Effect, List, Update, effect_of_words};
+use crate::abi::{Effect, List, Update, effect_of_words, record_trap};
+use std::ffi::OsString;
 use std::io::{self, ErrorKind, Write};
 use std::{fs, path::Path};
 
@@ -69,7 +70,7 @@ extern "C" fn stores_nothing(_msg: u64, _out: &mut List) -> i32 {
 type Run = (String, String, i32);
 
 fn go_with(app: Option<&'static [u8]>, update: Option<Update>, start: u64, grants: u64) -> Run {
-    go_with_args(app, update, start, grants, 0)
+    go_with_args(app, update, start, grants, &[])
 }
 
 fn go_with_args(
@@ -77,7 +78,7 @@ fn go_with_args(
     update: Option<Update>,
     start: u64,
     grants: u64,
-    args: usize,
+    args: &[OsString],
 ) -> Run {
     let (mut out, mut err) = (vec![], vec![]);
     let status = run_with(&mut out, &mut err, app, update, start, grants, args);
@@ -149,8 +150,8 @@ const CASES: [Case; 17] = [
     case("unused_definitions", light, 1),
 ];
 
-/// The cases the milestone 1 back end cannot build (a state, a start message with fields,
-/// `ExitWith`); the interpreter alone runs them.
+/// The cases beyond the M1 entry (a state, a start message with fields, `ExitWith`), built on
+/// the headless one (ABI section 13).
 const BEYOND: [&str; 10] = [
     "exit_with_computed_four",
     "exit_with_computed_high",
@@ -166,10 +167,10 @@ const BEYOND: [&str; 10] = [
 
 /// The arguments a case is run with: one per line of its `args` file, none without the file.
 /// A file that cannot be read as text is an error, not an empty list.
-fn argument_count(dir: &Path) -> usize {
+fn arguments(dir: &Path) -> Vec<OsString> {
     match fs::read_to_string(dir.join("args")) {
-        Ok(text) => text.lines().count(),
-        Err(e) if e.kind() == ErrorKind::NotFound => 0,
+        Ok(text) => text.lines().map(OsString::from).collect(),
+        Err(e) if e.kind() == ErrorKind::NotFound => vec![],
         Err(e) => panic!("{}: args: {e}", dir.display()),
     }
 }
@@ -195,13 +196,13 @@ fn every_run_case_gets_its_expected_output_and_status() {
         let stderr = fs::read_to_string(dir.join("stderr")).unwrap_or_default();
         let status = fs::read_to_string(dir.join("status")).unwrap();
         let want = (stdout, stderr, status.trim().parse().unwrap());
-        let args = argument_count(&dir);
+        let args = arguments(&dir);
         let got = go_with_args(
             Some(case.app),
             Some(case.update),
             case.start,
             case.grants,
-            args,
+            &args,
         );
         assert_eq!(got, want, "case {}", case.dir);
     }
@@ -251,27 +252,42 @@ fn a_print_is_one_write_of_text_and_line_feed_and_nothing_is_flushed() {
 
 #[test]
 fn any_argument_is_a_usage_error_before_update_is_called() {
-    for (args, line) in [(1, "1"), (2, "2"), (40, "40")] {
-        let got = go_with_args(Some(b"light"), Some(status_1), 0, 1, args);
-        let want = format!("light: expected 0 arguments, got {line}\n");
+    for count in [1, 2, 40] {
+        let args = vec![OsString::from("x"); count];
+        let got = go_with_args(Some(b"light"), Some(status_1), 0, 1, &args);
+        let want = format!("light: expected 0 arguments, got {count}\n");
         assert_eq!(got, ("".into(), want, 2));
     }
 }
 
 #[test]
-fn the_usage_line_is_written_without_allocating_in_pieces() {
+fn a_first_argument_that_is_a_switch_is_refused_by_name() {
+    for switch in ["--paka-examples", "--paka-replay"] {
+        for args in [vec![switch], vec![switch, "halves"]] {
+            let args: Vec<OsString> = args.into_iter().map(OsString::from).collect();
+            let got = go_with_args(Some(b"light"), Some(status_1), 0, 1, &args);
+            let want = format!("light: {switch} cannot be used here\n");
+            assert_eq!(got, ("".into(), want, 2));
+        }
+    }
+}
+
+#[test]
+fn the_usage_line_goes_to_standard_error_alone() {
     let mut err = Sink::default();
     let mut out = Sink::default();
-    let status = run_with(&mut out, &mut err, Some(b"light"), Some(light), 0, 1, 3);
+    let args = vec![OsString::from("x"); 3];
+    let status = run_with(&mut out, &mut err, Some(b"light"), Some(light), 0, 1, &args);
     assert_eq!(err.calls.concat(), "light: expected 0 arguments, got 3\n");
     assert_eq!((out.calls.len(), status), (0, 2));
 }
 
 #[test]
 fn refused_inputs_come_before_the_arguments_are_counted() {
-    let got = go_with_args(Some(b"light"), None, 0, 1, 1);
+    let args = [OsString::from("--paka-examples")];
+    let got = go_with_args(Some(b"light"), None, 0, 1, &args);
     assert_eq!(got, ("".into(), internal("update is null"), 4));
-    let got = go_with_args(Some(b"light"), Some(light), 0, 2, 1);
+    let got = go_with_args(Some(b"light"), Some(light), 0, 2, &args);
     assert_eq!(got, ("".into(), internal("bad grants"), 4));
 }
 
@@ -310,6 +326,22 @@ fn bad_grants_are_refused_before_update_is_called() {
 fn the_status_is_tested_before_the_list_header_is_read() {
     let reason = internal("update returned a non-zero status");
     assert_eq!(go(status_1_stores_nothing, 1), ("".into(), reason, 4));
+}
+
+extern "C" fn traps(_msg: u64, _out: &mut List) -> i32 {
+    record_trap(Some(b"overflow at main.paka:3:5"));
+    1
+}
+
+#[test]
+fn a_trap_is_reported_with_its_text_and_stops_with_3() {
+    let want = "light: trap overflow at main.paka:3:5\n";
+    assert_eq!(go(traps, 1), ("".into(), want.into(), 3));
+    assert_eq!(
+        go(status_1_stores_nothing, 1).2,
+        4,
+        "a trap is not kept for the next run"
+    );
 }
 
 #[test]
@@ -378,7 +410,15 @@ impl Write for Panics {
 #[test]
 fn a_panic_is_caught_and_names_the_app() {
     let mut err = vec![];
-    let status = run_with(&mut Panics, &mut err, Some(b"light"), Some(light), 0, 1, 0);
+    let status = run_with(
+        &mut Panics,
+        &mut err,
+        Some(b"light"),
+        Some(light),
+        0,
+        1,
+        &[],
+    );
     assert_eq!(err, internal("runtime panicked").as_bytes());
     assert_eq!(status, 4);
 }
@@ -434,7 +474,7 @@ fn failing(kind: ErrorKind, room: usize) -> Sink {
 
 fn with_out(mut out: Sink, update: Update) -> (Sink, String, i32) {
     let mut err = vec![];
-    let status = run_with(&mut out, &mut err, Some(b"light"), Some(update), 0, 1, 0);
+    let status = run_with(&mut out, &mut err, Some(b"light"), Some(update), 0, 1, &[]);
     (out, String::from_utf8(err).unwrap(), status)
 }
 
@@ -509,7 +549,15 @@ fn an_interrupted_write_is_retried() {
         interrupt_once: true,
         bytes: vec![],
     };
-    let status = run_with(&mut out, &mut vec![], Some(b"light"), Some(light), 0, 1, 0);
+    let status = run_with(
+        &mut out,
+        &mut vec![],
+        Some(b"light"),
+        Some(light),
+        0,
+        1,
+        &[],
+    );
     assert_eq!((out.bytes, status), (b"let there be light\n".to_vec(), 0));
 }
 
@@ -520,7 +568,7 @@ fn a_flush_is_never_asked_for() {
         bytes: vec![],
     };
     let mut err = vec![];
-    let status = run_with(&mut out, &mut err, Some(b"light"), Some(light), 0, 1, 0);
+    let status = run_with(&mut out, &mut err, Some(b"light"), Some(light), 0, 1, &[]);
     assert_eq!(
         (out.bytes, err, status),
         (b"let there be light\n".to_vec(), vec![], 0)
@@ -537,7 +585,7 @@ fn a_standard_error_line_is_written_in_pieces() {
         Some(nothing),
         0,
         1,
-        0,
+        &[],
     );
     assert_eq!(err.calls, ["light", ": ", "ended without Exit", "\n"]);
     assert_eq!(status, 3);
@@ -556,7 +604,7 @@ fn a_failed_standard_error_changes_no_status() {
             update,
             0,
             grants,
-            0,
+            &[],
         );
         assert_eq!(status, want);
     }

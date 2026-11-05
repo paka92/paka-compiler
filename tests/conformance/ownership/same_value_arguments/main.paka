@@ -1,0 +1,55 @@
+enum Msg { Start }
+
+type Pair { left: List<Int> = [], right: List<Int> = [] }
+
+type Wrap { p: Pair = Pair {}, q: Pair = Pair {}, names: Map<String, List<Int>> = [:], step: fn(Int) -> Int }
+
+fn twice(n: Int) -> Int { n * 2 }
+
+fn show(xs: List<Int>) -> String {
+  var parts: List<String> = []
+  for x in xs { append(&parts, "{x}") }
+  "[" + join(parts, ", ") + "]"
+}
+
+fn grow(xs: inout List<Int>, more: List<Int>) {
+  for x in more { append(&xs, x) }
+}
+
+fn swap_lists(a: inout List<Int>, b: inout List<Int>) {
+  let t = a
+  a = b
+  b = t
+}
+
+fn take(xs: inout List<Int>) -> List<Int> {
+  let out = xs
+  xs = []
+  out
+}
+
+fn apply(xs: inout List<Int>, f: fn(Int) -> Int) {
+  xs[0] = f(xs[0])
+}
+
+fn update(msg: Msg) -> List<Effect<Msg>> {
+  var w = Wrap { p: Pair { left: [1], right: [2, 3] }, q: Pair { left: [4] }, names: ["a": [5, 6]], step: twice }
+  grow(&w.p.left, w.q.left)
+  grow(&w.p.right, w.p.left[0..<1])
+  swap_lists(&w.p.left, &w.q.right)
+  grow(&w.q.left, w.names["a"])
+  apply(&w.p.right, w.step)
+  var fs = [1.5]
+  append(&fs, fs[0])
+  var bs = [true]
+  insert(&bs, bs[0], at: 0)
+  append(&w.q.right, w.q.right[0])
+  let nested = [[w.q.left], [take(&w.q.left)]]
+  [Print("{show(w.p.left)} {show(w.p.right)} {show(w.q.left)} {show(w.q.right)} {len(fs)} {len(bs)} {show(nested[0][0])} {show(nested[1][0])}"), Exit]
+}
+
+app ownership {
+  start: Start
+  update: update
+  grants: [Console]
+}

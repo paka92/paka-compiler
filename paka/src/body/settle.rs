@@ -16,11 +16,13 @@ impl Cx<'_, '_> {
         while let Some((e, ty)) = stack.pop() {
             self.info.insert(span(e), ty);
             for (part, t) in self.parts(e, ty) {
-                let Some(&had) = self.info.get(&span(part)).filter(|&&p| self.free(p)) else {
-                    continue;
-                };
-                if !self.types.fits(had, t) {
-                    return Err(self.mismatch_at(part, t, had));
+                // A part with no type yet is a call that never returns; it takes its place's.
+                match self.info.get(&span(part)).copied() {
+                    Some(had) if !self.free(had) => continue,
+                    Some(had) if !self.types.fits(had, t) => {
+                        return Err(self.mismatch_at(part, t, had));
+                    }
+                    _ => {}
                 }
                 if !self.free(t) {
                     stack.push((part, t));

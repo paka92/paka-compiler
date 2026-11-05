@@ -1,7 +1,7 @@
 enum Msg { Start(path: String), Loaded(text: String), Failed(why: String) }
 
 enum Piece {
-  Text(text: String),
+  Plain(text: String),
   Ref(name: String),
   Len(name: String),
   Default(name: String, fallback: List<Piece>)
@@ -50,10 +50,10 @@ fn pieces(r: inout Reader, outer: Int) -> Result<List<Piece>, String> {
     let col = r.i
     let next = at(r, r.i)
     if c != "$" {
-      append(&out, Text(c))
+      append(&out, Plain(c))
     } else if next == "$" {
       r.i += 1
-      append(&out, Text("$"))
+      append(&out, Plain("$"))
     } else if next == "\{" {
       r.i += 1
       let open = if outer > 0 { outer } else { col }
@@ -122,7 +122,7 @@ fn expand_pieces(x: inout Expander, ps: List<Piece>) -> Result<String, String> {
   var out = ""
   for p in ps {
     match p {
-      Text(t) => out += t
+      Plain(t) => out += t
       Ref(n) => out += lookup(&x, n)?
       Len(n) => {
         let v = lookup(&x, n)?

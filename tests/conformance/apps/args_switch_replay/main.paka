@@ -1,0 +1,13 @@
+enum Msg { Start(path: String) }
+
+fn update(m: Msg) -> List<Effect<Msg>> {
+  match m {
+    Start(path) => [Print("started {path}"), Exit]
+  }
+}
+
+app apps {
+  start: Start
+  update: update
+  grants: [Console]
+}

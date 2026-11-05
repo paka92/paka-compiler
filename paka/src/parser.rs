@@ -66,6 +66,52 @@ pub fn parse_files<'a>(
     Ok(program)
 }
 
+/// The one definition `src` holds, with positions counted from its start. Its id is its bare name
+/// (docs/decisions/M4-48.md).
+pub fn parse_def<'a>(path: &'a str, src: &'a [u8]) -> Parse<Def<'a>> {
+    let mut parser = Parser::new(path, src, Lexer::new(path, src), 0);
+    let Some(def) = parser.next_def()? else {
+        return Err(parser.unexpected("a definition"));
+    };
+    parser.skip_newlines()?;
+    match parser.cur.kind {
+        Kind::End => Ok(def),
+        _ => Err(parser.error(
+            "unexpected-token",
+            "expected one definition, found a second",
+        )),
+    }
+}
+
+/// The migrate `src` holds from byte `start`, on `line`, to its end (docs/decisions/M5-07.md
+/// section 2): `migrate(old: Old) -> New { body }`, read as a function named `migrate`.
+pub fn parse_migrate<'a>(
+    path: &'a str,
+    src: &'a [u8],
+    (start, line): (usize, usize),
+) -> Parse<Def<'a>> {
+    let mut parser = Parser::new(path, src, Lexer::at(path, src, start, line, start), 0);
+    parser.skip_newlines()?;
+    let name = parser.name(Kind::Migrate, "migrate")?;
+    let def = parser.fn_rest(name)?;
+    parser.skip_newlines()?;
+    match parser.cur.kind {
+        Kind::End => Ok(def),
+        _ => Err(parser.unexpected("the end of the migrate")),
+    }
+}
+
+/// Each definition of `src` as its id and its text, from its first token to its last; or the first
+/// error.
+pub fn split<'a>(path: &'a str, src: &'a [u8]) -> Parse<Vec<(&'a str, &'a [u8])>> {
+    let mut parser = Parser::new(path, src, Lexer::new(path, src), 0);
+    let mut defs = vec![];
+    while let Some(def) = parser.next_def()? {
+        defs.push((def.name().text, &src[parser.def_start..parser.prev_end]));
+    }
+    Ok(defs)
+}
+
 /// The definitions from byte `start`, on `line`, that parsed and, when `recover`, one error per
 /// definition that did not; otherwise it stops at the first error.
 fn parse_all<'a>(
@@ -108,7 +154,7 @@ fn pos(token: Token) -> Pos {
 
 fn definition_start(kind: Kind) -> bool {
     use Kind::*;
-    matches!(kind, Fn | Enum | Type | App | Example | View)
+    matches!(kind, Fn | Enum | Type | App | Example | View | Foreign)
 }
 
 fn assign_op(kind: Kind) -> Option<AssignOp> {
@@ -273,10 +319,6 @@ impl<'a> Parser<'a> {
         what == "an expression" || self.expr_end == Some(self.prev_end)
     }
 
-    fn unsupported_view(&self) -> Diagnostic {
-        self.error("unsupported-view", "`view` is not supported")
-    }
-
     /// The text from byte `from` to the last token taken.
     fn spelling(&self, from: usize) -> &'a str {
         let src: &'a [u8] = self.src;
@@ -421,7 +463,8 @@ impl<'a> Parser<'a> {
             Kind::Fn => self.fn_def()?,
             Kind::Example => self.example_def()?,
             Kind::App => self.app_def()?,
-            Kind::View => return Err(self.unsupported_view()),
+            Kind::View => self.view_def()?,
+            Kind::Foreign => self.foreign_def()?,
             Kind::Lower if INTERFACES.contains(&text(self.cur)) => {
                 let message = "Paka has no interfaces; write one function per type and pass it by \
                     name: sort_by(&xs, before)";
@@ -510,6 +553,11 @@ impl<'a> Parser<'a> {
     fn fn_def(&mut self) -> Parse<Def<'a>> {
         self.advance()?;
         let name = self.name(Kind::Lower, "function")?;
+        self.fn_rest(name)
+    }
+
+    /// A function after its name.
+    fn fn_rest(&mut self, name: Name<'a>) -> Parse<Def<'a>> {
         self.type_params()?;
         let params = self.between(Kind::LParen, Kind::RParen, Self::params)?;
         let result = if self.accept(Kind::Arrow)? {
@@ -565,12 +613,9 @@ impl<'a> Parser<'a> {
 
     fn entry(&mut self) -> Parse<Entry<'a>> {
         let key = self.cur;
-        if key.kind == Kind::View {
-            return Err(self.unsupported_view());
-        }
         let named = matches!(key.text, b"state" | b"start" | b"update" | b"grants");
-        if key.kind != Kind::Lower || !named {
-            return Err(self.unexpected("state, start, update or grants"));
+        if !(key.kind == Kind::Lower && named || key.kind == Kind::View) {
+            return Err(self.unexpected("state, start, update, view or grants"));
         }
         self.advance()?;
         self.eat(Kind::Colon)?;
@@ -579,12 +624,78 @@ impl<'a> Parser<'a> {
             b"state" => Entry::State(at, self.name(Kind::Upper, "type")?),
             b"start" => Entry::Start(at, self.expr()?),
             b"update" => Entry::Update(at, self.name(Kind::Lower, "function")?),
+            b"view" => Entry::View(at, self.name(Kind::Lower, "view")?),
             _ => {
                 let grants = self.between(Kind::LBracket, Kind::RBracket, |p| {
                     p.items(&[Kind::RBracket], |p| p.name(Kind::Upper, "grant"))
                 })?;
                 Entry::Grants(at, grants)
             }
+        })
+    }
+
+    fn view_def(&mut self) -> Parse<Def<'a>> {
+        self.advance()?;
+        let name = self.name(Kind::Lower, "view")?;
+        self.type_params()?;
+        let params = self.between(Kind::LParen, Kind::RParen, Self::params)?;
+        self.eat(Kind::Arrow)?;
+        let result = self.ty()?;
+        let body = self.view_block(true)?;
+        Ok(Def::View {
+            name,
+            params,
+            result,
+            body,
+        })
+    }
+
+    fn foreign_def(&mut self) -> Parse<Def<'a>> {
+        self.advance()?;
+        let name = self.name(Kind::Upper, "foreign")?;
+        let lines = self.between(Kind::LBrace, Kind::RBrace, |p| p.lines(Self::foreign_line))?;
+        Ok(Def::Foreign { name, lines })
+    }
+
+    fn foreign_line(&mut self) -> Parse<ForeignLine<'a>> {
+        if self.cur.kind == Kind::Upper {
+            let name = self.name(Kind::Upper, "effect")?;
+            let params = self.between(Kind::LParen, Kind::RParen, |p| {
+                p.items(&[Kind::RParen], |p| p.param(false))
+            })?;
+            let result = if self.accept(Kind::Arrow)? {
+                Some(self.ty()?)
+            } else {
+                None
+            };
+            self.eat(Kind::Eq)?;
+            let symbol = self.quoted()?;
+            return Ok(ForeignLine::Function {
+                name,
+                params,
+                result,
+                symbol,
+            });
+        }
+        let named = matches!(self.cur.text, b"library" | b"source" | b"header");
+        if !(self.cur.kind == Kind::Lower && named) {
+            return Err(self.unexpected("library, source, header or an effect"));
+        }
+        let key = self.name(Kind::Lower, "line")?;
+        self.eat(Kind::Colon)?;
+        Ok(ForeignLine::File(key, self.quoted()?))
+    }
+
+    /// A string's text as written between its quotes, at its first character; escapes stay.
+    fn quoted(&mut self) -> Parse<Name<'a>> {
+        let token = self.cur;
+        if token.kind != Kind::Str {
+            return Err(self.unexpected("a quoted name"));
+        }
+        self.advance()?;
+        Ok(Name {
+            text: text(token),
+            at: (token.line, token.col + 1),
         })
     }
 
@@ -664,14 +775,7 @@ impl<'a> Parser<'a> {
                     _ => StmtKind::Continue,
                 }
             }
-            Kind::For => {
-                self.advance()?;
-                let name = self.name(Kind::Lower, "variable")?;
-                self.eat(Kind::In)?;
-                let list = self.with_header(true, Self::range_or_expr)?;
-                let body = self.block()?;
-                StmtKind::For { name, list, body }
-            }
+            Kind::For => self.for_loop(Self::block)?,
             Kind::While => {
                 self.advance()?;
                 let cond = self.condition()?;
@@ -684,6 +788,16 @@ impl<'a> Parser<'a> {
             _ => self.assign_or_expr()?,
         };
         Ok(self.node(first, kind))
+    }
+
+    /// `for name in list` and the body that `body` reads.
+    fn for_loop(&mut self, body: fn(&mut Self) -> Parse<Block<'a>>) -> Parse<StmtKind<'a>> {
+        self.advance()?;
+        let name = self.name(Kind::Lower, "variable")?;
+        self.eat(Kind::In)?;
+        let list = self.with_header(true, Self::range_or_expr)?;
+        let body = body(self)?;
+        Ok(StmtKind::For { name, list, body })
     }
 
     /// A discard `_ = e`, an expression, or an assignment when an assignment operator follows it.
@@ -994,8 +1108,8 @@ impl<'a> Parser<'a> {
                 return Ok(self.node(first, inner.kind));
             }
             Kind::LBracket => self.collection()?,
-            Kind::If => self.nested(self.header, Self::if_expr)?,
-            Kind::Match => self.nested(self.header, Self::match_expr)?,
+            Kind::If => self.nested(self.header, |p| p.if_expr(Self::block))?,
+            Kind::Match => self.nested(self.header, |p| p.match_expr(Self::arm_body))?,
             Kind::Pipe => return Err(self.error("unexpected-character", LAMBDA)),
             Kind::Str => self.string(t)?,
             Kind::Int | Kind::Float | Kind::True | Kind::False | Kind::Hole | Kind::Lower => {
@@ -1090,12 +1204,13 @@ impl<'a> Parser<'a> {
         self.with_header(true, Self::expr)
     }
 
-    fn if_expr(&mut self) -> Parse<ExprKind<'a>> {
+    /// An `if` whose bodies `block` reads.
+    fn if_expr(&mut self, block: impl Fn(&mut Self) -> Parse<Block<'a>>) -> Parse<ExprKind<'a>> {
         let mut branches = vec![];
         loop {
             self.advance()?;
             let cond = self.condition()?;
-            branches.push((cond, self.block()?));
+            branches.push((cond, block(self)?));
             if !self.accept(Kind::Else)? {
                 return Ok(ExprKind::If {
                     branches,
@@ -1103,7 +1218,7 @@ impl<'a> Parser<'a> {
                 });
             }
             if self.cur.kind != Kind::If {
-                let otherwise = Some(self.block()?);
+                let otherwise = Some(block(self)?);
                 return Ok(ExprKind::If {
                     branches,
                     otherwise,
@@ -1112,11 +1227,15 @@ impl<'a> Parser<'a> {
         }
     }
 
-    fn match_expr(&mut self) -> Parse<ExprKind<'a>> {
+    /// A `match` whose arm bodies `body` reads.
+    fn match_expr(
+        &mut self,
+        body: impl Fn(&mut Self) -> Parse<ArmBody<'a>>,
+    ) -> Parse<ExprKind<'a>> {
         self.advance()?;
         let subject = Box::new(self.with_header(true, Self::expr)?);
         let arms = self.between(Kind::LBrace, Kind::RBrace, |p| {
-            let arms = p.lines(Self::arm)?;
+            let arms = p.lines(|p| p.arm(&body))?;
             if arms.is_empty() {
                 return Err(p.unexpected("a match arm"));
             }
@@ -1125,7 +1244,7 @@ impl<'a> Parser<'a> {
         Ok(ExprKind::Match { subject, arms })
     }
 
-    fn arm(&mut self) -> Parse<Arm<'a>> {
+    fn arm(&mut self, body: &impl Fn(&mut Self) -> Parse<ArmBody<'a>>) -> Parse<Arm<'a>> {
         let mut patterns = vec![self.pattern()?];
         while self.cur.kind == Kind::Pipe {
             self.binds_nothing(&patterns)?;
@@ -1136,21 +1255,112 @@ impl<'a> Parser<'a> {
             self.binds_nothing(&patterns)?;
         }
         self.eat(Kind::FatArrow)?;
-        let first = self.cur;
-        if matches!(first.kind, Kind::Return | Kind::Break | Kind::Continue) {
-            return Err(self.error("unexpected-token", RETURNING_ARM));
-        }
-        let body = if first.kind == Kind::LBrace {
-            ArmBody::Block(self.block()?)
-        } else {
-            let kind = self.assign_or_expr()?;
-            ArmBody::Line(self.node(first, kind))
-        };
+        let body = body(self)?;
         if self.cur.kind == Kind::Comma {
             let message = "remove the comma: one arm per line";
             return Err(self.error("unexpected-token", message));
         }
         Ok(Arm { patterns, body })
+    }
+
+    fn arm_body(&mut self) -> Parse<ArmBody<'a>> {
+        let first = self.cur;
+        if matches!(first.kind, Kind::Return | Kind::Break | Kind::Continue) {
+            return Err(self.error("unexpected-token", RETURNING_ARM));
+        }
+        if first.kind == Kind::LBrace {
+            return Ok(ArmBody::Block(self.block()?));
+        }
+        let kind = self.assign_or_expr()?;
+        Ok(ArmBody::Line(self.node(first, kind)))
+    }
+
+    // Views (docs/decisions/M5-01.md)
+
+    /// A view body when `root`: `let` lines, then one element expression. Otherwise a child block.
+    fn view_block(&mut self, root: bool) -> Parse<Block<'a>> {
+        self.between(Kind::LBrace, Kind::RBrace, |p| {
+            let mut done = false;
+            let stmts = p.lines(|p| {
+                if done {
+                    let message = format!(
+                        "a view gives one element, found {} after it; \
+                        wrap the elements in a Col or Row",
+                        p.describe()
+                    );
+                    return Err(p.error("unexpected-token", message));
+                }
+                let line = p.view_line(root)?;
+                done = root && !matches!(line.kind, StmtKind::Let { .. });
+                Ok(line)
+            })?;
+            if root && !done {
+                return Err(p.unexpected("an element"));
+            }
+            Ok(Block {
+                stmts,
+                close: pos(p.cur),
+            })
+        })
+    }
+
+    /// A `let`, a `for` in a child block, or an element expression.
+    fn view_line(&mut self, root: bool) -> Parse<Stmt<'a>> {
+        let first = self.cur;
+        let kind = match first.kind {
+            Kind::Let | Kind::Else => return self.stmt(),
+            Kind::For if !root => self.for_loop(|p| p.view_block(false))?,
+            Kind::For => {
+                let message = "a view gives one element, not a `for`; wrap it in a Col or Row";
+                return Err(self.error("unexpected-token", message));
+            }
+            Kind::Var
+            | Kind::While
+            | Kind::Return
+            | Kind::Break
+            | Kind::Continue
+            | Kind::Underscore => return Err(self.not_in_view()),
+            _ => StmtKind::Expr(self.element(root)?),
+        };
+        if assign_op(self.cur.kind).is_some() {
+            return Err(self.not_in_view());
+        }
+        Ok(self.node(first, kind))
+    }
+
+    fn not_in_view(&self) -> Diagnostic {
+        let message = format!(
+            "a view holds no {}; compute values in a function the view calls",
+            self.describe()
+        );
+        self.error("unexpected-token", message)
+    }
+
+    /// Where an element may stand: an `if` or `match` whose bodies are view blocks, or an
+    /// expression; a call takes a child block after it.
+    fn element(&mut self, root: bool) -> Parse<Expr<'a>> {
+        let first = self.cur;
+        let kind = match first.kind {
+            Kind::If => self.if_expr(|p| p.view_block(root))?,
+            Kind::Match => self.match_expr(|p| p.view_arm(root))?,
+            _ => {
+                let e = self.expr()?;
+                if self.cur.kind != Kind::LBrace || !matches!(e.kind, ExprKind::Call(..)) {
+                    return Ok(e);
+                }
+                ExprKind::Children(Box::new(e), self.view_block(false)?)
+            }
+        };
+        Ok(self.node(first, kind))
+    }
+
+    fn view_arm(&mut self, root: bool) -> Parse<ArmBody<'a>> {
+        let first = self.cur;
+        if first.kind == Kind::LBrace {
+            return Ok(ArmBody::Block(self.view_block(root)?));
+        }
+        let e = self.element(root)?;
+        Ok(ArmBody::Line(self.node(first, StmtKind::Expr(e))))
     }
 
     // Patterns
@@ -2241,16 +2451,274 @@ mod tests {
         );
     }
 
+    // Views
+
+    fn view_body(src: &str) -> Block<'_> {
+        match tree(src).defs.pop() {
+            Some(Def::View { body, .. }) => body,
+            _ => panic!("not a view"),
+        }
+    }
+
+    fn line_of(e: Expr) -> Stmt {
+        node(e.at.0, e.at.1, e.len, StmtKind::Expr(e))
+    }
+
     #[test]
-    fn view_is_unsupported() {
-        let message = "`view` is not supported";
-        fail("view v() {}\n", (1, 1), "unsupported-view", message);
-        fail(
-            "app a {\n  view: v\n}\n",
-            (2, 3),
-            "unsupported-view",
-            message,
+    fn a_view_with_a_child_block_a_key_and_a_hole() {
+        let src = "view row(t: Todo) -> View<Msg> {
+  Row(gap: 8) {
+    Text(t.title, key: 1)
+    ??more
+  }
+}
+";
+        let callee =
+            |line, col, name: &'static str| bx(node(line, col, name.len(), ExprKind::Name(name)));
+        let gap = Arg {
+            label: Some(nm("gap", 2, 7)),
+            value: node(2, 12, 1, ExprKind::Int("8")),
+        };
+        let row = node(2, 3, 11, ExprKind::Call(callee(2, 3, "Row"), vec![gap]));
+        let title = ExprKind::Field(bx(node(3, 10, 1, ExprKind::Name("t"))), nm("title", 3, 12));
+        let key = Arg {
+            label: Some(nm("key", 3, 19)),
+            value: node(3, 24, 1, ExprKind::Int("1")),
+        };
+        let text = ExprKind::Call(callee(3, 5, "Text"), vec![arg(node(3, 10, 7, title)), key]);
+        let children = Block {
+            stmts: vec![
+                line_of(node(3, 5, 21, text)),
+                line_of(node(4, 5, 6, ExprKind::Hole("more"))),
+            ],
+            close: (5, 3),
+        };
+        let want = Def::View {
+            name: nm("row", 1, 6),
+            params: vec![param(nm("t", 1, 10), ty("Todo", 1, 13))],
+            result: generic("View", 1, 22, vec![ty("Msg", 1, 27)]),
+            body: Block {
+                stmts: vec![line_of(node(
+                    2,
+                    3,
+                    54,
+                    ExprKind::Children(bx(row), children),
+                ))],
+                close: (6, 1),
+            },
+        };
+        assert_eq!(tree(src).defs, vec![want]);
+    }
+
+    #[test]
+    fn a_child_block_holds_let_if_for_and_match() {
+        let src = "view v(s: S) -> View<Msg> {
+  let n = 1
+  Col() {
+    if n == 0 { ??a }
+    for t in s.items {
+      row(t, key: t)
+    }
+    match n {
+      0 => Text(\"z\")
+      _ => {}
+    }
+  }
+}
+";
+        let name =
+            |line, col, text: &'static str| node(line, col, text.len(), ExprKind::Name(text));
+        let cond = ExprKind::Binary(
+            BinOp::Eq,
+            (4, 10),
+            bx(name(4, 8, "n")),
+            bx(node(4, 13, 1, ExprKind::Int("0"))),
         );
+        let hole = Block {
+            stmts: vec![line_of(node(4, 17, 3, ExprKind::Hole("a")))],
+            close: (4, 21),
+        };
+        let branches = vec![(node(4, 8, 6, cond), hole)];
+        let check = ExprKind::If {
+            branches,
+            otherwise: None,
+        };
+        let items = ExprKind::Field(bx(name(5, 14, "s")), nm("items", 5, 16));
+        let key = Arg {
+            label: Some(nm("key", 6, 14)),
+            value: name(6, 19, "t"),
+        };
+        let call = ExprKind::Call(bx(name(6, 7, "row")), vec![arg(name(6, 11, "t")), key]);
+        let each = StmtKind::For {
+            name: nm("t", 5, 9),
+            list: node(5, 14, 7, items),
+            body: Block {
+                stmts: vec![line_of(node(6, 7, 14, call))],
+                close: (7, 5),
+            },
+        };
+        let z = node(9, 17, 3, ExprKind::Str(vec![StrPart::Text("z".into())]));
+        let text = ExprKind::Call(bx(name(9, 12, "Text")), vec![arg(z)]);
+        let arms = vec![
+            Arm {
+                patterns: vec![node(9, 7, 1, PatKind::Int("0"))],
+                body: ArmBody::Line(line_of(node(9, 12, 9, text))),
+            },
+            Arm {
+                patterns: vec![node(10, 7, 1, PatKind::Wild)],
+                body: ArmBody::Block(empty(10, 13)),
+            },
+        ];
+        let choose = ExprKind::Match {
+            subject: bx(name(8, 11, "n")),
+            arms,
+        };
+        let col = node(3, 3, 5, ExprKind::Call(bx(name(3, 3, "Col")), vec![]));
+        let children = Block {
+            stmts: vec![
+                line_of(node(4, 5, 17, check)),
+                node(5, 5, 45, each),
+                line_of(node(8, 5, 50, choose)),
+            ],
+            close: (12, 3),
+        };
+        let first = node(
+            2,
+            3,
+            9,
+            StmtKind::Let {
+                var: false,
+                name: nm("n", 2, 7),
+                ty: None,
+                value: node(2, 11, 1, ExprKind::Int("1")),
+            },
+        );
+        let root = node(3, 3, 138, ExprKind::Children(bx(col), children));
+        let want = Block {
+            stmts: vec![first, line_of(root)],
+            close: (13, 1),
+        };
+        assert_eq!(view_body(src), want);
+    }
+
+    #[test]
+    fn the_app_names_its_view() {
+        let src = "app counter {\n  view: counter_view\n}\n";
+        let want = Def::App {
+            name: nm("counter", 1, 5),
+            entries: vec![Entry::View((2, 3), nm("counter_view", 2, 9))],
+        };
+        assert_eq!(tree(src).defs, vec![want]);
+    }
+
+    #[test]
+    fn a_root_if_or_match_ends_each_branch_in_an_element() {
+        let src = "view v(s: S) -> View<Msg> {
+  match s.screen {
+    Login => login_view(s)
+    Home => {
+      let n = 1
+      home_view(s, key: n)
+    }
+  }
+}
+
+view w(s: S) -> View<Msg> {
+  if s.ok { Text(\"yes\") } else { ??no }
+}
+";
+        assert_eq!(tree(src).defs.len(), 2);
+    }
+
+    #[test]
+    fn a_brace_after_a_call_opens_a_child_block_only_where_an_element_stands() {
+        let body =
+            view_body("view v() -> View<M> {\n  Col() {\n    if ok(s) { Row() {} }\n  }\n}\n");
+        let StmtKind::Expr(Expr {
+            kind: ExprKind::Children(_, children),
+            ..
+        }) = &body.stmts[0].kind
+        else {
+            panic!("no child block")
+        };
+        let StmtKind::Expr(Expr {
+            kind: ExprKind::If { branches, .. },
+            ..
+        }) = &children.stmts[0].kind
+        else {
+            panic!("no if")
+        };
+        assert!(matches!(branches[0].0.kind, ExprKind::Call(..)));
+        let src = "view v() -> View<M> {\n  Text(Col() {})\n}\n";
+        fail(src, (2, 14), "unexpected-token", "expected `)`, found `{`");
+        let src = "view v() -> View<M> {\n  let x = Col() {}\n}\n";
+        fail(
+            src,
+            (2, 17),
+            "unexpected-token",
+            "expected end of line, found `{`",
+        );
+    }
+
+    /// The first error of a view whose body holds `code` from line 2, column 3.
+    fn view_fail(code: &str, at: Pos, message: &str) {
+        let src = format!("view v() -> View<M> {{\n  {code}\n}}\n");
+        fail(&src, at, "unexpected-token", message);
+    }
+
+    #[test]
+    fn a_view_gives_one_element_after_its_lets() {
+        let one = "a view gives one element, found";
+        view_fail(
+            "Text(\"a\")\n  Text(\"b\")",
+            (3, 3),
+            &format!("{one} `Text` after it"),
+        );
+        fail(
+            "view v() -> View<M> {\n  ??a\n  let x = 1\n}\n",
+            (3, 3),
+            "unexpected-token",
+            &format!("{one} `let` after it"),
+        );
+        fail(
+            "view v() -> View<M> {}\n",
+            (1, 22),
+            "unexpected-token",
+            "expected an element, found `}`",
+        );
+        fail(
+            "view v() -> View<M> {\n  if a { let x = 1 } else { ??b }\n}\n",
+            (2, 20),
+            "unexpected-token",
+            "expected an element, found `}`",
+        );
+        view_fail(
+            "for x in xs {}",
+            (2, 3),
+            "not a `for`; wrap it in a Col or Row",
+        );
+        fail(
+            "view v() {}\n",
+            (1, 10),
+            "unexpected-token",
+            "expected `->`, found `{`",
+        );
+    }
+
+    #[test]
+    fn a_view_holds_no_state_changes_or_jumps() {
+        let no = "a view holds no";
+        view_fail("var x = 1", (2, 3), &format!("{no} `var`"));
+        view_fail("return", (2, 3), &format!("{no} `return`"));
+        view_fail("_ = f(x)", (2, 3), &format!("{no} `_`"));
+        view_fail(
+            "Col() {\n    while a {}\n  }",
+            (3, 5),
+            &format!("{no} `while`"),
+        );
+        view_fail("Col() {\n    break\n  }", (3, 5), &format!("{no} `break`"));
+        view_fail("Col() {\n    x = 1\n  }", (3, 7), &format!("{no} `=`"));
+        view_fail("Col() {\n    x += 1\n  }", (3, 7), &format!("{no} `+=`"));
     }
 
     /// Runs `f` on the 8 MiB of a program's main thread; a debug test thread has only 2 MiB.
@@ -3190,5 +3658,97 @@ example total_rejects_bad_score {
         let src = "enum A {\nfn f() {}\nenum {}\n";
         let error = parse("main.paka", src.as_bytes()).unwrap_err();
         assert_eq!(error.position, Some((2, 1)));
+    }
+
+    // Single definitions
+
+    const DEFS: &str = "enum Mode { Up, Down }
+
+fn step(x: Int, m: Mode) -> Int {
+  match m {
+    Up => x + 1
+    Down => x - 1
+  }
+}
+
+example steps_up {
+  step(1, Up) == 2
+}
+";
+
+    fn parts(src: &str) -> Vec<(&str, &str)> {
+        let defs = split("main.paka", src.as_bytes()).unwrap();
+        let text = |t| std::str::from_utf8(t).unwrap();
+        defs.into_iter().map(|(id, t)| (id, text(t))).collect()
+    }
+
+    fn join(parts: &[(&str, &str)]) -> String {
+        let texts: Vec<_> = parts.iter().map(|p| p.1).collect();
+        texts.join("\n\n") + "\n"
+    }
+
+    fn ids<'a>(parts: &[(&'a str, &str)]) -> Vec<&'a str> {
+        parts.iter().map(|p| p.0).collect()
+    }
+
+    #[test]
+    fn ids_survive_body_edits_and_reordering() {
+        let edited = DEFS.replace("x + 1", "x + 2");
+        assert_eq!(ids(&parts(&edited)), ["Mode", "step", "steps_up"]);
+        let mut reversed = parts(DEFS);
+        reversed.reverse();
+        assert_eq!(ids(&parts(&join(&reversed))), ["steps_up", "step", "Mode"]);
+    }
+
+    #[test]
+    fn a_program_rebuilt_from_its_definitions_is_the_same() {
+        let parts = parts(DEFS);
+        assert_eq!(join(&parts), DEFS);
+        for (id, text) in parts {
+            let def = parse_def("main.paka", text.as_bytes()).unwrap();
+            assert_eq!(def.name().text, id);
+        }
+    }
+
+    #[test]
+    fn one_definition_reparses_alone() {
+        let before = parts(DEFS);
+        let step = before[1].1.replace("x - 1", "x - 2");
+        let alone = parse_def("main.paka", step.as_bytes()).unwrap();
+        let edited = DEFS.replace("x - 1", "x - 2");
+        let after = parts(&edited);
+        assert_eq!(after[1].1, step);
+        assert_eq!(
+            parse_def("main.paka", after[1].1.as_bytes()).unwrap(),
+            alone
+        );
+        assert_eq!((after[0], after[2]), (before[0], before[2]));
+    }
+
+    #[test]
+    fn a_single_definition_is_exactly_one() {
+        let error = |src: &str| parse_def("main.paka", src.as_bytes()).unwrap_err();
+        assert_eq!(error("\n").position, Some((2, 1)));
+        let second = error("enum A { X }\n\nenum B { Y }\n");
+        assert_eq!(
+            (second.code, second.position),
+            ("unexpected-token", Some((3, 1)))
+        );
+        assert_eq!(error("enum A { X } x").position, Some((1, 14)));
+    }
+
+    #[test]
+    fn foreign_parses_and_is_reserved() {
+        unexpected("let foreign = 1", 7, "found `foreign`");
+        fail(
+            "foreign Sum {\n  source: sum.c\n}\n",
+            (2, 11),
+            "unexpected-token",
+            "",
+        );
+        let program = parse("main.paka", b"foreign Sum {\n  Add(a: Int) = \"add\"\n}\n");
+        assert!(
+            matches!(&program.unwrap().defs[0], Def::Foreign { lines, .. } if lines.len() == 1)
+        );
     }
 }

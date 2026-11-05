@@ -8,14 +8,14 @@
 //! - `log`: a run's append-only raw log.
 //! - `usage`: the token caps and the running total kept in a file.
 //! - `metrics`: raw logs and a rulings file to the three metrics and the verdict.
-//! - `json`: a strict JSON reader.
+//! - `json`: the shared JSON reader and writer.
 //! - `task`: loads a task folder (statement, visible cases, hidden cases).
 //! - `runner`: builds a submission and judges it on a task's cases.
 
 pub mod client;
 pub mod commit;
 mod error;
-pub mod json;
+pub use paka_json as json;
 pub mod log;
 pub mod metrics;
 pub mod prompt;

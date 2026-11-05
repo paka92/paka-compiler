@@ -1,0 +1,28 @@
+type Counter { count: Int = 0 }
+
+enum Msg { Inc, Dec }
+
+fn update(s: inout Counter, m: Msg) {
+  match m {
+    Inc => s.count += 1
+    Dec => s.count = max(0, s.count - 1)
+  }
+}
+
+view counter_view(s: Counter) -> View<Msg> {
+  Col(gap: 8) {
+    Text("{s.count}")
+    Button("+", on: Inc)
+  }
+}
+
+app counter {
+  state:  Counter
+  update: update
+  view:   counter_view
+  grants: []
+}
+
+fn start() {
+  let n = len(ui_tree(ui_start(counter)))
+}

@@ -1,8 +1,8 @@
 //! The value text form of the tools (M2-09 section 1.6, M2-14 section 1.16): a value as written in
 //! source. The type is only needed to name records and variants and to reach their fields' types.
 
-use super::value::{FnKey, Value, quoted};
-use crate::core_form::{Program, Ty, Type};
+use super::value::{FnKey, Value, position, quoted};
+use crate::core_form::{Effect, Program, Ty, Type};
 
 /// Marks a variant whose fields are all bare.
 const BARE: usize = usize::MAX;
@@ -62,6 +62,13 @@ pub fn show(core: &Program, ty: Ty, v: &Value) -> String {
         }
         (Type::Result(t, e), Value::Variant(n, vs)) => {
             variant(["Ok", "Err"][*n], &[[*t, *e][*n]], &vs.0, BARE)
+        }
+        (Type::Effect(m), Value::Variant(n, vs)) if *n == Effect::Foreign as usize => {
+            let Some((Value::Int(id), vs)) = vs.0.split_first() else {
+                unreachable!("a foreign effect starts with its index");
+            };
+            let name = &core.foreign[position(*id).expect("an effect index")].name;
+            variant(name, &vec![*m; vs.len()], vs, vs.len() - LABELS.len())
         }
         (Type::Effect(m), Value::Variant(n, vs)) => {
             let (name, labelled) = EFFECTS[*n];

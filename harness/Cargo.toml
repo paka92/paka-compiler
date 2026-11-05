@@ -5,3 +5,6 @@ edition = "2024"
 
 [lints.rust]
 unsafe_code = "forbid"
+
+[dependencies]
+paka-json = { path = "../json" }

@@ -1,0 +1,69 @@
+enum Msg { Start }
+
+enum Tree { Leaf(name: String), Pair(left: Tree, right: Tree) }
+
+fn grow(n: Int) -> Tree {
+  if n == 0 { Leaf("x{n}") } else { Pair(grow(n - 1), Leaf("y{n}")) }
+}
+
+fn names(t: Tree) -> String {
+  match t {
+    Leaf(name) => name
+    Pair(l, r) => {
+      var count = 0
+      for i in 0..<2 { count += i }
+      "{names(l)}{count}{names(r)}"
+    }
+  }
+}
+
+fn left_of(t: Tree) -> Tree {
+  match t {
+    Leaf(name) => Leaf(name)
+    Pair(l, r) => l
+  }
+}
+
+fn swapped(t: Tree) -> Tree {
+  match t {
+    Leaf(name) => {
+      if name == "z" { return Leaf(name + "!") }
+      Leaf(name)
+    }
+    Pair(l, r) => Pair(r, l)
+  }
+}
+
+fn innermost(t: Tree) -> String {
+  match t {
+    Leaf(name) => name
+    Pair(l, r) => match l {
+      Leaf(name) => name
+      Pair(a, b) => innermost(a)
+    }
+  }
+}
+
+fn renamed(t: Tree) -> String {
+  var u = t
+  match u {
+    Leaf(name) => {
+      u = Leaf("w")
+      "{name}{names(u)}"
+    }
+    Pair(l, r) => names(l)
+  }
+}
+
+fn update(msg: Msg) -> List<Effect<Msg>> {
+  let kept = left_of(grow(3))
+  let turned = swapped(grow(2))
+  let leaf = swapped(Leaf("z"))
+  [Print("{names(kept)} {names(turned)} {names(leaf)} {innermost(grow(4))} {renamed(leaf)}"), Exit]
+}
+
+app ownership {
+  start: Start
+  update: update
+  grants: [Console]
+}

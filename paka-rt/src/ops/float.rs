@@ -6,7 +6,9 @@ const NAN: Float = Float(f64::from_bits(0x7FF8_0000_0000_0000));
 
 /// An IEEE binary64: round to nearest even, no fused operations, no trap (M2-03 1.3).
 /// `==` and the order are IEEE's: every compare with a NaN is false, except `!=`.
+/// Transparent, so compiled code passes it as a binary64 (M4-05 section 5).
 #[derive(Debug, Clone, Copy, PartialEq, PartialOrd)]
+#[repr(transparent)]
 pub struct Float(pub(super) f64);
 
 impl Float {

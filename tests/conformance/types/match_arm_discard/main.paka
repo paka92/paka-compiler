@@ -1,6 +1,6 @@
 enum Msg { Start }
 
-enum Part { Text(t: String), Gap }
+enum Part { Plain(t: String), Gap }
 
 fn merge(target: inout String, t: String) -> Result<Int, String> {
   if t == "" {
@@ -15,7 +15,7 @@ fn glue(parts: List<Part>) -> Result<String, String> {
   var gaps = 0
   for p in parts {
     match p {
-      Text(t) => _ = merge(&out, t)?
+      Plain(t) => _ = merge(&out, t)?
       Gap => gaps += 1
     }
   }
@@ -30,8 +30,8 @@ fn show(r: Result<String, String>) -> String {
 }
 
 fn update(msg: Msg) -> List<Effect<Msg>> {
-  let a = show(glue([Text("ab"), Gap, Text("c")]))
-  let b = show(glue([Text("ab"), Text(""), Gap]))
+  let a = show(glue([Plain("ab"), Gap, Plain("c")]))
+  let b = show(glue([Plain("ab"), Plain(""), Gap]))
   [Print("{a} {b}"), Exit]
 }
 

@@ -156,3 +156,56 @@ fn a_file_the_process_may_not_use_gives_no_permission() {
     assert_eq!(copy(&dir, "in.txt", dest), ("no permission\n".into(), 20));
     fs::set_permissions(dir.path("folder"), Permissions::from_mode(0o755)).unwrap();
 }
+
+const SUM: &str = "
+foreign Sum {
+  source: \"sum.c\"
+  header: \"sum.h\"
+  Add(a: Int) -> Int = \"sum_add\"
+}
+
+enum Msg { Start, Got(n: Int), Failed(why: String) }
+
+fn update(m: Msg) -> List<Effect<Msg>> {
+  match m {
+    Start => [Add(1, then: Got, or: Failed)]
+    Got(n) => [Print(\"got {n}\"), Exit]
+    Failed(why) => [Print(why), Exit]
+  }
+}
+
+app sum {
+  start: Start
+  update: update
+  grants: [Console, Sum]
+}
+";
+
+#[test]
+fn a_foreign_effect_runs_only_under_its_grant() {
+    let dir = Scratch::new("foreign_grant");
+    let run = |text: &str| {
+        fs::write(dir.path("main.paka"), text).unwrap();
+        let out = Command::new(PAKA)
+            .args(["run", "main.paka"])
+            .current_dir(dir.path(""))
+            .env("XDG_CACHE_HOME", dir.path("cache"))
+            .output()
+            .unwrap();
+        let text = [out.stdout, out.stderr].concat();
+        (String::from_utf8(text).unwrap(), out.status.code())
+    };
+    // Without its files the declaration has no host, so the granted call answers `or`.
+    assert_eq!(run(SUM), ("no host\n".into(), Some(0)));
+    fs::write(
+        dir.path("sum.h"),
+        "#include <stdint.h>\nint64_t sum_add(int64_t a);\n",
+    )
+    .unwrap();
+    let add = "#include \"sum.h\"\nint64_t sum_add(int64_t a) { return a + 1; }\n";
+    fs::write(dir.path("sum.c"), add).unwrap();
+    assert_eq!(run(SUM), ("got 2\n".into(), Some(0)));
+    let refused = "sum: effect Add refused: grant Sum is missing\n";
+    let ungranted = SUM.replace("[Console, Sum]", "[Console]");
+    assert_eq!(run(&ungranted), (refused.into(), Some(3)));
+}

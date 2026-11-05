@@ -1,0 +1,13 @@
+[package]
+name = "paka-bench"
+version = "0.1.0"
+edition = "2024"
+publish = false
+
+[workspace]
+
+[dependencies]
+paka = { path = "../../paka" }
+paka-rt = { path = "../../paka-rt" }
+cranelift-codegen = { version = "=0.136.3", default-features = false, features = ["std", "host-arch"] }
+cranelift-frontend = { version = "=0.136.3", default-features = false, features = ["std"] }

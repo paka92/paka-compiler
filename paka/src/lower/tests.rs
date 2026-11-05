@@ -33,14 +33,8 @@ fn lowered(lines: &[&str]) -> Program {
         bodies.defs.iter().all(Option::is_none),
         "the program checks"
     );
-    lower(
-        vec![("main.paka".into(), 1)],
-        source.as_bytes(),
-        &program,
-        &resolved,
-        &table,
-        &bodies,
-    )
+    let source = Source::file("main.paka", source.as_bytes().to_vec());
+    lower(&source, &program, &resolved, &table, &bodies).0
 }
 
 /// A program of the function `f` and the definitions after it.
@@ -169,12 +163,17 @@ fn light_paka_lowers() {
         }],
         fns: vec![update],
         examples: vec![],
+        ui_examples: vec![],
+        foreign: vec![],
+        libraries: vec![],
         app: Some(App {
             name: "light".into(),
             state: None,
-            start: 0,
+            start: Some(0),
+            view: None,
             update: 0,
             grants: BTreeSet::from([Grant::Console]),
+            foreign: BTreeSet::new(),
         }),
         sites: vec![site(3, 4)],
     };
@@ -997,9 +996,11 @@ fn an_app_with_state_an_inout_handler_and_an_example() {
     let app = App {
         name: "tally".into(),
         state: Some(ex(2, ExprKind::Record(0, fields))),
-        start: 0,
+        start: Some(0),
+        view: None,
         update: 0,
         grants: BTreeSet::from([Grant::Console, Grant::ReadFiles]),
+        foreign: BTreeSet::new(),
     };
     let by_hand = Program {
         files: vec![("main.paka".into(), 1)],
@@ -1034,6 +1035,9 @@ fn an_app_with_state_an_inout_handler_and_an_example() {
         }],
         fns: vec![update],
         examples: vec![one],
+        ui_examples: vec![],
+        foreign: vec![],
+        libraries: vec![],
         app: Some(app),
         sites: vec![
             site(4, 4),

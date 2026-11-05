@@ -1,0 +1,17 @@
+enum Msg { Start }
+
+type Pair { first: String, second: String = "kept" }
+
+fn first_of(s: String) -> String {
+  (Pair { first: s }).first
+}
+
+fn update(msg: Msg) -> List<Effect<Msg>> {
+  [Print(first_of("taken")), Exit]
+}
+
+app ownership {
+  start: Start
+  update: update
+  grants: [Console]
+}

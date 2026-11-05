@@ -56,7 +56,7 @@ impl Cx<'_, '_> {
         Ok(match (used, joined) {
             (_, Joined { leaves: true, .. }) => Out::Never,
             (Use::Value(_), Joined { ty, .. }) => Out::Val(ty.unwrap_or_else(|| self.unknown())),
-            (Use::Dropped, _) => Out::Unit,
+            (Use::Dropped | Use::Elements, _) => Out::Unit,
         })
     }
 
@@ -165,6 +165,12 @@ impl Cx<'_, '_> {
                 }),
                 Use::Value(want),
             ) => return self.tail(e, want),
+            (
+                ArmBody::Line(Stmt {
+                    kind: S::Expr(e), ..
+                }),
+                Use::Elements,
+            ) => return self.element(e).map(|()| Out::Unit),
             (ArmBody::Line(s), _) => s,
         };
         let out = self.stmt(line)?;

@@ -1,0 +1,33 @@
+type Counter { count: Int = 0 }
+
+enum Msg { Inc, Dec, Reset }
+
+fn update(s: inout Counter, m: Msg) {
+  match m {
+    Inc => s.count += 1
+    Dec => s.count = max(0, s.count - 1)
+    Reset => s.count = 0
+  }
+}
+
+view step(m: Msg, label: String) -> View<Msg> {
+  Button(label, on: m)
+}
+
+view counter_view(s: Counter) -> View<Msg> {
+  Col(gap: 8) {
+    Text("{s.count}")
+    Row(gap: 8) {
+      step("-", Dec)
+      step("+", Inc)
+    }
+    step("reset", Reset)
+  }
+}
+
+app counter {
+  state: Counter
+  update: update
+  view: step
+  grants: []
+}

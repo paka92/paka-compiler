@@ -1,4 +1,4 @@
-use crate::json::Json;
+use paka_json::Value;
 use std::fmt;
 
 /// Per error kind: its code, whether it carries expected and found types, whether it carries a fix.
@@ -6,6 +6,7 @@ use std::fmt;
 const KINDS: &[(&str, bool, bool)] = &[
     ("file-unreadable", false, false),
     ("clang-missing", false, false),
+    ("clang-version", false, false),
     ("clang-failed", false, false),
     ("runtime-missing", false, false),
     ("invalid-byte", false, false),
@@ -15,9 +16,9 @@ const KINDS: &[(&str, bool, bool)] = &[
     ("unexpected-token", false, false),
     ("unexpected-inout-mark", false, false),
     ("nesting-too-deep", false, false),
-    ("unsupported-view", false, false),
     ("unsupported-form", false, false),
     ("duplicate-name", false, false),
+    ("bad-foreign", false, false),
     ("duplicate-local", false, false),
     ("no-app", false, false),
     ("multiple-apps", false, false),
@@ -59,6 +60,19 @@ const KINDS: &[(&str, bool, bool)] = &[
     ("missing-arm", false, false),
     ("duplicate-arm", false, false),
     ("wildcard-on-enum", false, false),
+    ("bad-view-signature", false, false),
+    ("element-outside-view", false, false),
+    ("wrong-child-block", false, false),
+    ("missing-key", false, false),
+    ("key-on-root", false, false),
+    ("duplicate-key", false, false),
+    ("ui-outside-example", false, false),
+    ("bad-ui-start", false, false),
+    ("bad-ui-path", false, false),
+    ("bad-migrate-signature", false, false),
+    ("migrate-needs-reset", false, false),
+    ("effect-in-migrate", false, false),
+    ("old-value-use", false, false),
 ];
 
 fn declared(code: &str) -> &'static (&'static str, bool, bool) {
@@ -171,23 +185,28 @@ impl Diagnostic {
 
     /// One JSON object and a line feed; every key is always present.
     pub fn json(&self, source: &[u8]) -> String {
+        format!("{}\n", self.value(source, Some(&self.path)))
+    }
+
+    /// The JSON object, naming `file`.
+    pub fn value(&self, source: &[u8], file: Option<&str>) -> Value {
         let span = self.span(source);
         let (line, column) = self.position.unzip();
         let (expected, found) = self.more.types.clone().unzip();
         let fix = (self.more.fix.as_ref())
             .zip(span)
             .map(|(replacement, (start, end))| {
-                Json::Object(vec![
+                Value::object([
                     ("start", start.into()),
                     ("end", end.into()),
                     ("replacement", replacement.as_str().into()),
                 ])
             });
-        let fields = vec![
+        let fields = [
             ("kind", self.code.into()),
             ("definition", self.more.definition.clone().into()),
             ("message", self.message.as_str().into()),
-            ("file", self.path.as_str().into()),
+            ("file", file.into()),
             ("start", span.map(|s| s.0).into()),
             ("end", span.map(|s| s.1).into()),
             ("line", line.into()),
@@ -197,7 +216,7 @@ impl Diagnostic {
             ("found", found.into()),
             ("fix", fix.into()),
         ];
-        format!("{}\n", Json::Object(fields))
+        Value::object(fields)
     }
 }
 
