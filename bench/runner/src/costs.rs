@@ -241,6 +241,15 @@ mod tests {
     }
 
     #[test]
+    fn a_noisy_copy_figure_reruns_the_attempt() {
+        let steady = [2.34, 2.35, 2.33];
+        let copy = [0.0221, 0.0220, 0.0246];
+        assert!(!rerun(&steady, &steady, &steady));
+        assert!(rerun(&steady, &steady, &copy));
+        assert!(!rerun(&steady, &steady, &[0.0; 3]));
+    }
+
+    #[test]
     fn every_costed_program_is_listed_with_its_kind() {
         let programs = Path::new(concat!(env!("CARGO_MANIFEST_DIR"), "/../programs"));
         let list = read_list(programs).unwrap();
