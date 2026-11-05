@@ -30,7 +30,7 @@ app counter {
   state:  Counter
   update: update
   view:   counter_view
-  grants: []
+  grants: [Console]
 }
 
 example inc_once {

@@ -1,5 +1,5 @@
 serial 1
-grants tests/cases/examples/sample_counter counter []
+grants tests/cases/examples/sample_counter counter [Console]
 file .github/workflows/ci.yml 33
   name: ci
 
