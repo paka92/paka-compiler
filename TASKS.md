@@ -2282,12 +2282,15 @@ or merged during review. Ids with a letter were added during review.
 
 ### M6-32 · L2 · Run the agreed set and publish numbers beside the paper's expectations
 
+- status: done
 - needs: M6-24, M6-26, M6-28, M6-29, M6-30, M6-31
 - flags: owner, native-only
 - done when: Raw results are committed; a generated table shows each figure beside its section 3.2 expectation and each section 8 cost; owner approves.
 - why this level: Runs a given command and fills a given table; the owner checks the wording.
 - note: Per M6-02: compiler and LLVM version per header, the LLVM note, raw ratio, expectation and the fixed word; 'not built' rows for reference counting and handle checks, and the copy cost of owned trees in their place.
 - note: Run, waiting for the owner: from tools built at bb87c60f, `paka-bench run bench/programs` (normal tools), then `paka-bench costs bench/programs RESULTS NORMAL-TOOLS` and `paka-bench ui bench/ui RESULTS NORMAL-TOOLS` (measure tools), each started at a one-minute load of at most 1. Raw results are docs/results/M6-32/run, costs and ui; the table is docs/results/M6-32.md, made by `paka-bench table docs/results/M6-32 bench/programs`. bench/programs/loops holds M6-19's yes or no per kernel, and a test in paka/src/llvm.rs holds each answer. Worse than expected: nbody against Rust (1.61), sieve_wrap against both (7.69, 7.62) and every pointer-heavy row (bfs 1.74 and 1.61, word_count 9.18 and 5.92, binary_trees 11.05 and 11.96, expr_parse 39.38 and 38.07); the rest of the float and wrapping rows are parity. Noisy: binary_trees and bfs. expr_parse spends 34% of its run in the owned-tree copy routine. Not tuned here.
+- note: The run left bfs's copy figure (0.022 s, 11.8% spread) without its rerun: `paka-bench costs` reran a copies attempt only on the normal or measure build's spread. After that rule was fixed, bfs's copies alone were rerun from tools built at c9e5d437, which the costs file records beside the new lines: copy 0.023 s, spread 3.0%, 1.0% of the run; its normal and measure figures in the same attempt are 2.318 s and 2.387 s. Nothing else was rerun.
+- note: Approved by the owner on 2026-11-05, with the slower rows published as measured and the M6-19 column's method accepted.
 
 ## M7 — Evidence and gates
 
