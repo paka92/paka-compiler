@@ -2166,6 +2166,7 @@ or merged during review. Ids with a letter were added during review.
 - why this level: Turns a checker rule into undefined behaviour if wrong; a trust decision only the owner can take.
 - note: Process: one evidence report and one reviewer told to break it, then the owner; not three proposals. If the owner declines, M6-24 is dropped.
 - note: Done: approved by the owner on 2026-11-02 with the review's five changes; see docs/decisions/M6-23.md. `noalias` on the inout and read-only pointer parameters of user functions, signed by the hash of the overlap rules and the two emitter files that decide what reaches them; stencil 5.0 s to 1.15 s with it added by hand.
+- note: M6-25c changed paka/src/llvm/code/items.rs. Per section 1.4 the run was repeated with the same counts (docs/results/M6-22.md, third row) and the constant updated; the change does not alter what M2-05 accepts, so no new approval is needed. The owner was told on 2026-11-05.
 
 ### M6-24 · L4 · Emit the no-overlap promise on inout parameters as signed
 
