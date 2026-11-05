@@ -1395,7 +1395,7 @@ impl Body<'_, '_> {
             "bit_and(a: Int, b: Int) -> Int" => self.op(format!("and i64 {}, {}", x[0], x[1])),
             "bit_or(a: Int, b: Int) -> Int" => self.op(format!("or i64 {}, {}", x[0], x[1])),
             "bit_xor(a: Int, b: Int) -> Int" => self.op(format!("xor i64 {}, {}", x[0], x[1])),
-            "bit_not(a: Int) -> Int" => self.op(format!("xor i64 {}, -1", x[0])),
+            "bit_not(a: Int) -> Int" => self.op(format!("xor i64 {}, -2", x[0])),
             "shift_left(a: Int, count: Int) -> Int" => self.shift("shl", x[0], x[1], site),
             "shift_right(a: Int, count: Int) -> Int" => self.shift("ashr", x[0], x[1], site),
             "min(a: Float, b: Float) -> Float" => self.extreme(true, x[0], x[1]),
