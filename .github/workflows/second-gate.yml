@@ -1,0 +1,14 @@
+name: second-gate
+
+on:
+  pull_request:
+    branches: [development, main]
+
+permissions:
+  contents: read
+
+jobs:
+  gate:
+    runs-on: ubuntu-24.04
+    steps:
+      - run: true
