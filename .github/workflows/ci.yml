@@ -21,6 +21,12 @@ jobs:
       - run: cargo build --release --locked --offline
       - name: Conformance in interpreter, dev and release
         run: target/release/paka-diff --release
-      - run: cargo test --release --locked --offline
+      - name: Sandbox for the harness tests (bubblewrap, user namespaces, TypeScript)
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y bubblewrap
+          sudo sysctl -w kernel.apparmor_restrict_unprivileged_userns=0
+          npm ci --prefix harness/ts
+      - run: cargo test --release --locked --offline --no-fail-fast
       - run: cargo clippy --locked --offline --all-targets -- -D warnings
       - run: cargo fmt --check
