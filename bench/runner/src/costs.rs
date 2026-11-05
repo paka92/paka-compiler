@@ -143,11 +143,17 @@ fn copies(
                 raw.join(" ")
             );
         }
-        if spread(&plain) <= NOISY && spread(&whole) <= NOISY {
+        if !rerun(&plain, &whole, &copy) {
             return Ok(text);
         }
     }
     Ok(text + &format!("{name} copies noisy\n"))
+}
+
+/// Whether any of an attempt's three figures spreads above the limit; a copy routine that never
+/// ran has no spread.
+fn rerun(plain: &[f64], whole: &[f64], copy: &[f64]) -> bool {
+    [plain, whole, copy].iter().any(|t| spread(t) > NOISY)
 }
 
 /// One run of `bin` that must print `checksum`, and a banner only when `measure`: its seconds and
