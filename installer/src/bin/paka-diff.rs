@@ -2,8 +2,8 @@
 //! interpreter and in dev mode, and lists each as agree, differ or unsupported, with whether the
 //! dev run's ledger ended clean (M4-40); one that did not differs. A busy machine can stall a
 //! compiled run past its limit: one stopped after a prefix of the interpreter's output runs again,
-//! restaged, with ten times the limit, and is slow when it needed more than the limit (M6-25c). The
-//! status is 1 when a case differs or is slow.
+//! restaged, with ten times the limit, and is slow when it ended as the interpreter did but needed
+//! more than the limit (M6-25c). The status is 1 when a case differs or is slow.
 //!
 //! `paka-diff --release [ROOT]` adds release mode (M6-06): each case is also built with the `paka`
 //! next to this binary and run, and must agree with the interpreter. A case with a hole must be
