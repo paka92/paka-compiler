@@ -98,6 +98,7 @@ fn hosts(core: &Program, output: &OsStr) {
 
 fn link(path: &str, ir: &Path, runtime: &Path, output: &OsStr) -> Result<(), Diagnostic> {
     let status = Command::new("clang")
+        .arg(clang::TARGET)
         .args(OPTIMIZE)
         .arg(GC_SECTIONS)
         .args([ir, runtime])

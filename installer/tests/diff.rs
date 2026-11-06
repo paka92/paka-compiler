@@ -124,6 +124,9 @@ fn a_stalled_run_runs_again_and_one_that_needed_more_than_its_limit_is_slow() {
     // A stall, then a run that needed more than the limit: slow, a failure.
     let slow = judged(stalled("a\n"), ended("a\nb\n"), ms(4000));
     assert!(slow.unwrap_err().contains("then took 4000 ms"));
+    // A stall, then a run that needed more than the limit and ended otherwise: it differs.
+    let other = judged(stalled("a\n"), ended("a\nc\n"), ms(4000));
+    assert_eq!(other, Ok((b"a\nc\n".to_vec(), Some(0))));
     // A stall after output the reference lacks: the first run stands, and differs.
     let wrong = judged(stalled("x\n"), ended("a\nb\n"), ms(300));
     assert_eq!(wrong, Ok((b"x\n".to_vec(), Some(4))));

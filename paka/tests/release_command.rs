@@ -178,7 +178,7 @@ impl Tree {
         let wrapper = wrapper.replace("REAL", &real.display().to_string());
         fs::write(self.path("wrapper"), wrapper).unwrap();
         let script = format!(
-            "#!/bin/sh\n[ \"$1\" = -O3 ] || exec '{clang}' \"$@\"\n\
+            "#!/bin/sh\n[ \"$2\" = -O3 ] || exec '{clang}' \"$@\"\n\
              for a in \"$@\"; do [ \"$prev\" = -o ] && out=$a; prev=$a; done\n\
              '{clang}' \"$@\" || exit\nmv \"$out\" '{real}'\n\
              cp '{wrapper}' \"$out\"\nchmod +x \"$out\"\n",
@@ -499,7 +499,7 @@ fn a_host_changed_after_it_was_hashed_is_refused() {
 fn a_file_the_build_left_unlisted_is_refused() {
     let tree = Tree::new("release_extra");
     let script = format!(
-        "#!/bin/sh\n[ \"$1\" = -O3 ] || exec '{clang}' \"$@\"\n\
+        "#!/bin/sh\n[ \"$2\" = -O3 ] || exec '{clang}' \"$@\"\n\
          for a in \"$@\"; do [ \"$prev\" = -o ] && out=$a; prev=$a; done\n\
          '{clang}' \"$@\" || exit\necho 'not listed' > \"$(dirname \"$out\")/extra\"\n",
         clang = clang().display(),
@@ -516,7 +516,7 @@ fn a_file_the_build_left_unlisted_is_refused() {
 fn a_link_that_fails_is_refused() {
     let tree = Tree::new("release_link");
     let script = format!(
-        "#!/bin/sh\n[ \"$1\" = -O3 ] && exit 1\nexec '{}' \"$@\"\n",
+        "#!/bin/sh\n[ \"$2\" = -O3 ] && exit 1\nexec '{}' \"$@\"\n",
         clang().display()
     );
     tree.fake_clang(&script);
@@ -536,7 +536,7 @@ fn a_missing_approvals_pub_is_refused() {
 fn an_output_made_during_the_run_is_kept() {
     let tree = Tree::new("release_raced");
     let script = format!(
-        "#!/bin/sh\n'{}' \"$@\" || exit\n[ \"$1\" = -O3 ] && mkdir dist\nexit 0\n",
+        "#!/bin/sh\n'{}' \"$@\" || exit\n[ \"$2\" = -O3 ] && mkdir dist\nexit 0\n",
         clang().display()
     );
     tree.fake_clang(&script);

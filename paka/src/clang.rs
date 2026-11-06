@@ -8,6 +8,10 @@ use std::process::{Command, Stdio};
 /// The pinned version; tests read the same file.
 pub const VERSION: &str = include_str!("../clang-version");
 
+/// The triple the emitted IR names. A clang built with another default triple warns and
+/// overrides it, so every compile of emitted IR names it too.
+pub const TARGET: &str = "--target=x86_64-pc-linux-gnu";
+
 /// The system libraries every release build links; each is a `TRUSTED` row (M7-16).
 pub const SYSTEM_LIBS: [&str; 7] = [
     "-lgcc_s",

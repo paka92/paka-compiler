@@ -55,7 +55,17 @@ fn captured(paka: &Path, bin: &Path, dir: &Path, source: &str, args: &[&str]) ->
 /// `ir` at `clang -O3`, every function kept external so none is folded into `update`.
 fn optimized(ir: &str) -> String {
     let mut clang = Command::new("clang")
-        .args(["-O3", "-S", "-emit-llvm", "-x", "ir", "-", "-o", "-"])
+        .args([
+            paka::clang::TARGET,
+            "-O3",
+            "-S",
+            "-emit-llvm",
+            "-x",
+            "ir",
+            "-",
+            "-o",
+            "-",
+        ])
         .stdin(Stdio::piped())
         .stdout(Stdio::piped())
         .spawn()

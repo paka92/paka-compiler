@@ -102,7 +102,7 @@ fn release(name: &str, text: &str, plant: fn(String) -> String) -> (Option<i32>,
     let (ll, exe) = (dir.join("main.ll"), dir.join("main"));
     fs::write(&ll, ir).unwrap();
     let linked = Command::new("clang")
-        .arg("-O3")
+        .args([paka::clang::TARGET, "-O3"])
         .args([&ll, &runtime()])
         .args(paka::clang::SYSTEM_LIBS)
         .arg("-o")
