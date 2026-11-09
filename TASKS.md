@@ -2223,10 +2223,12 @@ or merged during review. Ids with a letter were added during review.
 ### M6-26 · L1 · Delete the release skip file and require three-mode conformance in CI
 
 - needs: M6-25b
+- status: done
 - flags: native-only, owner
 - done when: The skip file, already empty, is gone; a planted pull request with one differing conformance case shows the three-mode job red; the owner sees it and marks the job as required.
 - why this level: Deletes a file and adds given commands to CI; no decisions.
 - note: Built: tests/conformance/release-skip is gone, and with it the feature tags in installer/src/release.rs that only it read; `paka-diff --release` runs every case in release, and scripts/m6-25-fuzz no longer checks the file. The `ci` job of .github/workflows/ci.yml runs `target/release/paka-diff --release` after its release build, comparing every conformance case in interpreter, dev and release; it fails on any difference. Locally: 471 agree, 0 differ; the two `unfinished` cases stay interpreter and dev only. Owner steps left: (1) approve the changed ci.yml with `paka approve` once the gate's store exists (M7-10), since workflow files are owned; (2) open a pull request with one case planted to differ in release and see `ci` go red; (3) mark `ci` as a required check on `development`, as for `gate` in M7-10. Mark done after (3).
+- note: Done. Pull request #17 planted `bit_not` as `xor i64 x, -2` in the release back end; `ci` went red at the three-mode step (`differ builtins/bit_rows` in release). Approved ci.yml is in the store (502130d6), and `ci` is a required check on `development` and `main`.
 
 ### M6-27 · L2 · Build the benchmark runner: pinned compilers, fixed flags, repeated runs, checksum agreement
 
@@ -2405,12 +2407,14 @@ or merged during review. Ids with a letter were added during review.
 ### M7-10 · L4 · Add the gate to CI as a required check on pull requests
 
 - needs: M7-07
+- status: done
 - flags: owner
 - done when: A test pull request changing a grant list without approval shows a failed check; the owner sees it go red and marks the check as required. A second test pull request that changes a grant list and its stored approval together also shows a failed check. A third adds a second workflow with a passing job named `gate` beside an unapproved grant change and is still blocked.
 - why this level: A mistake in this job is silent: a gate that runs the pull request's own workflow or code passes anything (M7-01).
 - note: Per M7-01: regraded from level 1 to level 4. `pull_request_target`, two checkouts, paka built from the target branch, read-only token, time limit, no pull-request code run.
 - note: Workflow written: .github/workflows/gate.yml, job `gate`. Runs on `pull_request_target` for `development` and `main` with `contents: read`; checks out the target branch and `refs/pull/<n>/merge` without keeping the token, builds paka from the target branch only, runs `paka gate merged --base base`, 30-minute limit. Until `approvals.pub` and a signed store recording both workflow files are on the target branch the gate refuses every pull request (`approvals.pub: missing on the base`); the check is not yet required, so this blocks nothing (M7-01 section 2: the first key goes in before the check is required). The workflow first runs on pull requests opened after it is on the target branch.
 - note: Owner steps left: (1) commit `approvals.pub` and a store signed with `paka approve` that records `.github/workflows/ci.yml` and `gate.yml`, and see `gate` go green on a pull request; (2) open the three test pull requests of the done-when and see each go red; (3) in Settings, Rules (or Branches), for `development`: require status checks to pass, add the check `gate` (source GitHub Actions), include administrators, allow no bypass; leave 'require branches to be up to date' off; on `main` after the M7 merge. Mark done after (3).
+- note: Done. The three test pull requests each failed `gate`: #18 changed a grant list without approval (`approved [], found [Console]`); #19 changed it with a forged approval (`approvals: the signature does not verify`); #20 added a second workflow whose `gate` job passed, and the real `gate` still failed and blocked it (it also names the new workflow as never approved). `ci` and `gate` are required checks on both branches. The owner chose: on `main` no bypass; on `development` the repository admin may bypass, so local merges can be pushed there.
 
 ### M7-11 · L2 · Run human-owned examples against the release binary itself
 
