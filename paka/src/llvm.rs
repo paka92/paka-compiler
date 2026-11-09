@@ -275,7 +275,15 @@ mod tests {
 
     fn clang_accepts(ir: &str) -> Result<(), String> {
         let mut clang = Command::new("clang")
-            .args(["-c", "-x", "ir", "-", "-o", "/dev/null"])
+            .args([
+                paka::clang::TARGET,
+                "-c",
+                "-x",
+                "ir",
+                "-",
+                "-o",
+                "/dev/null",
+            ])
             .stdin(Stdio::piped())
             .stdout(Stdio::piped())
             .stderr(Stdio::piped())
@@ -588,7 +596,17 @@ app a {
     /// `ir` at the optimization `paka build` uses.
     fn optimized(ir: &str) -> String {
         let mut clang = Command::new("clang")
-            .args(["-O3", "-S", "-emit-llvm", "-x", "ir", "-", "-o", "-"])
+            .args([
+                paka::clang::TARGET,
+                "-O3",
+                "-S",
+                "-emit-llvm",
+                "-x",
+                "ir",
+                "-",
+                "-o",
+                "-",
+            ])
             .stdin(Stdio::piped())
             .stdout(Stdio::piped())
             .spawn()

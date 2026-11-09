@@ -2166,6 +2166,7 @@ or merged during review. Ids with a letter were added during review.
 - why this level: Turns a checker rule into undefined behaviour if wrong; a trust decision only the owner can take.
 - note: Process: one evidence report and one reviewer told to break it, then the owner; not three proposals. If the owner declines, M6-24 is dropped.
 - note: Done: approved by the owner on 2026-11-02 with the review's five changes; see docs/decisions/M6-23.md. `noalias` on the inout and read-only pointer parameters of user functions, signed by the hash of the overlap rules and the two emitter files that decide what reaches them; stencil 5.0 s to 1.15 s with it added by hand.
+- note: M6-25c changed paka/src/llvm/code/items.rs. Per section 1.4 the run was repeated with the same counts (docs/results/M6-22.md, third row) and the constant updated; the change does not alter what M2-05 accepts, so no new approval is needed. The owner was told on 2026-11-05.
 
 ### M6-24 · L4 · Emit the no-overlap promise on inout parameters as signed
 
@@ -2281,12 +2282,15 @@ or merged during review. Ids with a letter were added during review.
 
 ### M6-32 · L2 · Run the agreed set and publish numbers beside the paper's expectations
 
+- status: done
 - needs: M6-24, M6-26, M6-28, M6-29, M6-30, M6-31
 - flags: owner, native-only
 - done when: Raw results are committed; a generated table shows each figure beside its section 3.2 expectation and each section 8 cost; owner approves.
 - why this level: Runs a given command and fills a given table; the owner checks the wording.
 - note: Per M6-02: compiler and LLVM version per header, the LLVM note, raw ratio, expectation and the fixed word; 'not built' rows for reference counting and handle checks, and the copy cost of owned trees in their place.
-- note: Run, waiting for the owner: from tools built at bb87c60f, `paka-bench run bench/programs` (normal tools), then `paka-bench costs bench/programs RESULTS NORMAL-TOOLS` and `paka-bench ui bench/ui RESULTS NORMAL-TOOLS` (measure tools), each started at a one-minute load of at most 1. Raw results are docs/results/M6-32/run, costs and ui; the table is docs/results/M6-32.md, made by `paka-bench table docs/results/M6-32 bench/programs`. bench/programs/loops holds M6-19's yes or no per kernel, and a test in paka/src/llvm.rs holds each answer. Worse than expected: nbody against Rust (1.61), sieve_wrap against both (7.69, 7.62) and every pointer-heavy row (bfs 1.74 and 1.61, word_count 9.18 and 5.92, binary_trees 11.05 and 11.96, expr_parse 39.38 and 38.07); the rest of the float and wrapping rows are parity. Noisy: binary_trees and bfs. expr_parse spends 34% of its run in the owned-tree copy routine. Not tuned here.
+- note: Run from tools built at bb87c60f, `paka-bench run bench/programs` (normal tools), then `paka-bench costs bench/programs RESULTS NORMAL-TOOLS` and `paka-bench ui bench/ui RESULTS NORMAL-TOOLS` (measure tools), each started at a one-minute load of at most 1. Raw results are docs/results/M6-32/run, costs and ui; the table is docs/results/M6-32.md, made by `paka-bench table docs/results/M6-32 bench/programs`. bench/programs/loops holds M6-19's yes or no per kernel, and a test in paka/src/llvm.rs holds each answer. Worse than expected: nbody against Rust (1.61), sieve_wrap against both (7.69, 7.62) and every pointer-heavy row (bfs 1.74 and 1.61, word_count 9.18 and 5.92, binary_trees 11.05 and 11.96, expr_parse 39.38 and 38.07); the rest of the float and wrapping rows are parity. Noisy: binary_trees and bfs. expr_parse spends 34% of its run in the owned-tree copy routine. Not tuned here.
+- note: The run left bfs's copy figure (0.022 s, 11.8% spread) without its rerun: `paka-bench costs` reran a copies attempt only on the normal or measure build's spread. After that rule was fixed, bfs's copies alone were rerun from tools built at c9e5d437, which the costs file records beside the new lines: copy 0.023 s, spread 3.0%, 1.0% of the run; its normal and measure figures in the same attempt are 2.318 s and 2.387 s. Nothing else was rerun.
+- note: Approved by the owner on 2026-11-05, with the slower rows published as measured and the M6-19 column's method accepted.
 
 ## M7 — Evidence and gates
 
@@ -2492,6 +2496,7 @@ or merged during review. Ids with a letter were added during review.
 
 ### M7-16 · L2 · Name the trusted libraries and ship a generated third-party notices file
 
+- status: done
 - needs: M7-02, M7-12
 - flags: owner
 - done when: The trusted list is the root file `TRUSTED`, moved from `.cargo/approved-crates.txt` with system libraries added and approved as an owned file in the M7-01 store; a test fails when a vendored or linked library is missing from it; releases include a generated notices file; owner approves the list.
@@ -2500,3 +2505,4 @@ or merged during review. Ids with a letter were added during review.
 - note: Per M7-03: `paka release` writes the notices file into the artefact directory and lists its hash in `RELEASE`.
 - note: Built, not done: `TRUSTED` replaces `.cargo/approved-crates.txt` (`.cargo/stubbed-crates.txt` stays: those crates are never built). Each row: name, version, licence (the crate's `license` field), runs in (`programs` for what paka-rt links on Linux, else `toolchain`), purpose; then the seven system libraries `paka::clang::SYSTEM_LIBS` links, the three a window loads at run time, and the font. `paka::notices` parses it and makes `NOTICES`: the `programs` rows in file order, then each distinct licence text once, after the list of the rows it covers, in order of first use. A row's texts are the licence files of its `vendor/` directory (or beside the file) in byte order; a crate that ships none gets the standard text of each SPDX id in its licence, Apache-2.0 from `vendor/ahash/LICENSE-APACHE` and MIT from `vendor/ahash/LICENSE-MIT` with the copyright line made from its Cargo.toml `authors`, and its line says where the text came from (the five accesskit crates). Any other id with no text, or MIT with no authors, fails. `paka release` makes it from the `TRUSTED` and `vendor/` paka was built from, ships it and adds `notices    NOTICES  sha256:...` to `RELEASE`; the sample_counter artefact's `NOTICES` is 343109 bytes, 96 distinct texts. Tests: paka/tests/vendored.rs (a locked, vendored, linked or run-time-loaded library missing from `TRUSTED` fails; the loaded ones are found from the `"lib….so"` strings in the `src/` of the `programs` crates, less three their features leave out), paka/tests/notices.rs, paka/tests/release_command.rs.
 - note: Owner must still: review `TRUSTED` and approve it as an owned file. With `approvals.pub` at the repository root (the key beside `~/.config/paka/approval_key`), on a checkout of `development` with this task merged: `cargo build --release --locked --offline`, then `target/release/paka approve tests/cases/examples/sample_counter` (any program under the store; owned files come last) and answer yes on the `TRUSTED` screen; commit `approvals`. `paka gate` then passes on `TRUSTED`. Then mark M7-16 done.
+- note: Done. The owner approved `TRUSTED` as an owned file with `paka approve` on 2026-11-05 (commit 502130d6); `paka gate` passes on it.

@@ -143,11 +143,17 @@ fn copies(
                 raw.join(" ")
             );
         }
-        if spread(&plain) <= NOISY && spread(&whole) <= NOISY {
+        if !rerun(&plain, &whole, &copy) {
             return Ok(text);
         }
     }
     Ok(text + &format!("{name} copies noisy\n"))
+}
+
+/// Whether any of an attempt's three figures spreads above the limit; a copy routine that never
+/// ran has no spread.
+fn rerun(plain: &[f64], whole: &[f64], copy: &[f64]) -> bool {
+    [plain, whole, copy].iter().any(|t| spread(t) > NOISY)
 }
 
 /// One run of `bin` that must print `checksum`, and a banner only when `measure`: its seconds and
@@ -238,6 +244,15 @@ mod tests {
             None
         );
         assert_eq!(copy_nanos(BANNER), None);
+    }
+
+    #[test]
+    fn a_noisy_copy_figure_reruns_the_attempt() {
+        let steady = [2.34, 2.35, 2.33];
+        let copy = [0.0221, 0.0220, 0.0246];
+        assert!(!rerun(&steady, &steady, &steady));
+        assert!(rerun(&steady, &steady, &copy));
+        assert!(!rerun(&steady, &steady, &[0.0; 3]));
     }
 
     #[test]

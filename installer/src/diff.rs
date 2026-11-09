@@ -42,7 +42,8 @@ pub const AGAIN: u32 = 10;
 
 /// The compiled run to compare with `reference`, or why it is slow. `first`, stopped past `limit`
 /// after a prefix of the reference's output, runs again by `again`, which gets the longer limit
-/// and says how long the run took. That run stands unless it ended but needed more than `limit`.
+/// and says how long the run took. That run stands unless it ended as the reference did but
+/// needed more than `limit`.
 pub fn verdict<T>(
     reference: &Outcome,
     first: (Outcome, T),
@@ -53,7 +54,8 @@ pub fn verdict<T>(
         return Ok(Ok(first));
     }
     let (run, took) = again(limit * AGAIN)?;
-    if stopped(&run.0) || took <= limit {
+    let other = run.0.stdout != reference.stdout || run.0.status != reference.status;
+    if stopped(&run.0) || took <= limit || other {
         return Ok(Ok(run));
     }
     let ms = |d: Duration| d.as_millis();

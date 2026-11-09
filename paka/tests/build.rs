@@ -18,6 +18,7 @@ const NO_APP: &str = concat!(
 const LIGHT_IR: &str = concat!(env!("CARGO_MANIFEST_DIR"), "/../docs/abi/light.ll");
 const FAKE_CLANG_DIR: &str = concat!(env!("CARGO_MANIFEST_DIR"), "/tests/fake_clang");
 const CLANG_VERSION: &str = include_str!("../clang-version");
+const TARGET: &str = "--target=x86_64-pc-linux-gnu";
 const SYSTEM_LIBS: [&str; 7] = [
     "-lgcc_s",
     "-lutil",
@@ -157,7 +158,7 @@ fn clang_gets_the_documents_command() {
     let recorded = fs::read_to_string(log_file).unwrap();
     let args: Vec<_> = recorded.lines().collect();
     let output = output.to_str().unwrap();
-    let ir = args[2]
+    let ir = args[3]
         .strip_prefix(output)
         .and_then(|r| r.strip_prefix('.'));
     let pid = ir.and_then(|r| r.strip_suffix(".ll"));
@@ -166,10 +167,10 @@ fn clang_gets_the_documents_command() {
         "{args:?}"
     );
     let archive = fs::canonicalize(archive).unwrap();
-    assert_eq!(fs::canonicalize(args[3]).unwrap(), archive);
-    assert_eq!(args[..2], ["-O3", "-Wl,--gc-sections"]);
-    assert_eq!(args[4..11], SYSTEM_LIBS);
-    assert_eq!(args[11..], ["-o", output]);
+    assert_eq!(fs::canonicalize(args[4]).unwrap(), archive);
+    assert_eq!(args[..3], [TARGET, "-O3", "-Wl,--gc-sections"]);
+    assert_eq!(args[5..12], SYSTEM_LIBS);
+    assert_eq!(args[12..], ["-o", output]);
 }
 
 #[test]
@@ -208,7 +209,7 @@ fn abi_document_ir_links_and_runs() {
     let archive = common::runtime_archive();
     let dir = Scratch::new("abi-ir");
     let status = Command::new("clang")
-        .args(["-O3", LIGHT_IR])
+        .args([TARGET, "-O3", LIGHT_IR])
         .arg(archive)
         .args(SYSTEM_LIBS)
         .arg("-o")

@@ -190,7 +190,7 @@ mod self_test {
             ("line", DIAGNOSE.replace(":2:", ":3:")),
             ("column", DIAGNOSE.replace(":5:", ":6:")),
             ("code", DIAGNOSE.replace("[x]", "[y]")),
-            ("status", DIAGNOSE.replace("exit 1", "exit 2")),
+            ("reject-status", DIAGNOSE.replace("exit 1", "exit 2")),
         ] {
             assert!(run(name, &reject(), &script).is_err(), "{name}");
         }
