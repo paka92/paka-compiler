@@ -2419,11 +2419,13 @@ or merged during review. Ids with a letter were added during review.
 ### M7-11 · L2 · Run human-owned examples against the release binary itself
 
 - needs: M7-12, M7-06, M6-18a, M6-26
+- status: done
 - flags: native-only, owner
 - done when: The owner has approved, through M7-06, at least one function example for each sample (wc, counter, to-do) and one UI example for each visual sample (counter, to-do); the counter is the hole-free copy from M6-18a. `paka release` releases each sample, and its `RELEASE` shows every human-owned example, function and UI, passing against the binary whose hash it records; `paka-diff --ui`, with release added (M7-11c), reports no difference on every UI example whose program has no hole; a planted failure in one sample is reported and refused.
 - why this level: Runs commands built in M7-11b, M7-11c and M7-12 on three samples and plants one failure; a difference found is split off by cause.
 - note: Per M7-01: the owner first approves each sample's grant list, the empty ones too.
 - note: Per M7-03: re-graded from level 3; the lowering, the replay and the release command are M7-11b, M7-11c and M7-12. The store is keyed by path, so the hole-free counter gets its own approval records.
+- note: Done. The owner approved (approvals serial 4) each sample's grant list and every example of tests/cases/examples/sample_todo (1 function, 5 UI), sample_counter_built (the M6-18a counter: 2 function, 4 UI) and sample_wc (2 function). `paka release` released all three; each RELEASE lists every human-owned example passing against the binary it hashes (UI examples on 1 to 13 actions). `paka-diff --ui tests`: 35 agree, 0 differ. Planted failure: `count_words` returning one more refused the wc release before any build (both examples reported failing, no directory written); a fault planted only in release is reported by installer/tests/diff.rs.
 
 ### M7-11a · L2 · Reserve `--paka-examples` and `--paka-replay` in all three modes
 
