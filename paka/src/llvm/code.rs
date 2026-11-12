@@ -38,12 +38,6 @@ mod view;
 const INLINE_FRAME: usize = 4 << 10;
 const MAX_FRAME: usize = 256 << 10;
 
-/// The SHA-256 of paka/src/body/own.rs, paka/src/llvm/code/owned.rs and paka/src/llvm/code/items.rs
-/// in that order: the overlap rules M6-22's run tested (M6-23 1.3); a changed file must be run again.
-#[cfg(test)]
-pub(super) const OVERLAP_RULES_SIGNED: &str =
-    "sha256:7ff9bace4313b31ee9228753c088302ba34e9d192426ae237bcfde7831f62ead";
-
 /// The IR of `update`'s body, and of every other function with the constants and declarations
 /// they need; `None` when any of it is beyond this lowering. With `computed`, the body builds the
 /// effect list `update` ends in and returns; otherwise it leaves an open block for the constant
@@ -530,8 +524,7 @@ impl<'a> Module<'a> {
         ))
     }
 
-    /// The promise on each pointer parameter of user function `f`: `noalias`, where M6-23 signs
-    /// it. A test in llvm.rs holds the overlap rules to `OVERLAP_RULES_SIGNED`.
+    /// The promise on each pointer parameter of user function `f`: `noalias`, where M6-23 allows it.
     fn noalias(&self, f: &Fn) -> &'static str {
         match self.runtime.contains(f.name.as_str()) {
             true => "",

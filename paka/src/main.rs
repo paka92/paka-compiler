@@ -257,10 +257,8 @@ fn owner_key() -> Option<PathBuf> {
 /// `paka release`: the artefact in `out`, or the refusal and status 1 with nothing there
 /// (docs/decisions/M7-03.md).
 fn release_program(file: &OsStr, out: &OsStr, key: Option<&OsString>) -> ExitCode {
-    let Some(key) = key.map(PathBuf::from).or_else(owner_key) else {
-        return report(b"paka release: no HOME; name the key with --key\n", 2);
-    };
-    match artefact::release(file, out.as_ref(), &key) {
+    let key = key.map(PathBuf::from).or_else(owner_key);
+    match artefact::release(file, out.as_ref(), key.as_deref()) {
         Ok(()) => ExitCode::SUCCESS,
         Err(why) => report(why.as_bytes(), 1),
     }
