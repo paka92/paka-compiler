@@ -1,5 +1,0 @@
-  zip:   unzip unzip   lz
-   
-lz:
-mid: zip
-alpha: lz

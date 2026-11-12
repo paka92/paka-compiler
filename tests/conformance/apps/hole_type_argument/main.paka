@@ -1,3 +1,0 @@
-fn show(n: Int) -> String { "{n}" }
-
-fn f() -> String { show(??n) }

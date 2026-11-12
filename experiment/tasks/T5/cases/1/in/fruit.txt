@@ -1,5 +1,0 @@
-pear,3
-Apple,10
-fig,x
-apple,10.0
-Banana,3

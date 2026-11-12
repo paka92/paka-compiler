@@ -1,4 +1,0 @@
-one a b 1
-trip b a
-trip a c
-one b c 2

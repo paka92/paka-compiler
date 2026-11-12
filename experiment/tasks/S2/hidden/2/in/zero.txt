@@ -1,5 +1,0 @@
-open eve
-deposit eve 3.10
-hold eve x 9.99
-
-transfer eve eve 0.00

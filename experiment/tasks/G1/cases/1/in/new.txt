@@ -1,8 +1,0 @@
-apple
-blueberry
-cherry
-date
-elder
-fig
-guava
-grape

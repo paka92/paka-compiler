@@ -1,4 +1,0 @@
-parts p:100
-ann 90
-bob 70
-ann 90 80

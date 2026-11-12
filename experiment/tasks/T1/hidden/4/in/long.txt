@@ -1,3 +1,0 @@
-abcdefghijkl xy abcde
-
-zz 0123456789

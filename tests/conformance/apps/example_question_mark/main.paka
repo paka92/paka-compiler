@@ -1,6 +1,0 @@
-fn parse(text: String) -> Result<Int, String> { Ok(1) }
-
-example bad {
-  let n = parse("1")?
-  n == 1
-}

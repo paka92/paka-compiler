@@ -1,4 +1,0 @@
-fn f() -> Int {
-  let x: Int = ??v
-  x
-}

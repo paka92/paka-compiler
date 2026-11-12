@@ -1,2 +1,0 @@
-tin 3 0.50 0% 2.00%
-abcdefghijklmnopqrstu x1 1.00 0% 2.00%

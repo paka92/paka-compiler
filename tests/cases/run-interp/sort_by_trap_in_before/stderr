@@ -1,3 +1,0 @@
-callbacks: trap divide_by_zero at main.paka:3:37
-  2 / 0
-  in boom, called from update

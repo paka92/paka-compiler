@@ -1,3 +1,0 @@
-a: ghost
-down a
-down a b

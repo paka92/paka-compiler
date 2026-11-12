@@ -1,3 +1,0 @@
-main.paka:3:16: error[unexpected-token]: no inout in a function type
-  bytes: 35..40
-  text: "inout"

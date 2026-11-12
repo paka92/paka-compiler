@@ -1,2 +1,0 @@
-user=ann
-home dir=/home/$user

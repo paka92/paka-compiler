@@ -1,3 +1,0 @@
-rows: trap out_of_bounds at main.paka:4:11
-  index -1, length 3
-  in update

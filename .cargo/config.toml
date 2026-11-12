@@ -1,9 +1,0 @@
-# Outside crates come only from vendor/; each must be listed in TRUSTED at the root.
-[source.crates-io]
-replace-with = "vendored"
-
-[source.vendored]
-directory = "vendor"
-
-[net]
-offline = true

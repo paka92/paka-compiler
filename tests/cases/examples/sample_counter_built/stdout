@@ -1,6 +1,0 @@
-dec_at_zero_stays agent-written pass
-dec_stops_at_zero agent-written pass
-inc_once agent-written pass
-inc_then_dec agent-written pass
-reset_clears agent-written pass
-reset_to_zero agent-written pass

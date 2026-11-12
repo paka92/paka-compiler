@@ -1,5 +1,0 @@
-fn f() -> List<Int> {
-  var xs: List<Int> = []
-  append(&xs, ??item)
-  xs
-}

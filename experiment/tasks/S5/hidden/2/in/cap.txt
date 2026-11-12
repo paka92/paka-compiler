@@ -1,9 +1,0 @@
-add a
-set b
-set c
-set d
-undo
-undo
-undo
-undo
-print

@@ -1,8 +1,0 @@
-add one
-add two
-up
-set uno
-down
-undo
-print
-del

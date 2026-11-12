@@ -1,3 +1,0 @@
-apps: trap out_of_bounds at main.paka:3:36
-  index 5, length 3
-  in third, called from update

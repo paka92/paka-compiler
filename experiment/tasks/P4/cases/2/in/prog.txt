@@ -1,3 +1,0 @@
-start: set a 3
-       jz a stop
-       out a

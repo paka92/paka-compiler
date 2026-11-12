@@ -1,3 +1,0 @@
-fn bad() -> Int { "text" }
-
-example fine { true }

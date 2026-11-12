@@ -1,5 +1,0 @@
-handlers_in_an_effect_list agent-written pass
-in_a_list agent-written pass
-same_body_other_definition agent-written pass
-same_definition agent-written pass
-swapped_handlers agent-written pass

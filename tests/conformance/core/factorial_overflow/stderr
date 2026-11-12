@@ -1,3 +1,0 @@
-core: trap overflow at main.paka:3:56
-  21 * 2432902008176640000
-  in factorial, called from update

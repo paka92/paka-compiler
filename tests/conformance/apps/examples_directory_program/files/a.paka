@@ -1,5 +1,0 @@
-fn twice(n: Int) -> Int {
-  n * 2
-}
-
-example twice_of_zero { twice(0) == 1 }

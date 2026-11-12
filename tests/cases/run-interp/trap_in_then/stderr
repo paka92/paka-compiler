@@ -1,3 +1,0 @@
-reader: trap divide_by_zero at main.paka:4:14
-  1 / 0
-  in boom

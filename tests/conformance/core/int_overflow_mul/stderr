@@ -1,3 +1,0 @@
-core: trap overflow at main.paka:5:19
-  4294967296 * 4294967296
-  in update

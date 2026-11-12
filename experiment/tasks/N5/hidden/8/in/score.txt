@@ -1,3 +1,0 @@
-parts p:60 q:40
-cy 100L x
-dee 90l 101

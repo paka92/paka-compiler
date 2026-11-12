@@ -1,3 +1,0 @@
-entry x 3
-abc
-

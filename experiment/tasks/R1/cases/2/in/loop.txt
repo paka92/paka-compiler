@@ -1,4 +1,0 @@
-main: core net
-net: core tls
-tls: net
-core:

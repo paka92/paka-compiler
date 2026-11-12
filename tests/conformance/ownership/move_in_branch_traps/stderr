@@ -1,3 +1,0 @@
-traps: trap out_of_bounds at main.paka:8:9
-  index 5, length 1
-  in pick, called from update

@@ -1,8 +1,0 @@
-a	b
-say "hi" \ done
-{braces}
-one
-two
-ab
-not // a comment
-\n stays

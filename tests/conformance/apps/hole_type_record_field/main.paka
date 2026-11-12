@@ -1,3 +1,0 @@
-type Point { x: Int, y: Int }
-
-fn f() -> Point { Point { x: ??px, y: 2 } }

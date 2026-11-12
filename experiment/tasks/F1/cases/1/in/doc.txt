@@ -1,5 +1,0 @@
-# Guide
-
-#include intro.txt
-#include
-bye

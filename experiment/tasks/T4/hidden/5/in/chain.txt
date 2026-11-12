@@ -1,4 +1,0 @@
-top=<$mid>
-mid=${#low}
-low=${none:-$back}
-back=$mid

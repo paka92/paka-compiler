@@ -1,5 +1,0 @@
-# paths
-home=/home/$user
-user=ann
-log=${dir:-$home/log}/app-${#user}.txt
-user=bob$$

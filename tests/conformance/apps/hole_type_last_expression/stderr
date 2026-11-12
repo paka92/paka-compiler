@@ -1,4 +1,0 @@
-main.paka:1:20: note[hole]: ??s takes String
-  definition: f
-  bytes: 19..22
-  text: "??s"

@@ -1,7 +1,0 @@
-fn f() -> Int {
-  var total = 0
-  for i in ??lo..<3 {
-    total += i
-  }
-  total
-}

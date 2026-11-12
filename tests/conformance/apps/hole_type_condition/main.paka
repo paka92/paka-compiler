@@ -1,3 +1,0 @@
-fn f() -> Int {
-  if ??c { 1 } else { 2 }
-}

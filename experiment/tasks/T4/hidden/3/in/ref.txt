@@ -1,4 +1,0 @@
-a=$undefined
-
-b=${x:-${Bad}
-c=${

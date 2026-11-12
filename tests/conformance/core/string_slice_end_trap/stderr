@@ -1,3 +1,0 @@
-core: trap out_of_bounds at main.paka:5:12
-  slice 1..<9, length 3
-  in update

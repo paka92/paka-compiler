@@ -1,4 +1,0 @@
-double_two agent-written pass
-double_zero agent-written fail at main.paka:4:33
-  left: 0
-  right: 1

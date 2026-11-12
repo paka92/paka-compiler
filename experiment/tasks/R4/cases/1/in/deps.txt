@@ -1,5 +1,0 @@
-db:
-cache: db
-api: db cache / 1
-web: api cache
-down db

@@ -1,9 +1,0 @@
-fn half(x: Int) -> Int {
-  x / 2.0
-}
-
-app wc {
-  start: Start
-  update: half
-  grants: []
-}

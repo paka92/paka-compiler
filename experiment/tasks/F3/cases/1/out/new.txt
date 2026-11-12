@@ -1,5 +1,0 @@
-one
-THREE
-3.5
-four
-five

@@ -1,3 +1,0 @@
-builtins: trap divide_by_zero at main.paka:7:33
-  10 / 0
-  in update

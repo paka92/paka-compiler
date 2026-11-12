@@ -1,7 +1,0 @@
-[package]
-name = "paka-json"
-version = "0.0.0"
-edition = "2024"
-
-[lints.rust]
-unsafe_code = "forbid"
