@@ -1,0 +1,4 @@
+Served program: not_runnable/before/main.paka, which has never checked (M4-03 section 4.3).
+
+> {"v":1,"id":1,"call":"run","app":"wc","args":["words.txt"]}
+< {"v":1,"id":1,"ok":false,"error":{"kind":"not_runnable","message":"no version of this program has checked yet"}}

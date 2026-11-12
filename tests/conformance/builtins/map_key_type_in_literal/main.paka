@@ -1,0 +1,12 @@
+enum Msg { Start }
+
+fn update(msg: Msg) -> List<Effect<Msg>> {
+  let m = [1.5: 2]
+  [Print("x"), Exit]
+}
+
+app builtins {
+  start: Start
+  update: update
+  grants: [Console]
+}

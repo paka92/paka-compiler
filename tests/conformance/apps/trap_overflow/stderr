@@ -1,0 +1,3 @@
+apps: trap overflow at main.paka:3:28
+  9223372036854775807 + 1
+  in grow, called from update

@@ -1,0 +1,3 @@
+core: trap divide_by_zero at main.paka:19:26
+  7 / 0
+  in f9, called from f8, called from f7, called from f6, called from f5, called from f4, called from f3, called from f2, ...

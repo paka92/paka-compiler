@@ -1,0 +1,4 @@
+main.paka:4:7: warning[unused-name]: n is never used
+  definition: read
+  bytes: 57..58
+  text: "n"

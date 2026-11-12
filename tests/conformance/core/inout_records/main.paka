@@ -1,0 +1,71 @@
+enum Msg { Start }
+
+enum Light { Off, On(level: Int) }
+
+type Pair { a: Int, b: Float, on: Bool = false }
+
+fn bump(n: inout Int) { n += 1 }
+
+fn bump_twice(n: inout Int) {
+  bump(&n)
+  bump(&n)
+}
+
+fn halve(x: inout Float) { x /= 2.0 }
+
+fn flip(b: inout Bool) { b = !b }
+
+fn swap_pair(p: inout Pair) {
+  let t = p.a
+  p.a = to_int(p.b)
+  p.b = to_float(t)
+}
+
+fn reset(p: inout Pair) { p = Pair { a: 0, b: 0.0 } }
+
+fn brighten(l: inout Light) {
+  l = match l {
+    Off => On(1)
+    On(n) => On(n + 1)
+  }
+}
+
+fn level(l: Light) -> Int {
+  match l {
+    Off => 0
+    On(n) => n
+  }
+}
+
+fn sum(p: Pair, q: Pair) -> Int { p.a + q.a }
+
+fn update(msg: Msg) -> List<Effect<Msg>> {
+  var n = 1
+  bump(&n)
+  bump_twice(&n)
+  assert(n == 4)
+  var x = 3.0
+  halve(&x)
+  assert(x == 1.5)
+  var p = Pair { a: 2, b: 7.0 }
+  let before = p
+  swap_pair(&p)
+  bump(&p.a)
+  halve(&p.b)
+  flip(&p.on)
+  assert(p.a == 8 && p.b == 1.0 && p.on && before.a == 2 && !before.on)
+  assert(sum(p, before) == 10)
+  reset(&p)
+  assert(p.a == 0 && p.b == 0.0 && !p.on)
+  var l = Off
+  brighten(&l)
+  brighten(&l)
+  assert(level(l) == 2)
+  [Print("parameters agree"), Exit]
+}
+
+app core {
+  start: Start
+  update: update
+  grants: [Console]
+}

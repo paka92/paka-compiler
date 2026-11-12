@@ -1,0 +1,24 @@
+enum Msg { Start }
+
+fn update(m: Msg) -> List<Effect<Msg>> {
+  var t: Map<String, Int> = [:]
+  t["b"] = 2
+  t["a"] = 1
+  t["b"] = unwrap_or(get(t, "b"), 0) + 1
+  t["c"] = unwrap_or(get(t, "c"), 0) + 1
+  let absent = unwrap_or(get(t, "z"), 7)
+  remove(&t, "a")
+  remove(&t, "zz")
+  let b = t["b"]
+  let had = has(t, "a")
+  let kept = has(t, "c")
+  let ks = keys(t)
+  let vs = values(t)
+  [Print("{b} {absent} {had} {kept} {len(t)} {ks[0]}{ks[1]} {vs[0]} {vs[1]} {is_empty(t)}"), Exit]
+}
+
+app generics {
+  start: Start
+  update: update
+  grants: [Console]
+}

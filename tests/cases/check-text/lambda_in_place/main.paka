@@ -1,0 +1,17 @@
+type Player { score: Int }
+
+fn probe(ps: List<Player>) {
+  sort_by(&ps, |a, b| a.score > b.score)
+}
+
+enum Msg { Start }
+
+fn update(m: Msg) -> List<Effect<Msg>> {
+  [Exit]
+}
+
+app callbacks {
+  start: Start
+  update: update
+  grants: []
+}

@@ -1,0 +1,14 @@
+enum Msg { Start }
+
+type Counter { count: Int = 0, name: String }
+
+fn update(msg: Msg) -> List<Effect<Msg>> {
+  let c = Counter { name: "a", size: 3 }
+  [Print("done"), Exit]
+}
+
+app types {
+  start: Start
+  update: update
+  grants: [Console]
+}

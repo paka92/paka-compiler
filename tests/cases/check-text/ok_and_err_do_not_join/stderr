@@ -1,0 +1,4 @@
+main.paka:2:18: error[cannot-infer]: cannot infer the type of r; write it: let r: Result<Int, E> = ...
+  definition: f
+  bytes: 33..38
+  text: "Ok(1)"

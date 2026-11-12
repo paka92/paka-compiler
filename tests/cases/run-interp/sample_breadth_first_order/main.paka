@@ -1,0 +1,36 @@
+enum Msg { Start }
+
+fn bfs(adj: List<List<Int>>, index: Map<String, Int>, start: String) -> List<Int> {
+  var seen = list_of(false, count: len(adj))
+  var q = [index[start]]
+  seen[q[0]] = true
+  var i = 0
+  while i < len(q) {
+    for v in adj[q[i]] {
+      if !seen[v] {
+        seen[v] = true
+        append(&q, v)
+      }
+    }
+    i += 1
+  }
+  q
+}
+
+fn update(q: Msg) -> List<Effect<Msg>> {
+  let index = ["a": 0, "b": 1, "c": 2, "d": 3, "e": 4]
+  let adj = [[1, 2], [3], [3, 4], [], [0]]
+  let from_a = bfs(adj, index, "a")
+  let from_c = bfs(adj, index, "c")
+  [
+    Print("{len(from_a)} {from_a[0]}{from_a[1]}{from_a[2]}{from_a[3]}{from_a[4]}"),
+    Print("{len(from_c)} {from_c[0]}{from_c[1]}{from_c[2]}{from_c[3]}{from_c[4]}"),
+    Exit
+  ]
+}
+
+app generics {
+  start: Start
+  update: update
+  grants: [Console]
+}

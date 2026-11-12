@@ -1,0 +1,23 @@
+enum Msg { Start }
+
+fn a_is_even(a: Int, b: Int) -> Bool { a % 2 == 0 }
+
+fn si(xs: List<Int>) -> String {
+  var parts: List<String> = []
+  for x in xs { append(&parts, "{x}") }
+  "[" + join(parts, ",") + "]"
+}
+
+fn update(msg: Msg) -> List<Effect<Msg>> {
+  var a = [1, 2, 3, 4, 5]
+  sort_by(&a, a_is_even)
+  var b = [1, 2, 3, 4, 5, 6, 7]
+  sort_by(&b, a_is_even)
+  [Print(si(a)), Print(si(b)), Exit]
+}
+
+app builtins {
+  start: Start
+  update: update
+  grants: [Console]
+}

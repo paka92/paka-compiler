@@ -1,0 +1,6 @@
+main.paka:8:9: error[type-mismatch]: expected fn(Int) -> Mode, found Mode
+  definition: probe
+  bytes: 122..126
+  text: "Idle"
+  expected: fn(Int) -> Mode
+  found: Mode

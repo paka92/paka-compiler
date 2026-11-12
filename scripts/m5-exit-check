@@ -1,0 +1,337 @@
+#!/usr/bin/env python3
+"""The M5 exit check (TASKS.md, M5): runs each of its eight parts and prints pass or FAIL for each,
+then exits 1 when any fails. Run it in the desktop's Wayland session: the samples then open in
+windows through `paka serve`, as an editor would open them.
+
+--watch waits a second after each step of parts 1 to 3, for the owner to follow them on screen.
+--ime opens the to-do sample's window and waits for the owner to type one composed word through
+the input method into its Input, then prints the tree; it runs no other part.
+Logs go to target/tmp/m5-exit-check."""
+
+import json
+import os
+import shutil
+import subprocess
+import sys
+import time
+
+ROOT = os.path.abspath(os.path.join(os.path.dirname(__file__), ".."))
+PAKA = os.path.join(ROOT, "target/release/paka")
+TMP = os.path.join(ROOT, "target/tmp")
+LOG = os.path.join(TMP, "m5-exit-check")
+WORK = os.path.join(LOG, "work")
+CASES = os.path.join(ROOT, "tests/cases/examples")
+WATCH = "--watch" in sys.argv[1:]
+
+# Part 4's app: the view traps once the count reaches 2, and Boom changes the state and builds an
+# Exit before it traps.
+TRAPS = """type S { count: Int = 0 }
+
+enum Msg { Inc, Boom }
+
+fn update(s: inout S, m: Msg) -> List<Effect<Msg>> {
+  match m {
+    Inc => {
+      s.count += 1
+      []
+    }
+    Boom => boom(&s)
+  }
+}
+
+fn boom(s: inout S) -> List<Effect<Msg>> {
+  s.count += 10
+  let effects: List<Effect<Msg>> = [Exit]
+  if len(effects) / (s.count - s.count) == 0 { effects } else { [] }
+}
+
+view v(s: S) -> View<Msg> {
+  Col(gap: 8) {
+    Text("{100 / (2 - s.count)}")
+    Button("+", on: Inc)
+    Button("boom", on: Boom)
+  }
+}
+
+app traps {
+  state:  S
+  update: update
+  view:   v
+  grants: []
+}
+"""
+
+MIGRATE = "migrate(old: Counter) -> Counter {\n  Counter { count: old.count }\n}"
+
+
+class Failed(Exception):
+    pass
+
+
+def expect(ok, what):
+    if not ok:
+        raise Failed(what)
+
+
+class Serve:
+    """`paka serve` on a fresh copy of a program, named `name` in the logs."""
+
+    def __init__(self, name, text):
+        folder = os.path.join(WORK, name)
+        os.makedirs(folder)
+        path = os.path.join(folder, "main.paka")
+        with open(path, "w") as f:
+            f.write(text)
+        self.err = os.path.join(LOG, name + ".err")
+        self.process = subprocess.Popen(
+            [PAKA, "serve", path], stdin=subprocess.PIPE, stdout=subprocess.PIPE,
+            stderr=open(self.err, "w"), text=True,
+        )
+        self.id = 0
+
+    def send(self, call, **fields):
+        self.id += 1
+        line = json.dumps({"v": 1, "id": self.id, "call": call, **fields})
+        self.process.stdin.write(line + "\n")
+        self.process.stdin.flush()
+        return json.loads(self.process.stdout.readline())
+
+    def call(self, call, **fields):
+        reply = self.send(call, **fields)
+        expect(reply.get("ok"), f"{call} {fields}: {reply}")
+        return reply
+
+    def run(self, app):
+        """Runs `app`, in a window when there is a display; its first tree."""
+        run = self.call("run", app=app)["run"]
+        expect(run["window"] == windowed(), f"window {run['window']}, display {windowed()}")
+        return run["tree"]
+
+    def tree(self, call, **fields):
+        reply = self.call(call, **fields)
+        expect(reply.get("running", True), f"{call} {fields} ended the app: {reply}")
+        pause()
+        return reply["tree"]
+
+    def edit(self, name, text, **fields):
+        base = self.call("view", name=name)["version"]
+        reply = self.call("edit", name=name, base=base, text=text, **fields)
+        pause()
+        return reply
+
+    def logged(self):
+        return open(self.err).read()
+
+    def close(self):
+        self.process.stdin.close()
+        try:
+            self.process.wait(10)
+        except subprocess.TimeoutExpired:
+            self.process.kill()
+            self.process.wait()
+
+
+def windowed():
+    return bool(os.environ.get("WAYLAND_DISPLAY"))
+
+
+def pause():
+    if WATCH:
+        time.sleep(1)
+
+
+def sample(name):
+    return open(os.path.join(CASES, name, "main.paka")).read()
+
+
+def served(name, text, check):
+    """Runs `check` on a server of `text`, closed after."""
+    serve = Serve(name, text)
+    try:
+        check(serve)
+    finally:
+        serve.close()
+
+
+def count(tree):
+    line = next(l for l in tree.splitlines() if l.strip().startswith("Text #0"))
+    return line.split('"')[1]
+
+
+def part1():
+    for case, app in (("sample_counter", "counter"), ("sample_todo", "todo")):
+        def opened(s):
+            s.run(app)
+            expect(windowed(), "no Wayland display, so no window opened")
+            deadline = time.monotonic() + 10
+            while "first frame presented" not in s.logged() and time.monotonic() < deadline:
+                time.sleep(0.1)
+            expect("first frame presented" in s.logged(), f"{app}: no first frame logged")
+            pause()
+
+        served("1-" + app, sample(case), opened)
+
+
+def part2():
+    def counter(s):
+        s.run("counter")
+        expect(count(s.tree("look_click", path="#1/#1")) == "1", "a click on + shows 1")
+        msg = s.edit("Msg", "enum Msg { Inc, Dec, Reset }")
+        expect(not msg["installed"], f"update lacks Reset yet: {msg}")
+        update = s.call("view", name="update")["text"].replace(
+            "    Dec => s.count = max(0, s.count - 1)",
+            "    Dec => s.count = max(0, s.count - 1)\n    Reset => s.count = 0",
+        )
+        expect(s.edit("update", update)["installed"], "update with Reset installs")
+        view = s.call("view", name="counter_view")["text"]
+        reply = s.edit("counter_view", view.replace("??reset", 'Button("reset", on: Reset)'))
+        expect(reply["installed"] and reply.get("state") == "kept", f"the view swaps in: {reply}")
+        tree = s.tree("look_tree")
+        expect('Button #2 "reset" on=Reset' in tree, f"the hole is a button: {tree}")
+        expect(count(tree) == "1", f"the count stays 1: {tree}")
+
+    def todo(s):
+        s.run("todo")
+        s.tree("look_click", path="'new'")
+        s.tree("look_key", text="milk")
+        tree = s.tree("look_click", path="#1")
+        expect('Row 1 gap=8' in tree and 'Text #1 "milk"' in tree, f"a row for milk: {tree}")
+
+    served("2-counter", sample("sample_counter"), counter)
+    served("2-todo", sample("sample_todo"), todo)
+
+
+def part3():
+    def edits(s):
+        s.run("counter")
+        s.tree("look_click", path="#1/#1")
+        expect(count(s.tree("look_click", path="#1/#1")) == "2", "two clicks show 2")
+        old = s.call("view", name="Counter")["text"]
+        new = "type Counter { count: Int = 0, step: Int = 1 }"
+        base = s.call("view", name="Counter")["version"]
+        refused = s.send("edit", name="Counter", base=base, text=new)
+        pause()
+        kind = (refused.get("error") or {}).get("kind")
+        expect(kind == "state_changed", f"the bare edit is refused: {refused}")
+        expect(count(s.tree("look_click", path="#1/#1")) == "3", "the old version counts on")
+        reset = s.edit("Counter", new, state="reset")
+        expect(reset.get("state") == "reset", f"the reset installs: {reset}")
+        expect(count(s.tree("look_tree")) == "0", "the reset shows 0")
+        # The reset installed the change; the old type comes back, so the migrate edit is the same.
+        back = s.edit("Counter", old, state="reset")
+        expect(back.get("state") == "reset", f"the old type comes back: {back}")
+        s.tree("look_click", path="#1/#1")
+        expect(count(s.tree("look_click", path="#1/#1")) == "2", "two clicks show 2 again")
+        migrated = s.edit("Counter", new, state=MIGRATE)
+        expect(migrated.get("state") == "migrated", f"the migrate installs: {migrated}")
+        expect(count(s.tree("look_tree")) == "2", "the migrate keeps 2")
+
+    served("3-counter", sample("sample_counter"), edits)
+
+
+def part4():
+    def traps(s):
+        first = s.run("traps")
+        boom = s.call("look_click", path="#2")
+        expect(boom["trap"] and boom["running"], f"Boom traps and the app runs on: {boom}")
+        expect(boom["tree"] == first, "the handler's trap leaves the tree")
+        tree = s.call("look_click", path="#1")["tree"]
+        expect(count(tree) == "100", f"Boom's change was dropped, so + shows 100: {tree}")
+        shot = s.call("look_screenshot", scale=1)["png"]
+        view = s.call("look_click", path="#1")
+        expect(view["trap"] and view["running"], f"the view traps and the app runs on: {view}")
+        expect(view["tree"] == tree, f"the view's trap leaves the tree: {view['tree']}")
+        expect(s.call("look_screenshot", scale=1)["png"] == shot, "the screenshot is unchanged")
+
+    served("4-traps", TRAPS, traps)
+
+
+def part5():
+    case = os.path.join(CASES, "sample_todo")
+    env = {k: v for k, v in os.environ.items() if k not in ("WAYLAND_DISPLAY", "DISPLAY")}
+    out = subprocess.run(
+        [PAKA, "examples", "main.paka"], cwd=case, env=env, capture_output=True, text=True,
+    )
+    want = open(os.path.join(case, "stdout")).read()
+    status = int(open(os.path.join(case, "status")).read())
+    expect(out.stdout == want, f"stdout {out.stdout!r}, want {want!r}")
+    expect(out.returncode == status, f"status {out.returncode}, want {status}")
+
+
+def part6():
+    def look(s):
+        s.run("todo")
+        expect(windowed(), "no Wayland display, so no window opened")
+        expect("Input 'new'" in s.tree("look_tree"), "the tree text")
+        shot = s.call("look_screenshot", scale=2)
+        expect(shot["png"].startswith("iVBORw0KGgo"), "a PNG")
+        expect("focus" in s.tree("look_click", path="'new'"), "a click focuses the Input")
+        expect("\"a\" cursor=1" in s.tree("look_key", text="a"), "a keystroke types")
+
+    served("6-todo", sample("sample_todo"), look)
+
+
+def part7():
+    command(os.path.join(ROOT, "target/release/paka-diff"), "--ui")
+    with open(os.path.join(LOG, "7.diff")) as f:
+        last = f.read().splitlines()[-1]
+    expect(" 0 differ" in last, last)
+    command("cargo", "test", "-q", "-p", "paka", "--test", "reference")
+
+
+def part8():
+    check = os.path.join(ROOT, "scripts/m5-atspi-check")
+    command(check)
+    off = subprocess.run([check, "--switch-off"], capture_output=True, text=True)
+    expect(off.returncode == 1, f"with the switch off it must fail: {off.returncode}")
+
+
+def command(*argv):
+    """Runs `argv`, its output kept in the part's log, and fails on a non-zero status."""
+    name = os.path.basename(argv[-1]) if argv[0] == "cargo" else os.path.basename(argv[0])
+    path = os.path.join(LOG, "7.diff" if name == "paka-diff" else name + ".txt")
+    with open(path, "w") as out:
+        status = subprocess.call(argv, cwd=ROOT, stdout=out, stderr=subprocess.STDOUT)
+    expect(status == 0, f"{' '.join(argv)} exited {status} (see {path})")
+
+
+def ime():
+    def typed(s):
+        s.run("todo")
+        s.tree("look_click", path="'new'")
+        input("Type one composed word into the to-do Input, then press Enter here: ")
+        print(s.tree("look_tree"), end="")
+
+    served("ime", sample("sample_todo"), typed)
+
+
+def main():
+    os.environ["TMPDIR"] = TMP
+    shutil.rmtree(LOG, ignore_errors=True)
+    os.makedirs(WORK)
+    build = ["cargo", "build", "-q", "--release", "-p", "paka", "-p", "paka-installer"]
+    if subprocess.call(build, cwd=ROOT):
+        return 1
+    if "--ime" in sys.argv[1:]:
+        ime()
+        shutil.rmtree(WORK)
+        return 0
+    parts = [part1, part2, part3, part4, part5, part6, part7, part8]
+    failed = False
+    for n, part in enumerate(parts, 1):
+        try:
+            part()
+            print(f"pass  {n}")
+        except (Failed, OSError, StopIteration, KeyError) as e:
+            with open(os.path.join(LOG, f"{n}.txt"), "w") as f:
+                f.write(f"{type(e).__name__}: {e}\n")
+            print(f"FAIL  {n}: {e}")
+            failed = True
+    shutil.rmtree(WORK)
+    print("owner: watch parts 1 to 3 on screen once (--watch), and type one composed word")
+    print("       through the input method into the to-do Input (--ime)")
+    return 1 if failed else 0
+
+
+if __name__ == "__main__":
+    sys.exit(main())

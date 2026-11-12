@@ -1,0 +1,4 @@
+main.paka:2:3: error[unknown-name]: panic is not defined here; write unreachable() or assert(false)
+  definition: digits
+  bytes: 32..37
+  text: "panic"

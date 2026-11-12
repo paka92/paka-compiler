@@ -1,0 +1,13 @@
+enum Msg { Start }
+
+fn update(m: Msg) -> List<Effect<Msg>> {
+  let z = 0
+  let r = 7 % z
+  [Exit]
+}
+
+app apps {
+  start: Start
+  update: update
+  grants: [Console]
+}

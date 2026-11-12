@@ -1,0 +1,1 @@
+{"kind":"unused-name","definition":"double","message":"spare is never used","file":"main.paka","start":53,"end":58,"line":4,"column":7,"text":"spare","expected":null,"found":null,"fix":null}

@@ -1,0 +1,25 @@
+enum Msg { Start }
+
+fn update(msg: Msg) -> List<Effect<Msg>> {
+  var out = ""
+  for n in 1..<20 {
+    match n % 3 {
+      0 => {
+        continue
+      }
+      _ => {}
+    }
+    if n > 8 { break }
+    out += "{n} "
+  }
+  [
+    Print("[{out}]"),
+    Exit
+  ]
+}
+
+app core {
+  start: Start
+  update: update
+  grants: [Console]
+}

@@ -1,0 +1,8 @@
+box 000 1 2 3 4 5
+coin 200
+coin 200
+coin 200
+coin 100
+coin 5
+coin 025
+coin 0

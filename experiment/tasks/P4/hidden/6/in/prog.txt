@@ -1,0 +1,5 @@
+      set a 2
+      call twice
+      out a
+twice: mul a 2
+      ret

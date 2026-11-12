@@ -1,0 +1,199 @@
+enum Msg { Start(path: String), Loaded(text: String), Failed(why: String) }
+
+enum Command {
+  Load(slot: String, price: Int, count: Int), Coin(value: Int), Select(slot: String), Cancel
+}
+
+type Slot { price: Int, items: Int }
+
+// Money in cents; `coin_box` counts the coins of each value in `coins()`.
+type Machine {
+  coin_box: List<Int>, credit: Int = 0, session: List<Int> = [], slots: Map<String, Slot> = [:]
+}
+
+fn coins() -> List<Int> { [5, 10, 20, 50, 100, 200] }
+
+fn digits(s: String, lo: Int, hi: Int) -> Option<Int> {
+  if len(s) < lo || len(s) > hi { return None }
+  for c in chars(s) {
+    if c < "0" || c > "9" { return None }
+  }
+  parse_int(s)
+}
+
+fn is_slot(s: String) -> Bool {
+  len(s) == 2 && s[0] >= "A" && s[0] <= "Z" && s[1] >= "1" && s[1] <= "9"
+}
+
+fn price(s: String) -> Option<Int> {
+  let parts = split(s, ".")
+  if len(parts) != 2 { return None }
+  let value = digits(parts[0], 1, 2)? * 100 + digits(parts[1], 2, 2)?
+  if value >= 5 && value % 5 == 0 { Some(value) } else { None }
+}
+
+fn parse_box(line: String) -> Option<List<Int>> {
+  let ws = split(line, " ")
+  if len(ws) != 7 || ws[0] != "box" { return None }
+  var counts: List<Int> = []
+  for w in ws[1..<7] {
+    append(&counts, digits(w, 1, 3)?)
+  }
+  Some(counts)
+}
+
+fn parse_command(line: String) -> Option<Command> {
+  let ws = split(line, " ")
+  let n = len(ws)
+  if n == 4 && ws[0] == "load" && is_slot(ws[1]) {
+    let count = digits(ws[3], 1, 2)?
+    if count < 1 { return None }
+    return Some(Load(ws[1], price(ws[2])?, count))
+  }
+  if n == 2 && ws[0] == "coin" { return Some(Coin(digits(ws[1], 1, 3)?)) }
+  if n == 2 && ws[0] == "select" && is_slot(ws[1]) { return Some(Select(ws[1])) }
+  if n == 1 && ws[0] == "cancel" { return Some(Cancel) }
+  None
+}
+
+fn money(cents: Int) -> String {
+  let pad = if cents % 100 < 10 { "0" } else { "" }
+  "{cents / 100}.{pad}{cents % 100}"
+}
+
+fn money_list(xs: List<Int>) -> String {
+  var parts: List<String> = []
+  for x in xs {
+    append(&parts, money(x))
+  }
+  join(parts, " ")
+}
+
+fn take_out(m: inout Machine, paid: List<Int>) {
+  let all = coins()
+  for c in paid {
+    m.coin_box[unwrap_or(find(all, c), 0)] -= 1
+  }
+}
+
+// The coins paid for `change`, largest first, if the greedy rule can pay it.
+fn change_coins(coin_box: List<Int>, change: Int) -> Option<List<Int>> {
+  let all = coins()
+  var left = change
+  var paid: List<Int> = []
+  var i = len(all) - 1
+  while i >= 0 {
+    let n = min(left / all[i], coin_box[i])
+    extend(&paid, list_of(all[i], count: n))
+    left -= n * all[i]
+    i -= 1
+  }
+  if left == 0 { Some(paid) } else { None }
+}
+
+// Runs one command; gives the line it prints, if any.
+fn step(m: inout Machine, c: Command) -> Option<String> {
+  match c {
+    Load(slot, p, count) => {
+      if m.credit != 0 { return Some("busy") }
+      let items = if has(m.slots, slot) { m.slots[slot].items } else { 0 }
+      if items + count > 20 { return Some("slot full {slot}") }
+      m.slots[slot] = Slot { price: p, items: items + count }
+      None
+    }
+    Coin(value) => {
+      if !contains(coins(), value) || m.credit + value > 500 {
+        return Some("rejected {money(value)}")
+      }
+      m.coin_box[unwrap_or(find(coins(), value), 0)] += 1
+      m.credit += value
+      append(&m.session, value)
+      None
+    }
+    Select(slot) => {
+      if !has(m.slots, slot) { return Some("no slot {slot}") }
+      let s = m.slots[slot]
+      if s.items == 0 { return Some("sold out {slot}") }
+      if m.credit < s.price { return Some("insert {money(s.price - m.credit)} more") }
+      let change = m.credit - s.price
+      match change_coins(m.coin_box, change) {
+        None => Some("no change")
+        Some(paid) => {
+          m.slots[slot].items -= 1
+          take_out(&m, paid)
+          m.credit = 0
+          m.session = []
+          let tail = if change == 0 { "" } else { ", change {money(change)}: {money_list(paid)}" }
+          Some("sold {slot}{tail}")
+        }
+      }
+    }
+    Cancel => {
+      if m.credit == 0 { return Some("nothing to return") }
+      let session = m.session
+      let credit = m.credit
+      take_out(&m, session)
+      m.credit = 0
+      m.session = []
+      Some("returned {money(credit)}: {money_list(session)}")
+    }
+  }
+}
+
+fn run(text: String) -> Result<List<String>, String> {
+  let all = lines(text)
+  if is_empty(all) { return Err("bad box") }
+  let coin_box = ok_or(parse_box(all[0]), "bad box")?
+  var commands: List<Command> = []
+  for i in 1..<len(all) {
+    append(&commands, ok_or(parse_command(all[i]), "line {i + 1}: bad command")?)
+  }
+  var m = Machine { coin_box: coin_box }
+  var out: List<String> = []
+  for c in commands {
+    match step(&m, c) {
+      Some(line) => append(&out, line)
+      None => {}
+    }
+  }
+  append(&out, "credit {money(m.credit)}")
+  var counts: List<String> = []
+  for n in m.coin_box {
+    append(&counts, "{n}")
+  }
+  let box_line = join(counts, " ")
+  append(&out, "box {box_line}")
+  for name in keys(m.slots) {
+    let s = m.slots[name]
+    append(&out, "{name}: {s.items} at {money(s.price)}")
+  }
+  Ok(out)
+}
+
+fn report(result: Result<List<String>, String>) -> List<Effect<Msg>> {
+  match result {
+    Ok(out) => {
+      var effects: List<Effect<Msg>> = []
+      for line in out {
+        append(&effects, Print(line))
+      }
+      append(&effects, Exit)
+      effects
+    }
+    Err(why) => [Print("error: {why}"), ExitWith(20)]
+  }
+}
+
+fn update(m: Msg) -> List<Effect<Msg>> {
+  match m {
+    Start(path) => [ReadFile(path, then: Loaded, or: Failed)]
+    Loaded(text) => report(run(text))
+    Failed(why) => [Print("error: cannot read file: {why}"), ExitWith(20)]
+  }
+}
+
+app vending {
+  start: Start
+  update: update
+  grants: [Console, ReadFiles]
+}

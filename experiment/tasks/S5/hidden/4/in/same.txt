@@ -1,0 +1,8 @@
+add a
+print
+add b
+undo
+set a
+redo
+set B
+print

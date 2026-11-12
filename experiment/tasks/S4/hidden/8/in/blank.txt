@@ -1,0 +1,5 @@
+box 9 9 9 9 9 9
+load A1 0.05 1
+coin 5
+
+coin 2.00

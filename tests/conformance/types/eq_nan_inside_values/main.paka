@@ -1,0 +1,19 @@
+enum Msg { Start }
+
+type Box { v: Float }
+
+fn update(msg: Msg) -> List<Effect<Msg>> {
+  let nan = 0.0 / 0.0
+  let a = [nan] == [nan]
+  let b = Some(nan) == Some(nan)
+  let c = Box { v: nan } == Box { v: nan }
+  let d = [1.0] == [1.0]
+  let e = Box { v: 0.0 } == Box { v: -0.0 }
+  [Print("{a} {b} {c} {d} {e}"), Exit]
+}
+
+app types {
+  start: Start
+  update: update
+  grants: [Console]
+}

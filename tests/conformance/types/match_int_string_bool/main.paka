@@ -1,0 +1,47 @@
+enum Msg { Start }
+
+fn word(n: Int) -> String {
+  match n {
+    0 => "zero"
+    -1 => "minus one"
+    1 | 2 | 3 => "few"
+    _ => "many"
+  }
+}
+
+fn greeting(s: String) -> Int {
+  match s {
+    "hi" => 1
+    "ho" | "hum" => 2
+    _ => 0
+  }
+}
+
+fn flag(b: Bool) -> String {
+  match b {
+    true => "yes"
+    false => "no"
+  }
+}
+
+fn only(b: Bool) -> String {
+  match b {
+    true => "yes"
+    _ => "other"
+  }
+}
+
+fn update(msg: Msg) -> List<Effect<Msg>> {
+  let a = word(0) + "," + word(-1) + "," + word(2) + "," + word(9)
+  let b = greeting("hi")
+  let c = greeting("hum")
+  let d = greeting("x")
+  let e = flag(true) + "," + flag(false) + "," + only(true) + "," + only(false)
+  [Print("{a} {b} {c} {d} {e}"), Exit]
+}
+
+app types {
+  start: Start
+  update: update
+  grants: [Console]
+}

@@ -1,0 +1,11 @@
+enum Msg { Start(src: String, dest: String) }
+
+fn update(m: Msg) -> List<Effect<Msg>> {
+  [ExitWith(6)]
+}
+
+app copy {
+  start:  Start
+  update: update
+  grants: []
+}

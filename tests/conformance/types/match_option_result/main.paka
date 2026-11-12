@@ -1,0 +1,36 @@
+enum Msg { Start }
+
+fn show(o: Option<Int>) -> String {
+  match o {
+    Some(v) => "some {v}"
+    None => "none"
+  }
+}
+
+fn describe(r: Result<Int, String>) -> String {
+  match r {
+    Ok(v) => "ok {v}"
+    Err(e) => "err {e}"
+  }
+}
+
+fn present(o: Option<Int>) -> Bool {
+  match o {
+    Some(_) => true
+    None => false
+  }
+}
+
+fn update(msg: Msg) -> List<Effect<Msg>> {
+  let a = show(Some(2)) + "," + show(None)
+  let b = describe(Ok(5)) + "," + describe(Err("bad"))
+  let c = present(Some(0))
+  let d = present(None)
+  [Print("{a} {b} {c} {d}"), Exit]
+}
+
+app types {
+  start: Start
+  update: update
+  grants: [Console]
+}

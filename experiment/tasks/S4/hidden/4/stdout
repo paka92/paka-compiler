@@ -1,0 +1,9 @@
+slot full A1
+busy
+no slot B1
+returned 0.50: 0.50
+slot full B1
+credit 0.00
+box 5 5 5 5 5 5
+A1: 20 at 1.20
+B1: 20 at 0.50

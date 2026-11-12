@@ -1,0 +1,6 @@
+main.paka:6:5: error[type-mismatch]: String has no fields
+  definition: f
+  bytes: 63..69
+  text: "unwrap"
+  expected: a record
+  found: String

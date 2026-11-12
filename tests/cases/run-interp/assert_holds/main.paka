@@ -1,0 +1,14 @@
+enum Msg { Start }
+
+
+fn update(m: Msg) -> List<Effect<Msg>> {
+  assert(1 + 1 == 2)
+  assert(true)
+  [Print("held"), Exit]
+}
+
+app rows {
+  start: Start
+  update: update
+  grants: [Console]
+}

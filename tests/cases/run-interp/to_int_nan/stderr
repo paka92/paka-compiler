@@ -1,0 +1,3 @@
+rows: trap bad_conversion at main.paka:4:11
+  to_int(NaN)
+  in update

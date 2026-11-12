@@ -1,0 +1,24 @@
+enum Msg { Start }
+
+fn clamp(x: Int; lo: Int, hi: Int) -> Int {
+  if x < lo { lo } else if x > hi { hi } else { x }
+}
+
+fn scale(v: Int; by: Int) -> Int { v * by }
+
+fn seven() -> Int { 7 }
+
+fn update(msg: Msg) -> List<Effect<Msg>> {
+  [
+    Print("{clamp(12, lo: 0, hi: 9)} {clamp(-3, lo: 0, hi: 9)} {clamp(5, lo: 0, hi: 9)}"),
+    Print("{scale(4, by: 3)} {seven()}"),
+    Print("{clamp(scale(2, by: 10), lo: scale(1, by: 1), hi: 3 + 12)}"),
+    Exit
+  ]
+}
+
+app core {
+  start: Start
+  update: update
+  grants: [Console]
+}

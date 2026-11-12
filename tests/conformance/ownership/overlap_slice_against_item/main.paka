@@ -1,0 +1,17 @@
+enum Msg { Start }
+
+fn keep(row: inout List<Int>, rows: List<List<Int>>) {
+  append(&row, len(rows))
+}
+
+fn update(msg: Msg) -> List<Effect<Msg>> {
+  var xs = [[1], [2], [3]]
+  keep(&xs[1], xs[0..<2])
+  [Print("done"), Exit]
+}
+
+app ownership {
+  start: Start
+  update: update
+  grants: [Console]
+}

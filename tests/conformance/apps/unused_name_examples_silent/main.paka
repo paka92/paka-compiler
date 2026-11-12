@@ -1,0 +1,12 @@
+fn double(n: Int) -> Int {
+  let spare = n
+  n * 2
+}
+
+fn ignore(a: Int, b: Int) -> Int {
+  a
+}
+
+example doubles {
+  double(2) == 4 && ignore(1, 2) == 1
+}

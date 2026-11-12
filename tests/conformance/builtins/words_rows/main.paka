@@ -1,0 +1,21 @@
+enum Msg { Start }
+
+fn ss(xs: List<String>) -> String {
+  "{len(xs)}:[" + join(xs, "|") + "]"
+}
+
+fn n(x: Int) -> String { "{x}" }
+
+fn update(msg: Msg) -> List<Effect<Msg>> {
+  let mixed = words("a" + from_code(11) + "b" + from_code(12) + "c")
+  let nbsp = words("a" + from_code(160) + "b")
+  let rows = [ss(words("")), ss(words(" \t")), ss(words(" a  b ")), ss(words("a\tb\nc\rd")), ss(words("héllo wörld")), ss(mixed), ss(words("one")), ss(words("\n"))]
+  let kept = join([n(len(nbsp)), n(len(nbsp[0]))], " ")
+  [Print(join(rows, "\n")), Print(kept), Exit]
+}
+
+app builtins {
+  start: Start
+  update: update
+  grants: [Console]
+}

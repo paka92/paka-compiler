@@ -1,0 +1,4 @@
+main.paka:3:25: note[hole]: ??n takes Int
+  definition: f
+  bytes: 61..64
+  text: "??n"

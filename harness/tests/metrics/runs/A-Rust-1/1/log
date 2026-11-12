@@ -1,0 +1,2 @@
+{"event":"start","run":"A-Rust-1","model":"claude-sonnet-5-5","effort":"medium","system":"...","at":1000}
+{"event":"void","reason":"the conversation was compacted","fault":true,"at":2000}

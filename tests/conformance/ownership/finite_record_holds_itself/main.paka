@@ -1,0 +1,13 @@
+enum Msg { Start }
+
+type Node { next: Node }
+
+fn update(msg: Msg) -> List<Effect<Msg>> {
+  [Print("done"), Exit]
+}
+
+app ownership {
+  start: Start
+  update: update
+  grants: [Console]
+}

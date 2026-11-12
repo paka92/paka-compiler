@@ -1,0 +1,17 @@
+enum Msg { Start }
+
+fn check(ok: Bool) -> Int {
+  assert(ok)
+  1
+}
+
+fn update(m: Msg) -> List<Effect<Msg>> {
+  let r = check(false)
+  [Exit]
+}
+
+app apps {
+  start: Start
+  update: update
+  grants: [Console]
+}

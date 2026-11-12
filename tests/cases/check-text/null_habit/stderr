@@ -1,0 +1,4 @@
+main.paka:2:3: error[unknown-name]: Paka has no null; write None and a match
+  definition: digits
+  bytes: 40..44
+  text: "null"

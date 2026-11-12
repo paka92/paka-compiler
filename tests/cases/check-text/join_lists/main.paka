@@ -1,0 +1,15 @@
+fn joined(xs: List<Int>, ys: List<Int>) -> List<Int> {
+  xs + ys
+}
+
+enum Msg { Start }
+
+fn update(m: Msg) -> List<Effect<Msg>> {
+  [Exit]
+}
+
+app generics {
+  start: Start
+  update: update
+  grants: []
+}

@@ -1,0 +1,15 @@
+enum Msg { Start }
+
+fn update(msg: Msg) -> List<Effect<Msg>> {
+  let top = 9223372036854775807
+  let one = 1
+  let z = 0
+  let r = (top + one) + 7 / z
+  [Exit]
+}
+
+app core {
+  start: Start
+  update: update
+  grants: [Console]
+}

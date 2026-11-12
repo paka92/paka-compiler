@@ -1,0 +1,19 @@
+enum Msg { Start }
+
+fn n(x: Int) -> String { "{x}" }
+
+fn f1(x: Float) -> String { fixed(x, digits: 1) }
+
+fn update(msg: Msg) -> List<Effect<Msg>> {
+  let nan = 0.0 / 0.0
+  let inf = 1.0 / 0.0
+  let l1 = join([n(abs(-5)), n(abs(5)), n(abs(0)), n(abs(-9223372036854775807)), n(abs(9223372036854775807))], " ")
+  let l2 = join([f1(abs(-2.5)), f1(abs(-0.0)), f1(abs(-inf)), f1(abs(nan))], " ")
+  [Print(l1), Print(l2), Exit]
+}
+
+app builtins {
+  start: Start
+  update: update
+  grants: [Console]
+}

@@ -1,0 +1,4 @@
+5 5
+# frame
+box 0 0 5 5
+hline 1 2

@@ -1,0 +1,9 @@
+full=yes
+d1=${empty:-was empty}
+d2=${full:-unused $nothing}
+d3=${missing:-${also:-deep $full}}
+d4=[${missing:-}]
+empty=
+p=$$$$
+q=${#p}${#empty}
+r=${#q}:${q:-x}

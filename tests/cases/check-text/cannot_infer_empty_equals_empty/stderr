@@ -1,0 +1,4 @@
+main.paka:2:7: error[cannot-infer]: cannot infer the type of []; write it: let x: List<T> = ...
+  definition: same
+  bytes: 18..20
+  text: "[]"

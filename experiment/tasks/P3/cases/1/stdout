@@ -1,0 +1,7 @@
+limits = {}
+server.host = "web-01"
+server.port = "8080"
+server.tls.on = "yes"
+users[0].name = "ann"
+users[0].role = "admin"
+users[1].name = "b\"o\\b"

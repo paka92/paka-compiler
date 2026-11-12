@@ -1,0 +1,27 @@
+enum Msg { Start }
+
+fn update(msg: Msg) -> List<Effect<Msg>> {
+  var total = 0
+  var log = ""
+  for n in 0..<5 {
+    match n {
+      0 => {}
+      1 => total += 10
+      2 => {
+        total += 100
+        log += "two "
+      }
+      _ => log += "{n} "
+    }
+  }
+  [
+    Print("{total} [{log}]"),
+    Exit
+  ]
+}
+
+app core {
+  start: Start
+  update: update
+  grants: [Console]
+}

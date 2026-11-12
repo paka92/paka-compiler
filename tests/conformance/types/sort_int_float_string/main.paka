@@ -1,0 +1,21 @@
+enum Msg { Start }
+
+fn update(msg: Msg) -> List<Effect<Msg>> {
+  var xs = [3, -1, 2]
+  var fs = [2.5, -1.0, 0.5]
+  var ss = ["b", "B", "a", ""]
+  sort(&xs)
+  sort(&fs)
+  sort(&ss)
+  var parts: List<String> = []
+  for x in xs { append(&parts, "{x}") }
+  for f in fs { append(&parts, fixed(f, digits: 1)) }
+  for s in ss { append(&parts, s) }
+  [Print(join(parts, "|")), Exit]
+}
+
+app types {
+  start: Start
+  update: update
+  grants: [Console]
+}

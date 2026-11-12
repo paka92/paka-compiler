@@ -1,0 +1,39 @@
+enum Msg { Start, Loaded(text: String), Failed(why: String) }
+
+fn double(n: Int) -> Int { n * 2 }
+fn twice(n: Int) -> Int { n * 2 }
+fn halve(n: Int) -> Int { n / 2 }
+
+fn read_it(path: String) -> List<Effect<Msg>> {
+  [ReadFile(path, then: Loaded, or: Failed)]
+}
+
+fn update(m: Msg) -> List<Effect<Msg>> {
+  [Exit]
+}
+
+app callbacks {
+  start: Start
+  update: update
+  grants: []
+}
+
+example same_definition {
+  double == double && halve == halve
+}
+
+example same_body_other_definition {
+  double != twice
+}
+
+example handlers_in_an_effect_list {
+  read_it("a.txt") == [ReadFile("a.txt", then: Loaded, or: Failed)]
+}
+
+example swapped_handlers {
+  read_it("a.txt") != [ReadFile("a.txt", then: Failed, or: Loaded)]
+}
+
+example in_a_list {
+  [double, halve] == [double, halve] && [double, halve] != [halve, double]
+}

@@ -1,0 +1,18 @@
+enum Msg { Start }
+
+fn update(msg: Msg) -> List<Effect<Msg>> {
+  let zero = 0.0
+  let one = 1.0
+  let nan = zero / zero
+  [
+    Print("{nan == nan} {nan != nan} {nan < nan} {nan <= nan}"),
+    Print("{nan > one} {nan >= one} {one == nan} {one != nan}"),
+    Exit
+  ]
+}
+
+app core {
+  start: Start
+  update: update
+  grants: [Console]
+}

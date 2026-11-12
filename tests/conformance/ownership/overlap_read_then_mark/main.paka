@@ -1,0 +1,17 @@
+enum Msg { Start }
+
+fn grow(more: List<Int>, xs: inout List<Int>) {
+  for x in more { append(&xs, x) }
+}
+
+fn update(msg: Msg) -> List<Effect<Msg>> {
+  var xs = [1, 2]
+  grow(xs, &xs)
+  [Print("done"), Exit]
+}
+
+app ownership {
+  start: Start
+  update: update
+  grants: [Console]
+}

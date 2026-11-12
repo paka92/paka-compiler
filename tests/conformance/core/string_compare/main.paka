@@ -1,0 +1,24 @@
+enum Msg { Start }
+
+fn update(msg: Msg) -> List<Effect<Msg>> {
+  let cap = "Z"
+  let low = "a"
+  let acute = "é"
+  let zed = "z"
+  let empty = ""
+  let ab = "ab"
+  let abc = "abc"
+  let b = "b"
+  [
+    Print("{cap < low} {acute > zed} {empty < low} {ab < abc}"),
+    Print("{b > abc} {abc <= abc} {abc >= ab} {low > cap}"),
+    Print("{abc == abc} {low != b} {low == b} {acute == low}"),
+    Exit
+  ]
+}
+
+app core {
+  start: Start
+  update: update
+  grants: [Console]
+}

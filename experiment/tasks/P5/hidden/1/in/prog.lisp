@@ -1,0 +1,7 @@
+(define x 10)
+(define (f x) (+ x 1))
+(f 1)
+(define (g y) (+ x y))
+(g 1)
+(define (h) y)
+(let (y 5) (h))

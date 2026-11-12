@@ -1,0 +1,19 @@
+enum Msg { Start }
+
+enum Mode { Idle, Busy }
+
+fn apply(f: fn(Int) -> Mode) -> Mode { f(1) }
+
+fn probe() -> Mode {
+  apply(Idle)
+}
+
+fn update(m: Msg) -> List<Effect<Msg>> {
+  [Exit]
+}
+
+app callbacks {
+  start: Start
+  update: update
+  grants: []
+}

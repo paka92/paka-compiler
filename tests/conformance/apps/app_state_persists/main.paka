@@ -1,0 +1,24 @@
+type Tally { seen: Int = 0 }
+
+enum Msg { Start, Loaded(text: String), Failed(why: String) }
+
+fn update(s: inout Tally, m: Msg) -> List<Effect<Msg>> {
+  match m {
+    Start => [
+      ReadFile("main.paka", then: Loaded, or: Failed),
+      ReadFile("main.paka", then: Loaded, or: Failed)
+    ]
+    Loaded(text) => {
+      s.seen += 1
+      if s.seen == 2 { [Print("seen {s.seen}"), Exit] } else { [Print("seen {s.seen}")] }
+    }
+    Failed(why) => [ExitWith(20)]
+  }
+}
+
+app apps {
+  state: Tally
+  start: Start
+  update: update
+  grants: [Console, ReadFiles]
+}

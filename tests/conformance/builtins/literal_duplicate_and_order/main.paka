@@ -1,0 +1,25 @@
+enum Msg { Start }
+
+fn ss(xs: List<String>) -> String {
+  "{len(xs)}:[" + join(xs, "|") + "]"
+}
+
+fn si(xs: List<Int>) -> String {
+  var parts: List<String> = []
+  for x in xs { append(&parts, "{x}") }
+  "[" + join(parts, ",") + "]"
+}
+
+fn n(x: Int) -> String { "{x}" }
+
+fn update(msg: Msg) -> List<Effect<Msg>> {
+  let a = ["b": 2, "a": 1, "b": 3]
+  let c = [3: "x", -1: "y", 3: "z"]
+  [Print(ss(keys(a))), Print(n(a["b"]) + " " + n(len(a))), Print(si(keys(c))), Print(c[3] + c[-1]), Exit]
+}
+
+app builtins {
+  start: Start
+  update: update
+  grants: [Console]
+}

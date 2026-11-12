@@ -1,0 +1,17 @@
+enum Msg { Start }
+
+type Player { id: Int, score: Int }
+
+fn by_score(a: Player, b: Player) -> Bool { a.score > b.score }
+
+fn update(m: Msg) -> List<Effect<Msg>> {
+  var ps = [Player { id: 1, score: 5 }, Player { id: 2, score: 9 }, Player { id: 3, score: 5 }, Player { id: 4, score: 7 }]
+  sort_by(&ps, by_score)
+  [Print("{ps[0].id}{ps[1].id}{ps[2].id}{ps[3].id}"), Exit]
+}
+
+app callbacks {
+  start: Start
+  update: update
+  grants: [Console]
+}

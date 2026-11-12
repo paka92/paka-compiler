@@ -1,0 +1,4 @@
+main.paka:2:16: error[unknown-name]: unwrap is not defined here; write a match, `?` or unwrap_or
+  definition: digits
+  bytes: 45..51
+  text: "unwrap"

@@ -1,0 +1,33 @@
+// Count the primes below N with a sieve of flags, for a run of N. Wrapping arithmetic.
+
+enum Msg { Start }
+
+fn count_primes(n: Int) -> Int {
+  var prime = list_of(true, count: n)
+  var count = 0
+  for i in 2..<n {
+    if prime[i] {
+      count = wrap_add(count, 1)
+      var j = wrap_mul(i, i)
+      while j < n {
+        prime[j] = false
+        j = wrap_add(j, i)
+      }
+    }
+  }
+  count
+}
+
+fn update(msg: Msg) -> List<Effect<Msg>> {
+  var total = 0
+  for r in 0..<80 {
+    total = wrap_add(total, count_primes(wrap_add(10000000, r)))
+  }
+  [Print("{total}"), Exit]
+}
+
+app sieve_wrap {
+  start: Start
+  update: update
+  grants: [Console]
+}

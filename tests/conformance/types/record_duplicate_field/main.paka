@@ -1,0 +1,13 @@
+enum Msg { Start }
+
+type Pair { a: Int, a: Int }
+
+fn update(msg: Msg) -> List<Effect<Msg>> {
+  [Print("done"), Exit]
+}
+
+app types {
+  start: Start
+  update: update
+  grants: [Console]
+}

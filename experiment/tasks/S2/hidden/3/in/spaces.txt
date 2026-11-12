@@ -1,0 +1,4 @@
+open zed
+deposit zed 0007.05
+   
+release q

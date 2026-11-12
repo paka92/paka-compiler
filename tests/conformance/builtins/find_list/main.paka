@@ -1,0 +1,20 @@
+enum Msg { Start }
+
+fn oi(o: Option<Int>) -> String {
+  match o {
+    Some(v) => "Some({v})"
+    None => "None"
+  }
+}
+
+fn update(msg: Msg) -> List<Effect<Msg>> {
+  let nan = 0.0 / 0.0
+  let l1 = join([oi(find([5, 6, 7], 7)), oi(find([5, 6, 5], 5)), oi(find([], 1)), oi(find(["a", "b"], "b")), oi(find([nan], nan)), oi(find([1.5, 2.5], 2.5))], " ")
+  [Print(l1), Exit]
+}
+
+app builtins {
+  start: Start
+  update: update
+  grants: [Console]
+}

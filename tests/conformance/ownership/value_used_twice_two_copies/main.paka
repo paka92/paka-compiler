@@ -1,0 +1,40 @@
+enum Msg { Start }
+
+type TNode { val: Int = 0, kids: List<TNode> = [] }
+
+enum Expr { Num(value: Int), Add(left: Expr, right: Expr) }
+
+fn pair(n: TNode) -> TNode {
+  TNode { kids: [n, n] }
+}
+
+fn double(e: Expr) -> Expr {
+  Add(e, e)
+}
+
+fn bump_left(e: Expr) -> Expr {
+  match e {
+    Num(v) => Num(v + 1)
+    Add(l, r) => Add(bump_left(l), r)
+  }
+}
+
+fn update(msg: Msg) -> List<Effect<Msg>> {
+  var leaf = TNode { val: 1 }
+  var t = pair(leaf)
+  t.kids[0].val = 7
+  leaf.val = 5
+  var twice = TNode { kids: [leaf, leaf] }
+  twice.kids[1].kids = [leaf]
+  let d = double(Num(2))
+  let changed = bump_left(d)
+  let same_d = d == Add(Num(2), Num(2))
+  let new_d = changed == Add(Num(3), Num(2))
+  [Print("{t.kids[0].val} {t.kids[1].val} {leaf.val} {len(twice.kids[0].kids)} {len(twice.kids[1].kids)} {same_d} {new_d}"), Exit]
+}
+
+app ownership {
+  start: Start
+  update: update
+  grants: [Console]
+}

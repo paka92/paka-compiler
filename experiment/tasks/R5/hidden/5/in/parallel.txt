@@ -1,0 +1,5 @@
+two p q 007
+one p q 5
+one q p 000009
+trip p q
+trip q p

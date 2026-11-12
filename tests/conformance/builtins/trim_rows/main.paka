@@ -1,0 +1,20 @@
+enum Msg { Start }
+
+fn br(s: String) -> String { "[" + s + "]" }
+
+fn n(x: Int) -> String { "{x}" }
+
+fn update(msg: Msg) -> List<Effect<Msg>> {
+  let nb = from_code(160)
+  let vt = from_code(11)
+  let ff = from_code(12)
+  let l1 = join([br(trim("  a b \t\n")), br(trim(" \t")), br(trim("")), br(trim("\r\na\r\n")), br(trim("é ")), n(len(trim(nb + "a" + nb))), n(len(trim(vt + "a" + ff)))], " ")
+  let l2 = join([br(trim_start("  a ")), br(trim_end("  a ")), br(trim_end("a\r")), br(trim_start("")), br(trim_end("\t")), br(trim_start("\t\n x"))], " ")
+  [Print(l1), Print(l2), Exit]
+}
+
+app builtins {
+  start: Start
+  update: update
+  grants: [Console]
+}

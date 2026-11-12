@@ -1,0 +1,42 @@
+type Pair { a: Int, b: Int }
+
+enum Msg { Start }
+
+enum Spare { One, Two }
+
+fn weigh(p: Pair, bonus: Int) -> Int {
+  let base = p.a * 2
+  var total = base
+  total += bonus
+  for i in 0..<3 {
+    total += i
+  }
+  total
+}
+
+fn width(s: Spare) -> Int {
+  match s {
+    One => 1
+    Two => 2
+  }
+}
+
+fn spare_helper(n: Int) -> Int {
+  n
+}
+
+fn update(msg: Msg) -> List<Effect<Msg>> {
+  match msg {
+    Start => {
+      let word = "done"
+      let total = weigh(Pair { a: 1, b: 2 }, 3)
+      [Print("{word} {total}"), Exit]
+    }
+  }
+}
+
+app apps {
+  start: Start
+  update: update
+  grants: [Console, ReadFiles]
+}

@@ -1,0 +1,15 @@
+enum Msg { Start, Failed(why: String, code: Int) }
+
+fn probe() -> Effect<Msg> {
+  ReadFile("a.txt", then: Failed, or: Failed)
+}
+
+fn update(m: Msg) -> List<Effect<Msg>> {
+  [Exit]
+}
+
+app callbacks {
+  start: Start
+  update: update
+  grants: []
+}

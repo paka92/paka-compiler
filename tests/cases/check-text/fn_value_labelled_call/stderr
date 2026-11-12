@@ -1,0 +1,4 @@
+main.paka:4:8: error[wrong-label]: drop the label: calls through a function value are positional
+  definition: probe
+  bytes: 74..75
+  text: "a"

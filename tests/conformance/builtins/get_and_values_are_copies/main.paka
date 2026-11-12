@@ -1,0 +1,26 @@
+enum Msg { Start }
+
+fn si(xs: List<Int>) -> String {
+  var parts: List<String> = []
+  for x in xs { append(&parts, "{x}") }
+  "[" + join(parts, ",") + "]"
+}
+
+fn n(x: Int) -> String { "{x}" }
+
+fn update(msg: Msg) -> List<Effect<Msg>> {
+  var m: Map<String, List<Int>> = ["a": [1, 2]]
+  var ys = unwrap_or(get(m, "a"), [])
+  append(&ys, 3)
+  var vs = values(m)
+  append(&vs[0], 9)
+  var ks = keys(m)
+  append(&ks, "z")
+  [Print(si(m["a"])), Print(si(ys)), Print(si(vs[0])), Print(n(len(m))), Exit]
+}
+
+app builtins {
+  start: Start
+  update: update
+  grants: [Console]
+}

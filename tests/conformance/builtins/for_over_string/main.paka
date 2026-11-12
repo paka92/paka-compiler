@@ -1,0 +1,14 @@
+enum Msg { Start }
+
+fn update(msg: Msg) -> List<Effect<Msg>> {
+  for c in "abc" {
+    let k = c
+  }
+  [Print("x"), Exit]
+}
+
+app builtins {
+  start: Start
+  update: update
+  grants: [Console]
+}

@@ -1,0 +1,20 @@
+enum Msg { Start }
+
+fn oi(o: Option<Int>) -> String {
+  match o {
+    Some(v) => "Some({v})"
+    None => "None"
+  }
+}
+
+fn update(msg: Msg) -> List<Effect<Msg>> {
+  let l1 = join([oi(find("hello", "l")), oi(find("hello", "lo")), oi(find("hello", "z")), oi(find("", "")), oi(find("abc", ""))], " ")
+  let l2 = join([oi(find("aaa", "aa")), oi(find("héllo", "l")), oi(find("日本語", "語")), oi(find("ab", "abc")), oi(find("abcabc", "c"))], " ")
+  [Print(l1), Print(l2), Exit]
+}
+
+app builtins {
+  start: Start
+  update: update
+  grants: [Console]
+}

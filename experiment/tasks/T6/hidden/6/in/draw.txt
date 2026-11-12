@@ -1,0 +1,6 @@
+5 2
+#c
+
+text 0 0 a  b
+ # note
+hline 0 0 99999

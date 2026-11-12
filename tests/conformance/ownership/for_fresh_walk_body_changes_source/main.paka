@@ -1,0 +1,32 @@
+enum Msg { Start }
+
+fn show(xs: List<Int>) -> String {
+  var parts: List<String> = []
+  for x in xs { append(&parts, "{x}") }
+  "[" + join(parts, ", ") + "]"
+}
+
+fn id(xs: List<Int>) -> List<Int> {
+  xs
+}
+
+fn update(msg: Msg) -> List<Effect<Msg>> {
+  var xs = [1, 2]
+  for x in id(xs) { append(&xs, x) }
+  for i in 0..<len(xs) { xs[i] += 1 }
+  for i in 0..<len(xs) { append(&xs, i) }
+  var m: Map<String, Int> = ["a": 1, "b": 2]
+  for k in keys(m) { remove(&m, k) }
+  let part = xs[0..<2]
+  for x in part { append(&xs, x) }
+  var adj = [[1, 2], [0]]
+  let next = adj[0]
+  for v in next { append(&adj[0], v * 10) }
+  [Print("{show(xs)} {len(m)} {show(adj[0])}"), Exit]
+}
+
+app ownership {
+  start: Start
+  update: update
+  grants: [Console]
+}

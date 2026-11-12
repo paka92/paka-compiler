@@ -1,0 +1,14 @@
+enum Msg { Start }
+
+fn never() -> Int { unreachable() }
+
+fn update(m: Msg) -> List<Effect<Msg>> {
+  let r = never()
+  [Exit]
+}
+
+app apps {
+  start: Start
+  update: update
+  grants: [Console, ReadFiles]
+}

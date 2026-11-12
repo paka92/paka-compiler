@@ -1,0 +1,28 @@
+enum Msg { Start }
+
+type Item { k: Int, tag: String }
+
+fn by_k(a: Item, b: Item) -> Bool { a.k < b.k }
+
+fn by_k_desc(a: Item, b: Item) -> Bool { a.k > b.k }
+
+fn show(xs: List<Item>) -> String {
+  var parts: List<String> = []
+  for x in xs { append(&parts, "{x.k}" + x.tag) }
+  join(parts, " ")
+}
+
+fn update(msg: Msg) -> List<Effect<Msg>> {
+  var up = [Item { k: 2, tag: "a" }, Item { k: 1, tag: "b" }, Item { k: 2, tag: "c" }, Item { k: 1, tag: "d" }, Item { k: 3, tag: "e" }]
+  let orig = up
+  var down = orig
+  sort_by(&up, by_k)
+  sort_by(&down, by_k_desc)
+  [Print(show(up)), Print(show(down)), Print(show(orig)), Exit]
+}
+
+app builtins {
+  start: Start
+  update: update
+  grants: [Console]
+}

@@ -1,0 +1,15 @@
+enum Msg { Start }
+
+fn b(x: Bool) -> String { "{x}" }
+
+fn update(msg: Msg) -> List<Effect<Msg>> {
+  let l1 = join([b(contains("hello", "ell")), b(contains("hello", "")), b(contains("", "")), b(contains("", "a"))], " ")
+  let l2 = join([b(contains("héllo", "é")), b(contains("hello", "Hello")), b(contains("aaa", "aa")), b(contains("ab", "abc")), b(contains("日本語", "本"))], " ")
+  [Print(l1), Print(l2), Exit]
+}
+
+app builtins {
+  start: Start
+  update: update
+  grants: [Console]
+}

@@ -1,0 +1,18 @@
+enum Msg { Start }
+
+fn inner(z: Int) -> Int { 7 / z }
+
+fn middle(z: Int) -> Int { inner(z) }
+
+fn outer(z: Int) -> Int { middle(z) + 1 }
+
+fn update(msg: Msg) -> List<Effect<Msg>> {
+  let r = outer(0)
+  [Exit]
+}
+
+app core {
+  start: Start
+  update: update
+  grants: [Console]
+}

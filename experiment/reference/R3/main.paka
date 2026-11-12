@@ -1,0 +1,150 @@
+enum Msg { Start(path: String), Loaded(text: String), Failed(why: String) }
+
+// Names are positions in `names`, which is in ASCII order.
+type Link { a: Int, b: Int }
+
+type Graph { names: List<String>, links: List<Link>, adj: List<List<Int>> }
+
+type Pair { first: String, second: String }
+
+fn is_name(s: String) -> Bool {
+  if len(s) < 1 || len(s) > 20 { return false }
+  for c in chars(s) {
+    let ok = c >= "a" && c <= "z" || c >= "A" && c <= "Z" || c >= "0" && c <= "9"
+    if !ok && c != "_" && c != "-" { return false }
+  }
+  true
+}
+
+fn read_graph(text: String) -> Result<Graph, String> {
+  var pairs: List<Pair> = []
+  var seen: Map<String, Bool> = [:]
+  let rows = lines(text)
+  for i in 0..<len(rows) {
+    let ws = words(rows[i])
+    if is_empty(ws) { continue }
+    if len(ws) != 2 || !is_name(ws[0]) || !is_name(ws[1]) {
+      return Err("error: line {i + 1}: bad link")
+    }
+    append(&pairs, Pair { first: ws[0], second: ws[1] })
+    seen[ws[0]] = true
+    seen[ws[1]] = true
+  }
+  let names = keys(seen)
+  var index: Map<String, Int> = [:]
+  for i in 0..<len(names) {
+    index[names[i]] = i
+  }
+  var links: List<Link> = []
+  var adj: List<List<Int>> = list_of([], count: len(names))
+  for p in pairs {
+    let link = Link { a: index[p.first], b: index[p.second] }
+    append(&adj[link.a], len(links))
+    append(&adj[link.b], len(links))
+    append(&links, link)
+  }
+  Ok(Graph { names: names, links: links, adj: adj })
+}
+
+fn other_end(link: Link, from: Int) -> Int {
+  if link.a == from { link.b } else { link.a }
+}
+
+// Every name reachable from `start` without using link `skip`, marked in `seen`.
+fn reach(g: Graph, start: Int, skip: Int, seen: inout List<Bool>) {
+  var todo = [start]
+  seen[start] = true
+  while !is_empty(todo) {
+    let u = pop(&todo)
+    for l in g.adj[u] {
+      let v = other_end(g.links[l], u)
+      if l != skip && !seen[v] {
+        seen[v] = true
+        append(&todo, v)
+      }
+    }
+  }
+}
+
+fn groups(g: Graph) -> List<String> {
+  var out: List<String> = []
+  var seen = list_of(false, count: len(g.names))
+  for u in 0..<len(g.names) {
+    if seen[u] { continue }
+    var mine = list_of(false, count: len(g.names))
+    reach(g, u, -1, &mine)
+    var members: List<String> = []
+    for v in 0..<len(g.names) {
+      if mine[v] {
+        seen[v] = true
+        append(&members, g.names[v])
+      }
+    }
+    append(&out, join(members, " "))
+  }
+  out
+}
+
+fn earlier(x: Pair, y: Pair) -> Bool {
+  x.first < y.first || x.first == y.first && x.second < y.second
+}
+
+fn bridges(g: Graph) -> List<String> {
+  var found: List<Pair> = []
+  for l in 0..<len(g.links) {
+    let link = g.links[l]
+    if link.a == link.b { continue }
+    var seen = list_of(false, count: len(g.names))
+    reach(g, link.a, l, &seen)
+    if !seen[link.b] {
+      let lo = min(link.a, link.b)
+      let hi = max(link.a, link.b)
+      append(&found, Pair { first: g.names[lo], second: g.names[hi] })
+    }
+  }
+  sort_by(&found, earlier)
+  var out: List<String> = []
+  for p in found {
+    append(&out, "{p.first} {p.second}")
+  }
+  out
+}
+
+fn summary(text: String) -> Result<List<String>, String> {
+  let g = read_graph(text)?
+  let gs = groups(g)
+  let bs = bridges(g)
+  var out = ["groups: {len(gs)}"]
+  extend(&out, gs)
+  append(&out, "bridges: {len(bs)}")
+  extend(&out, bs)
+  Ok(out)
+}
+
+fn report(result: Result<List<String>, String>) -> List<Effect<Msg>> {
+  match result {
+    Ok(out) => {
+      var effects: List<Effect<Msg>> = []
+      for line in out {
+        append(&effects, Print(line))
+      }
+      append(&effects, Exit)
+      effects
+    }
+    Err(why) => [Print(why), ExitWith(20)]
+  }
+}
+
+fn update(m: Msg) -> List<Effect<Msg>> {
+  match m {
+    Start(path) => [ReadFile(path, then: Loaded, or: Failed)]
+    Loaded(text) => report(summary(text))
+    Failed(why) => [Print("error: cannot read file: {why}"), ExitWith(20)]
+  }
+}
+
+app islands {
+  start: Start
+  update: update
+  grants: [Console, ReadFiles]
+}

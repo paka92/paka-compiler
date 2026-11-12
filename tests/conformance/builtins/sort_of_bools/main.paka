@@ -1,0 +1,13 @@
+enum Msg { Start }
+
+fn update(msg: Msg) -> List<Effect<Msg>> {
+  var xs = [true, false]
+  sort(&xs)
+  [Print("x"), Exit]
+}
+
+app builtins {
+  start: Start
+  update: update
+  grants: [Console]
+}

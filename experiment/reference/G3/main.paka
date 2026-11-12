@@ -1,0 +1,139 @@
+enum Msg { Start(path: String), Loaded(text: String), Failed(why: String) }
+
+// A move with its row and column steps.
+type Move { name: String, dr: Int, dc: Int }
+
+// Cost and number of moves of the best path from a cell to the end; cost -1 when there is none.
+type Best { cost: Int = -1, moves: Int = 0 }
+
+// The moves in tie-break order.
+fn all_moves() -> List<Move> {
+  [Move { name: "R", dr: 0, dc: 1 }, Move { name: "D", dr: 1, dc: 0 },
+    Move { name: "X", dr: 1, dc: 1 }]
+}
+
+fn read_grid(text: String) -> Result<List<List<String>>, String> {
+  let rows = lines(text)
+  if is_empty(rows) || is_empty(rows[0]) { return Err("empty grid") }
+  for i in 0..<len(rows) {
+    let cells = chars(rows[i])
+    for c in 0..<len(cells) {
+      let cell = cells[c]
+      if cell != "#" && (cell < "0" || cell > "9") {
+        return Err("line {i + 1} col {c + 1}: bad cell")
+      }
+    }
+  }
+  var grid: List<List<String>> = []
+  for i in 0..<len(rows) {
+    if len(rows[i]) != len(rows[0]) { return Err("line {i + 1}: ragged row") }
+    append(&grid, chars(rows[i]))
+  }
+  Ok(grid)
+}
+
+fn is_open(g: List<List<String>>, r: Int, c: Int) -> Bool {
+  r < len(g) && c < len(g[0]) && g[r][c] != "#"
+}
+
+fn toll(g: List<List<String>>, r: Int, c: Int) -> Int {
+  code_at(g[r][c], 0) - code_at("0", 0)
+}
+
+// The best path from (r, c) that starts with move m, given the best from every later cell.
+fn through(g: List<List<String>>, best: List<List<Best>>, r: Int, c: Int, m: Move) -> Best {
+  let corner = m.name != "X" || (is_open(g, r, c + 1) && is_open(g, r + 1, c))
+  if !corner || !is_open(g, r + m.dr, c + m.dc) { return Best {} }
+  let next = best[r + m.dr][c + m.dc]
+  if next.cost < 0 { return Best {} }
+  let extra = if m.name == "X" { 2 } else { 0 }
+  Best { cost: next.cost + toll(g, r, c) + extra, moves: next.moves + 1 }
+}
+
+fn better(a: Best, b: Best) -> Bool {
+  a.cost >= 0 && (b.cost < 0 || a.cost < b.cost || (a.cost == b.cost && a.moves < b.moves))
+}
+
+fn solve(g: List<List<String>>) -> Result<List<String>, String> {
+  let rows = len(g)
+  let cols = len(g[0])
+  if g[0][0] == "#" { return Err("start is a wall") }
+  if g[rows - 1][cols - 1] == "#" { return Err("end is a wall") }
+  var best: List<List<Best>> = list_of(list_of(Best {}, count: cols), count: rows)
+  best[rows - 1][cols - 1] = Best { cost: toll(g, rows - 1, cols - 1), moves: 0 }
+  var r = rows - 1
+  while r >= 0 {
+    var c = cols - 1
+    while c >= 0 {
+      if g[r][c] != "#" && (r != rows - 1 || c != cols - 1) {
+        for m in all_moves() {
+          let b = through(g, best, r, c, m)
+          if better(b, best[r][c]) { best[r][c] = b }
+        }
+      }
+      c -= 1
+    }
+    r -= 1
+  }
+  let total = best[0][0]
+  if total.cost < 0 { return Err("no path") }
+  var row = 0
+  var col = 0
+  var path = ""
+  while row != rows - 1 || col != cols - 1 {
+    var chosen = Move { name: "", dr: 0, dc: 0 }
+    for m in all_moves() {
+      if chosen.name == "" && through(g, best, row, col, m) == best[row][col] { chosen = m }
+    }
+    path += chosen.name
+    row += chosen.dr
+    col += chosen.dc
+  }
+  Ok(["cost {total.cost}", moves_line(total.moves, path)])
+}
+
+fn moves_line(total: Int, path: String) -> String {
+  var out = "moves {total}"
+  var i = 0
+  while i < len(path) {
+    var run = 1
+    while i + run < len(path) && path[i + run] == path[i] { run += 1 }
+    let sep = if i == 0 { ": " } else { " " }
+    out += sep + path[i]
+    if run > 1 { out += "{run}" }
+    i += run
+  }
+  out
+}
+
+fn run(text: String) -> Result<List<String>, String> {
+  solve(read_grid(text)?)
+}
+
+fn report(result: Result<List<String>, String>) -> List<Effect<Msg>> {
+  match result {
+    Ok(out) => {
+      var effects: List<Effect<Msg>> = []
+      for line in out {
+        append(&effects, Print(line))
+      }
+      append(&effects, Exit)
+      effects
+    }
+    Err(why) => [Print("error: {why}"), ExitWith(20)]
+  }
+}
+
+fn update(m: Msg) -> List<Effect<Msg>> {
+  match m {
+    Start(path) => [ReadFile(path, then: Loaded, or: Failed)]
+    Loaded(text) => report(run(text))
+    Failed(why) => [Print("error: cannot read file: {why}"), ExitWith(20)]
+  }
+}
+
+app toll_grid {
+  start: Start
+  update: update
+  grants: [Console, ReadFiles]
+}

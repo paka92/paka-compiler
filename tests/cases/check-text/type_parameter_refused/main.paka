@@ -1,0 +1,13 @@
+fn first<T>(xs: List<T>) -> T { xs[0] }
+
+enum Msg { Start }
+
+fn update(m: Msg) -> List<Effect<Msg>> {
+  [Exit]
+}
+
+app generics {
+  start: Start
+  update: update
+  grants: []
+}

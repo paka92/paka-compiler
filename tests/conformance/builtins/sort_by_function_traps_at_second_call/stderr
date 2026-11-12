@@ -1,0 +1,3 @@
+builtins: trap divide_by_zero at main.paka:3:39
+  10 / 0
+  in steep, called from update

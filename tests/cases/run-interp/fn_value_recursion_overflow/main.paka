@@ -1,0 +1,16 @@
+enum Msg { Start }
+
+fn down(n: Int) -> Int {
+  let f = down
+  f(n + 1)
+}
+
+fn update(m: Msg) -> List<Effect<Msg>> {
+  [Print("{down(0)}"), Exit]
+}
+
+app callbacks {
+  start: Start
+  update: update
+  grants: [Console]
+}

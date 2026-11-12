@@ -1,0 +1,19 @@
+enum Msg { Start }
+
+fn si(xs: List<Int>) -> String {
+  var parts: List<String> = []
+  for x in xs { append(&parts, "{x}") }
+  "[" + join(parts, ",") + "]"
+}
+
+fn update(msg: Msg) -> List<Effect<Msg>> {
+  let xs = [1, 2, 3, 4, 5]
+  let ys = xs[3..<1]
+  [Print(si(ys)), Exit]
+}
+
+app builtins {
+  start: Start
+  update: update
+  grants: [Console]
+}

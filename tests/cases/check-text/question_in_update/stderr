@@ -1,0 +1,6 @@
+main.paka:4:25: error[type-mismatch]: ? passes None up, but update returns List<Effect<Msg>>; match it
+  definition: update
+  bytes: 85..86
+  text: "?"
+  expected: Option<T>
+  found: List<Effect<Msg>>

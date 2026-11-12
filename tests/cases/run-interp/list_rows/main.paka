@@ -1,0 +1,21 @@
+enum Msg { Start }
+
+fn update(m: Msg) -> List<Effect<Msg>> {
+  var xs: List<Int> = []
+  append(&xs, 1)
+  append(&xs, 2)
+  append(&xs, 3)
+  extend(&xs, [4, 5])
+  insert(&xs, 9, at: 0)
+  let last = pop(&xs)
+  let second = remove_at(&xs, 1)
+  swap(&xs, 0, 2)
+  reverse(&xs)
+  [Print("{len(xs)} {xs[0]} {xs[1]} {xs[2]} {xs[3]} {last} {second}"), Exit]
+}
+
+app generics {
+  start: Start
+  update: update
+  grants: [Console]
+}

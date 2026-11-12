@@ -1,0 +1,3 @@
+example one { true }
+
+fn uses() -> Bool { one }

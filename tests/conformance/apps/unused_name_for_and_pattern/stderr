@@ -1,0 +1,8 @@
+main.paka:8:12: warning[unused-name]: r is never used
+  definition: area
+  bytes: 125..126
+  text: "r"
+main.paka:14:7: warning[unused-name]: i is never used
+  definition: count
+  bytes: 180..181
+  text: "i"

@@ -1,0 +1,18 @@
+enum Msg { Start }
+
+fn compute(a: Int, b: Int) -> Int { a + b }
+
+fn probe() -> Int {
+  let n: Int = compute
+  n
+}
+
+fn update(m: Msg) -> List<Effect<Msg>> {
+  [Exit]
+}
+
+app callbacks {
+  start: Start
+  update: update
+  grants: []
+}

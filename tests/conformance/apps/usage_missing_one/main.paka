@@ -1,0 +1,18 @@
+type Tally { words: Int = 0 }
+
+enum Msg { Start(path: String), Loaded(text: String), Failed(why: String) }
+
+fn update(s: inout Tally, m: Msg) -> List<Effect<Msg>> {
+  match m {
+    Start(path) => [Print("started"), ReadFile(path, then: Loaded, or: Failed)]
+    Loaded(text) => [Print("read"), Exit]
+    Failed(why) => [Print("cannot read file: {why}"), ExitWith(20)]
+  }
+}
+
+app wc {
+  state: Tally
+  start: Start
+  update: update
+  grants: [ReadFiles, Console]
+}

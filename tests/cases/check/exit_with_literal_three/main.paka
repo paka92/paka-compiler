@@ -1,0 +1,11 @@
+enum Msg { Start }
+
+fn update(m: Msg) -> List<Effect<Msg>> {
+  [ExitWith(3)]
+}
+
+app light {
+  start:  Start
+  update: update
+  grants: []
+}

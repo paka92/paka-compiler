@@ -1,0 +1,156 @@
+enum Msg { Start(path: String), Loaded(text: String), Failed(why: String) }
+
+// The fields of one row, or None on a quote error.
+fn fields(line: String) -> Option<List<String>> {
+  let cs = chars(line)
+  var out: List<String> = []
+  var i = 0
+  while true {
+    var value = ""
+    if i < len(cs) && cs[i] == "\"" {
+      i += 1
+      while true {
+        if i == len(cs) { return None }
+        if cs[i] != "\"" {
+          value += cs[i]
+          i += 1
+        } else if i + 1 < len(cs) && cs[i + 1] == "\"" {
+          value += "\""
+          i += 2
+        } else {
+          i += 1
+          break
+        }
+      }
+      if i < len(cs) && cs[i] != "," { return None }
+    } else {
+      while i < len(cs) && cs[i] != "," {
+        if cs[i] == "\"" { return None }
+        value += cs[i]
+        i += 1
+      }
+    }
+    append(&out, value)
+    if i == len(cs) { break }
+    i += 1
+  }
+  Some(out)
+}
+
+fn is_number(s: String) -> Bool {
+  let digits = if starts_with(s, "-") { s[1..<len(s)] } else { s }
+  if len(digits) < 1 || len(digits) > 12 { return false }
+  for c in chars(digits) {
+    if c < "0" || c > "9" { return false }
+  }
+  true
+}
+
+fn read_rows(text: String) -> Result<List<List<String>>, String> {
+  let rows = lines(text)
+  if is_empty(rows) { return Err("error: empty input") }
+  var out: List<List<String>> = []
+  for i in 0..<len(rows) {
+    let n = i + 1
+    let row = ok_or(fields(rows[i]), "error: line {n}: bad quote")?
+    if !is_empty(out) && len(row) != len(out[0]) {
+      return Err("error: line {n}: expected {len(out[0])} fields, got {len(row)}")
+    }
+    append(&out, row)
+  }
+  Ok(out)
+}
+
+fn table_line(values: List<String>, widths: List<Int>, numeric: List<Bool>) -> String {
+  var padded: List<String> = []
+  for c in 0..<len(values) {
+    if numeric[c] {
+      append(&padded, pad_left(values[c], widths[c]))
+    } else {
+      append(&padded, pad_right(values[c], widths[c]))
+    }
+  }
+  trim_end(join(padded, " | "))
+}
+
+fn rule_line(widths: List<Int>) -> String {
+  var parts: List<String> = []
+  for w in widths {
+    append(&parts, repeat("-", w))
+  }
+  join(parts, "-+-")
+}
+
+fn table(rows: List<List<String>>) -> List<String> {
+  let columns = len(rows[0])
+  let data = rows[1..<len(rows)]
+  var numeric = list_of(!is_empty(data), count: columns)
+  var sums = list_of(0, count: columns)
+  for row in data {
+    for c in 0..<columns {
+      if !is_number(row[c]) {
+        numeric[c] = false
+      } else if numeric[c] {
+        sums[c] += unwrap_or(parse_int(row[c]), 0)
+      }
+    }
+  }
+  var all = rows
+  let has_total = contains(numeric, true)
+  if has_total {
+    var total: List<String> = []
+    for c in 0..<columns {
+      if numeric[c] {
+        append(&total, "{sums[c]}")
+      } else if c == 0 {
+        append(&total, "total")
+      } else {
+        append(&total, "")
+      }
+    }
+    append(&all, total)
+  }
+  var widths = list_of(1, count: columns)
+  for row in all {
+    for c in 0..<columns {
+      widths[c] = max(widths[c], len(row[c]))
+    }
+  }
+  var out = [table_line(rows[0], widths, numeric), rule_line(widths)]
+  for row in data {
+    append(&out, table_line(row, widths, numeric))
+  }
+  if has_total {
+    append(&out, rule_line(widths))
+    append(&out, table_line(all[len(all) - 1], widths, numeric))
+  }
+  out
+}
+
+fn report(result: Result<List<List<String>>, String>) -> List<Effect<Msg>> {
+  match result {
+    Ok(rows) => {
+      var effects: List<Effect<Msg>> = []
+      for line in table(rows) {
+        append(&effects, Print(line))
+      }
+      append(&effects, Exit)
+      effects
+    }
+    Err(why) => [Print(why), ExitWith(20)]
+  }
+}
+
+fn update(m: Msg) -> List<Effect<Msg>> {
+  match m {
+    Start(path) => [ReadFile(path, then: Loaded, or: Failed)]
+    Loaded(text) => report(read_rows(text))
+    Failed(why) => [Print("error: cannot read file: {why}"), ExitWith(20)]
+  }
+}
+
+app column_table {
+  start: Start
+  update: update
+  grants: [Console, ReadFiles]
+}

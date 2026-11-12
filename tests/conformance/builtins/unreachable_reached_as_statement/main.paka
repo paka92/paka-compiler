@@ -1,0 +1,16 @@
+enum Msg { Start }
+
+fn check(x: Int) {
+  if x < 0 { unreachable() }
+}
+
+fn update(msg: Msg) -> List<Effect<Msg>> {
+  check(-1)
+  [Print("not reached"), Exit]
+}
+
+app builtins {
+  start: Start
+  update: update
+  grants: [Console]
+}

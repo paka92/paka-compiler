@@ -1,0 +1,38 @@
+enum Msg { Start }
+
+enum Expr { Num(value: Int), Add(left: Expr, right: Expr) }
+fn count_nums(e: Expr) -> Int {
+  match e {
+    Num(v) => 1
+    Add(l, r) => count_nums(l) + count_nums(r)
+  }
+}
+fn double_nums(e: Expr) -> Expr {
+  match e {
+    Num(v) => Num(v * 2)
+    Add(l, r) => Add(double_nums(l), double_nums(r))
+  }
+}
+fn double(e: Expr) -> Expr { Add(e, e) }
+example tree_sample {
+  let t = Add(Num(1), Add(Num(2), Num(3)))
+  var u = t
+  u = Add(Num(0), u)
+  count_nums(t) == 3 && count_nums(u) == 4 && double_nums(t) == Add(Num(2), Add(Num(4), Num(6)))
+}
+example two_copies { double(Num(2)) == Add(Num(2), Num(2)) }
+
+fn update(msg: Msg) -> List<Effect<Msg>> {
+  let t = Add(Num(1), Add(Num(2), Num(3)))
+  var u = t
+  u = Add(Num(0), u)
+  let doubled = double_nums(t) == Add(Num(2), Add(Num(4), Num(6)))
+  let twice = double(Num(2)) == Add(Num(2), Num(2))
+  [Print("{count_nums(t)} {count_nums(u)} {doubled} {twice}"), Exit]
+}
+
+app ownership {
+  start: Start
+  update: update
+  grants: [Console]
+}

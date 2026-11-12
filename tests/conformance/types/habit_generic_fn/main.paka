@@ -1,0 +1,13 @@
+enum Msg { Start }
+
+fn first<T>(xs: List<T>) -> T { xs[0] }
+
+fn update(msg: Msg) -> List<Effect<Msg>> {
+  [Print("done"), Exit]
+}
+
+app types {
+  start: Start
+  update: update
+  grants: [Console]
+}

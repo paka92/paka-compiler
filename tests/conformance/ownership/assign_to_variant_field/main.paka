@@ -1,0 +1,21 @@
+enum Msg { Start }
+
+enum Shape { Dot, Rect(w: Int, h: Int) }
+
+type Cell { shape: Shape = Dot, hits: Int = 0 }
+
+fn stretch(c: inout Cell) {
+  c.shape.w = 3
+}
+
+fn update(msg: Msg) -> List<Effect<Msg>> {
+  var c = Cell { shape: Rect(1, 2) }
+  stretch(&c)
+  [Print("done"), Exit]
+}
+
+app ownership {
+  start: Start
+  update: update
+  grants: [Console]
+}

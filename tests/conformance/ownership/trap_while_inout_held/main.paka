@@ -1,0 +1,20 @@
+enum Msg { Start }
+
+type St { n: Int = 0 }
+
+fn bump(s: inout St) {
+  s.n += 1
+  assert(s.n == 0)
+}
+
+fn update(s: inout St, msg: Msg) -> List<Effect<Msg>> {
+  bump(&s)
+  [Print("not reached"), Exit]
+}
+
+app ownership {
+  state: St
+  start: Start
+  update: update
+  grants: [Console]
+}

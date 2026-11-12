@@ -1,0 +1,6 @@
+main.paka:4:14: error[type-mismatch]: a Map key is an Int or a String
+  definition: update
+  bytes: 74..78
+  text: "List"
+  expected: Int or String
+  found: List<Int>

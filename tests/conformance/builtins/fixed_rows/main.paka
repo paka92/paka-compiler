@@ -1,0 +1,16 @@
+enum Msg { Start }
+
+fn update(msg: Msg) -> List<Effect<Msg>> {
+  let nan = 0.0 / 0.0
+  let inf = 1.0 / 0.0
+  let l1 = join([fixed(0.125, digits: 2), fixed(2.5, digits: 0), fixed(-2.5, digits: 0), fixed(1.005, digits: 2), fixed(2.675, digits: 2), fixed(0.1, digits: 20), fixed(-0.001, digits: 2), fixed(-0.0, digits: 1), fixed(0.0, digits: 0), fixed(0.0, digits: 2), fixed(1.5, digits: 20)], " ")
+  let l2 = join([fixed(999.9999, digits: 2), fixed(0.995, digits: 2), fixed(0.25, digits: 1), fixed(-0.25, digits: 1), fixed(0.375, digits: 2), fixed(123.456, digits: 1), fixed(1.0, digits: 3), fixed(0.49999999999999994, digits: 0)], " ")
+  let l3 = join([fixed(nan, digits: 3), fixed(inf, digits: 3), fixed(-inf, digits: 3)], " ")
+  [Print(l1), Print(l2), Print(l3), Exit]
+}
+
+app builtins {
+  start: Start
+  update: update
+  grants: [Console]
+}

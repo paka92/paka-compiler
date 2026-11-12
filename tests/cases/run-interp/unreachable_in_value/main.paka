@@ -1,0 +1,34 @@
+fn positive(n: Int) -> Option<Int> {
+  if n > 0 {
+    return Some(n)
+  }
+  let never: Option<Int> = Some(unreachable())
+  never
+}
+
+fn listed(n: Int) -> List<Int> {
+  if n > 0 {
+    return [n]
+  }
+  let never: List<Int> = [unreachable()]
+  never
+}
+
+fn show(o: Option<Int>) -> String {
+  match o {
+    Some(n) => "some {n}"
+    None => "none"
+  }
+}
+
+enum Msg { Start }
+
+fn update(m: Msg) -> List<Effect<Msg>> {
+  [Print(show(positive(3))), Print("{len(listed(4))}"), Exit]
+}
+
+app tool {
+  start: Start
+  update: update
+  grants: [Console]
+}

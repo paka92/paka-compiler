@@ -1,0 +1,19 @@
+enum Msg { Start }
+
+fn update(m: Msg) -> List<Effect<Msg>> {
+  var xs = [5, -2, 9, 0, -2, 7, 3]
+  sort(&xs)
+  var small = [3, 1, 2]
+  sort(&small)
+  var one = [4]
+  sort(&one)
+  var none: List<Int> = []
+  sort(&none)
+  [Print("{xs[0]} {xs[1]} {xs[2]} {xs[3]} {xs[4]} {xs[5]} {xs[6]} {small[0]}{small[1]}{small[2]} {one[0]} {len(none)}"), Exit]
+}
+
+app generics {
+  start: Start
+  update: update
+  grants: [Console]
+}

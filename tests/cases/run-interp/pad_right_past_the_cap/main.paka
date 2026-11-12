@@ -1,0 +1,12 @@
+enum Msg { Start }
+
+fn update(m: Msg) -> List<Effect<Msg>> {
+  let x = pad_right("a", 4611686018427387904)
+  [Print(x), Exit]
+}
+
+app rows {
+  start: Start
+  update: update
+  grants: [Console]
+}

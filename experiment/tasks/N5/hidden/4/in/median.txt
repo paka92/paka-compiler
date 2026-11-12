@@ -1,0 +1,6 @@
+parts a:7 b:13 c:80
+
+zed x x x
+q 68 58 60
+abe x x x
+p 61 61 61

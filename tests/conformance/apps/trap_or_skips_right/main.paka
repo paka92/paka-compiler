@@ -1,0 +1,14 @@
+enum Msg { Start }
+
+fn update(m: Msg) -> List<Effect<Msg>> {
+  let z = 0
+  let t = true
+  let r = t || 7 / z == 0
+  [Print("{r}"), Exit]
+}
+
+app apps {
+  start: Start
+  update: update
+  grants: [Console]
+}

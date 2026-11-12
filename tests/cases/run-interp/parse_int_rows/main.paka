@@ -1,0 +1,36 @@
+enum Msg { Start }
+
+fn n(i: Int) -> String { "{i}" }
+
+fn t(b: Bool) -> String { "{b}" }
+
+fn q(x: String) -> String { "[" + x + "]" }
+
+fn opt(o: Option<Int>) -> String {
+  match o {
+    Some(i) => "{i}"
+    None => "none"
+  }
+}
+
+fn lst(xs: List<String>) -> String {
+  let body = join(xs, "|")
+  "{len(xs)}[{body}]"
+}
+
+fn update(m: Msg) -> List<Effect<Msg>> {
+  [
+    Print(opt(parse_int("42")) + " " + opt(parse_int("-7")) + " " + opt(parse_int("007")) + " " + opt(parse_int("-0"))),
+    Print(opt(parse_int(" 7")) + " " + opt(parse_int("7 ")) + " " + opt(parse_int("")) + " " + opt(parse_int("-"))),
+    Print(opt(parse_int("1e3")) + " " + opt(parse_int("+5")) + " " + opt(parse_int("1.5")) + " " + opt(parse_int("0x10"))),
+    Print(opt(parse_int("1_000")) + " " + opt(parse_int("٣"))),
+    Print(opt(parse_int("9223372036854775807")) + " " + opt(parse_int("9223372036854775808")) + " " + opt(parse_int("-9223372036854775808"))),
+    Exit
+  ]
+}
+
+app rows {
+  start: Start
+  update: update
+  grants: [Console]
+}

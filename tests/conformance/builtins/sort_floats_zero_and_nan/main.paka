@@ -1,0 +1,28 @@
+enum Msg { Start }
+
+fn f1(x: Float) -> String { fixed(x, digits: 1) }
+
+fn sf(xs: List<Float>) -> String {
+  var parts: List<String> = []
+  for x in xs { append(&parts, f1(x)) }
+  "[" + join(parts, ",") + "]"
+}
+
+fn update(msg: Msg) -> List<Effect<Msg>> {
+  let nan = 0.0 / 0.0
+  var z1 = [0.0, -0.0]
+  sort(&z1)
+  var z2 = [-0.0, 0.0]
+  sort(&z2)
+  var n1 = [3.0, nan, 1.0]
+  sort(&n1)
+  var n2 = [2.0, 1.0, nan, 0.0]
+  sort(&n2)
+  [Print(sf(z1)), Print(sf(z2)), Print(sf(n1)), Print(sf(n2)), Exit]
+}
+
+app builtins {
+  start: Start
+  update: update
+  grants: [Console]
+}

@@ -1,0 +1,23 @@
+enum Msg { Start }
+
+fn mix(a: Int, b: Int) -> Int {
+  var total = a
+  let spare = 5
+  b
+}
+
+fn pick(x: Int, y: Int, z: Int) -> Int {
+  y
+}
+
+fn update(msg: Msg) -> List<Effect<Msg>> {
+  match msg {
+    Start => [Print("{mix(1, 2) + pick(3, 4, 5)}"), Exit]
+  }
+}
+
+app apps {
+  start: Start
+  update: update
+  grants: [Console]
+}

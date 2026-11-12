@@ -1,0 +1,7 @@
+a=A
+x=first
+ab=AB
+a_1=U
+c=$ab|$a_1.|$a-$a{b}|${a}b|$$x $$$x
+x=second
+#x=third

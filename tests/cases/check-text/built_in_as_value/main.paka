@@ -1,0 +1,16 @@
+enum Msg { Start }
+
+fn probe() -> Int {
+  let f = len
+  1
+}
+
+fn update(m: Msg) -> List<Effect<Msg>> {
+  [Exit]
+}
+
+app callbacks {
+  start: Start
+  update: update
+  grants: []
+}

@@ -1,0 +1,30 @@
+// State copy per handler (docs/decisions/M6-02.md section 3, item 5): the state holds a
+// List<Int> of 1,000 items; Field writes one small field, Item one list item.
+
+type Held { n: Int = 0, items: List<Int> = [] }
+
+enum Msg { Fill, Field, Item }
+
+fn update(s: inout Held, m: Msg) {
+  match m {
+    Fill  => s.items = list_of(0, count: 1000)
+    Field => s.n += 1
+    Item  => s.items[0] += 1
+  }
+}
+
+view held_view(s: Held) -> View<Msg> {
+  Col(gap: 8) {
+    Button("Field", on: Field)
+    Button("Item", on: Item)
+    Text("{s.n} {s.items[0]} {len(s.items)}")
+  }
+}
+
+app held {
+  start:  Fill
+  state:  Held
+  update: update
+  view:   held_view
+  grants: []
+}

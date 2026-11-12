@@ -1,0 +1,11 @@
+enum { Start }
+// the name is missing
+fn update(m: Msg) -> List<Effect<Msg>> {
+  [Print("let there be light"), Exit]
+}
+
+app light {
+  start:  Start
+  update: update
+  grants: [Console]
+}

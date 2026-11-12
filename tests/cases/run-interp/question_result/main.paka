@@ -1,0 +1,45 @@
+fn ratio(a: Int, b: Int) -> Result<Int, String> {
+  if b == 0 {
+    return Err("divide by zero")
+  }
+  Ok(a / b)
+}
+
+fn half_ratio(a: Int, b: Int) -> Result<Int, String> {
+  let r = ratio(a, b)?
+  Ok(r / 2)
+}
+
+fn price_sum(prices: Map<String, Int>, items: List<String>) -> Result<Int, String> {
+  var sum = 0
+  for item in items {
+    sum += ok_or(get(prices, item), "no price for {item}")?
+  }
+  Ok(sum)
+}
+
+fn show(r: Result<Int, String>) -> String {
+  match r {
+    Ok(n) => "ok {n}"
+    Err(why) => "failed: {why}"
+  }
+}
+
+enum Msg { Start }
+
+fn update(m: Msg) -> List<Effect<Msg>> {
+  let prices: Map<String, Int> = ["tea": 3, "jam": 5]
+  [
+    Print(show(half_ratio(8, 2))),
+    Print(show(half_ratio(1, 0))),
+    Print(show(price_sum(prices, ["tea", "jam", "tea"]))),
+    Print(show(price_sum(prices, ["tea", "egg", "jam"]))),
+    Exit
+  ]
+}
+
+app tool {
+  start: Start
+  update: update
+  grants: [Console]
+}

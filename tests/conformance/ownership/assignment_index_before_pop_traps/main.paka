@@ -1,0 +1,13 @@
+enum Msg { Start }
+
+fn update(msg: Msg) -> List<Effect<Msg>> {
+  var xs = [1, 2, 3]
+  xs[len(xs) - 1] = pop(&xs)
+  [Print("not reached"), Exit]
+}
+
+app ownership {
+  start: Start
+  update: update
+  grants: [Console]
+}

@@ -1,0 +1,255 @@
+enum Msg { Start(path: String), Loaded(text: String), Failed(why: String) }
+
+// An atom (`atom` not empty) or a list of items, with the position of its first character.
+type Node { atom: String = "", items: List<Node> = [], at: String }
+
+// A function: built in when `body` is empty, else defined with one body item.
+enum Value { Num(n: Int), Truth(b: Bool), Func(name: String, params: List<String>, body: List<Node>) }
+
+type Lisp { globals: Map<String, Value> = [:], depth: Int = 0 }
+
+fn is_digit(c: String) -> Bool {
+  c >= "0" && c <= "9"
+}
+
+// "n" number, "b" truth value, "s" symbol, "x" bad atom.
+fn kind(t: String) -> String {
+  let cs = chars(t)
+  var i = 0
+  if len(cs) > 1 && cs[0] == "-" { i = 1 }
+  let numeric = is_digit(cs[i])
+  var digits = numeric && len(cs) - i <= 7
+  for c in cs[i..<len(cs)] {
+    if !is_digit(c) { digits = false }
+  }
+  if digits { return "n" }
+  if t == "#t" || t == "#f" { return "b" }
+  if numeric || cs[0] == "#" { "x" } else { "s" }
+}
+
+fn name_of(n: Node) -> String {
+  let special = n.atom == "if" || n.atom == "let" || n.atom == "define"
+  if !is_empty(n.atom) && kind(n.atom) == "s" && !special { n.atom } else { "" }
+}
+
+// Every name is a name, and no two are the same.
+fn distinct(names: List<String>) -> Bool {
+  for i in 0..<len(names) {
+    if is_empty(names[i]) || contains(names[0..<i], names[i]) { return false }
+  }
+  true
+}
+
+fn parse(text: String) -> Result<List<Node>, String> {
+  var open = [Node { at: "" }]
+  let cs = chars(text)
+  var i = 0
+  var line = 1
+  var col = 1
+  while i < len(cs) {
+    let at = "line {line} col {col}"
+    let c = cs[i]
+    var n = 1
+    if c == ";" {
+      while i + n < len(cs) && cs[i + n] != "\n" { n += 1 }
+    } else if c == "(" {
+      append(&open, Node { at: at })
+    } else if c == ")" {
+      if len(open) == 1 { return Err("{at}: unexpected )") }
+      let done = pop(&open)
+      let top = len(open) - 1
+      append(&open[top].items, done)
+    } else if c != " " && c != "\n" {
+      while i + n < len(cs) && !contains(" \n();", cs[i + n]) { n += 1 }
+      let t = join(cs[i..<i + n], "")
+      if kind(t) == "x" { return Err("{at}: bad atom") }
+      let top = len(open) - 1
+      append(&open[top].items, Node { atom: t, at: at })
+    }
+    if c == "\n" {
+      line += 1
+      col = 1
+    } else {
+      col += n
+    }
+    i += n
+  }
+  if len(open) > 1 { return Err("{open[1].at}: unclosed (") }
+  Ok(open[0].items)
+}
+
+fn show(v: Value) -> String {
+  match v {
+    Num(n) => "{n}"
+    Truth(b) => if b { "#t" } else { "#f" }
+    Func(name, _, _) => "<fn {name}>"
+  }
+}
+
+fn builtin(name: String, a: Value, b: Value) -> Result<Value, String> {
+  var x = 0
+  var y = 0
+  match a {
+    Num(n) => x = n
+    Truth(p) => {
+      match b {
+        Truth(q) => if name == "=" { return Ok(Truth(p == q)) }
+        Num(_) | Func(_, _, _) => {}
+      }
+      return Err("type error")
+    }
+    Func(_, _, _) => {
+      return Err("type error")
+    }
+  }
+  match b {
+    Num(n) => y = n
+    Truth(_) | Func(_, _, _) => {
+      return Err("type error")
+    }
+  }
+  if name == "=" { return Ok(Truth(x == y)) }
+  if name == "<" { return Ok(Truth(x < y)) }
+  if name == "/" && y == 0 { return Err("division by zero") }
+  var r = x * y
+  if name == "+" { r = x + y } else if name == "-" { r = x - y } else if name == "/" { r = x / y }
+  if abs(r) > 9999999 { Err("overflow") } else { Ok(Num(r)) }
+}
+
+fn lookup(l: Lisp, node: Node, env: Map<String, Value>) -> Result<Value, String> {
+  let t = node.atom
+  if kind(t) == "n" { return Ok(Num(unwrap_or(parse_int(t), 0))) }
+  if kind(t) == "b" { return Ok(Truth(t == "#t")) }
+  if has(env, t) { return Ok(env[t]) }
+  if has(l.globals, t) { return Ok(l.globals[t]) }
+  let builtins = ["+", "-", "*", "/", "<", "="]
+  if contains(builtins, t) { Ok(Func(t, [], [])) } else { Err("{node.at}: unbound {t}") }
+}
+
+fn eval(l: inout Lisp, node: Node, env: Map<String, Value>) -> Result<Value, String> {
+  if !is_empty(node.atom) { return lookup(l, node, env) }
+  let items = node.items
+  let at = node.at
+  if is_empty(items) { return Err("{at}: empty call") }
+  let head = items[0].atom
+  if head == "define" { return Err("{at}: bad define") }
+  if head == "if" {
+    if len(items) != 4 { return Err("{at}: bad if") }
+    match eval(&l, items[1], env)? {
+      Truth(c) => {
+        return eval(&l, items[if c { 2 } else { 3 }], env)
+      }
+      Num(_) | Func(_, _, _) => {
+        return Err("{at}: type error")
+      }
+    }
+  }
+  if head == "let" {
+    if len(items) != 3 || !is_empty(items[1].atom) || len(items[1].items) % 2 != 0 {
+      return Err("{at}: bad let")
+    }
+    let pairs = items[1].items
+    var names: List<String> = []
+    for k in 0..<len(pairs) / 2 {
+      append(&names, name_of(pairs[2 * k]))
+    }
+    if !distinct(names) { return Err("{at}: bad let") }
+    var inner = env
+    for k in 0..<len(names) {
+      inner[names[k]] = eval(&l, pairs[2 * k + 1], env)?
+    }
+    return eval(&l, items[2], inner)
+  }
+  var args: List<Value> = []
+  for item in items {
+    append(&args, eval(&l, item, env)?)
+  }
+  let f = remove_at(&args, 0)
+  match f {
+    Func(name, params, body) => {
+      if is_empty(body) {
+        if len(args) != 2 { return Err("{at}: wrong arity") }
+        return match builtin(name, args[0], args[1]) {
+          Ok(v) => Ok(v)
+          Err(what) => Err("{at}: {what}")
+        }
+      }
+      if len(params) != len(args) { return Err("{at}: wrong arity") }
+      if l.depth == 50 { return Err("{at}: too deep") }
+      var locals: Map<String, Value> = [:]
+      for k in 0..<len(params) {
+        locals[params[k]] = args[k]
+      }
+      l.depth += 1
+      let v = eval(&l, body[0], locals)?
+      l.depth -= 1
+      Ok(v)
+    }
+    Num(_) | Truth(_) => Err("{at}: not a function")
+  }
+}
+
+fn define(l: inout Lisp, form: Node) -> Result<Bool, String> {
+  let items = form.items
+  let bad = "{form.at}: bad define"
+  if len(items) != 3 { return Err(bad) }
+  if !is_empty(items[1].atom) {
+    let name = name_of(items[1])
+    if is_empty(name) { return Err(bad) }
+    l.globals[name] = eval(&l, items[2], [:])?
+    return Ok(true)
+  }
+  var names: List<String> = []
+  for n in items[1].items {
+    append(&names, name_of(n))
+  }
+  if is_empty(names) || is_empty(names[0]) || !distinct(names[1..<len(names)]) { return Err(bad) }
+  l.globals[names[0]] = Func(names[0], names[1..<len(names)], [items[2]])
+  Ok(true)
+}
+
+fn run(text: String) -> List<Effect<Msg>> {
+  var effects: List<Effect<Msg>> = []
+  let forms = match parse(text) {
+    Ok(forms) => forms
+    Err(why) => {
+      return [Print("error: {why}"), ExitWith(20)]
+    }
+  }
+  var l = Lisp {}
+  for form in forms {
+    var result: Result<Bool, String> = Ok(true)
+    if is_empty(form.atom) && !is_empty(form.items) && form.items[0].atom == "define" {
+      result = define(&l, form)
+    } else {
+      match eval(&l, form, [:]) {
+        Ok(v) => append(&effects, Print(show(v)))
+        Err(why) => result = Err(why)
+      }
+    }
+    match result {
+      Ok(_) => {}
+      Err(why) => {
+        append(&effects, Print("error: {why}"))
+        append(&effects, ExitWith(20))
+        return effects
+      }
+    }
+  }
+  append(&effects, Exit)
+  effects
+}
+
+fn update(m: Msg) -> List<Effect<Msg>> {
+  match m {
+    Start(path) => [ReadFile(path, then: Loaded, or: Failed)]
+    Loaded(text) => run(text)
+    Failed(why) => [Print("error: cannot read file: {why}"), ExitWith(20)]
+  }
+}
+
+app tiny_lisp {
+  start: Start
+  update: update
+  grants: [Console, ReadFiles]
+}

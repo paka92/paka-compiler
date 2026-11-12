@@ -1,0 +1,187 @@
+enum Msg { Start(path: String), Loaded(text: String), Failed(why: String) }
+
+enum Kind { Number, Name, Symbol, End }
+
+type Token { kind: Kind, text: String, col: Int }
+
+enum Expr {
+  Num(value: Int),
+  Var(name: String, col: Int),
+  Neg(inner: Expr),
+  Binary(op: String, col: Int, left: Expr, right: Expr)
+}
+
+enum Line { Assign(name: String, value: Expr), Show(value: Expr) }
+
+type Problem { col: Int, message: String }
+
+fn is_digit(c: String) -> Bool {
+  c >= "0" && c <= "9"
+}
+
+fn is_name_start(c: String) -> Bool {
+  c >= "a" && c <= "z" || c >= "A" && c <= "Z" || c == "_"
+}
+
+// The tokens of a line, ending with an End token one column past the line.
+fn tokens(line: String) -> Result<List<Token>, Problem> {
+  let cs = chars(line)
+  var out: List<Token> = []
+  var i = 0
+  while i < len(cs) {
+    let c = cs[i]
+    let start = i
+    if c == " " {
+      i += 1
+      continue
+    }
+    if is_digit(c) {
+      while i < len(cs) && is_digit(cs[i]) { i += 1 }
+      append(&out, Token { kind: Number, text: line[start..<i], col: start + 1 })
+    } else if is_name_start(c) {
+      while i < len(cs) && (is_name_start(cs[i]) || is_digit(cs[i])) { i += 1 }
+      append(&out, Token { kind: Name, text: line[start..<i], col: start + 1 })
+    } else if contains("+-*/%()=", c) {
+      i += 1
+      append(&out, Token { kind: Symbol, text: c, col: start + 1 })
+    } else {
+      return Err(Problem { col: start + 1, message: "bad character" })
+    }
+  }
+  append(&out, Token { kind: End, text: "", col: len(cs) + 1 })
+  Ok(out)
+}
+
+fn syntax_error(t: Token) -> Problem {
+  Problem { col: t.col, message: "syntax error" }
+}
+
+fn is_symbol(t: Token, text: String) -> Bool {
+  t.kind == Symbol && t.text == text
+}
+
+fn expression(ts: List<Token>, pos: inout Int) -> Result<Expr, Problem> {
+  var left = term(ts, &pos)?
+  while is_symbol(ts[pos], "+") || is_symbol(ts[pos], "-") {
+    let op = ts[pos]
+    pos += 1
+    let right = term(ts, &pos)?
+    left = Binary(op.text, op.col, left, right)
+  }
+  Ok(left)
+}
+
+fn term(ts: List<Token>, pos: inout Int) -> Result<Expr, Problem> {
+  var left = unary(ts, &pos)?
+  while is_symbol(ts[pos], "*") || is_symbol(ts[pos], "/") || is_symbol(ts[pos], "%") {
+    let op = ts[pos]
+    pos += 1
+    let right = unary(ts, &pos)?
+    left = Binary(op.text, op.col, left, right)
+  }
+  Ok(left)
+}
+
+fn unary(ts: List<Token>, pos: inout Int) -> Result<Expr, Problem> {
+  if is_symbol(ts[pos], "-") {
+    pos += 1
+    return Ok(Neg(unary(ts, &pos)?))
+  }
+  primary(ts, &pos)
+}
+
+fn primary(ts: List<Token>, pos: inout Int) -> Result<Expr, Problem> {
+  let t = ts[pos]
+  pos += 1
+  match t.kind {
+    Number => Ok(Num(ok_or(parse_int(t.text), syntax_error(t))?))
+    Name => Ok(Var(t.text, t.col))
+    Symbol => {
+      if t.text != "(" { return Err(syntax_error(t)) }
+      let inner = expression(ts, &pos)?
+      if !is_symbol(ts[pos], ")") { return Err(syntax_error(ts[pos])) }
+      pos += 1
+      Ok(inner)
+    }
+    End => Err(syntax_error(t))
+  }
+}
+
+fn parse_line(ts: List<Token>) -> Result<Line, Problem> {
+  var pos = 0
+  let assigns = ts[0].kind == Name && is_symbol(ts[1], "=")
+  if assigns { pos = 2 }
+  let value = expression(ts, &pos)?
+  if ts[pos].kind != End { return Err(syntax_error(ts[pos])) }
+  if assigns { Ok(Assign(ts[0].text, value)) } else { Ok(Show(value)) }
+}
+
+fn eval(e: Expr, vars: Map<String, Int>) -> Result<Int, Problem> {
+  match e {
+    Num(value) => Ok(value)
+    Var(name, col) => ok_or(get(vars, name), Problem { col: col, message: "unknown name {name}" })
+    Neg(inner) => Ok(-eval(inner, vars)?)
+    Binary(op, col, left, right) => {
+      let a = eval(left, vars)?
+      let b = eval(right, vars)?
+      match op {
+        "+" => Ok(a + b)
+        "-" => Ok(a - b)
+        "*" => Ok(a * b)
+        _ => {
+          if b == 0 { return Err(Problem { col: col, message: "division by zero" }) }
+          if op == "/" { Ok(a / b) } else { Ok(a % b) }
+        }
+      }
+    }
+  }
+}
+
+// Runs one line: the lines it prints, none or one.
+fn run_line(line: String, vars: inout Map<String, Int>) -> Result<List<String>, Problem> {
+  let ts = tokens(line)?
+  if ts[0].kind == End { return Ok([]) }
+  match parse_line(ts)? {
+    Assign(name, e) => {
+      vars[name] = eval(e, vars)?
+      Ok([])
+    }
+    Show(e) => Ok(["{eval(e, vars)?}"])
+  }
+}
+
+fn run(text: String) -> List<Effect<Msg>> {
+  var effects: List<Effect<Msg>> = []
+  var vars: Map<String, Int> = [:]
+  let rows = lines(text)
+  for i in 0..<len(rows) {
+    match run_line(rows[i], &vars) {
+      Ok(shown) => {
+        for line in shown {
+          append(&effects, Print(line))
+        }
+      }
+      Err(p) => {
+        append(&effects, Print("error: line {i + 1} col {p.col}: {p.message}"))
+        append(&effects, ExitWith(20))
+        return effects
+      }
+    }
+  }
+  append(&effects, Exit)
+  effects
+}
+
+fn update(m: Msg) -> List<Effect<Msg>> {
+  match m {
+    Start(path) => [ReadFile(path, then: Loaded, or: Failed)]
+    Loaded(text) => run(text)
+    Failed(why) => [Print("error: cannot read file: {why}"), ExitWith(20)]
+  }
+}
+
+app calculator {
+  start: Start
+  update: update
+  grants: [Console, ReadFiles]
+}

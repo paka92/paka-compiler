@@ -1,0 +1,6 @@
+main.paka:9:17: error[type-mismatch]: expected fn(Rec, Rec) -> Bool, found fn(Rec, Rec) -> Int (cmp)
+  definition: probe
+  bytes: 156..159
+  text: "cmp"
+  expected: fn(Rec, Rec) -> Bool
+  found: fn(Rec, Rec) -> Int

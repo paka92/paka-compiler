@@ -1,0 +1,17 @@
+enum Msg { Start }
+
+fn f(xs: List<Int>) -> Int {
+  match xs {
+    _ => 0
+  }
+}
+
+fn update(msg: Msg) -> List<Effect<Msg>> {
+  [Print("done"), Exit]
+}
+
+app types {
+  start: Start
+  update: update
+  grants: [Console]
+}

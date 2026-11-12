@@ -1,0 +1,16 @@
+enum Msg { Start }
+
+example tour {
+  let n = parse_int("1")?
+  n == 1
+}
+
+fn update(msg: Msg) -> List<Effect<Msg>> {
+  [Print("done"), Exit]
+}
+
+app types {
+  start: Start
+  update: update
+  grants: [Console]
+}

@@ -1,0 +1,15 @@
+enum Msg { Start }
+
+fn handle(m: Msg) -> List<Effect<Msg>> {
+  [Print("handled"), Exit]
+}
+
+fn update(n: Int) -> Int {
+  n + 1
+}
+
+app apps {
+  start: Start
+  update: handle
+  grants: [Console]
+}

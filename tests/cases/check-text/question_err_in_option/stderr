@@ -1,0 +1,6 @@
+main.paka:9:22: error[type-mismatch]: ? passes Err(String) up, but ratio_opt returns Option<Int>; make it Result<T, String> or match it
+  definition: ratio_opt
+  bytes: 183..184
+  text: "?"
+  expected: Result<T, String>
+  found: Option<Int>

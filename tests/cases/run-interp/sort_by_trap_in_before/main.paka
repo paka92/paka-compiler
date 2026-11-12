@@ -1,0 +1,15 @@
+enum Msg { Start }
+
+fn boom(a: Int, b: Int) -> Bool { a / 0 > b }
+
+fn update(m: Msg) -> List<Effect<Msg>> {
+  var xs = [3, 1, 2]
+  sort_by(&xs, boom)
+  [Exit]
+}
+
+app callbacks {
+  start: Start
+  update: update
+  grants: [Console]
+}

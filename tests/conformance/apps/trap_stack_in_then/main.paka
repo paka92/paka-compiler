@@ -1,0 +1,19 @@
+enum Msg { Start, Loaded(text: String), Failed(why: String) }
+
+fn down(n: Int) -> Int { down(n + 1) + 1 }
+
+fn parse(text: String) -> Msg { Loaded("{down(0)}") }
+
+fn update(m: Msg) -> List<Effect<Msg>> {
+  match m {
+    Start => [Print("before"), ReadFile("main.paka", then: parse, or: Failed)]
+    Loaded(text) => [Exit]
+    Failed(why) => [Exit]
+  }
+}
+
+app apps {
+  start: Start
+  update: update
+  grants: [Console, ReadFiles]
+}

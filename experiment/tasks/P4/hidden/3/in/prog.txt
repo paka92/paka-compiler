@@ -1,0 +1,6 @@
+      set a 3
+loop: out a
+      sub a 1
+      jz a end
+      jmp loop
+end:  halt

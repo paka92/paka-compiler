@@ -1,0 +1,27 @@
+enum Msg { Start }
+
+type Count { word: String, n: Int }
+fn more(a: Count, b: Count) -> Bool { a.n > b.n || a.n == b.n && a.word < b.word }
+fn top(text: String) -> List<String> {
+  var counts: Map<String, Int> = [:]
+  for w in words(lower(text)) { counts[w] = unwrap_or(get(counts, w), 0) + 1 }
+  var rows: List<Count> = []
+  for w in keys(counts) { append(&rows, Count { word: w, n: counts[w] }) }
+  sort_by(&rows, more)
+  var out: List<String> = []
+  for r in rows {
+    let n = "{r.n}"
+    append(&out, "{pad_right(r.word, 12)}{pad_left(n, 5)}")
+  }
+  out
+}
+
+fn update(msg: Msg) -> List<Effect<Msg>> {
+  [Print(join(top("the cat the dog The end cat the"), "\n")), Exit]
+}
+
+app builtins {
+  start: Start
+  update: update
+  grants: [Console]
+}

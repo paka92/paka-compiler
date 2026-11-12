@@ -1,0 +1,4 @@
+box 1 1 1 1 1 1
+select A1
+load A1 1.23 2
+load A1 0.00 2

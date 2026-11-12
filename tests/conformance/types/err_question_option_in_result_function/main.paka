@@ -1,0 +1,16 @@
+enum Msg { Start }
+
+fn f() -> Result<Int, String> {
+  let n = parse_int("1")?
+  Ok(n)
+}
+
+fn update(msg: Msg) -> List<Effect<Msg>> {
+  [Print("done"), Exit]
+}
+
+app types {
+  start: Start
+  update: update
+  grants: [Console]
+}

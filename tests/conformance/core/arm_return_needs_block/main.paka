@@ -1,0 +1,18 @@
+enum Msg { Start }
+
+fn pick(n: Int) -> Int {
+  match n {
+    0 => return 5
+    _ => n
+  }
+}
+
+fn update(msg: Msg) -> List<Effect<Msg>> {
+  [Exit]
+}
+
+app core {
+  start: Start
+  update: update
+  grants: [Console]
+}

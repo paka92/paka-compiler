@@ -1,0 +1,185 @@
+enum Msg { Start(path: String), Loaded(text: String), Failed(why: String) }
+
+enum Command {
+  Open(name: String),
+  Deposit(name: String, amount: Int),
+  Hold(name: String, id: String, amount: Int),
+  Capture(id: String, amount: Int),
+  Release(id: String),
+  Transfer(from: String, to: String, amount: Int)
+}
+
+type Step { line: Int, command: Command }
+
+type Lock { account: String, amount: Int, active: Bool }
+
+type Ledger {
+  balance: Map<String, Int> = [:],
+  held: Map<String, Int> = [:],
+  holds: Map<String, Lock> = [:]
+}
+
+fn made_of(s: String, allowed: String) -> Bool {
+  if is_empty(s) { return false }
+  for c in chars(s) {
+    if !contains(allowed, c) { return false }
+  }
+  true
+}
+
+// Cents written as 1 to 9 digits, a `.` and exactly 2 digits, at least 0.01.
+fn amount(s: String) -> Option<Int> {
+  let parts = split(s, ".")
+  if len(parts) != 2 || len(parts[0]) > 9 || len(parts[1]) != 2 { return None }
+  if !made_of(parts[0], "0123456789") || !made_of(parts[1], "0123456789") { return None }
+  let cents = parse_int(parts[0])? * 100 + parse_int(parts[1])?
+  if cents < 1 { None } else { Some(cents) }
+}
+
+fn name(s: String) -> Option<String> {
+  if made_of(s, "abcdefghijklmnopqrstuvwxyz") { Some(s) } else { None }
+}
+
+fn id(s: String) -> Option<String> {
+  if made_of(s, "abcdefghijklmnopqrstuvwxyz0123456789") { Some(s) } else { None }
+}
+
+fn command(line: String) -> Option<Command> {
+  let f = split(line, " ")
+  let shape = "{f[0]} {len(f)}"  // the command word and its number of parts
+  match shape {
+    "open 2" => Some(Open(name(f[1])?))
+    "deposit 3" => Some(Deposit(name(f[1])?, amount(f[2])?))
+    "hold 4" => Some(Hold(name(f[1])?, id(f[2])?, amount(f[3])?))
+    "capture 3" => Some(Capture(id(f[1])?, amount(f[2])?))
+    "release 2" => Some(Release(id(f[1])?))
+    "transfer 4" => Some(Transfer(name(f[1])?, name(f[2])?, amount(f[3])?))
+    _ => None
+  }
+}
+
+fn read_steps(text: String) -> Result<List<Step>, String> {
+  var steps: List<Step> = []
+  let rows = lines(text)
+  for i in 0..<len(rows) {
+    if is_empty(rows[i]) { continue }
+    let c = ok_or(command(rows[i]), "error: line {i + 1}: bad command")?
+    append(&steps, Step { line: i + 1, command: c })
+  }
+  Ok(steps)
+}
+
+fn available(l: Ledger, account: String) -> Int {
+  l.balance[account] - l.held[account]
+}
+
+fn active_hold(l: Ledger, id: String) -> Option<Lock> {
+  let lock = get(l.holds, id)?
+  if lock.active { Some(lock) } else { None }
+}
+
+// The reason the command is rejected, or None once it has run.
+fn run(l: inout Ledger, c: Command) -> Option<String> {
+  match c {
+    Open(name) => {
+      if has(l.balance, name) { return Some("account exists {name}") }
+      l.balance[name] = 0
+      l.held[name] = 0
+    }
+    Deposit(name, amount) => {
+      if !has(l.balance, name) { return Some("no account {name}") }
+      l.balance[name] += amount
+    }
+    Hold(name, id, amount) => {
+      if !has(l.balance, name) { return Some("no account {name}") }
+      if has(l.holds, id) { return Some("hold exists {id}") }
+      if available(l, name) < amount { return Some("insufficient funds") }
+      l.holds[id] = Lock { account: name, amount: amount, active: true }
+      l.held[name] += amount
+    }
+    Capture(id, amount) => {
+      match active_hold(l, id) {
+        Some(h) => {
+          if amount > h.amount { return Some("capture exceeds hold") }
+          l.balance[h.account] -= amount
+          l.held[h.account] -= h.amount
+          l.holds[id].active = false
+        }
+        None => {
+          return Some("no hold {id}")
+        }
+      }
+    }
+    Release(id) => {
+      match active_hold(l, id) {
+        Some(h) => {
+          l.held[h.account] -= h.amount
+          l.holds[id].active = false
+        }
+        None => {
+          return Some("no hold {id}")
+        }
+      }
+    }
+    Transfer(from, to, amount) => {
+      if !has(l.balance, from) { return Some("no account {from}") }
+      if !has(l.balance, to) { return Some("no account {to}") }
+      if from == to { return Some("same account") }
+      if available(l, from) < amount { return Some("insufficient funds") }
+      l.balance[from] -= amount
+      l.balance[to] += amount
+    }
+  }
+  None
+}
+
+fn money(cents: Int) -> String {
+  let rest = cents % 100
+  let pad = if rest < 10 { "0" } else { "" }
+  "{cents / 100}.{pad}{rest}"
+}
+
+fn ledger(text: String) -> Result<List<String>, String> {
+  let steps = read_steps(text)?
+  var l = Ledger {}
+  var out: List<String> = []
+  for step in steps {
+    match run(&l, step.command) {
+      Some(why) => append(&out, "line {step.line}: {why}")
+      None => {}
+    }
+  }
+  for name in keys(l.balance) {
+    append(&out, "{name}: balance {money(l.balance[name])}, held {money(l.held[name])}")
+  }
+  if is_empty(l.balance) { append(&out, "no accounts") }
+  Ok(out)
+}
+
+fn report(result: Result<List<String>, String>) -> List<Effect<Msg>> {
+  match result {
+    Ok(out) => {
+      var effects: List<Effect<Msg>> = []
+      for line in out {
+        append(&effects, Print(line))
+      }
+      append(&effects, Exit)
+      effects
+    }
+    Err(why) => [Print(why), ExitWith(20)]
+  }
+}
+
+fn update(m: Msg) -> List<Effect<Msg>> {
+  match m {
+    Start(path) => [ReadFile(path, then: Loaded, or: Failed)]
+    Loaded(text) => report(ledger(text))
+    Failed(why) => [Print("error: cannot read file: {why}"), ExitWith(20)]
+  }
+}
+
+app ledger_with_holds {
+  start: Start
+  update: update
+  grants: [Console, ReadFiles]
+}

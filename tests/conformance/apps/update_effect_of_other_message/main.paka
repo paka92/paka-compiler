@@ -1,0 +1,13 @@
+enum Msg { Start }
+
+enum Other { Go }
+
+fn update(m: Msg) -> List<Effect<Other>> {
+  [Exit]
+}
+
+app apps {
+  start: Start
+  update: update
+  grants: [Console]
+}

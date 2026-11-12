@@ -1,0 +1,24 @@
+enum Msg { Start }
+
+type Ops { f: fn(Int) -> Int, n: Int = 5 }
+
+fn twice(x: Int) -> Int {
+  x * 2
+}
+
+fn reset(o: inout Ops) -> Int {
+  o.n = 0
+  21
+}
+
+fn update(msg: Msg) -> List<Effect<Msg>> {
+  var o = Ops { f: twice }
+  let r = o.f(reset(&o))
+  [Print("{r} {o.n}"), Exit]
+}
+
+app ownership {
+  start: Start
+  update: update
+  grants: [Console]
+}

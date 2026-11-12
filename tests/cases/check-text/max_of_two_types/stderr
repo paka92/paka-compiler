@@ -1,0 +1,6 @@
+main.paka:2:10: error[type-mismatch]: max takes two of one type; write 1.0
+  definition: widest
+  bytes: 30..33
+  text: "2.0"
+  expected: Int
+  found: Float

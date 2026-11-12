@@ -1,0 +1,16 @@
+enum Msg { Start }
+
+fn double(n: Int) -> Int { n * 2 }
+
+fn positive(n: Int) -> Bool { n > 0 }
+
+fn update(msg: Msg) -> List<Effect<Msg>> {
+  let c = double == positive
+  [Print("done"), Exit]
+}
+
+app types {
+  start: Start
+  update: update
+  grants: [Console]
+}

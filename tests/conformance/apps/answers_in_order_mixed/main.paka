@@ -1,0 +1,20 @@
+enum Msg { Start, GotA(text: String), GotB(text: String), GotC(text: String) }
+
+fn update(m: Msg) -> List<Effect<Msg>> {
+  match m {
+    Start => [
+      ReadFile("a.txt", then: GotA, or: GotA),
+      ReadFile("b.txt", then: GotB, or: GotB),
+      ReadFile("c.txt", then: GotC, or: GotC)
+    ]
+    GotA(text) => [Print("a: {text}")]
+    GotB(text) => [Print("b: {text}")]
+    GotC(text) => [Print("c: {text}"), Exit]
+  }
+}
+
+app apps {
+  start: Start
+  update: update
+  grants: [Console, ReadFiles]
+}

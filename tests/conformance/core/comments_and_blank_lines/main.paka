@@ -1,0 +1,19 @@
+enum Msg { Start }
+
+fn update(msg: Msg) -> List<Effect<Msg>> {
+  // a comment line
+  let a = 1 // trailing comment
+  // café in a comment
+
+  let b = 2
+  [
+    Print("{a + b} // not a comment"),
+    Exit
+  ]
+}
+
+app core {
+  start: Start
+  update: update
+  grants: [Console]
+}

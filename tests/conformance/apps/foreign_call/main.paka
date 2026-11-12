@@ -1,0 +1,37 @@
+foreign Calc {
+  source: "calc.c"
+  header: "calc.h"
+  Add(a: Int) -> Int = "calc_add"
+  Half(x: Float) -> Float = "calc_half"
+  Longer(text: String, than: Int) -> Bool = "calc_longer"
+  Reset() = "calc_reset"
+}
+
+enum Msg {
+  Start, Added(n: Int), Halved(x: Float), Long(yes: Bool), Cleared, Last(n: Int),
+  Failed(why: String)
+}
+
+fn update(m: Msg) -> List<Effect<Msg>> {
+  match m {
+    Start => [
+      Add(2, then: Added, or: Failed),
+      Add(3, then: Added, or: Failed),
+      Half(5.0, then: Halved, or: Failed),
+      Longer("héllo", 5, then: Long, or: Failed),
+      Reset(then: Cleared, or: Failed)
+    ]
+    Added(n) => [Print("added {n}")]
+    Halved(x) => [Print("half {fixed(x, digits: 2)}")]
+    Long(yes) => [Print("longer {yes}")]
+    Cleared => [Print("cleared"), Add(1, then: Last, or: Failed)]
+    Last(n) => [Print("added {n}"), Exit]
+    Failed(why) => [Print(why), Exit]
+  }
+}
+
+app calc {
+  start: Start
+  update: update
+  grants: [Console, Calc]
+}

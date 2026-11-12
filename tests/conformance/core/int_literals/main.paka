@@ -1,0 +1,21 @@
+enum Msg { Start }
+
+fn update(msg: Msg) -> List<Effect<Msg>> {
+  let zero = 0
+  let seven = 7
+  let neg = -7
+  let top = 9223372036854775807
+  let bottom = -9223372036854775808
+  [
+    Print("{zero} {seven} {neg}"),
+    Print("{top}"),
+    Print("{bottom}"),
+    Exit
+  ]
+}
+
+app core {
+  start: Start
+  update: update
+  grants: [Console]
+}

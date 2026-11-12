@@ -1,0 +1,37 @@
+// Build and walk many full binary trees of growing depth.
+
+enum Msg { Start }
+
+enum Tree { Leaf, Node(left: Tree, right: Tree) }
+
+fn make(depth: Int) -> Tree {
+  if depth == 0 { return Leaf }
+  Node(make(depth - 1), make(depth - 1))
+}
+
+fn count(t: Tree) -> Int {
+  match t {
+    Leaf => 0
+    Node(l, r) => 1 + count(l) + count(r)
+  }
+}
+
+fn update(m: Msg) -> List<Effect<Msg>> {
+  var total = 0
+  var depth = 4
+  var trees = 262144
+  while depth <= 18 {
+    for i in 0..<trees {
+      total += count(make(depth))
+    }
+    depth += 2
+    trees /= 4
+  }
+  [Print("{total}"), Exit]
+}
+
+app binary_trees {
+  start: Start
+  update: update
+  grants: [Console]
+}

@@ -1,0 +1,4 @@
+main.paka:9:3: error[unused-result]: the value of ratio is not used; it is Result<Int, String>: match it, pass it up with ratio(a, b)?, or write `_ = ratio(a, b)`
+  definition: twice
+  bytes: 152..163
+  text: "ratio(a, b)"

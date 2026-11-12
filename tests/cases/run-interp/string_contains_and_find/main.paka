@@ -1,0 +1,35 @@
+enum Msg { Start }
+
+fn n(i: Int) -> String { "{i}" }
+
+fn t(b: Bool) -> String { "{b}" }
+
+fn q(x: String) -> String { "[" + x + "]" }
+
+fn opt(o: Option<Int>) -> String {
+  match o {
+    Some(i) => "{i}"
+    None => "none"
+  }
+}
+
+fn lst(xs: List<String>) -> String {
+  let body = join(xs, "|")
+  "{len(xs)}[{body}]"
+}
+
+fn update(m: Msg) -> List<Effect<Msg>> {
+  [
+    Print(t(contains("hello", "ell")) + " " + t(contains("hello", "")) + " " + t(contains("", "")) + " " + t(contains("", "a"))),
+    Print(t(contains("héllo", "llo")) + " " + t(contains("日本語", "本")) + " " + t(contains("abc", "abcd")) + " " + t(contains("héllo", "e"))),
+    Print(opt(find("hello", "l")) + " " + opt(find("aaa", "aa")) + " " + opt(find("abc", "")) + " " + opt(find("", "")) + " " + opt(find("", "a"))),
+    Print(opt(find("héllo", "llo")) + " " + opt(find("日本語", "語")) + " " + opt(find("日本語", "x")) + " " + opt(find("hello", "lo"))),
+    Exit
+  ]
+}
+
+app rows {
+  start: Start
+  update: update
+  grants: [Console]
+}

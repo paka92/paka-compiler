@@ -1,0 +1,17 @@
+enum Msg { Start }
+
+fn update(msg: Msg) -> List<Effect<Msg>> {
+  [
+    Print(fixed(0.1, digits: 20)),
+    Print(fixed(0.1 + 0.2, digits: 17)),
+    Print(fixed(10000000000000000000000.0, digits: 0)),
+    Print(fixed(100000000000000000000000.0, digits: 0)),
+    Exit
+  ]
+}
+
+app core {
+  start: Start
+  update: update
+  grants: [Console]
+}

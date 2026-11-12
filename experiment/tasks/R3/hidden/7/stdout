@@ -1,0 +1,6 @@
+groups: 1
+s1 s2 s3 s4 t1 t2 t3 u1 u2
+bridges: 3
+s4 t1
+t3 u1
+u1 u2

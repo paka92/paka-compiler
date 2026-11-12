@@ -1,0 +1,266 @@
+// The three test definitions of the code generator benchmark (docs/decisions/M4-01.md).
+// step is small, walk medium, simulate large. Numbers, enums, branches and calls only.
+
+enum Mode { Up, Down, Hold }
+
+enum Phase { Rise, Fall, Drift, Rest, Burst, Decay, Done }
+
+fn step(x: Int, m: Mode; by: Int) -> Int {
+  match m {
+    Up => x + by
+    Down => x - by
+    Hold => x
+  }
+}
+
+fn walk(start: Int, rounds: Int; d: Int) -> Int {
+  var x = start
+  var m = Up
+  var best = start
+  var turns = 0
+  var i = 0
+  while i < rounds {
+    let next = step(x, m, by: i % 7 + 1)
+    if next > 1000 {
+      m = Down
+      turns += 1
+    } else if next < -1000 {
+      m = Up
+      turns += 1
+    } else if i % 11 == 10 {
+      m = Hold
+    } else if i % 11 == 0 {
+      m = match m {
+        Up => Down
+        Down => Hold
+        Hold => Up
+      }
+    }
+    x = next
+    best = max(best, x)
+    i += 1
+  }
+  var odd = 0
+  var k = abs(x) % 50
+  while k > 0 {
+    if k % 2 == 1 {
+      odd += k
+    }
+    k -= 1
+  }
+  let spread = to_float(best - x)
+  let root = to_int(sqrt(spread))
+  best * turns + root * 3 + odd - x / d
+}
+
+fn simulate(seed: Int, rounds: Int; cap: Int) -> Int {
+  let scale = cap * 1000
+  var state = bit_and(seed, 2147483647)
+  var phase = Rise
+  var pos = 0.0
+  var vel = 1.0
+  var energy = 100.0
+  var height = 0
+  var peak = 0
+  var low = 0
+  var bursts = 0
+  var rests = 0
+  var flips = 0
+  var checksum = 0
+  var turn = 0
+  while turn < rounds {
+    state = bit_and(wrap_add(wrap_mul(state, 1103515245), 12345), 2147483647)
+    let roll = state % 100
+    let before = phase
+    match phase {
+      Rise => {
+        height = step(height, Up, by: roll % 5 + 1)
+        vel = vel + 0.5
+        energy = energy - vel
+        if height > peak {
+          peak = height
+        }
+        if energy < 20.0 {
+          phase = Rest
+        } else if roll < 15 {
+          phase = Fall
+        } else if roll > 90 {
+          phase = Burst
+        }
+      }
+      Fall => {
+        height = step(height, Down, by: roll % 4 + 1)
+        vel = vel - 0.75
+        energy = energy + 1.5
+        if height < low {
+          low = height
+        }
+        if height < -50 {
+          phase = Rise
+          flips += 1
+        } else if roll < 10 {
+          phase = Drift
+        } else if roll > 85 {
+          phase = Decay
+        }
+      }
+      Drift => {
+        let wobble = to_float(roll - 50) / 25.0
+        pos = pos + wobble
+        vel = vel * 0.9
+        height = step(height, Hold, by: 0)
+        if abs(pos) > 40.0 {
+          pos = pos / 2.0
+          flips += 1
+        }
+        if roll < 30 {
+          phase = Rise
+        } else if roll < 60 {
+          phase = Fall
+        } else if roll > 95 {
+          phase = Done
+        }
+      }
+      Rest => {
+        rests += 1
+        energy = min(energy + 25.0, 150.0)
+        vel = 1.0
+        if rests % 3 == 0 {
+          phase = Drift
+        } else {
+          phase = Rise
+        }
+      }
+      Burst => {
+        bursts += 1
+        let gain = walk(height, 12, d: bursts)
+        height = step(height, Up, by: abs(gain) % 20)
+        energy = energy - 15.0
+        vel = sqrt(abs(vel) + 4.0)
+        if energy < 0.0 {
+          energy = 0.0
+          phase = Rest
+        } else {
+          phase = Decay
+        }
+      }
+      Decay => {
+        energy = energy * 0.8
+        vel = vel - 0.25
+        let drop = to_int(floor(energy / 10.0))
+        height = step(height, Down, by: drop)
+        if height < low {
+          low = height
+        }
+        if energy < 30.0 {
+          phase = Rest
+        } else if roll % 2 == 0 {
+          phase = Fall
+        } else {
+          phase = Drift
+        }
+      }
+      Done => {
+        phase = Rise
+        energy = 100.0
+        pos = 0.0
+        flips += 2
+      }
+    }
+    if phase != before {
+      checksum = wrap_add(checksum, turn * 31 + roll)
+    }
+    if turn % 16 == 15 {
+      pos = round(pos * 4.0) / 4.0
+      vel = max(min(vel, 8.0), -8.0)
+      energy = max(energy, 0.0)
+    }
+    turn += 1
+  }
+  var a = abs(peak) + 1
+  var b = abs(low) + 1
+  while b != 0 {
+    let t = a % b
+    a = b
+    b = t
+  }
+  let common = a
+  var digits = 0
+  var rest = abs(checksum)
+  while rest > 0 {
+    digits += rest % 10
+    rest = rest / 10
+  }
+  var n = abs(height) + 1
+  var steps = 0
+  while n != 1 && steps < 200 {
+    if n % 2 == 0 {
+      n = n / 2
+    } else {
+      n = 3 * n + 1
+    }
+    steps += 1
+  }
+  let settled = to_int(round(pos * 100.0)) + to_int(trunc(vel * 10.0)) + to_int(ceil(energy))
+  let score = peak * 7 - low * 3 + bursts * 11 + rests * 5 + flips * 13
+  let goal = abs(score)
+  var lo = 0
+  var hi = 3037000499
+  while lo < hi {
+    let mid = (lo + hi + 1) / 2
+    if mid * mid <= goal {
+      lo = mid
+    } else {
+      hi = mid - 1
+    }
+  }
+  var primes = 0
+  let limit = abs(peak) % 200 + 2
+  var p = 2
+  while p <= limit {
+    var q = 2
+    var prime = true
+    while q * q <= p {
+      if p % q == 0 {
+        prime = false
+        break
+      }
+      q += 1
+    }
+    if prime {
+      primes += 1
+    }
+    p += 1
+  }
+  var series = 0.0
+  var j = 1
+  while j <= 20 {
+    series = series + 1.0 / to_float(j * j)
+    j += 1
+  }
+  let weight = match phase {
+    Rise => 1
+    Fall => 2
+    Drift => 3
+    Rest => 4
+    Burst => 5
+    Decay => 6
+    Done => 7
+  }
+  let extra = lo + primes * weight + to_int(series * 1000.0)
+  let mixed = wrap_add(wrap_mul(score, 97), digits + common + steps + settled + extra)
+  mixed % scale + checksum / cap
+}
+
+example small_results {
+  step(5, Up, by: 3) == 8 && step(5, Down, by: 3) == 2 && step(5, Hold, by: 3) == 5
+}
+
+example medium_results {
+  walk(0, 40, d: 3) == 59 && walk(990, 100, d: 7) == 8112 && walk(-5, 1, d: 1) == 8
+}
+
+example large_results {
+  simulate(1, 50, cap: 7) == 2164 && simulate(42, 500, cap: 13) == 137150 &&
+    simulate(2026, 2000, cap: 101) == 343598
+}

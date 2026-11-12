@@ -1,0 +1,27 @@
+enum Msg { Start }
+
+fn five() -> Int { 5 }
+
+fn bump(n: Int) -> Int { n + 1 }
+
+fn ignore(n: Int) {}
+
+fn call_both(f: fn() -> Int, g: fn(Int) -> Int) -> Int {
+  g(f())
+}
+
+fn run_all(f: fn(Int)) {
+  f(1)
+}
+
+fn update(msg: Msg) -> List<Effect<Msg>> {
+  run_all(ignore)
+  let a = call_both(five, bump)
+  [Print("{a}"), Exit]
+}
+
+app types {
+  start: Start
+  update: update
+  grants: [Console]
+}

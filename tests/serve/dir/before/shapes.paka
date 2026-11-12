@@ -1,0 +1,12 @@
+// Sizes.
+type Size { w: Int = 0 }
+
+// The area.
+// Two lines of comment.
+fn area(s: Size) -> Int {
+  s.w * s.w
+}
+
+fn side(s: Size) -> Int {
+  s.w
+}

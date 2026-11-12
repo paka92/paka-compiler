@@ -1,0 +1,21 @@
+enum Msg { Start, Loaded(text: String), Failed(why: String) }
+
+fn helper(why: String) -> Int { 7 / (len(why) - len(why)) }
+
+fn boom(why: String) -> Msg {
+  Failed("{helper(why)}")
+}
+
+fn update(m: Msg) -> List<Effect<Msg>> {
+  match m {
+    Start => [Print("asked"), ReadFile("absent.txt", then: Loaded, or: boom)]
+    Loaded(text) => [Exit]
+    Failed(why) => [Print("never"), Exit]
+  }
+}
+
+app apps {
+  start: Start
+  update: update
+  grants: [Console, ReadFiles, WriteFiles]
+}

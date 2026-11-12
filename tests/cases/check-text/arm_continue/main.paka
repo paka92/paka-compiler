@@ -1,0 +1,21 @@
+fn skip(xs: List<Int>) -> Int {
+  for x in xs {
+    match x {
+      0 => continue
+      _ => x
+    }
+  }
+  0
+}
+
+enum Msg { Start }
+
+fn update(m: Msg) -> List<Effect<Msg>> {
+  [Exit]
+}
+
+app tool {
+  start: Start
+  update: update
+  grants: []
+}

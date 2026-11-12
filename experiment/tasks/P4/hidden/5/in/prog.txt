@@ -1,0 +1,4 @@
+      set a 0
+rec:  add a 1
+      out a
+      call rec

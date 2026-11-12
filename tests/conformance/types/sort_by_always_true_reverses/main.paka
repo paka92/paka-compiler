@@ -1,0 +1,23 @@
+enum Msg { Start }
+
+fn show(xs: List<Int>) -> String {
+  var parts: List<String> = []
+  for x in xs { append(&parts, "{x}") }
+  "[" + join(parts, ", ") + "]"
+}
+
+fn yes(a: Int, b: Int) -> Bool { true }
+
+fn update(msg: Msg) -> List<Effect<Msg>> {
+  var xs = [3, 1, 2]
+  var ys = [5, 3, 1, 4, 2]
+  sort_by(&xs, yes)
+  sort_by(&ys, yes)
+  [Print(show(xs) + " " + show(ys)), Exit]
+}
+
+app types {
+  start: Start
+  update: update
+  grants: [Console]
+}

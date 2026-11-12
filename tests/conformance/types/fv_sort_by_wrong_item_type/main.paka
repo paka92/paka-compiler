@@ -1,0 +1,15 @@
+enum Msg { Start }
+
+fn shorter(a: String, b: String) -> Bool { len(a) < len(b) }
+
+fn update(msg: Msg) -> List<Effect<Msg>> {
+  var xs = [2, 1]
+  sort_by(&xs, shorter)
+  [Print("done"), Exit]
+}
+
+app types {
+  start: Start
+  update: update
+  grants: [Console]
+}

@@ -1,0 +1,15 @@
+fn g(s: String) -> Result<Int, String> {
+  Ok(parse_int(s)?)
+}
+
+enum Msg { Start }
+
+fn update(m: Msg) -> List<Effect<Msg>> {
+  [Exit]
+}
+
+app tool {
+  start: Start
+  update: update
+  grants: []
+}

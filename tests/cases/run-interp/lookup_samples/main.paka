@@ -1,0 +1,38 @@
+fn rank(names: List<String>, who: String) -> String {
+  match find(names, who) {
+    Some(i) => {
+      let place = i + 1
+      "{who} is number {place}"
+    }
+    None => "{who} is not listed"
+  }
+}
+
+fn count_words(words: List<String>) -> Map<String, Int> {
+  var counts: Map<String, Int> = [:]
+  for w in words {
+    counts[w] = unwrap_or(get(counts, w), 0) + 1
+  }
+  counts
+}
+
+enum Msg { Start }
+
+fn update(m: Msg) -> List<Effect<Msg>> {
+  let names = ["ada", "bob", "cy"]
+  let counts = count_words(["a", "b", "a", "a"])
+  let a = counts["a"]
+  let b = counts["b"]
+  [
+    Print(rank(names, "bob")),
+    Print(rank(names, "eve")),
+    Print("a {a}, b {b}"),
+    Exit
+  ]
+}
+
+app tool {
+  start: Start
+  update: update
+  grants: [Console]
+}

@@ -1,0 +1,5 @@
+fields agent-written pass
+int_and_bool_locals agent-written pass
+list_items agent-written pass
+slices_are_lent agent-written pass
+writes_stay_after_return agent-written pass

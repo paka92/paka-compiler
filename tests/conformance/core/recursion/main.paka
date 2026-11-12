@@ -1,0 +1,26 @@
+enum Msg { Start }
+
+fn factorial(n: Int) -> Int { if n <= 1 { 1 } else { n * factorial(n - 1) } }
+
+fn fib(n: Int) -> Int { if n < 2 { n } else { fib(n - 1) + fib(n - 2) } }
+
+fn gcd(a: Int, b: Int) -> Int { if b == 0 { a } else { gcd(b, a % b) } }
+
+fn is_even(n: Int) -> Bool { if n == 0 { true } else { is_odd(n - 1) } }
+
+fn is_odd(n: Int) -> Bool { if n == 0 { false } else { is_even(n - 1) } }
+
+fn update(msg: Msg) -> List<Effect<Msg>> {
+  [
+    Print("{factorial(10)} {factorial(20)}"),
+    Print("{fib(15)} {gcd(84, 36)}"),
+    Print("{is_even(10)} {is_odd(7)} {is_even(7)}"),
+    Exit
+  ]
+}
+
+app core {
+  start: Start
+  update: update
+  grants: [Console]
+}

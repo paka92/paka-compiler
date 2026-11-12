@@ -1,0 +1,4 @@
+members x:1
+cost a 1.00
+members x:1
+cost b 2.00 y

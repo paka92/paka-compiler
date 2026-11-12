@@ -1,0 +1,19 @@
+fn double_positive(n: Int) -> Int {
+  if n > 0 {
+    return n * 2
+  }
+  let never: Int = unreachable()
+  never
+}
+
+enum Msg { Start }
+
+fn update(m: Msg) -> List<Effect<Msg>> {
+  [Print("{double_positive(4)}"), Exit]
+}
+
+app tool {
+  start: Start
+  update: update
+  grants: [Console]
+}

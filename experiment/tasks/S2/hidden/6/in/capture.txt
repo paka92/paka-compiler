@@ -1,0 +1,11 @@
+open jo
+deposit jo 0.07
+deposit jo 1.93
+hold jo k 1.50
+capture k 1.51
+capture q 99.00
+capture k 0.05
+capture k 0.01
+hold jo m 1.95
+open jo
+capture m 1.90

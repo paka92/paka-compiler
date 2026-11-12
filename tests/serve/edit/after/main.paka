@@ -1,0 +1,23 @@
+// The word count sample, laid out by hand.
+type Tally { words: Int = 0 }
+
+enum Msg { Start(path: String), Loaded(text: String), Failed(why: String) }
+
+fn update(s: inout Tally, m: Msg) -> List<Effect<Msg>> {
+  match m {
+    Start(path) => [ReadFile(path, then: Loaded, or: Failed)]
+    Loaded(text) => {
+      s.words = len(words(count_words(text)))
+      [Print("{s.words} words"), Exit]
+    }
+    Failed(why) => [Print("cannot read file: {why}"), ExitWith(20)]
+  }
+}
+
+fn wc() -> Int {
+  0
+}
+
+fn count_words(text: String) -> String {
+  1
+}

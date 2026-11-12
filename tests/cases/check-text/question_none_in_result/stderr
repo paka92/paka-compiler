@@ -1,0 +1,6 @@
+main.paka:2:23: error[type-mismatch]: ? passes None up, but first_digit returns Result<Int, String>; make it Option<T>, write ok_or(..., error)? or match it
+  definition: first_digit
+  bytes: 73..74
+  text: "?"
+  expected: Option<T>
+  found: Result<Int, String>

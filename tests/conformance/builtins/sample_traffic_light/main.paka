@@ -1,0 +1,35 @@
+enum Msg { Start }
+
+enum Light { Red, Green, Amber }
+fn step(l: Light) -> Light {
+  match l {
+    Red => Green
+    Green => Amber
+    Amber => Red
+  }
+}
+fn after(ticks: Int) -> Light {
+  var l = Red
+  for i in 0..<ticks { l = step(l) }
+  l
+}
+
+fn name(l: Light) -> String {
+  match l {
+    Red => "Red"
+    Green => "Green"
+    Amber => "Amber"
+  }
+}
+
+fn update(msg: Msg) -> List<Effect<Msg>> {
+  var out: List<String> = []
+  for t in [0, 1, 2, 3, 4, 5, 7] { append(&out, name(after(t))) }
+  [Print(join(out, " ")), Exit]
+}
+
+app builtins {
+  start: Start
+  update: update
+  grants: [Console]
+}

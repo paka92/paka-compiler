@@ -1,0 +1,65 @@
+type Pair { name: String, n: Int }
+
+fn total(xs: List<Int>) -> Int {
+  var sum = 0
+  for x in xs {
+    sum += x
+  }
+  sum
+}
+
+fn names(ps: List<Pair>) -> String {
+  var out = ""
+  for p in ps {
+    out += p.name
+  }
+  out
+}
+
+example literal_and_len {
+  let empty: List<Int> = []
+  len([1, 2, 3]) == 3 && is_empty(empty) && !is_empty([0])
+}
+example items {
+  let xs = [1, 2, 3]
+  xs[0] + xs[2] == 4
+}
+example writes {
+  var xs = [1, 2, 3]
+  let ys = xs
+  xs[1] = 20
+  xs[2] += 5
+  xs[1] == 20 && xs[2] == 8 && ys[1] == 2 && ys[2] == 3
+}
+example slices {
+  let xs = [1, 2, 3, 4]
+  let s = xs[1..<3]
+  len(s) == 2 && s[0] == 2 && s[1] == 3 && len(xs[2..<2]) == 0 && total(xs[0..<4]) == 10
+}
+example nested {
+  var grid = [[1, 2], [3, 4]]
+  let old = grid
+  grid[1][0] = 9
+  grid[1][0] == 9 && old[1][0] == 3 && grid[0][1] == 2
+}
+example records_in_lists {
+  var ps = [Pair { name: "a", n: 1 }, Pair { name: "b", n: 2 }]
+  ps[1].n += 10
+  ps[0].name += "z"
+  ps[1].n == 12 && ps[0].name == "az" && names(ps) == "azb"
+}
+example strings_in_lists {
+  let ws = ["ab", "c"]
+  var out = ""
+  for w in ws {
+    out += w
+  }
+  out == "abc" && ws[1] == "c"
+}
+example loop_total { total([1, 2, 3, 4]) == 10 && total([]) == 0 }
+example bools_and_floats {
+  let bs = [true, false]
+  let fs = [1.5, 2.5]
+  bs[0] && !bs[1] && fs[1] == 2.5
+}
+example a_failing_item { [1, 2][1] == 1 }

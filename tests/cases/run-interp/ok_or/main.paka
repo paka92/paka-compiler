@@ -1,0 +1,23 @@
+fn find_user(id: Int) -> Result<String, String> {
+  let names: Map<Int, String> = [1: "ada", 2: "bob"]
+  ok_or(get(names, id), "no user {id}")
+}
+
+fn show(r: Result<String, String>) -> String {
+  match r {
+    Ok(name) => name
+    Err(why) => why
+  }
+}
+
+enum Msg { Start }
+
+fn update(m: Msg) -> List<Effect<Msg>> {
+  [Print(show(find_user(2))), Print(show(find_user(3))), Exit]
+}
+
+app generics {
+  start: Start
+  update: update
+  grants: [Console]
+}

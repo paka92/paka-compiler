@@ -1,0 +1,22 @@
+enum Msg { Start }
+
+fn two_none() -> List<Option<Int>> {
+  [None, None]
+}
+
+fn count(xs: List<Option<String>>) -> Int {
+  len(xs)
+}
+
+fn update(msg: Msg) -> List<Effect<Msg>> {
+  let a: List<Option<Int>> = [None, None]
+  let same = [None, None] == a
+  let other = [None, None] == [Some(1)]
+  [Print("{len(a)} {len(two_none())} {count([None, None, None])} {same} {other}"), Exit]
+}
+
+app types {
+  start: Start
+  update: update
+  grants: [Console]
+}

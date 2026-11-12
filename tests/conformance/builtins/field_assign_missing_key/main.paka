@@ -1,0 +1,15 @@
+enum Msg { Start }
+
+type Cell { hits: Int = 0 }
+
+fn update(msg: Msg) -> List<Effect<Msg>> {
+  var m: Map<String, Cell> = ["a": Cell {}]
+  m["x"].hits = 1
+  [Print("x"), Exit]
+}
+
+app builtins {
+  start: Start
+  update: update
+  grants: [Console]
+}

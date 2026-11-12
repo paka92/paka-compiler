@@ -1,0 +1,10 @@
+// Sizes.
+type Size { w: Int = 0, h: Int = 1 }
+
+fn side(s: Size) -> Int {
+  s.w
+}
+
+fn shapes() -> Int {
+  1
+}

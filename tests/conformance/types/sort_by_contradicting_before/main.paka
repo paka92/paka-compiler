@@ -1,0 +1,21 @@
+enum Msg { Start }
+
+fn show(xs: List<Int>) -> String {
+  var parts: List<String> = []
+  for x in xs { append(&parts, "{x}") }
+  "[" + join(parts, ", ") + "]"
+}
+
+fn same_parity(a: Int, b: Int) -> Bool { (a + b) % 2 == 0 }
+
+fn update(msg: Msg) -> List<Effect<Msg>> {
+  var xs = [1, 2, 3, 4, 5, 6]
+  sort_by(&xs, same_parity)
+  [Print(show(xs)), Exit]
+}
+
+app types {
+  start: Start
+  update: update
+  grants: [Console]
+}

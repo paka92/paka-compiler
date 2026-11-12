@@ -1,0 +1,54 @@
+Served program: tests/cases/run-interp/sample_wc_count. find and view: the exchanges of M4-03
+section 4 keep their ids; the rest add built-ins, variants, patterns, a budget too small for any
+entry and refused views. Exchange 28 comes before the program breaks, as there.
+
+> {"v":1,"id":1,"call":"find","name":"count_*"}
+< {"v":1,"id":1,"ok":true,"found":[{"name":"count_words","kind":"fn","sig":"fn count_words(text: String) -> Int","version":"8f37a8d7c74b"}],"more":0}
+> {"v":1,"id":2,"call":"view","name":"update","budget":223}
+< {"v":1,"id":2,"ok":true,"name":"update","kind":"fn","version":"f23b373eb267","text":"fn update(s: inout Tally, m: Msg) -> List<Effect<Msg>> {\n  match m {\n    Start(path) => [ReadFile(path, then: Loaded, or: Failed)]\n    Loaded(text) => {\n      s.words = count_words(text)\n      [Print(\"{s.words} words\"), Exit]\n    }\n    Failed(why) => [Print(\"cannot read file: {why}\"), ExitWith(20)]\n  }\n}","uses":[{"name":"Tally","kind":"type","sig":"type Tally { words: Int = 0 }","version":"bb18fead002b"},{"name":"Msg","kind":"enum","sig":"enum Msg { Start(path: String), Loaded(text: String), Failed(why: String) }","version":"fb4881575e98"}],"more":1,"errors":[]}
+> {"v":1,"id":28,"call":"view","name":"update","budget":100}
+< {"v":1,"id":28,"ok":false,"error":{"kind":"budget","message":"the body alone needs 146 tokens","needs":146}}
+> {"v":1,"id":3,"call":"edit","name":"count_words","base":"8f37a8d7c74b","text":"fn count_words(text: String) -> Int {\n  len(split(text, \" \"))\n}"}
+< {"v":1,"id":3,"ok":true,"name":"count_words","version":"6c4c8968c9e4","text":"fn count_words(text: String) -> Int {\n  len(split(text, \" \"))\n}","errors":[],"broke":[],"installed":true}
+> {"v":1,"id":4,"call":"find","takes":["String"],"gives":"Int"}
+< {"v":1,"id":4,"ok":true,"found":[{"name":"count_words","kind":"fn","sig":"fn count_words(text: String) -> Int","version":"6c4c8968c9e4"}],"more":0}
+> {"v":1,"id":5,"call":"edit","name":"counts_two","base":null,"text":"example counts_two {\n  count_words(\"a b\") == 2\n}"}
+< {"v":1,"id":5,"ok":true,"name":"counts_two","version":"ed43af615b75","text":"example counts_two {\n  count_words(\"a b\") == 2\n}","errors":[],"broke":[],"installed":true}
+> {"v":1,"id":8,"call":"find","users_of":"count_words"}
+< {"v":1,"id":8,"ok":true,"found":[{"name":"counts_two","kind":"example","sig":"example counts_two","version":"ed43af615b75"},{"name":"update","kind":"fn","sig":"fn update(s: inout Tally, m: Msg) -> List<Effect<Msg>>","version":"f23b373eb267"}],"more":0}
+> {"v":1,"id":9,"call":"find","kind":"enum"}
+< {"v":1,"id":9,"ok":true,"found":[{"name":"Msg","kind":"enum","sig":"enum Msg { Start(path: String), Loaded(text: String), Failed(why: String) }","version":"fb4881575e98"}],"more":0}
+> {"v":1,"id":10,"call":"find","name":"*","budget":127}
+< {"v":1,"id":10,"ok":true,"found":[{"name":"Msg","kind":"enum","sig":"enum Msg { Start(path: String), Loaded(text: String), Failed(why: String) }","version":"fb4881575e98"},{"name":"Tally","kind":"type","sig":"type Tally { words: Int = 0 }","version":"bb18fead002b"},{"name":"count_words","kind":"fn","sig":"fn count_words(text: String) -> Int","version":"6c4c8968c9e4"}],"more":3}
+> {"v":1,"id":11,"call":"find","name":"*","after":"count_words"}
+< {"v":1,"id":11,"ok":true,"found":[{"name":"counts_two","kind":"example","sig":"example counts_two","version":"ed43af615b75"},{"name":"update","kind":"fn","sig":"fn update(s: inout Tally, m: Msg) -> List<Effect<Msg>>","version":"f23b373eb267"},{"name":"wc","kind":"app","sig":"app wc","version":"a0fc527c3499"}],"more":0}
+> {"v":1,"id":30,"call":"find","name":"len"}
+< {"v":1,"id":30,"ok":true,"found":[{"name":"len","kind":"builtin","sig":"len(x: String) -> Int","version":null},{"name":"len","kind":"builtin","sig":"len(x: List<T>) -> Int","version":null},{"name":"len","kind":"builtin","sig":"len(x: Map<K, V>) -> Int","version":null}],"more":0}
+> {"v":1,"id":31,"call":"find","name":"Loaded"}
+< {"v":1,"id":31,"ok":true,"found":[{"name":"Msg","kind":"enum","sig":"enum Msg { Start(path: String), Loaded(text: String), Failed(why: String) }","version":"fb4881575e98"}],"more":0}
+> {"v":1,"id":32,"call":"find","users_of":"Loaded"}
+< {"v":1,"id":32,"ok":true,"found":[{"name":"update","kind":"fn","sig":"fn update(s: inout Tally, m: Msg) -> List<Effect<Msg>>","version":"f23b373eb267"}],"more":0}
+> {"v":1,"id":33,"call":"find","users_of":"split"}
+< {"v":1,"id":33,"ok":true,"found":[{"name":"count_words","kind":"fn","sig":"fn count_words(text: String) -> Int","version":"6c4c8968c9e4"}],"more":0}
+> {"v":1,"id":34,"call":"find","kind":"builtin","budget":60}
+< {"v":1,"id":34,"ok":true,"found":[{"name":"Bool","kind":"builtin","sig":"Bool","version":null}],"more":108}
+> {"v":1,"id":35,"call":"find","name":"c*t*_*o"}
+< {"v":1,"id":35,"ok":true,"found":[{"name":"counts_two","kind":"example","sig":"example counts_two","version":"ed43af615b75"}],"more":0}
+> {"v":1,"id":36,"call":"find","name":"nothing"}
+< {"v":1,"id":36,"ok":true,"found":[],"more":0}
+> {"v":1,"id":37,"call":"view","name":"Start","budget":20}
+< {"v":1,"id":37,"ok":false,"error":{"kind":"budget","message":"the body alone needs 65 tokens","needs":65}}
+> {"v":1,"id":38,"call":"view","name":"len"}
+< {"v":1,"id":38,"ok":false,"error":{"kind":"not_found","message":"no definition `len`"}}
+> {"v":1,"id":39,"call":"find","name":"*","budget":1}
+< {"v":1,"id":39,"ok":true,"found":[],"more":6}
+> {"v":1,"id":12,"call":"edit","name":"count_words","base":"6c4c8968c9e4","text":"fn count_words(text: String) -> String {\n  text\n}"}
+< {"v":1,"id":12,"ok":true,"name":"count_words","version":"48baed379965","text":"fn count_words(text: String) -> String {\n  text\n}","errors":[],"broke":["counts_two","update"],"installed":false}
+> {"v":1,"id":13,"call":"find","failing":true}
+< {"v":1,"id":13,"ok":true,"found":[{"name":"counts_two","kind":"example","sig":"example counts_two","version":"ed43af615b75"},{"name":"update","kind":"fn","sig":"fn update(s: inout Tally, m: Msg) -> List<Effect<Msg>>","version":"f23b373eb267"}],"more":0}
+> {"v":1,"id":40,"call":"find","failing":false,"kind":"fn"}
+< {"v":1,"id":40,"ok":true,"found":[{"name":"count_words","kind":"fn","sig":"fn count_words(text: String) -> String","version":"48baed379965"}],"more":0}
+> {"v":1,"id":14,"call":"view","name":"update"}
+< {"v":1,"id":14,"ok":true,"name":"update","kind":"fn","version":"f23b373eb267","text":"fn update(s: inout Tally, m: Msg) -> List<Effect<Msg>> {\n  match m {\n    Start(path) => [ReadFile(path, then: Loaded, or: Failed)]\n    Loaded(text) => {\n      s.words = count_words(text)\n      [Print(\"{s.words} words\"), Exit]\n    }\n    Failed(why) => [Print(\"cannot read file: {why}\"), ExitWith(20)]\n  }\n}","uses":[{"name":"Tally","kind":"type","sig":"type Tally { words: Int = 0 }","version":"bb18fead002b"},{"name":"Msg","kind":"enum","sig":"enum Msg { Start(path: String), Loaded(text: String), Failed(why: String) }","version":"fb4881575e98"},{"name":"count_words","kind":"fn","sig":"fn count_words(text: String) -> String","version":"48baed379965"}],"more":0,"errors":[{"kind":"type-mismatch","definition":"update","message":"expected `Int`, found `String`","file":null,"start":169,"end":186,"line":5,"column":17,"text":"count_words(text)","expected":"Int","found":"String","fix":null}]}
+> {"v":1,"id":23,"call":"view","name":"count_wrds"}
+< {"v":1,"id":23,"ok":false,"error":{"kind":"not_found","message":"no definition `count_wrds`"}}

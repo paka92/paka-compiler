@@ -1,0 +1,18 @@
+fn digits(s: String) -> Int {
+  while let Some(n) = parse_int(s) {
+    return n
+  }
+  0
+}
+
+enum Msg { Start }
+
+fn update(m: Msg) -> List<Effect<Msg>> {
+  [Exit]
+}
+
+app tool {
+  start: Start
+  update: update
+  grants: []
+}

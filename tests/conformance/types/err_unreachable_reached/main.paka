@@ -1,0 +1,19 @@
+enum Msg { Start }
+
+fn sign_name(n: Int) -> String {
+  match n {
+    0 => "zero"
+    _ => unreachable()
+  }
+}
+
+fn update(msg: Msg) -> List<Effect<Msg>> {
+  let s = sign_name(5)
+  [Print(s), Exit]
+}
+
+app types {
+  start: Start
+  update: update
+  grants: [Console]
+}

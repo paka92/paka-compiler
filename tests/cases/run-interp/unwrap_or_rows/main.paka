@@ -1,0 +1,16 @@
+enum Msg { Start }
+
+fn update(q: Msg) -> List<Effect<Msg>> {
+  let a = unwrap_or(Some(4), 9)
+  let b = unwrap_or(None, 9)
+  let c = unwrap_or(Some("x"), "y")
+  let d = unwrap_or(get(["k": [1, 2]], "k"), [])
+  let e = unwrap_or(find([3, 4], 8), -1)
+  [Print("{a} {b} {c} {len(d)} {e}"), Exit]
+}
+
+app generics {
+  start: Start
+  update: update
+  grants: [Console]
+}

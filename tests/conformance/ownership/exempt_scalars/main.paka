@@ -1,0 +1,42 @@
+enum Msg { Start }
+
+type Counter { count: Int = 0, log: List<Int> = [] }
+
+type Account { balance: Int = 0, name: String = "" }
+
+fn show(xs: List<Int>) -> String {
+  var parts: List<String> = []
+  for x in xs { append(&parts, "{x}") }
+  "[" + join(parts, ", ") + "]"
+}
+
+fn note(s: inout Counter, n: Int) {
+  append(&s.log, n)
+}
+
+fn move_n(acc: inout Account, n: Int) {
+  acc.balance += n
+}
+
+fn update(msg: Msg) -> List<Effect<Msg>> {
+  var xs = [3, 4]
+  append(&xs, xs[0])
+  var fs = [1.5]
+  append(&fs, fs[0])
+  var bs = [true]
+  append(&bs, bs[0])
+  var s = Counter { count: 2 }
+  note(&s, s.count)
+  var m: Map<String, Account> = ["a": Account { name: "a" }, "b": Account { balance: 5, name: "b" }]
+  move_n(&m["a"], m["b"].balance)
+  var ys = [7, 1, 7]
+  let same = ys[0] == pop(&ys)
+  let a_balance = m["a"].balance
+  [Print("{show(xs)} {len(fs)} {len(bs)} {s.log[0]} {a_balance} {same} {len(ys)}"), Exit]
+}
+
+app ownership {
+  start: Start
+  update: update
+  grants: [Console]
+}

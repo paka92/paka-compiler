@@ -1,0 +1,21 @@
+enum Msg { Start }
+
+fn is_even(n: Int) -> Bool { if n == 0 { true } else { is_odd(n - 1) } }
+
+fn is_odd(n: Int) -> Bool { if n == 0 { false } else { is_even(n - 1) } }
+
+fn sum_to(n: Int) -> Int { if n == 0 { 0 } else { n + sum_to(n - 1) } }
+
+fn update(msg: Msg) -> List<Effect<Msg>> {
+  [
+    Print("{sum_to(1000)}"),
+    Print("{is_even(1001)}"),
+    Exit
+  ]
+}
+
+app core {
+  start: Start
+  update: update
+  grants: [Console]
+}

@@ -1,0 +1,28 @@
+enum Msg { Start }
+
+fn sign(x: Int) -> Int {
+  if x >= 0 {
+    1
+  } else if x < 0 {
+    -1
+  } else {
+    unreachable()
+  }
+}
+
+fn check(x: Int) {
+  if x < 0 { unreachable() }
+}
+
+fn n(x: Int) -> String { "{x}" }
+
+fn update(msg: Msg) -> List<Effect<Msg>> {
+  check(1)
+  [Print(n(sign(5)) + " " + n(sign(-5))), Exit]
+}
+
+app builtins {
+  start: Start
+  update: update
+  grants: [Console]
+}

@@ -1,0 +1,26 @@
+enum Msg { Start }
+
+fn f1(z: Int) -> Int { f2(z) }
+
+fn f2(z: Int) -> Int { f3(z) }
+
+fn f3(z: Int) -> Int { f4(z) }
+
+fn f4(z: Int) -> Int { f5(z) }
+
+fn f5(z: Int) -> Int { f6(z) }
+
+fn f6(z: Int) -> Int { f7(z) }
+
+fn f7(z: Int) -> Int { 7 / z }
+
+fn update(m: Msg) -> List<Effect<Msg>> {
+  let r = f1(0)
+  [Exit]
+}
+
+app apps {
+  start: Start
+  update: update
+  grants: [Console, ReadFiles]
+}

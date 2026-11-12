@@ -1,0 +1,4 @@
+main.paka:3:18: warning[unused-name]: b is never used
+  definition: first
+  bytes: 37..38
+  text: "b"

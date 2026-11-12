@@ -1,0 +1,11 @@
+example a_false {
+  assert(false)
+  true
+}
+
+example a_true {
+  assert(true)
+  true
+}
+
+example a_final { false }

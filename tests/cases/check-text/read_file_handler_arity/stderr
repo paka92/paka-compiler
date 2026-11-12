@@ -1,0 +1,6 @@
+main.paka:4:27: error[type-mismatch]: expected fn(String) -> Msg, found fn(String, Int) -> Msg (Failed)
+  definition: probe
+  bytes: 106..112
+  text: "Failed"
+  expected: fn(String) -> Msg
+  found: fn(String, Int) -> Msg

@@ -1,0 +1,26 @@
+enum Msg { Start }
+
+type Box { items: List<Int> = [] }
+
+fn update(msg: Msg) -> List<Effect<Msg>> {
+  var xs = [1, 2]
+  var s = Box {}
+  s.items = xs
+  var rows: List<List<Int>> = [[0]]
+  rows[0] = xs
+  var m: Map<String, List<Int>> = [:]
+  m["k"] = xs
+  let t = Box { items: xs }
+  let built = [xs, xs]
+  append(&xs, 3)
+  append(&s.items, 4)
+  append(&s.items, 5)
+  let in_map = len(m["k"])
+  [Print("{len(xs)} {len(s.items)} {len(rows[0])} {in_map} {len(t.items)} {len(built[0])} {len(built[1])}"), Exit]
+}
+
+app ownership {
+  start: Start
+  update: update
+  grants: [Console]
+}

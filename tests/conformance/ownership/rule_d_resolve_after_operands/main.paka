@@ -1,0 +1,48 @@
+enum Msg { Start }
+
+fn show(xs: List<Int>) -> String {
+  var parts: List<String> = []
+  for x in xs { append(&parts, "{x}") }
+  "[" + join(parts, ", ") + "]"
+}
+
+fn setv(x: inout Int, v: Int) {
+  x = v
+}
+
+fn push_len(xs: inout List<Int>) -> Int {
+  append(&xs, 0)
+  len(xs)
+}
+
+fn add_to(x: inout Int, n: Int) {
+  x += n
+}
+
+fn total(xs: List<Int>, k: Int) -> Int {
+  var sum = 0
+  for x in xs { sum += x }
+  sum * k
+}
+
+fn push(st: inout List<Int>, x: Int) {
+  append(&st, x)
+}
+
+fn update(msg: Msg) -> List<Effect<Msg>> {
+  var xs = [1, 2]
+  setv(&xs[1], push_len(&xs))
+  var ys = [5, 6, 1]
+  add_to(&ys[pop(&ys)], 1)
+  var rows = [[7], [8, 9], [1]]
+  let t = total(rows[len(pop(&rows))], 1)
+  var st = [1, 2, 3]
+  push(&st, pop(&st) + pop(&st))
+  [Print("{show(xs)} {show(ys)} {t} {len(rows)} {show(st)}"), Exit]
+}
+
+app ownership {
+  start: Start
+  update: update
+  grants: [Console]
+}

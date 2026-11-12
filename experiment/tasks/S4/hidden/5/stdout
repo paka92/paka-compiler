@@ -1,0 +1,10 @@
+insert 0.50 more
+sold C1
+sold out C1
+no slot Z9
+sold A2, change 1.85: 1.00 0.50 0.20 0.10 0.05
+credit 0.00
+box 0 0 0 1 2 1
+A2: 1 at 0.15
+B1: 1 at 9.95
+C1: 0 at 0.50

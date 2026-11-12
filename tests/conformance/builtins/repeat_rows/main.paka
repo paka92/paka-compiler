@@ -1,0 +1,17 @@
+enum Msg { Start }
+
+fn br(s: String) -> String { "[" + s + "]" }
+
+fn n(x: Int) -> String { "{x}" }
+
+fn update(msg: Msg) -> List<Effect<Msg>> {
+  let l1 = join([br(repeat("ab", 3)), br(repeat("ab", 0)), br(repeat("", 5)), br(repeat("é", 3)), n(len(repeat("é", 3))), br(repeat("x", 1))], " ")
+  let l2 = n(len(repeat("", 9223372036854775807)))
+  [Print(l1), Print(l2), Exit]
+}
+
+app builtins {
+  start: Start
+  update: update
+  grants: [Console]
+}

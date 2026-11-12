@@ -1,0 +1,6 @@
+main.paka:5:12: error[type-mismatch]: expected `List`, found `String`; write chars(s)
+  definition: update
+  bytes: 87..88
+  text: "s"
+  expected: List
+  found: String

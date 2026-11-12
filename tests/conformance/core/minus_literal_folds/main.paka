@@ -1,0 +1,16 @@
+enum Msg { Start }
+
+fn update(msg: Msg) -> List<Effect<Msg>> {
+  let a = 5
+  [
+    Print("{a -1} {a-1} {a - -1} {5 -3} {-1 - a} {a * -1}"),
+    Print("{-9223372036854775808 + 1}"),
+    Exit
+  ]
+}
+
+app core {
+  start: Start
+  update: update
+  grants: [Console]
+}

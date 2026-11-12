@@ -1,0 +1,4 @@
+main.paka:4:5: error[wildcard-on-enum]: _ is for Int, String and Bool; name each variant of Result
+  definition: digits
+  bytes: 74..75
+  text: "_"

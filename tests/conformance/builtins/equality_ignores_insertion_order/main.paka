@@ -1,0 +1,21 @@
+enum Msg { Start }
+
+fn b(x: Bool) -> String { "{x}" }
+
+fn update(msg: Msg) -> List<Effect<Msg>> {
+  var a: Map<String, Int> = [:]
+  a["x"] = 1
+  a["y"] = 2
+  var c: Map<String, Int> = [:]
+  c["y"] = 2
+  c["x"] = 1
+  var d = c
+  d["x"] = 5
+  [Print(b(a == c)), Print(b(a == d)), Print(b(a != d)), Print(b(c == c)), Exit]
+}
+
+app builtins {
+  start: Start
+  update: update
+  grants: [Console]
+}

@@ -1,0 +1,8 @@
+main.paka:15:22: warning[unused-name]: width is never used
+  definition: pad
+  bytes: 324..329
+  text: "width"
+main.paka:26:11: warning[unused-name]: m is never used
+  definition: update
+  bytes: 550..551
+  text: "m"

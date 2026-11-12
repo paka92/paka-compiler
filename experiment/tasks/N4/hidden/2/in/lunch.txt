@@ -1,0 +1,3 @@
+members zed:1 amy:1 bob:1
+cost lunch 1.00 bob amy zed
+cost tip 0.02 bob amy

@@ -1,0 +1,4 @@
+main.paka:2:7: error[cannot-infer]: cannot infer the type of None; write it: let x: Option<T> = ...
+  definition: same
+  bytes: 18..22
+  text: "None"

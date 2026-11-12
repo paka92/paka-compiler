@@ -1,0 +1,19 @@
+enum Msg { Start }
+
+fn update(msg: Msg) -> List<Effect<Msg>> {
+  let none: Option<Int> = None
+  let a = none == None
+  let b = Some(1) == Some(1)
+  let c = Some(1) == none
+  let d = Some(1) == Some(2)
+  let ok: Result<Int, String> = Ok(1)
+  let e = ok == Ok(1)
+  let f = ok == Err("x")
+  [Print("{a} {b} {c} {d} {e} {f}"), Exit]
+}
+
+app types {
+  start: Start
+  update: update
+  grants: [Console]
+}

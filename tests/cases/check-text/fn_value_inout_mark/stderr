@@ -1,0 +1,4 @@
+main.paka:5:8: error[unexpected-inout-mark]: less is a function value and takes no inout; drop the &
+  definition: probe
+  bytes: 86..87
+  text: "&"

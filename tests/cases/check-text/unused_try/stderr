@@ -1,0 +1,4 @@
+main.paka:2:3: error[unused-result]: the value of parse_int is not used; write `_ = parse_int(s)?`
+  definition: first
+  bytes: 39..52
+  text: "parse_int(s)?"

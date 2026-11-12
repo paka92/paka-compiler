@@ -1,0 +1,21 @@
+fn sign_name(n: Int) -> String {
+  assert(n >= -1 && n <= 1)
+  match n {
+    -1 => "minus"
+    0 => "zero"
+    1 => "plus"
+    _ => unreachable()
+  }
+}
+
+enum Msg { Start }
+
+fn update(m: Msg) -> List<Effect<Msg>> {
+  [Print(sign_name(-1)), Print(sign_name(0)), Print(sign_name(1)), Exit]
+}
+
+app tool {
+  start: Start
+  update: update
+  grants: [Console]
+}

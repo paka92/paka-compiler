@@ -1,0 +1,25 @@
+enum Msg { Start }
+
+fn update(msg: Msg) -> List<Effect<Msg>> {
+  let n = -5
+  let flag = true
+  let name = "Zed"
+  let a = 1
+  let b = 2
+  [
+    Print("n={n} flag={flag} name={name}"),
+    Print("{a + b} {a * b - n} {a < b}"),
+    Print("{a}{b}{a}"),
+    Print("{len(name)} {!flag}"),
+    Print("{-9223372036854775808}"),
+    Print("\{n\} is {n}"),
+    Print("{name + name}"),
+    Exit
+  ]
+}
+
+app core {
+  start: Start
+  update: update
+  grants: [Console]
+}

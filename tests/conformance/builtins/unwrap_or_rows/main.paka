@@ -1,0 +1,22 @@
+enum Msg { Start }
+
+fn n(x: Int) -> String { "{x}" }
+
+fn oi(o: Option<Int>) -> String {
+  match o {
+    Some(v) => "Some({v})"
+    None => "None"
+  }
+}
+
+fn update(msg: Msg) -> List<Effect<Msg>> {
+  let m: Map<String, String> = ["a": "é"]
+  let missing: Option<Int> = None
+  [Print(n(unwrap_or(Some(5), 0))), Print(n(unwrap_or(missing, 7))), Print(n(unwrap_or(None, 0))), Print(unwrap_or(get(m, "a"), "?") + unwrap_or(get(m, "z"), "?")), Print(n(unwrap_or(parse_int("12"), -1) + unwrap_or(parse_int("x"), -1))), Exit]
+}
+
+app builtins {
+  start: Start
+  update: update
+  grants: [Console]
+}

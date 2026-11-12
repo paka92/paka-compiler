@@ -1,0 +1,11 @@
+enum Msg { Start }
+
+fn update(msg: String) -> List<Effect<Msg>> {
+  [Print("done"), Exit]
+}
+
+app errors {
+  start: Start
+  update: update
+  grants: [Console]
+}

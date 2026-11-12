@@ -1,0 +1,22 @@
+enum Msg { Start }
+
+type P { x: Int, y: Int }
+
+enum Shape { Dot, Circle(r: Float), Rect(w: Float, h: Float) }
+
+fn update(msg: Msg) -> List<Effect<Msg>> {
+  let a = P { x: 1, y: 2 } == P { x: 1, y: 2 }
+  let b = P { x: 1, y: 2 } == P { x: 2, y: 1 }
+  let c = Dot == Dot
+  let d = Circle(1.0) == Circle(1.0)
+  let e = Circle(1.0) == Circle(2.0)
+  let f = Circle(1.0) == Rect(1.0, 1.0)
+  let g = Rect(1.0, 2.0) != Rect(1.0, 2.0)
+  [Print("{a} {b} {c} {d} {e} {f} {g}"), Exit]
+}
+
+app types {
+  start: Start
+  update: update
+  grants: [Console]
+}

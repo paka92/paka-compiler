@@ -1,0 +1,4 @@
+trip a b
+two a a 1
+
+trip a

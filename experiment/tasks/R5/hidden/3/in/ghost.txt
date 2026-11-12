@@ -1,0 +1,5 @@
+two a b 3
+trip ghost phantom
+trip a ghost
+trip x x
+trip b a

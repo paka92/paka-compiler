@@ -1,0 +1,79 @@
+type Point { x: Int, y: Float = 0.5 }
+type Box2 { low: Point, high: Point, on: Bool }
+enum Shape { Dot, Circle(center: Point, r: Int), Rect(b: Box2) }
+
+fn area(s: Shape) -> Int {
+  match s {
+    Dot => 0
+    Circle(c, r) => 3 * r * r + c.x
+    Rect(b) => (b.high.x - b.low.x) * 2
+  }
+}
+
+fn grow(b: Box2, by: Int) -> Box2 {
+  var out = b
+  out.high.x += by
+  out.on = !b.on
+  out
+}
+
+fn half(n: Int) -> Option<Int> {
+  if n % 2 == 0 { Some(n / 2) } else { None }
+}
+
+fn parse(n: Int) -> Result<Point, Int> {
+  if n < 0 { Err(-n) } else { Ok(Point { x: n }) }
+}
+
+fn total(n: Int) -> Int {
+  var sum = 0
+  for i in 0..<n {
+    sum += match half(i) {
+      Some(h) => h
+      None => 100
+    }
+  }
+  sum
+}
+
+example defaults_fill_fields {
+  let p = Point { x: 2 }
+  p.x == 2 && p.y == 0.5
+}
+
+example a_copy_is_separate {
+  var a = Point { x: 1, y: 2.0 }
+  let b = a
+  a.x = 9
+  b.x == 1 && a.x == 9
+}
+
+example nested_fields_write {
+  var b = Box2 { low: Point { x: 1 }, high: Point { x: 4 }, on: true }
+  b.low = b.high
+  b.high.x *= 3
+  b.low.x == 4 && b.high.x == 12 && b.on
+}
+
+example enums_carry_payloads {
+  let c = Circle(Point { x: 5 }, 2)
+  let r = Rect(Box2 { low: Point { x: 1 }, high: Point { x: 6 }, on: false })
+  area(Dot) == 0 && area(c) == 17 && area(r) == 10
+}
+
+example results_come_back_whole {
+  let b = grow(Box2 { low: Point { x: 0 }, high: Point { x: 1 }, on: false }, 4)
+  b.high.x == 5 && b.on && b.low.y == 0.5
+}
+
+example options_and_results_match {
+  let ok = match parse(7) {
+    Ok(p) => p.x
+    Err(e) => 0 - e
+  }
+  let err = match parse(-3) {
+    Ok(p) => p.x
+    Err(e) => 0 - e
+  }
+  ok == 7 && err == -3 && total(5) == 203
+}

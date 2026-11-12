@@ -1,0 +1,5 @@
+a 0
+> top
+d 3
+> stray
+d 9-2

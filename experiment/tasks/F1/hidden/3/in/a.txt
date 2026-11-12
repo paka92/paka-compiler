@@ -1,0 +1,2 @@
+alpha
+#include b.txt

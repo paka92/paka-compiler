@@ -1,0 +1,32 @@
+enum Msg { Start }
+
+type Job { id: Int, run: fn(Int) -> Int }
+
+fn double(n: Int) -> Int { n * 2 }
+fn negate(n: Int) -> Int { 0 - n }
+fn add(a: Int, b: Int) -> Int { a + b }
+fn sub(a: Int, b: Int) -> Int { a - b }
+
+fn pick(plus: Bool) -> fn(Int, Int) -> Int {
+  if plus { add } else { sub }
+}
+
+fn apply(j: Job, n: Int) -> Int { j.run(n) }
+
+fn update(m: Msg) -> List<Effect<Msg>> {
+  let job = Job { id: 1, run: double }
+  let steps = [double, negate, double]
+  let by_key: Map<String, fn(Int) -> Int> = ["d": double, "n": negate]
+  let key = "n"
+  var total = 0
+  for f in steps {
+    total = total + f(5)
+  }
+  [Print("{apply(job, 4)} {job.run(6)} {steps[1](7)} {total} {by_key[key](3)} {pick(true)(2, 3)} {pick(false)(2, 3)}"), Exit]
+}
+
+app callbacks {
+  start: Start
+  update: update
+  grants: [Console]
+}

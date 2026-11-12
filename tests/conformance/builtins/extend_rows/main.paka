@@ -1,0 +1,29 @@
+enum Msg { Start }
+
+fn si(xs: List<Int>) -> String {
+  var parts: List<String> = []
+  for x in xs { append(&parts, "{x}") }
+  "[" + join(parts, ",") + "]"
+}
+
+fn n(x: Int) -> String { "{x}" }
+
+fn update(msg: Msg) -> List<Effect<Msg>> {
+  var xs = [1, 2]
+  extend(&xs, [3, 4])
+  extend(&xs, [])
+  let size = len(xs)
+  let copy = xs
+  extend(&xs, copy)
+  var e: List<Int> = []
+  extend(&e, [])
+  var f: List<Int> = []
+  extend(&f, [7])
+  [Print(si(xs)), Print(n(size)), Print(si(copy)), Print(si(e)), Print(si(f)), Exit]
+}
+
+app builtins {
+  start: Start
+  update: update
+  grants: [Console]
+}

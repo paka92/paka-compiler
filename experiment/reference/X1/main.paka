@@ -1,0 +1,86 @@
+enum Msg { Start(path: String, count: String), Loaded(text: String), Failed(why: String) }
+
+type Top { count: Int = 0 }
+
+type Tally { word: String, count: Int }
+
+// One or more digits and nothing else, with a value from 1 to 1000.
+fn word_limit(s: String) -> Option<Int> {
+  if is_empty(s) { return None }
+  var n = 0
+  for c in chars(s) {
+    if c < "0" || c > "9" { return None }
+    n = min(n * 10 + parse_int(c)?, 1001)
+  }
+  if n < 1 || n > 1000 { None } else { Some(n) }
+}
+
+fn is_letter(c: String) -> Bool {
+  c >= "a" && c <= "z" || c >= "A" && c <= "Z"
+}
+
+fn count_words(text: String) -> Map<String, Int> {
+  var counts: Map<String, Int> = [:]
+  var word = ""
+  for c in chars(text + " ") {
+    if is_letter(c) {
+      word += c
+    } else if !is_empty(word) {
+      let w = lower(word)
+      counts[w] = unwrap_or(get(counts, w), 0) + 1
+      word = ""
+    }
+  }
+  counts
+}
+
+fn more_frequent(a: Tally, b: Tally) -> Bool {
+  a.count > b.count || a.count == b.count && a.word < b.word
+}
+
+fn top_words(text: String, limit: Int) -> List<String> {
+  let counts = count_words(text)
+  if is_empty(counts) { return ["no words"] }
+  var tallies: List<Tally> = []
+  for w in keys(counts) {
+    append(&tallies, Tally { word: w, count: counts[w] })
+  }
+  sort_by(&tallies, more_frequent)
+  var out: List<String> = []
+  for t in tallies[0..<min(limit, len(tallies))] {
+    append(&out, "{t.count} {t.word}")
+  }
+  out
+}
+
+fn printed(out: List<String>) -> List<Effect<Msg>> {
+  var effects: List<Effect<Msg>> = []
+  for line in out {
+    append(&effects, Print(line))
+  }
+  append(&effects, Exit)
+  effects
+}
+
+fn update(s: inout Top, m: Msg) -> List<Effect<Msg>> {
+  match m {
+    Start(path, count) => {
+      match word_limit(count) {
+        Some(n) => {
+          s.count = n
+          [ReadFile(path, then: Loaded, or: Failed)]
+        }
+        None => [Print("error: bad count"), ExitWith(20)]
+      }
+    }
+    Loaded(text) => printed(top_words(text, s.count))
+    Failed(why) => [Print("error: cannot read file: {why}"), ExitWith(20)]
+  }
+}
+
+app word_counts {
+  state: Top
+  start: Start
+  update: update
+  grants: [Console, ReadFiles]
+}

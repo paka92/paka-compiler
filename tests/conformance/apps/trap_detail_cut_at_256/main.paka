@@ -1,0 +1,13 @@
+enum Msg { Start }
+
+fn update(m: Msg) -> List<Effect<Msg>> {
+  let table = ["x": 1]
+  let r = table[repeat("a", 300)]
+  [Exit]
+}
+
+app apps {
+  start: Start
+  update: update
+  grants: [Console]
+}

@@ -1,0 +1,92 @@
+type S { n: Int = 0, text: String = "" }
+
+enum Msg { Inc, Dup, Say, Quit, Hang, Read, Edit(text: String) }
+
+fn update(s: inout S, m: Msg) -> List<Effect<Msg>> {
+  match m {
+    Inc => s.n += 1
+    Dup => s.n = 5
+    Say => {
+      return [Print("hi")]
+    }
+    Quit => {
+      return [Exit]
+    }
+    Hang => ??hang
+    Read => {
+      return [ReadFile("nowhere", then: Edit, or: Edit)]
+    }
+    Edit(text) => s.text = text
+  }
+  []
+}
+
+view v(s: S) -> View<Msg> {
+  Col(gap: 2) {
+    Text("{10 / (2 - s.n)}")
+    Input(s.text, on_change: Edit, key: "in")
+    Row(gap: 0) {
+      Button("inc", on: Inc)
+      Button("dup", on: Dup)
+      Button("say", on: Say)
+      Button("quit", on: Quit)
+      Button("hang", on: Hang)
+      Button("read", on: Read)
+    }
+    for i in 0..<s.n / 5 + 1 {
+      Text("x", key: 7)
+    }
+  }
+}
+
+app a {
+  state:  S
+  update: update
+  view:   v
+  grants: [ReadFiles]
+}
+
+example typed {
+  var ui = ui_start(a)
+  ui_click(&ui, "'in'")
+  ui_type(&ui, "ab\n")
+  ui_text(ui, "'in'") == "ab"
+}
+
+example view_traps {
+  var ui = ui_start(a)
+  ui_click(&ui, "#2/#0")
+  ui_click(&ui, "#2/#0")
+  true
+}
+
+example error_node {
+  var ui = ui_start(a)
+  ui_click(&ui, "#2/#1")
+  true
+}
+
+example refused {
+  var ui = ui_start(a)
+  ui_click(&ui, "#2/#2")
+  true
+}
+
+example quits {
+  var ui = ui_start(a)
+  ui_click(&ui, "#2/#3")
+  ui_text(ui, "#0") == "5"
+}
+
+example hangs {
+  var ui = ui_start(a)
+  ui_click(&ui, "#2/#4")
+  true
+}
+
+example answer_dropped {
+  var ui = ui_start(a)
+  ui_click(&ui, "#2/#5")
+  ui_click(&ui, "#2/#0")
+  ui_text(ui, "'in'") == ""
+}

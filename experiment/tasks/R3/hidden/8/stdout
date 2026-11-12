@@ -1,0 +1,9 @@
+groups: 1
+a1 a10 a2 b c10 c9 hub
+bridges: 6
+a1 hub
+a10 hub
+a2 hub
+b c10
+b c9
+b hub

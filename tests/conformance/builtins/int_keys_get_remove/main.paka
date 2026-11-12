@@ -1,0 +1,28 @@
+enum Msg { Start }
+
+fn oi(o: Option<Int>) -> String {
+  match o {
+    Some(v) => "Some({v})"
+    None => "None"
+  }
+}
+
+fn si(xs: List<Int>) -> String {
+  var parts: List<String> = []
+  for x in xs { append(&parts, "{x}") }
+  "[" + join(parts, ",") + "]"
+}
+
+fn update(msg: Msg) -> List<Effect<Msg>> {
+  var m: Map<Int, Int> = [-1: 10, 0: 20, 7: 30]
+  let g = oi(get(m, -1)) + " " + oi(get(m, 1))
+  remove(&m, 0)
+  remove(&m, 5)
+  [Print(g), Print(si(keys(m))), Print(si(values(m))), Exit]
+}
+
+app builtins {
+  start: Start
+  update: update
+  grants: [Console]
+}

@@ -1,0 +1,8 @@
+fn first(xs: List<Int>) -> Int { xs[0] }
+
+fn ratio(n: Int, d: Int) -> Int { n / d }
+
+example t_ok { true }
+example t_deep { ratio(1, 0) == 0 }
+example t_call { first([]) == 0 }
+example t_direct { 1 / 0 == 0 }

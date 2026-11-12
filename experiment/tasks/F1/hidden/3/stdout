@@ -1,0 +1,1 @@
+error: b.txt line 1: include cycle: r.txt -> a.txt -> b.txt -> a.txt

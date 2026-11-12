@@ -1,0 +1,4 @@
+main.paka:10:10: error[type-mismatch]: state Later holds a function type in field after; keep a message value instead and match on it in update
+  definition: wc
+  bytes: 179..184
+  text: "Later"

@@ -1,0 +1,4 @@
+main.paka:4:11: error[not-a-value]: len is a built-in and cannot be a value; write fn wrap(...) -> R { len(...) } and pass wrap
+  definition: probe
+  bytes: 50..53
+  text: "len"

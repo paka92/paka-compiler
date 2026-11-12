@@ -1,0 +1,6 @@
+main.paka:4:25: error[type-mismatch]: expected `Int`, found `Float`; write to_int(2.0)
+  definition: update
+  bytes: 85..88
+  text: "2.0"
+  expected: Int
+  found: Float

@@ -1,0 +1,16 @@
+fn fill() {
+  var xs: List<Int> = []
+  append(&xs, "a")
+}
+
+enum Msg { Start }
+
+fn update(m: Msg) -> List<Effect<Msg>> {
+  [Exit]
+}
+
+app generics {
+  start: Start
+  update: update
+  grants: []
+}

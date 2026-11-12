@@ -1,0 +1,18 @@
+enum Msg { Start }
+
+fn twice(n: Int) -> Int { n * 2 }
+
+fn update(msg: Msg) -> List<Effect<Msg>> {
+  _ = twice(3)
+  _ = 1 + 2
+  [
+    Print("ok"),
+    Exit
+  ]
+}
+
+app core {
+  start: Start
+  update: update
+  grants: [Console]
+}

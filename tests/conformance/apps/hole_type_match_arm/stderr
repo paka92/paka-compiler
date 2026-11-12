@@ -1,0 +1,4 @@
+main.paka:3:10: note[hole]: ??zero takes String
+  definition: f
+  bytes: 46..52
+  text: "??zero"

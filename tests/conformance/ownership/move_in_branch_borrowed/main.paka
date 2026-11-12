@@ -1,0 +1,70 @@
+// A `let` read in the arms of an `if` or `match` where the read only borrows it, as an argument
+// of a builtin or a function, is dropped at the end of the arm; one that takes it moves it.
+
+enum Msg { Start }
+
+fn shout(s: String) -> String {
+  upper(s) + "!"
+}
+
+fn num(s: String) -> Result<Int, String> {
+  ok_or(parse_int(s), "bad " + s)
+}
+
+fn pick(n: Int, b: Bool) -> String {
+  let t = "v" + "{n}"
+  if b { trim(t) } else if n > 2 { shout(t) } else { t }
+}
+
+fn count(ws: List<String>) -> Result<Int, String> {
+  var total = 0
+  for w in ws {
+    let t = w + ""
+    if len(t) == 0 {
+      continue
+    } else if t == "stop" {
+      break
+    }
+    match contains(t, "x") {
+      true => total += len(replace(t, "x", "yy"))
+      false => {
+        let n = num(t)?
+        total += n
+      }
+    }
+  }
+  Ok(total)
+}
+
+fn early(b: Bool) -> String {
+  let t = "e" + "!"
+  if b {
+    if contains(t, "!") {
+      return upper(t)
+    }
+    trim(t)
+  } else {
+    ""
+  }
+}
+
+fn update(m: Msg) -> List<Effect<Msg>> {
+  let picks = pick(1, true) + pick(3, false) + pick(1, false)
+  let a = count(["1", "", "x2", "3", "stop", "9"])
+  let b = count(["4", "q"])
+  let shown = match a {
+    Ok(n) => n
+    Err(e) => -1
+  }
+  let failed = match b {
+    Ok(n) => "{n}"
+    Err(e) => e
+  }
+  [Print(picks + " {shown} " + failed + " " + early(true) + early(false)), Exit]
+}
+
+app ownership {
+  start: Start
+  update: update
+  grants: [Console]
+}

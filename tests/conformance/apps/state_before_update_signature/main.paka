@@ -1,0 +1,12 @@
+enum Msg { Start }
+
+fn update(a: Int, b: Int) -> Int {
+  a + b
+}
+
+app apps {
+  update: update
+  state: Msg
+  start: Start
+  grants: [Console]
+}

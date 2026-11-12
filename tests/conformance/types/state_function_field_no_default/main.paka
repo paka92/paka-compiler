@@ -1,0 +1,14 @@
+enum Msg { Start }
+
+type Later { after: fn(String) -> Msg }
+
+fn update(s: inout Later, msg: Msg) -> List<Effect<Msg>> {
+  [Print("done"), Exit]
+}
+
+app types {
+  state: Later
+  start: Start
+  update: update
+  grants: [Console]
+}

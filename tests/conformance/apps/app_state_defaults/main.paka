@@ -1,0 +1,14 @@
+type Config { name: String = "paka", count: Int = 7, on: Bool = true, tags: List<String> = [] }
+
+enum Msg { Start }
+
+fn update(s: inout Config, m: Msg) -> List<Effect<Msg>> {
+  [Print("{s.name} {s.count} {s.on} {len(s.tags)}"), Exit]
+}
+
+app apps {
+  state: Config
+  start: Start
+  update: update
+  grants: [Console]
+}

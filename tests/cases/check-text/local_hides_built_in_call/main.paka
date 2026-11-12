@@ -1,0 +1,16 @@
+fn size(xs: List<Int>) -> Int {
+  let len = 3
+  len(xs)
+}
+
+enum Msg { Start }
+
+fn update(m: Msg) -> List<Effect<Msg>> {
+  [Exit]
+}
+
+app generics {
+  start: Start
+  update: update
+  grants: []
+}

@@ -1,0 +1,3 @@
+parts quiz:50 exam:50
+ann 90 85
+ben 90

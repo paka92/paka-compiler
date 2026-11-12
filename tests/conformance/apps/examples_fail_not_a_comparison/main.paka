@@ -1,0 +1,9 @@
+example n_not { !true }
+example n_or { 1 == 2 || 3 == 4 }
+example n_name {
+  let ok = false
+  ok
+}
+example n_call { is_big(1) }
+
+fn is_big(n: Int) -> Bool { n > 100 }

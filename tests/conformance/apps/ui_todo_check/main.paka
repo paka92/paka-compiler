@@ -1,0 +1,67 @@
+type Todo { id: Int, text: String, done: Bool = false }
+
+type Todos { draft: String = "", items: List<Todo> = [] }
+
+enum Msg { Draft(text: String), Add, Toggle(id: Int) }
+
+fn update(s: inout Todos, m: Msg) {
+  match m {
+    Draft(text) => s.draft = text
+    Add => {
+      append(&s.items, Todo { id: len(s.items) + 1, text: s.draft })
+      s.draft = ""
+    }
+    Toggle(id) => {
+      for i in 0..<len(s.items) {
+        if s.items[i].id == id {
+          s.items[i].done = !s.items[i].done
+        }
+      }
+    }
+  }
+}
+
+view todo_row(t: Todo) -> View<Msg> {
+  Row(gap: 8) {
+    Button(if t.done { "[x]" } else { "[ ]" }, on: Toggle(t.id))
+    Text(t.text)
+  }
+}
+
+view todo_view(s: Todos) -> View<Msg> {
+  Col(gap: 8) {
+    Input(s.draft, on_change: Draft, key: "new")
+    Button("Add", on: Add)
+    if len(s.items) == 0 {
+      Text("Nothing to do")
+    }
+    for t in s.items {
+      todo_row(t, key: t.id)
+    }
+  }
+}
+
+app todo {
+  state:  Todos
+  update: update
+  view:   todo_view
+  grants: []
+}
+
+example add_one_item {
+  var ui = ui_start(todo)
+  ui_click(&ui, "'new'")
+  ui_type(&ui, "milk")
+  ui_click(&ui, "#1")
+  ui_text(ui, "'new'") == "" && ui_text(ui, "1/#1") == "milk"
+}
+
+example toggle_marks_done {
+  var ui: Ui = ui_start(todo)
+  ui_click(&ui, "'new'")
+  ui_type(&ui, "tea")
+  ui_click(&ui, "#1")
+  let id = 1
+  ui_click(&ui, "{id}/#0")
+  ui_has(ui, "1") && !ui_has(ui, "#2") && ui_tree(ui) != ""
+}

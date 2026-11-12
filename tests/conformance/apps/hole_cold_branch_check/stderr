@@ -1,0 +1,8 @@
+main.paka:4:25: note[hole]: ??other takes Int
+  definition: pick
+  bytes: 69..76
+  text: "??other"
+main.paka:7:11: warning[unused-name]: m is never used
+  definition: update
+  bytes: 92..93
+  text: "m"

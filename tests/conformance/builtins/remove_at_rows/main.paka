@@ -1,0 +1,29 @@
+enum Msg { Start }
+
+fn si(xs: List<Int>) -> String {
+  var parts: List<String> = []
+  for x in xs { append(&parts, "{x}") }
+  "[" + join(parts, ",") + "]"
+}
+
+fn ss(xs: List<String>) -> String {
+  "{len(xs)}:[" + join(xs, "|") + "]"
+}
+
+fn n(x: Int) -> String { "{x}" }
+
+fn update(msg: Msg) -> List<Effect<Msg>> {
+  var xs = [1, 2, 3, 4]
+  let a = remove_at(&xs, 0)
+  let b = remove_at(&xs, 2)
+  let c = remove_at(&xs, 0)
+  var ws = ["a", "é", "z"]
+  let w = remove_at(&ws, 1)
+  [Print(n(a) + " " + n(b) + " " + n(c)), Print(si(xs)), Print(w), Print(ss(ws)), Exit]
+}
+
+app builtins {
+  start: Start
+  update: update
+  grants: [Console]
+}

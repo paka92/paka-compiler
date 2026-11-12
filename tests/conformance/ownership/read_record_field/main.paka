@@ -1,0 +1,21 @@
+enum Msg { Start }
+
+type Two { a: List<Int>, b: List<Int> }
+
+fn take(xs: inout List<Int>) -> List<Int> {
+  let out = xs
+  xs = []
+  out
+}
+
+fn update(msg: Msg) -> List<Effect<Msg>> {
+  var xs = [1]
+  let p = Two { a: xs, b: take(&xs) }
+  [Print("done"), Exit]
+}
+
+app ownership {
+  start: Start
+  update: update
+  grants: [Console]
+}

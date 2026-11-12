@@ -1,0 +1,18 @@
+enum Msg { Start }
+
+fn total(a: Int, b: Int) -> Int { a + b }
+
+fn update(msg: Msg) -> List<Effect<Msg>> {
+  let before = total(1, 2)
+  let total = 10
+  [
+    Print("{before} {total}"),
+    Exit
+  ]
+}
+
+app core {
+  start: Start
+  update: update
+  grants: [Console]
+}

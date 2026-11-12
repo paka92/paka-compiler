@@ -1,0 +1,18 @@
+enum Msg { Start }
+
+fn update(msg: Msg) -> List<Effect<Msg>> {
+  let m: Map<String, Int> = ["a": 1]
+  let xs = [10, 20]
+  let a = unwrap_or(get(m, "z"), -1)
+  let b = unwrap_or(find(xs, 20), -1)
+  let c = unwrap_or(parse_int("x1"), -1)
+  let d = unwrap_or(parse_float("1.5"), 0.0)
+  let e = m["a"] + xs[1]
+  [Print("{a} {b} {c} {fixed(d, digits: 1)} {e}"), Exit]
+}
+
+app types {
+  start: Start
+  update: update
+  grants: [Console]
+}

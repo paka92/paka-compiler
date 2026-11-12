@@ -1,0 +1,20 @@
+enum Msg { Start }
+
+fn update(msg: Msg) -> List<Effect<Msg>> {
+  let s = "hello"
+  [
+    Print(s[0]),
+    Print(s[4]),
+    Print(s[1..<4]),
+    Print("[{s[2..<2]}]"),
+    Print(s[0..<5]),
+    Print("[{s[5..<5]}]"),
+    Exit
+  ]
+}
+
+app core {
+  start: Start
+  update: update
+  grants: [Console]
+}

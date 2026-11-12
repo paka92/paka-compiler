@@ -1,0 +1,22 @@
+enum Msg { Start }
+
+fn count_all(xs: List<Int>, extra: Int) -> Int {
+  len(xs) + extra
+}
+
+fn update(msg: Msg) -> List<Effect<Msg>> {
+  var xs = [1, 2]
+  let n = count_all(xs, match msg {
+    Start => {
+      xs = []
+      1
+    }
+  })
+  [Print("done"), Exit]
+}
+
+app ownership {
+  start: Start
+  update: update
+  grants: [Console]
+}

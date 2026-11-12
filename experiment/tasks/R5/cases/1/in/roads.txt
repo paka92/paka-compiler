@@ -1,0 +1,10 @@
+two home mill 4
+one home bank 1
+one bank mill 3
+two mill park 2
+one home yard 5
+trip home park
+trip park bank
+trip park park
+trip home zoo
+two yard park 1

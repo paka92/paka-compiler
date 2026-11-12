@@ -1,0 +1,23 @@
+enum Msg { Start }
+
+fn update(msg: Msg) -> List<Effect<Msg>> {
+  let z = 0
+  let t = true
+  let f = false
+  let s = "abc"
+  let i = 5
+  let hit = i < 3 && s[i] == "a"
+  let ok = i >= len(s) || s[i] == "a"
+  let both = f && 7 / z == 0 || t
+  [
+    Print("{f && 7 / z == 0} {t || 7 / z == 0}"),
+    Print("{hit} {ok} {both}"),
+    Exit
+  ]
+}
+
+app core {
+  start: Start
+  update: update
+  grants: [Console]
+}

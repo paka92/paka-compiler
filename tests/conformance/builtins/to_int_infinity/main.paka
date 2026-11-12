@@ -1,0 +1,15 @@
+enum Msg { Start }
+
+fn n(x: Int) -> String { "{x}" }
+
+fn update(msg: Msg) -> List<Effect<Msg>> {
+  let inf = 1.0 / 0.0
+  let v = to_int(inf)
+  [Print(n(v)), Exit]
+}
+
+app builtins {
+  start: Start
+  update: update
+  grants: [Console]
+}

@@ -1,0 +1,13 @@
+enum Msg { Start }
+
+interface Shape { fn area(s: Int) -> Float }
+
+fn update(msg: Msg) -> List<Effect<Msg>> {
+  [Print("done"), Exit]
+}
+
+app types {
+  start: Start
+  update: update
+  grants: [Console]
+}

@@ -1,0 +1,17 @@
+enum Msg { Start }
+
+fn put(x: Int; into: inout List<Int>) {
+  append(&into, x)
+}
+
+fn update(msg: Msg) -> List<Effect<Msg>> {
+  var xs = [1]
+  put(3, into: xs)
+  [Print("done"), Exit]
+}
+
+app ownership {
+  start: Start
+  update: update
+  grants: [Console]
+}

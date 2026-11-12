@@ -1,0 +1,198 @@
+enum Msg { Start(path: String, limit: String), Loaded(text: String), Failed(why: String) }
+
+type Run { limit: Int = 0 }
+
+type Op { line: Int, name: String, args: List<String> }
+
+// The instructions, and for each label the place of the instruction it names.
+type Program { ops: List<Op> = [], labels: Map<String, Int> = [:] }
+
+type Machine { regs: List<Int>, stack: List<Int> = [], out: List<String> = [] }
+
+// The operand kinds of an instruction, or None when there is no such instruction.
+fn kinds(name: String) -> Option<String> {
+  if name == "set" || name == "add" || name == "sub" || name == "mul" || name == "div" || name == "mod" {
+    return Some("RV")
+  }
+  if name == "jmp" || name == "call" { return Some("L") }
+  if name == "jz" { return Some("VL") }
+  if name == "jlt" { return Some("VVL") }
+  if name == "out" { return Some("V") }
+  if name == "ret" || name == "halt" { Some("") } else { None }
+}
+
+fn is_digit(c: String) -> Bool {
+  c >= "0" && c <= "9"
+}
+
+fn is_register(w: String) -> Bool {
+  len(w) == 1 && w >= "a" && w <= "f"
+}
+
+fn is_label(w: String) -> Bool {
+  let cs = chars(w)
+  if is_empty(cs) || cs[0] < "a" || cs[0] > "z" { return false }
+  for c in cs {
+    if !(c >= "a" && c <= "z") && !is_digit(c) && c != "_" { return false }
+  }
+  true
+}
+
+fn is_number(w: String) -> Bool {
+  var cs = chars(w)
+  if !is_empty(cs) && cs[0] == "-" { _ = remove_at(&cs, 0) }
+  if is_empty(cs) || len(cs) > 7 { return false }
+  for c in cs {
+    if !is_digit(c) { return false }
+  }
+  true
+}
+
+fn fits(kind: String, w: String) -> Bool {
+  if kind == "R" { return is_register(w) }
+  if kind == "V" { is_register(w) || is_number(w) } else { is_label(w) }
+}
+
+fn assemble(text: String) -> Result<Program, String> {
+  var p = Program {}
+  let rows = lines(text)
+  for i in 0..<len(rows) {
+    let line = i + 1
+    var ws = words(split(rows[i], ";")[0])
+    if !is_empty(ws) && ends_with(ws[0], ":") {
+      let w = ws[0]
+      let name = w[0..<len(w) - 1]
+      if !is_label(name) { return Err("error: line {line}: bad label") }
+      if has(p.labels, name) { return Err("error: line {line}: duplicate label") }
+      p.labels[name] = len(p.ops)
+      _ = remove_at(&ws, 0)
+    }
+    if is_empty(ws) { continue }
+    let ks = match kinds(ws[0]) {
+      Some(ks) => ks
+      None => {
+        return Err("error: line {line}: unknown instruction")
+      }
+    }
+    let args = ws[1..<len(ws)]
+    if len(ks) != len(args) { return Err("error: line {line}: wrong count") }
+    for k in 0..<len(args) {
+      if !fits(ks[k], args[k]) { return Err("error: line {line}: bad operand") }
+    }
+    append(&p.ops, Op { line: line, name: ws[0], args: args })
+  }
+  for op in p.ops {
+    let ks = unwrap_or(kinds(op.name), "")
+    for k in 0..<len(op.args) {
+      let label = op.args[k]
+      if ks[k] == "L" && !has(p.labels, label) { return Err("error: line {op.line}: unknown label {label}") }
+    }
+  }
+  Ok(p)
+}
+
+fn value(m: Machine, w: String) -> Int {
+  if is_register(w) { m.regs[code_at(w, 0) - 97] } else { unwrap_or(parse_int(w), 0) }
+}
+
+// Runs the instruction at pc; gives the next place, or the error.
+fn step(m: inout Machine, p: Program, pc: Int) -> Result<Int, String> {
+  let name = p.ops[pc].name
+  let a = p.ops[pc].args
+  if name == "jmp" { return Ok(p.labels[a[0]]) }
+  if name == "jz" && value(m, a[0]) == 0 { return Ok(p.labels[a[1]]) }
+  if name == "jlt" && value(m, a[0]) < value(m, a[1]) { return Ok(p.labels[a[2]]) }
+  if name == "call" {
+    if len(m.stack) == 16 { return Err("stack overflow") }
+    append(&m.stack, pc + 1)
+    return Ok(p.labels[a[0]])
+  }
+  if name == "ret" {
+    if is_empty(m.stack) { return Err("ret without call") }
+    return Ok(pop(&m.stack))
+  }
+  if name == "out" {
+    let v = value(m, a[0])
+    append(&m.out, "{v}")
+  }
+  if name == "halt" { return Ok(len(p.ops)) }
+  if name == "jz" || name == "jlt" || name == "out" { return Ok(pc + 1) }
+  let x = value(m, a[0])
+  let v = value(m, a[1])
+  if (name == "div" || name == "mod") && v == 0 { return Err("division by zero") }
+  var r = v
+  if name == "add" { r = x + v } else if name == "sub" { r = x - v } else if name == "mul" { r = x * v }
+  if name == "div" { r = x / v } else if name == "mod" { r = x % v }
+  if abs(r) > 9999999 { return Err("overflow") }
+  m.regs[code_at(a[0], 0) - 97] = r
+  Ok(pc + 1)
+}
+
+fn execute(p: Program, limit: Int) -> List<Effect<Msg>> {
+  var m = Machine { regs: list_of(0, count: 6) }
+  var pc = 0
+  var steps = 0
+  var error = ""
+  while pc < len(p.ops) && is_empty(error) {
+    let line = p.ops[pc].line
+    if steps == limit {
+      error = "error: line {line}: step limit"
+    } else {
+      steps += 1
+      match step(&m, p, pc) {
+        Ok(next) => pc = next
+        Err(what) => error = "error: line {line}: {what}"
+      }
+    }
+  }
+  var effects: List<Effect<Msg>> = []
+  for text in m.out {
+    append(&effects, Print(text))
+  }
+  if is_empty(error) {
+    append(&effects, Exit)
+  } else {
+    append(&effects, Print(error))
+    append(&effects, ExitWith(20))
+  }
+  effects
+}
+
+// A whole number from 1 to 100000 without a leading zero.
+fn step_limit(text: String) -> Option<Int> {
+  let cs = chars(text)
+  if is_empty(cs) || len(cs) > 6 || cs[0] == "0" { return None }
+  for c in cs {
+    if !is_digit(c) { return None }
+  }
+  let n = parse_int(text)?
+  if n > 100000 { None } else { Some(n) }
+}
+
+fn update(s: inout Run, m: Msg) -> List<Effect<Msg>> {
+  match m {
+    Start(path, limit) => {
+      match step_limit(limit) {
+        Some(n) => {
+          s.limit = n
+          [ReadFile(path, then: Loaded, or: Failed)]
+        }
+        None => [Print("error: bad limit"), ExitWith(20)]
+      }
+    }
+    Loaded(text) => {
+      match assemble(text) {
+        Ok(p) => execute(p, s.limit)
+        Err(why) => [Print(why), ExitWith(20)]
+      }
+    }
+    Failed(why) => [Print("error: cannot read file: {why}"), ExitWith(20)]
+  }
+}
+
+app machine {
+  state: Run
+  start: Start
+  update: update
+  grants: [Console, ReadFiles]
+}

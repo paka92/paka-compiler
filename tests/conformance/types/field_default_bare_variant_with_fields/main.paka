@@ -1,0 +1,15 @@
+enum Msg { Start }
+
+enum Shape { Dot, Rect(w: Int, h: Int) }
+
+type Box { s: Shape = Rect }
+
+fn update(msg: Msg) -> List<Effect<Msg>> {
+  [Print("done"), Exit]
+}
+
+app types {
+  start: Start
+  update: update
+  grants: [Console]
+}

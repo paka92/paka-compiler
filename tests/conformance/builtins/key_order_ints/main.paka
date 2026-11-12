@@ -1,0 +1,25 @@
+enum Msg { Start }
+
+fn si(xs: List<Int>) -> String {
+  var parts: List<String> = []
+  for x in xs { append(&parts, "{x}") }
+  "[" + join(parts, ",") + "]"
+}
+
+fn update(msg: Msg) -> List<Effect<Msg>> {
+  var m: Map<Int, String> = [:]
+  m[3] = "c"
+  m[-5] = "a"
+  m[0] = "z"
+  m[10] = "d"
+  m[-1] = "b"
+  m[9223372036854775807] = "H"
+  m[-9223372036854775808] = "L"
+  [Print(si(keys(m))), Print(join(values(m), "")), Exit]
+}
+
+app builtins {
+  start: Start
+  update: update
+  grants: [Console]
+}

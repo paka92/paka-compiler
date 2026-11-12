@@ -1,0 +1,16 @@
+enum Msg { Start, Loaded(text: String), Failed(why: String), Saved }
+
+fn update(m: Msg) -> List<Effect<Msg>> {
+  match m {
+    Start => [WriteFile("out.txt", "text", then: Saved, or: Failed)]
+    Loaded(text) => [Exit]
+    Failed(why) => [Print("failed"), Exit]
+    Saved => [Print("saved"), Exit]
+  }
+}
+
+app apps {
+  start: Start
+  update: update
+  grants: [Console, ReadFiles]
+}

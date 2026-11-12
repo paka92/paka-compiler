@@ -1,0 +1,14 @@
+enum Msg { Start }
+
+fn n(x: Int) -> String { "{x}" }
+
+fn update(msg: Msg) -> List<Effect<Msg>> {
+  let l1 = join([n(code_at("abc", 0)), n(code_at("abc", 2)), n(code_at("é", 0)), n(code_at("日本", 1)), n(code_at("a😀", 1)), n(code_at("a\tb", 1))], " ")
+  [Print(l1), Exit]
+}
+
+app builtins {
+  start: Start
+  update: update
+  grants: [Console]
+}

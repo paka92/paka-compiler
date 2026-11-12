@@ -1,0 +1,20 @@
+enum Msg { Start }
+
+fn bump(n: inout Int) {
+  n = n + 1
+}
+
+fn probe() -> Int {
+  let step = bump
+  1
+}
+
+fn update(m: Msg) -> List<Effect<Msg>> {
+  [Exit]
+}
+
+app callbacks {
+  start: Start
+  update: update
+  grants: []
+}

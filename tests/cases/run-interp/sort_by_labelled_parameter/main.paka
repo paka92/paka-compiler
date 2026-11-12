@@ -1,0 +1,19 @@
+enum Msg { Start }
+
+fn smaller(a: Int; than: Int) -> Bool { a < than }
+
+fn larger(a: Int, b: Int) -> Bool { a > b }
+
+fn update(m: Msg) -> List<Effect<Msg>> {
+  var up = [3, 1, 2]
+  var down = [3, 1, 2]
+  sort_by(&up, smaller)
+  sort_by(&down, larger)
+  [Print("{up[0]}{up[1]}{up[2]} {down[0]}{down[1]}{down[2]}"), Exit]
+}
+
+app callbacks {
+  start: Start
+  update: update
+  grants: [Console]
+}

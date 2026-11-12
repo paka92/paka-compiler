@@ -1,0 +1,6 @@
+north
+east
+up
+down
+south
+west

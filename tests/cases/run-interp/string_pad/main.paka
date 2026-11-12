@@ -1,0 +1,33 @@
+enum Msg { Start }
+
+fn n(i: Int) -> String { "{i}" }
+
+fn t(b: Bool) -> String { "{b}" }
+
+fn q(x: String) -> String { "[" + x + "]" }
+
+fn opt(o: Option<Int>) -> String {
+  match o {
+    Some(i) => "{i}"
+    None => "none"
+  }
+}
+
+fn lst(xs: List<String>) -> String {
+  let body = join(xs, "|")
+  "{len(xs)}[{body}]"
+}
+
+fn update(m: Msg) -> List<Effect<Msg>> {
+  [
+    Print(q(pad_left("7", 3)) + q(pad_left("é", 2)) + q(pad_left("abc", 2)) + q(pad_left("abc", -5)) + q(pad_left("", 3)) + q(pad_left("日本", 2))),
+    Print(q(pad_right("7", 3)) + q(pad_right("日本", 4)) + q(pad_right("abc", 3)) + q(pad_right("abc", 0)) + q(pad_right("", 2))),
+    Exit
+  ]
+}
+
+app rows {
+  start: Start
+  update: update
+  grants: [Console]
+}

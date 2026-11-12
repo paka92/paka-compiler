@@ -1,0 +1,17 @@
+enum Msg { Start }
+
+fn pick(ok: Bool, n: Int) -> Int {
+  let b = if ok { Some(n) } else { None }
+  let c = if ok { None } else { Some(n) }
+  unwrap_or(b, -1) * 10 + unwrap_or(c, -2)
+}
+
+fn update(msg: Msg) -> List<Effect<Msg>> {
+  [Print("{pick(true, 3)} {pick(false, 3)}"), Exit]
+}
+
+app types {
+  start: Start
+  update: update
+  grants: [Console]
+}

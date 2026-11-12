@@ -1,0 +1,26 @@
+enum Msg { Start }
+
+fn n(x: Int) -> String { "{x}" }
+
+fn ss(xs: List<String>) -> String {
+  "{len(xs)}:[" + join(xs, "|") + "]"
+}
+
+fn update(msg: Msg) -> List<Effect<Msg>> {
+  var m: Map<String, Int> = [:]
+  m["a"] = 1
+  m["a"] = 2
+  m["b"] = 3
+  m["b"] += 4
+  var g: Map<String, Map<String, Int>> = ["x": [:]]
+  g["x"]["k"] = 1
+  g["x"]["k"] = 2
+  g["x"]["j"] = 3
+  [Print(n(len(m)) + " " + n(m["a"]) + " " + n(m["b"])), Print(ss(keys(g["x"]))), Print(n(g["x"]["k"])), Exit]
+}
+
+app builtins {
+  start: Start
+  update: update
+  grants: [Console]
+}

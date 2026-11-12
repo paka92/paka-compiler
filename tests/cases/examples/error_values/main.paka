@@ -1,0 +1,19 @@
+fn ratio(a: Int, b: Int) -> Result<Int, String> {
+  if b == 0 {
+    return Err("divide by zero")
+  }
+  Ok(a / b)
+}
+
+fn first_word(words: List<String>) -> Option<String> {
+  if is_empty(words) {
+    return None
+  }
+  Some(words[0])
+}
+
+example ratio_divides { ratio(8, 2) == Ok(4) }
+example ratio_refuses_zero { ratio(1, 0) == Err("divide by zero") }
+example ratio_wrong_text { ratio(1, 0) == Err("nope") }
+example first_word_of_none { first_word([]) == None }
+example first_word_wrong { first_word(["a"]) == None }

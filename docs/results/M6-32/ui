@@ -1,0 +1,36 @@
+cpu AMD Ryzen 9 3900X 12-Core Processor
+kernel 7.0.0-38-generic
+governor schedutil
+boost on
+pinned-cpu 23
+commit 4f983e2113e3922d289411f6aba7a59e677f4fb7
+compiler paka Ubuntu clang version 21.1.8 (6ubuntu1)
+protocol clean normal run first; copy: 10000 clicks per handler, one run; frames: 1 warm-up, 10 rounds, one rerun above 5% spread
+not timed: drawing to a screen
+copy_1000 kind copy
+copy_1000 Field trees 6883781abb3d7456 state copy 2805846 ns in 10000 handlers
+copy_1000 Item trees b40240736fde855f state copy 3021316 ns in 10000 handlers
+copy_100000 kind copy
+copy_100000 Field trees b323a89a1699a3eb state copy 178298004 ns in 10000 handlers
+copy_100000 Item trees e907f9779231632d state copy 179421013 ns in 10000 handlers
+copy_10000000 kind copy
+copy_10000000 Field trees 1cf585a60af50b79 state copy 362992610352 ns in 10000 handlers
+copy_10000000 Item trees facb1f36793347a6 state copy 363889060656 ns in 10000 handlers
+todo kind frames
+todo attempt 1 dev paka-code median 149.433 us spread 3.1% times 149.416 149.288 148.781 149.449 149.369 149.477 153.450 149.295 150.626 149.780
+todo attempt 1 dev whole-frame median 6625.089 us spread 2.4% times 6614.111 6637.466 6595.599 6636.068 6518.403 6643.637 6676.417 6587.497 6580.798 6643.382
+todo attempt 1 release paka-code median 128.700 us spread 20.4% times 128.722 129.715 106.026 120.124 128.531 132.286 129.567 129.524 106.206 128.678
+todo attempt 1 release whole-frame median 6939.990 us spread 2.1% times 6968.557 6900.782 6932.940 6925.205 6876.976 6947.040 6974.291 6956.222 6850.771 6998.764
+todo attempt 2 dev paka-code median 149.571 us spread 1.9% times 148.714 149.012 148.578 148.995 149.280 150.037 150.405 151.372 149.862 150.206
+todo attempt 2 dev whole-frame median 6598.924 us spread 2.8% times 6641.993 6492.035 6461.033 6585.155 6648.763 6612.693 6616.440 6621.818 6474.227 6479.541
+todo attempt 2 release paka-code median 128.632 us spread 19.0% times 128.313 128.240 128.573 128.691 129.157 106.796 130.390 129.154 105.980 129.426
+todo attempt 2 release whole-frame median 6886.278 us spread 2.4% times 6874.706 6861.302 6857.517 6908.949 6861.260 6942.444 6920.390 6992.815 6826.043 6897.849
+copy_1000 Field state copy 280.6 ns per handler
+copy_1000 Item state copy 302.1 ns per handler
+copy_100000 Field state copy 17829.8 ns per handler
+copy_100000 Item state copy 17942.1 ns per handler
+copy_10000000 Field state copy 36299261.0 ns per handler
+copy_10000000 Item state copy 36388906.1 ns per handler
+todo dev per frame: paka code 149.571 us, whole frame 6598.924 us
+todo release per frame: paka code 128.632 us, whole frame 6886.278 us
+todo dev/release: paka code 1.16, whole frame 0.96 (noisy)

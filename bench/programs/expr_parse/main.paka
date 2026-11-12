@@ -1,0 +1,75 @@
+// Parse each line of the text into an expression tree and evaluate it, repeated.
+
+enum Msg { Start(path: String), Loaded(text: String), Failed(why: String) }
+
+enum Expr {
+  Num(value: Int),
+  Add(left: Expr, right: Expr),
+  Sub(left: Expr, right: Expr),
+  Mul(left: Expr, right: Expr)
+}
+
+fn parse_expr(toks: List<String>, pos: inout Int) -> Expr {
+  var e = parse_term(toks, &pos)
+  while pos < len(toks) && (toks[pos] == "+" || toks[pos] == "-") {
+    let op = toks[pos]
+    pos += 1
+    let right = parse_term(toks, &pos)
+    if op == "+" { e = Add(e, right) } else { e = Sub(e, right) }
+  }
+  e
+}
+
+fn parse_term(toks: List<String>, pos: inout Int) -> Expr {
+  var e = parse_factor(toks, &pos)
+  while pos < len(toks) && toks[pos] == "*" {
+    pos += 1
+    let right = parse_factor(toks, &pos)
+    e = Mul(e, right)
+  }
+  e
+}
+
+fn parse_factor(toks: List<String>, pos: inout Int) -> Expr {
+  pos += 1
+  if toks[pos - 1] == "(" {
+    let e = parse_expr(toks, &pos)
+    pos += 1
+    return e
+  }
+  Num(unwrap_or(parse_int(toks[pos - 1]), 0))
+}
+
+fn eval(e: Expr) -> Int {
+  match e {
+    Num(v) => v
+    Add(l, r) => eval(l) + eval(r)
+    Sub(l, r) => eval(l) - eval(r)
+    Mul(l, r) => eval(l) * eval(r)
+  }
+}
+
+fn update(m: Msg) -> List<Effect<Msg>> {
+  match m {
+    Start(path) => [ReadFile(path, then: Loaded, or: Failed)]
+    Loaded(text) => {
+      let ls = lines(text)
+      var total = 0
+      for r in 0..<10 {
+        for line in ls {
+          var pos = 0
+          let e = parse_expr(words(line), &pos)
+          total = wrap_add(total, eval(e))
+        }
+      }
+      [Print("{total}"), Exit]
+    }
+    Failed(why) => [Print("cannot read the text: {why}"), ExitWith(20)]
+  }
+}
+
+app expr_parse {
+  start: Start
+  update: update
+  grants: [ReadFiles, Console]
+}

@@ -1,0 +1,147 @@
+enum Msg { Start(path: String), Loaded(text: String), Failed(why: String) }
+
+type Event { line: Int, entering: Bool, plate: String, day: Int, time: String, minute: Int }
+
+type Visit { day: Int, time: String, minute: Int }
+
+fn is_digit(c: String) -> Bool {
+  c >= "0" && c <= "9"
+}
+
+fn all_digits(s: String) -> Bool {
+  for c in chars(s) {
+    if !is_digit(c) { return false }
+  }
+  true
+}
+
+fn is_plate(s: String) -> Bool {
+  if len(s) < 1 || len(s) > 8 { return false }
+  for c in chars(s) {
+    if !is_digit(c) && (c < "A" || c > "Z") { return false }
+  }
+  true
+}
+
+fn day(s: String) -> Option<Int> {
+  if len(s) < 1 || len(s) > 3 || !all_digits(s) { return None }
+  let d = parse_int(s)?
+  if d < 1 || d > 366 { None } else { Some(d) }
+}
+
+// Minutes since midnight of `HH:MM`.
+fn clock(s: String) -> Option<Int> {
+  if len(s) != 5 || s[2] != ":" { return None }
+  let hh = s[0..<2]
+  let mm = s[3..<5]
+  if !all_digits(hh) || !all_digits(mm) { return None }
+  let h = parse_int(hh)?
+  let m = parse_int(mm)?
+  if h > 23 || m > 59 { None } else { Some(h * 60 + m) }
+}
+
+fn event(row: String, n: Int) -> Option<Event> {
+  let f = split(row, " ")
+  if len(f) != 4 || f[0] != "in" && f[0] != "out" || !is_plate(f[1]) { return None }
+  let d = day(f[2])?
+  let minute = (d - 1) * 1440 + clock(f[3])?
+  Some(Event { line: n, entering: f[0] == "in", plate: f[1], day: d, time: f[3], minute: minute })
+}
+
+fn read_events(text: String) -> Result<List<Event>, String> {
+  var events: List<Event> = []
+  let rows = lines(text)
+  for i in 0..<len(rows) {
+    if is_empty(rows[i]) { continue }
+    append(&events, ok_or(event(rows[i], i + 1), "error: line {i + 1}: bad event")?)
+  }
+  for i in 1..<len(events) {
+    if events[i].minute < events[i - 1].minute {
+      return Err("error: line {events[i].line}: time goes back")
+    }
+  }
+  Ok(events)
+}
+
+fn charge(rest: Int) -> Int {
+  if rest == 0 { return 0 }
+  let hours = (rest + 59) / 60
+  let c = 200 + 150 * min(hours - 1, 2) + 100 * max(hours - 3, 0)
+  min(c, 1200)
+}
+
+fn fee(stay: Int) -> Int {
+  if stay <= 15 { return 0 }
+  let days = stay / 1440
+  days * 1200 + charge(stay - days * 1440)
+}
+
+fn money(cents: Int) -> String {
+  let rest = cents % 100
+  let pad = if rest < 10 { "0" } else { "" }
+  "{cents / 100}.{pad}{rest}"
+}
+
+fn billing(text: String) -> Result<List<String>, String> {
+  let events = read_events(text)?
+  var inside: Map<String, Visit> = [:]
+  var total = 0
+  var out: List<String> = []
+  for e in events {
+    let p = e.plate
+    match get(inside, p) {
+      Some(v) => {
+        if e.entering {
+          append(&out, "line {e.line}: {p} is already in")
+        } else {
+          let stay = e.minute - v.minute
+          let f = fee(stay)
+          total += f
+          append(&out, "{p}: {stay} min, {money(f)}")
+          remove(&inside, p)
+        }
+      }
+      None => {
+        if e.entering {
+          inside[p] = Visit { day: e.day, time: e.time, minute: e.minute }
+        } else {
+          append(&out, "line {e.line}: {p} is not in")
+        }
+      }
+    }
+  }
+  for p in keys(inside) {
+    let v = inside[p]
+    append(&out, "{p}: still in since day {v.day} {v.time}")
+  }
+  append(&out, "total: {money(total)}")
+  Ok(out)
+}
+
+fn report(result: Result<List<String>, String>) -> List<Effect<Msg>> {
+  match result {
+    Ok(out) => {
+      var effects: List<Effect<Msg>> = []
+      for line in out {
+        append(&effects, Print(line))
+      }
+      append(&effects, Exit)
+      effects
+    }
+    Err(why) => [Print(why), ExitWith(20)]
+  }
+}
+
+fn update(m: Msg) -> List<Effect<Msg>> {
+  match m {
+    Start(path) => [ReadFile(path, then: Loaded, or: Failed)]
+    Loaded(text) => report(billing(text))
+    Failed(why) => [Print("error: cannot read file: {why}"), ExitWith(20)]
+  }
+}
+
+app car_park {
+  start: Start
+  update: update
+  grants: [Console, ReadFiles]
+}

@@ -1,0 +1,16 @@
+Served program: the directory dir/before; the files after match dir/after. An add makes its own
+file or appends to one of its name, a delete takes its comments and removes an emptied file, and an
+edit rewrites a definition where it is.
+
+> {"v":1,"id":1,"call":"edit","name":"double","base":null,"text":"fn double(x: Int) -> Int {\n  twice(x)\n}"}
+< {"v":1,"id":1,"ok":true,"name":"double","version":"533c707a0376","text":"fn double(x: Int) -> Int {\n  twice(x)\n}","errors":[],"broke":[],"installed":true}
+> {"v":1,"id":2,"call":"edit","name":"fffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff","base":null,"text":"fn fffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff() -> Int {\n  0\n}"}
+< {"v":1,"id":2,"ok":false,"error":{"kind":"bad_request","message":"the file name fffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff.paka passes 255 bytes"}}
+> {"v":1,"id":3,"call":"edit","name":"area","base":"bad7139e75f3","text":null}
+< {"v":1,"id":3,"ok":true,"name":"area","version":null,"text":null,"errors":[],"broke":[],"installed":true}
+> {"v":1,"id":4,"call":"edit","name":"twice","base":"25157a696edb","text":null}
+< {"v":1,"id":4,"ok":true,"name":"twice","version":null,"text":null,"errors":[],"broke":["double"],"installed":false}
+> {"v":1,"id":5,"call":"edit","name":"Size","base":"205cc2e62145","text":"type Size {   w: Int = 0,  h: Int = 1 }"}
+< {"v":1,"id":5,"ok":true,"name":"Size","version":"e870bf8f29bb","text":"type Size { w: Int = 0, h: Int = 1 }","errors":[],"broke":[],"installed":false}
+> {"v":1,"id":6,"call":"edit","name":"shapes","base":null,"text":"fn shapes() -> Int {\n  1\n}"}
+< {"v":1,"id":6,"ok":true,"name":"shapes","version":"b61b8b800506","text":"fn shapes() -> Int {\n  1\n}","errors":[],"broke":[],"installed":false}

@@ -1,0 +1,50 @@
+enum Msg { Start }
+
+fn describe(r: Result<Int, String>) -> String {
+  match r {
+    Ok(v) => "ok {v}"
+    Err(e) => "err {e}"
+  }
+}
+
+fn parse_pair(a: String, b: String) -> Result<Int, String> {
+  let x = ok_or(parse_int(a), "bad {a}")?
+  let y = ok_or(parse_int(b), "bad {b}")?
+  Ok(x + y)
+}
+
+fn total(fields: List<String>) -> Result<Int, String> {
+  var sum = 0
+  for f in fields {
+    sum += ok_or(parse_int(f), "not a number: {f}")?
+  }
+  Ok(sum)
+}
+
+fn safe_div(a: Int, b: Int) -> Result<Int, String> {
+  if b == 0 {
+    return Err("zero")
+  }
+  Ok(a / b)
+}
+
+fn half(a: Int, b: Int) -> Result<Int, String> {
+  let r = safe_div(a, b)?
+  Ok(r / 2)
+}
+
+fn update(msg: Msg) -> List<Effect<Msg>> {
+  let a = describe(parse_pair("1", "2"))
+  let b = describe(parse_pair("x", "2"))
+  let c = describe(parse_pair("1", "y"))
+  let d = describe(total(["1", "x", "3"]))
+  let e = describe(half(9, 3))
+  let f = describe(half(9, 0))
+  [Print(a + "," + b + "," + c + "," + d + "," + e + "," + f), Exit]
+}
+
+app types {
+  start: Start
+  update: update
+  grants: [Console]
+}

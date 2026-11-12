@@ -1,0 +1,18 @@
+enum Msg { Start }
+
+fn greet() -> List<Effect<Msg>> {
+  [Print("hi"), Exit]
+}
+
+fn update(msg: Msg) -> List<Effect<Msg>> {
+  let a = greet() == [Print("hi"), Exit]
+  let b = greet() == [Print("ho"), Exit]
+  let c = greet() == [Exit]
+  [Print("{a} {b} {c}"), Exit]
+}
+
+app types {
+  start: Start
+  update: update
+  grants: [Console]
+}

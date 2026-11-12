@@ -1,0 +1,6 @@
+type Counter { count: Int = 0 }
+
+fn f(c: inout Counter) -> Int {
+  c.count = ??v
+  c.count
+}

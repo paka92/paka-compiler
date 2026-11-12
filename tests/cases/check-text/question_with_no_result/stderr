@@ -1,0 +1,6 @@
+main.paka:2:23: error[type-mismatch]: ? passes None up, but show has no result; match it
+  definition: show
+  bytes: 43..44
+  text: "?"
+  expected: Option<T>
+  found: no result

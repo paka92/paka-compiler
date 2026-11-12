@@ -1,0 +1,18 @@
+enum Msg { Start }
+
+fn update(msg: Msg) -> List<Effect<Msg>> {
+  let a = 1 == 1
+  let b = 1 != 1
+  let c = "ab" == "ab"
+  let d = "ab" == "aB"
+  let e = true != false
+  let f = 2.5 == 2.5
+  let g = 1 < 2 && "a" < "b" && "Z" < "a" && "" < "a" && 2.5 >= 2.5
+  [Print("{a} {b} {c} {d} {e} {f} {g}"), Exit]
+}
+
+app types {
+  start: Start
+  update: update
+  grants: [Console]
+}

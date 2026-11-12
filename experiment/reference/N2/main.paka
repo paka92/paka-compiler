@@ -1,0 +1,105 @@
+enum Msg { Start(path: String), Loaded(text: String), Failed(why: String) }
+
+fn is_digit(c: String) -> Bool {
+  c >= "0" && c <= "9"
+}
+
+fn is_name(s: String) -> Bool {
+  if len(s) < 1 || len(s) > 20 { return false }
+  for c in chars(s) {
+    let letter = c >= "a" && c <= "z" || c >= "A" && c <= "Z"
+    if !letter && !is_digit(c) && c != "_" && c != "-" { return false }
+  }
+  true
+}
+
+// An optional `-`, then 1 to 5 digits.
+fn value(s: String) -> Option<Int> {
+  let body = if starts_with(s, "-") { s[1..<len(s)] } else { s }
+  if len(body) < 1 || len(body) > 5 { return None }
+  for c in chars(body) {
+    if !is_digit(c) { return None }
+  }
+  parse_int(s)
+}
+
+fn read_groups(text: String) -> Result<Map<String, List<Int>>, String> {
+  var groups: Map<String, List<Int>> = [:]
+  let rows = lines(text)
+  for i in 0..<len(rows) {
+    let n = i + 1
+    let ws = words(rows[i])
+    if is_empty(ws) { continue }
+    let head = ws[0]
+    let name = head[0..<len(head) - 1]
+    if !ends_with(head, ":") || !is_name(name) { return Err("error: line {n}: bad line") }
+    if !has(groups, name) { groups[name] = [] }
+    for w in ws[1..<len(ws)] {
+      append(&groups[name], ok_or(value(w), "error: line {n}: bad value {w}")?)
+    }
+  }
+  if is_empty(groups) { return Err("error: no groups") }
+  Ok(groups)
+}
+
+// Two decimals; a value that rounds to zero has no sign.
+fn two(x: Float) -> String {
+  let s = fixed(x, digits: 2)
+  if s == "-0.00" { "0.00" } else { s }
+}
+
+fn stats(name: String, values: List<Int>) -> String {
+  let n = len(values)
+  if n == 0 { return "{name}: n=0 mean=- median=- sd=-" }
+  var sorted = values
+  sort(&sorted)
+  var sum = 0
+  for v in values {
+    sum += v
+  }
+  let mean = to_float(sum) / to_float(n)
+  let mid = n / 2
+  let median = if n % 2 == 1 {
+    to_float(sorted[mid])
+  } else {
+    to_float(sorted[mid - 1] + sorted[mid]) / 2.0
+  }
+  var sd = "-"
+  if n >= 2 {
+    var q = 0.0
+    for v in values {
+      let d = to_float(v) - mean
+      q += d * d
+    }
+    sd = two(sqrt(q / to_float(n - 1)))
+  }
+  "{name}: n={n} mean={two(mean)} median={two(median)} sd={sd}"
+}
+
+fn report(result: Result<Map<String, List<Int>>, String>) -> List<Effect<Msg>> {
+  match result {
+    Ok(groups) => {
+      var effects: List<Effect<Msg>> = []
+      for name in keys(groups) {
+        append(&effects, Print(stats(name, groups[name])))
+      }
+      append(&effects, Exit)
+      effects
+    }
+    Err(why) => [Print(why), ExitWith(20)]
+  }
+}
+
+fn update(m: Msg) -> List<Effect<Msg>> {
+  match m {
+    Start(path) => [ReadFile(path, then: Loaded, or: Failed)]
+    Loaded(text) => report(read_groups(text))
+    Failed(why) => [Print("error: cannot read file: {why}"), ExitWith(20)]
+  }
+}
+
+app group_stats {
+  start: Start
+  update: update
+  grants: [Console, ReadFiles]
+}

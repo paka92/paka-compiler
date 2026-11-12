@@ -1,0 +1,4 @@
+fn f(b: Bool) -> Int {
+  if b { return ??r }
+  0
+}

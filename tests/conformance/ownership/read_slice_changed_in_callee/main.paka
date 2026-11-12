@@ -1,0 +1,25 @@
+enum Msg { Start }
+
+fn count2(a: List<Int>, b: Int) -> Int {
+  len(a) + b
+}
+
+fn pop_n(xs: inout List<Int>) -> Int {
+  pop(&xs)
+}
+
+fn f(xs: inout List<Int>) -> Int {
+  count2(xs[0..<2], pop_n(&xs))
+}
+
+fn update(msg: Msg) -> List<Effect<Msg>> {
+  var xs = [1, 2, 3]
+  let n = f(&xs)
+  [Print("done"), Exit]
+}
+
+app ownership {
+  start: Start
+  update: update
+  grants: [Console]
+}

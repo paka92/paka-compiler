@@ -1,0 +1,6 @@
+main.paka:3:41: error[type-mismatch]: expected fn(String) -> Msg, found fn(Int, Int) -> Msg (Pair)
+  definition: Later
+  bytes: 104..108
+  text: "Pair"
+  expected: fn(String) -> Msg
+  found: fn(Int, Int) -> Msg

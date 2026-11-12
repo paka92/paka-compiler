@@ -1,0 +1,8 @@
+dan,7
+cat,n/a
+bea,7.0
+
+alf,-2
+eve,
+abe,7
+zed,12

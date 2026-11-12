@@ -1,0 +1,25 @@
+enum Msg { Start }
+
+fn report(xs: List<Float>) -> String {
+  var sum = 0.0
+  var lo = xs[0]
+  var hi = xs[0]
+  for x in xs {
+    sum += x
+    lo = min(lo, x)
+    hi = max(hi, x)
+  }
+  let mean = sum / to_float(len(xs))
+  join([pad_left(fixed(lo, digits: 2), 8), pad_left(fixed(mean, digits: 2), 8),
+        pad_left(fixed(hi, digits: 2), 8)], " ")
+}
+
+fn update(msg: Msg) -> List<Effect<Msg>> {
+  [Print(report([1.5, 2.25, 4.0])), Print(report([10.0])), Exit]
+}
+
+app builtins {
+  start: Start
+  update: update
+  grants: [Console]
+}

@@ -1,0 +1,17 @@
+type Point { x: Int, y: Int }
+enum Msg { Start, Loaded(text: String), Failed(why: String) }
+
+fn double(n: Int) -> Int { n * 2 }
+
+fn triple(n: Int) -> Int { n * 3 }
+
+fn asks() -> List<Effect<Msg>> { [ReadFile("a.txt", then: Loaded, or: Failed)] }
+
+example v_effect { asks() == [Print("a")] }
+example v_float { 1.0 == 2.5 }
+example v_func { double == triple }
+example v_list { [1, 2] == [1, 3] }
+example v_map { ["a": 1] == ["a": 2] }
+example v_option { Some(1) == None }
+example v_record { Point { x: 3, y: 4 } == Point { x: 3, y: 5 } }
+example v_string { "a\n" == "b" }

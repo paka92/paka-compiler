@@ -1,0 +1,38 @@
+type Tag { label: String, n: Int }
+
+fn greet(name: String, n: Int) -> String {
+  "hi {name} x{n} {n > 1}"
+}
+
+fn spaced(s: String) -> String {
+  var out = ""
+  for i in 0..<len(s) {
+    out += s[i]
+    out += "."
+  }
+  out
+}
+
+example literals { len("héllo") == 5 && len("") == 0 && is_empty("") && !is_empty("a") }
+example long_literal { len("more than eight bytes, and then some") == 36 }
+example interpolation { greet("ann", 2) == "hi ann x2 true" && "{-7}{false}" == "-7false" }
+example joins { "ab" + "" + "cd" == "abcd" && spaced("ab") == "a.b." }
+example compares {
+  "abc" < "abd" && "b" > "a" && "a" <= "a" && "a" >= "a" && "a" != "b" && "" < "a"
+}
+example min_max { min("pear", "fig") == "fig" && max("pear", "fig") == "pear" }
+example indexes { "héllo"[1] == "é" && "héllo"[1..<3] == "él" && "abc"[0..<0] == "" }
+example codes { code_at("Añ", 1) == 241 && from_code(233) == "é" }
+example copies {
+  var a = "x"
+  let b = a
+  a += "y"
+  a == "xy" && b == "x"
+}
+example in_records {
+  var t = Tag { label: "one", n: 1 }
+  let u = t
+  t.label += "!"
+  t.label == "one!" && u.label == "one" && "{t.label}{u.n}" == "one!1"
+}
+example a_failing_compare { "a" + "b" == "ba" }

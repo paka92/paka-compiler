@@ -1,0 +1,6 @@
+main.paka:4:5: error[type-mismatch]: Player has no order; compare a field: a.score > b.score
+  definition: ahead
+  bytes: 73..74
+  text: ">"
+  expected: Int, Float or String
+  found: Player

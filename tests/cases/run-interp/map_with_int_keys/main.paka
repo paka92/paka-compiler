@@ -1,0 +1,16 @@
+enum Msg { Start }
+
+fn update(m: Msg) -> List<Effect<Msg>> {
+  let squares: Map<Int, Int> = [3: 9, -1: 1, 2: 4]
+  let ks = keys(squares)
+  let vs = values(squares)
+  let hit = unwrap_or(get(squares, 2), 0)
+  let miss = unwrap_or(get(squares, 5), 0)
+  [Print("{ks[0]} {ks[1]} {ks[2]} {vs[0]} {vs[1]} {vs[2]} {hit} {miss}"), Exit]
+}
+
+app generics {
+  start: Start
+  update: update
+  grants: [Console]
+}

@@ -1,0 +1,13 @@
+enum Msg { Start }
+
+fn update(msg: Msg) -> List<Effect<Msg>> {
+  match msg {
+    Start => [Print("let there be light"), ??rest]
+  }
+}
+
+app apps {
+  start: Start
+  update: update
+  grants: [Console]
+}

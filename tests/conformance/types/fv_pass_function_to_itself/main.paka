@@ -1,0 +1,14 @@
+enum Msg { Start }
+
+fn twice(k: fn(Int) -> Int) -> Int { k(1) }
+
+fn update(msg: Msg) -> List<Effect<Msg>> {
+  let n = twice(twice)
+  [Print("done"), Exit]
+}
+
+app types {
+  start: Start
+  update: update
+  grants: [Console]
+}

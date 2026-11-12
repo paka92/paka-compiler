@@ -1,0 +1,18 @@
+enum Msg { Start }
+
+fn inc(n: Int) -> Int { n + 1 }
+fn test(n: Int) -> Bool { n > 0 }
+
+fn probe() -> Bool {
+  inc == test
+}
+
+fn update(m: Msg) -> List<Effect<Msg>> {
+  [Exit]
+}
+
+app callbacks {
+  start: Start
+  update: update
+  grants: []
+}

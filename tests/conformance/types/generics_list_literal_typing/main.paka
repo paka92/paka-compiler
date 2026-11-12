@@ -1,0 +1,14 @@
+enum Msg { Start }
+
+fn update(msg: Msg) -> List<Effect<Msg>> {
+  let xs: List<Option<List<Int>>> = [None, None, Some([])]
+  let ys = [None, Some(4)]
+  let zs = [Some(1), None]
+  [Print("{len(xs)} {len(ys)} {len(zs)}"), Exit]
+}
+
+app types {
+  start: Start
+  update: update
+  grants: [Console]
+}

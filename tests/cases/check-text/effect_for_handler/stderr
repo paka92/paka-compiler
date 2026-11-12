@@ -1,0 +1,6 @@
+main.paka:4:27: error[type-mismatch]: expected fn(String) -> Msg, found Effect<Msg>
+  definition: probe
+  bytes: 95..99
+  text: "Exit"
+  expected: fn(String) -> Msg
+  found: Effect<Msg>

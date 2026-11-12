@@ -1,0 +1,27 @@
+enum Msg { Start }
+
+fn double(n: Int) -> Int { n * 2 }
+
+fn inc(n: Int) -> Int { n + 1 }
+
+fn twin(n: Int) -> Int { n * 2 }
+enum Reply { Loaded(text: String), Failed(why: String), Idle }
+
+fn update(msg: Msg) -> List<Effect<Msg>> {
+  let f = double
+  let a = double == double
+  let b = double == inc
+  let c = Loaded == Failed
+  let d = Loaded == Loaded
+  let e = Idle == Idle
+  let g = twin == double
+  let h = f == double
+  let i = double != inc
+  [Print("{a} {b} {c} {d} {e} {g} {h} {i}"), Exit]
+}
+
+app types {
+  start: Start
+  update: update
+  grants: [Console]
+}

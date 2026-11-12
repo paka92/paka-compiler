@@ -1,0 +1,61 @@
+// The counter and to-do views of docs/decisions/M5-01.md, and a loosely written one.
+type Counter { count: Int = 0 }
+enum Msg { Inc, Dec, Draft(text: String), Add, Toggle(id: Int) }
+
+view counter_view(s: Counter) -> View<Msg> {
+  Col(gap: 8) {
+    Text("{s.count}")
+    Row(gap: 8) {
+      Button("-", on: Dec)
+      Button("+", on: Inc)
+    }
+    ??reset
+  }
+}
+
+type Todos { draft: String = "", items: List<Todo> = [] }
+
+view todo_view(s: Todos) -> View<Msg> {
+  Col(gap: 8) {
+    Input(s.draft, on_change: Draft, key: "new")
+    Button("Add", on: Add)
+    if len(s.items) == 0 { Text("Nothing to do") }
+    for t in s.items {
+      todo_row(t, key: t.id)
+    }
+  }
+}
+
+view todo_row(t: Todo) -> View<Msg> {
+  Row(gap: 8) {
+    Button(mark(t.done), on: Toggle(t.id))
+    Text(t.title)
+  }
+}
+
+view main_view(s: State) -> View<Msg> {
+  match s.screen {
+    Login => login_view(s)
+    Home  => home_view(s)
+  }
+}
+
+view form_view(s: Form)   ->   View<Msg> {
+  let   warn = s.warn
+  Col(gap: 8) {
+    if warn { Text("Check the name") }
+    Row(gap: 8) { Input(s.name, on_change: Name, key: "f") }   // one field
+    match s.step {
+      Done => {}
+      Next(n) => Text("{n}")
+    }
+    Col() {}
+  }
+}
+
+app todo {
+  state:  Todos
+  update: update
+  view:   todo_view
+  grants: []
+}

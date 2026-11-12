@@ -1,0 +1,18 @@
+enum Msg { Start }
+
+fn spare(a: Int, b: Int) -> Int {
+  let unused = a
+  a
+}
+
+fn update(msg: Msg) -> List<Effect<Msg>> {
+  match msg {
+    Start => [Print("{spare(1, 2)}"), Exit]
+  }
+}
+
+app apps {
+  start: Start
+  update: update
+  grants: [Console]
+}

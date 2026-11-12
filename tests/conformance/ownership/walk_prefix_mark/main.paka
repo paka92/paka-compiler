@@ -1,0 +1,23 @@
+enum Msg { Start }
+
+type Graph { adj: List<List<Int>> = [] }
+
+fn visit(g: inout Graph, v: Int) {
+  append(&g.adj[v], 0)
+}
+
+fn walk(g: inout Graph, u: Int) {
+  for v in g.adj[u] { visit(&g, v) }
+}
+
+fn update(msg: Msg) -> List<Effect<Msg>> {
+  var g = Graph { adj: [[1], [0]] }
+  walk(&g, 0)
+  [Print("done"), Exit]
+}
+
+app ownership {
+  start: Start
+  update: update
+  grants: [Console]
+}

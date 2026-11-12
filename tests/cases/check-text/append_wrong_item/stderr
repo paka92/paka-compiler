@@ -1,0 +1,6 @@
+main.paka:3:15: error[type-mismatch]: expected `Int`, found `String`
+  definition: fill
+  bytes: 51..54
+  text: "\"a\""
+  expected: Int
+  found: String

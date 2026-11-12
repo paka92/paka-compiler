@@ -1,0 +1,14 @@
+enum Msg { Start }
+
+fn double(n: Int) -> Int { n * 2 }
+
+fn update(msg: Msg) -> List<Effect<Msg>> {
+  let s = "f = {double}"
+  [Print("done"), Exit]
+}
+
+app types {
+  start: Start
+  update: update
+  grants: [Console]
+}

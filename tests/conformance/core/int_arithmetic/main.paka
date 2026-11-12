@@ -1,0 +1,24 @@
+enum Msg { Start }
+
+fn update(msg: Msg) -> List<Effect<Msg>> {
+  let a = 7
+  let b = 5
+  let sum = a + b
+  let diff = b - a
+  let prod = a * -b
+  let neg = -a
+  let big = 3037000499 * 3037000499
+  let edge = 9223372036854775807 - 1
+  [
+    Print("{sum} {diff} {prod} {neg}"),
+    Print("{big}"),
+    Print("{edge}"),
+    Exit
+  ]
+}
+
+app core {
+  start: Start
+  update: update
+  grants: [Console]
+}

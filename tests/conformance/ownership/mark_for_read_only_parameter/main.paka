@@ -1,0 +1,17 @@
+enum Msg { Start }
+
+fn total(xs: List<Int>) -> Int {
+  len(xs)
+}
+
+fn update(msg: Msg) -> List<Effect<Msg>> {
+  var xs = [1]
+  let n = total(&xs)
+  [Print("done"), Exit]
+}
+
+app ownership {
+  start: Start
+  update: update
+  grants: [Console]
+}

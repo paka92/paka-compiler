@@ -1,0 +1,30 @@
+example append_item {
+  var xs: List<Int> = []
+  append(&xs, 1)
+  xs == [1]
+}
+
+example count_idiom {
+  var counts: Map<String, Int> = [:]
+  let w = "a"
+  counts[w] = unwrap_or(get(counts, w), 0) + 1
+  counts[w] = unwrap_or(get(counts, w), 0) + 1
+  counts == ["a": 2]
+}
+
+example get_gives_a_copy {
+  var m: Map<String, List<Int>> = ["a": [1]]
+  var got = unwrap_or(get(m, "a"), [])
+  append(&got, 2)
+  m == ["a": [1]] && got == [1, 2]
+}
+
+example grid_rows_are_independent {
+  var adj: List<List<Int>> = list_of([], count: 3)
+  append(&adj[0], 1)
+  adj == [[1], [], []]
+}
+
+example nested_contains { contains([[1], [0]], [0]) }
+
+example unwrap_none { unwrap_or(None, 0) == 0 }

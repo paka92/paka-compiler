@@ -1,0 +1,21 @@
+enum Msg { Start }
+
+type Rec { n: Int }
+
+fn cmp(a: Rec, b: Rec) -> Int { a.n - b.n }
+
+fn probe(xs: List<Rec>) -> List<Rec> {
+  var out = xs
+  sort_by(&out, cmp)
+  out
+}
+
+fn update(m: Msg) -> List<Effect<Msg>> {
+  [Exit]
+}
+
+app callbacks {
+  start: Start
+  update: update
+  grants: []
+}

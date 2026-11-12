@@ -1,0 +1,16 @@
+enum Msg { Start }
+
+fn probe(less: fn(Int, Int) -> Bool) -> Bool {
+  var x = 1
+  less(&x, 2)
+}
+
+fn update(m: Msg) -> List<Effect<Msg>> {
+  [Exit]
+}
+
+app callbacks {
+  start: Start
+  update: update
+  grants: []
+}

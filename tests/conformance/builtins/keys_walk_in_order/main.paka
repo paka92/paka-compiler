@@ -1,0 +1,19 @@
+enum Msg { Start }
+
+fn n(x: Int) -> String { "{x}" }
+
+fn update(msg: Msg) -> List<Effect<Msg>> {
+  let m = ["b": 2, "c": 3, "a": 1]
+  var parts: List<String> = []
+  for k in keys(m) {
+    let v = m[k]
+    append(&parts, k + "=" + n(v))
+  }
+  [Print(join(parts, " ")), Exit]
+}
+
+app builtins {
+  start: Start
+  update: update
+  grants: [Console]
+}

@@ -1,0 +1,34 @@
+enum Msg { Start }
+
+fn update(msg: Msg) -> List<Effect<Msg>> {
+  var i = 0
+  var total = 0
+  while i < 5 {
+    total += i * i
+    i += 1
+  }
+  var n = 6
+  var steps = 0
+  while n != 1 {
+    if n % 2 == 0 {
+      n /= 2
+    } else {
+      n = n * 3 + 1
+    }
+    steps += 1
+  }
+  var never = 0
+  while false {
+    never = 1
+  }
+  [
+    Print("{total} {steps} {never} {i}"),
+    Exit
+  ]
+}
+
+app core {
+  start: Start
+  update: update
+  grants: [Console]
+}

@@ -1,0 +1,4 @@
+main.paka:2:3: error[unknown-name]: Paka has no nil; write None and a match
+  definition: digits
+  bytes: 40..43
+  text: "nil"

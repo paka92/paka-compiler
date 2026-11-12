@@ -1,0 +1,37 @@
+enum Msg { Start }
+
+fn n(i: Int) -> String { "{i}" }
+
+fn t(b: Bool) -> String { "{b}" }
+
+fn q(x: String) -> String { "[" + x + "]" }
+
+fn opt(o: Option<Int>) -> String {
+  match o {
+    Some(i) => "{i}"
+    None => "none"
+  }
+}
+
+fn lst(xs: List<String>) -> String {
+  let body = join(xs, "|")
+  "{len(xs)}[{body}]"
+}
+
+fn f(x: Float) -> String { fixed(x, digits: 1) }
+
+fn update(m: Msg) -> List<Effect<Msg>> {
+  [
+    Print(n(abs(-5)) + " " + n(abs(5)) + " " + n(abs(0)) + " " + n(abs(-9223372036854775807))),
+    Print(f(abs(-2.5)) + " " + f(abs(2.5)) + " " + f(abs(-0.0))),
+    Print(f(to_float(3)) + " " + f(to_float(-7)) + " " + f(to_float(0))),
+    Print(n(to_int(2.9)) + " " + n(to_int(-2.9)) + " " + n(to_int(0.0)) + " " + n(to_int(-0.5)) + " " + n(to_int(1000000.0))),
+    Exit
+  ]
+}
+
+app rows {
+  start: Start
+  update: update
+  grants: [Console]
+}

@@ -1,0 +1,6 @@
+append_item agent-written pass
+count_idiom agent-written pass
+get_gives_a_copy agent-written pass
+grid_rows_are_independent agent-written pass
+nested_contains agent-written pass
+unwrap_none agent-written pass

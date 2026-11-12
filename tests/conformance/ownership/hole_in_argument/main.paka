@@ -1,0 +1,17 @@
+enum Msg { Start }
+
+fn add(xs: inout List<Int>, x: Int) {
+  append(&xs, x)
+}
+
+fn update(msg: Msg) -> List<Effect<Msg>> {
+  var xs = [1]
+  add(&xs, ??later)
+  [Print("{len(xs)}"), Exit]
+}
+
+app ownership {
+  start: Start
+  update: update
+  grants: [Console]
+}

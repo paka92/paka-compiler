@@ -1,0 +1,16 @@
+main.paka:4:7: warning[unused-name]: total is never used
+  definition: mix
+  bytes: 58..63
+  text: "total"
+main.paka:5:7: warning[unused-name]: spare is never used
+  definition: mix
+  bytes: 74..79
+  text: "spare"
+main.paka:9:9: warning[unused-name]: x is never used
+  definition: pick
+  bytes: 99..100
+  text: "x"
+main.paka:9:25: warning[unused-name]: z is never used
+  definition: pick
+  bytes: 115..116
+  text: "z"

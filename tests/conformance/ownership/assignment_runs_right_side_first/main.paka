@@ -1,0 +1,31 @@
+enum Msg { Start }
+
+type Node { val: Int = 0, kids: List<Node> = [] }
+
+fn show(xs: List<Int>) -> String {
+  var parts: List<String> = []
+  for x in xs { append(&parts, "{x}") }
+  "[" + join(parts, ", ") + "]"
+}
+
+fn grow_seven(xs: inout List<Int>) -> Int {
+  append(&xs, 10)
+  7
+}
+
+fn update(msg: Msg) -> List<Effect<Msg>> {
+  var xs = [1, 2, 3]
+  xs[0] = grow_seven(&xs)
+  xs[1] = xs[3]
+  var n = Node { val: 1, kids: [Node { val: 2, kids: [Node { val: 3 }] }] }
+  n = n.kids[0]
+  let a = n.val
+  n = n.kids[0]
+  [Print("{show(xs)} {a} {n.val} {len(n.kids)}"), Exit]
+}
+
+app ownership {
+  start: Start
+  update: update
+  grants: [Console]
+}

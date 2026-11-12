@@ -1,0 +1,16 @@
+enum Msg { Start }
+
+fn update(msg: Msg) -> List<Effect<Msg>> {
+  let o: Option<List<Int>> = Some([1])
+  match o {
+    Some(v) => append(&v, 1)
+    None => {}
+  }
+  [Print("done"), Exit]
+}
+
+app ownership {
+  start: Start
+  update: update
+  grants: [Console]
+}

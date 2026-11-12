@@ -1,0 +1,15 @@
+enum Msg { Start }
+
+fn update(msg: Msg) -> List<Effect<Msg>> {
+  for i in 0..<3 {
+    continue
+    let y = i
+  }
+  [Exit]
+}
+
+app core {
+  start: Start
+  update: update
+  grants: [Console]
+}

@@ -1,0 +1,27 @@
+enum Msg { Start }
+
+fn update(q: Msg) -> List<Effect<Msg>> {
+  var xs: List<Int> = []
+  var rows: List<List<Int>> = []
+  var none: List<String> = []
+  append(&xs, 7)
+  append(&xs, 5)
+  extend(&xs, [])
+  extend(&xs, [9, 1])
+  extend(&none, [])
+  let inner = [2]
+  append(&rows, inner)
+  append(&rows, inner)
+  append(&rows[0], 3)
+  [
+    Print("{len(xs)} {xs[0]} {xs[1]} {xs[2]} {xs[3]}"),
+    Print("{len(rows[0])} {len(rows[1])} {len(inner)} {len(none)}"),
+    Exit
+  ]
+}
+
+app generics {
+  start: Start
+  update: update
+  grants: [Console]
+}

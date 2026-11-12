@@ -1,0 +1,20 @@
+fn code(s: String) -> Result<Int, Int> {
+  Err(1)
+}
+
+fn f(s: String) -> Result<Int, String> {
+  let n = code(s)?
+  Ok(n)
+}
+
+enum Msg { Start }
+
+fn update(m: Msg) -> List<Effect<Msg>> {
+  [Exit]
+}
+
+app tool {
+  start: Start
+  update: update
+  grants: []
+}

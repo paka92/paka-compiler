@@ -1,0 +1,4 @@
+main.paka:8:9: warning[unused-name]: x is never used
+  definition: pick
+  bytes: 100..101
+  text: "x"

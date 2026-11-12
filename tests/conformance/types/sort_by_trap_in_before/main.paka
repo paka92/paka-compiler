@@ -1,0 +1,17 @@
+enum Msg { Start }
+
+fn guard(a: Int, b: Int) -> Bool {
+  a / (b - 2) > 0
+}
+
+fn update(msg: Msg) -> List<Effect<Msg>> {
+  var xs = [1, 2, 3]
+  sort_by(&xs, guard)
+  [Print("done"), Exit]
+}
+
+app types {
+  start: Start
+  update: update
+  grants: [Console]
+}

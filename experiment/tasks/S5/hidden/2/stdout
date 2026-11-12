@@ -1,0 +1,4 @@
+line 8: nothing to undo
+[1/1]
+>1|a
+undo 0, redo 3
