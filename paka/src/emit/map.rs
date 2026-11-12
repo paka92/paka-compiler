@@ -61,6 +61,12 @@ impl Gen<'_> {
         n
     }
 
+    /// Puts the entries of the Map at `m` of type `t` in rising key order.
+    pub(super) fn order_entries(&mut self, t: Ty, m: Value) {
+        let zero = self.int_const(0);
+        self.rt_map_into(ORDER, 0, t, m, zero, zero);
+    }
+
     /// The address of entry `i`'s key in the Map block `block` of type `t`; its value follows.
     pub(super) fn entry_at(&mut self, t: Ty, block: Value, i: Value) -> Value {
         let Type::Map(k, v) = self.p.types[t] else {

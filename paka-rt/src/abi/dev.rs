@@ -34,6 +34,8 @@ pub struct Context {
     pub heap: Heap,
     /// The tree a view is drawing (`view`).
     pub tree: Vec<u64>,
+    /// The Map entry the last keyed row met (`map`).
+    pub probe: map::Probe,
 }
 
 /// Runs `f` on `ctx`, setting its interrupt once `limit` passes (docs/decisions/M4-04.md); and
@@ -66,6 +68,7 @@ impl Context {
             trap: Trap::default(),
             heap: Heap::new(cap),
             tree: vec![],
+            probe: map::Probe::default(),
         }
     }
 }

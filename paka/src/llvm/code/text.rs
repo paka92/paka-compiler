@@ -148,8 +148,80 @@ impl Body<'_, '_> {
         site: Site,
     ) -> Option<String> {
         let &(_, row) = ROWS.iter().find(|(name, _)| *name == row)?;
+        if row == PARSE_INT {
+            return Some(self.parse_int(&args.first()?.1));
+        }
         let operands: Vec<(&str, &str)> = args.iter().map(|(t, v)| (*t, v.as_str())).collect();
         Some(self.text(row, Some(site), &operands))
+    }
+
+    /// `parse_int` inline, as `Int::parse`: an optional `-`, then one or more ASCII digits whose
+    /// value fits. The value is gathered below zero, where the least Int fits.
+    fn parse_int(&mut self, text: &str) -> String {
+        let out = self.name("%w");
+        self.bytes(&out, 16);
+        self.store("i64", "1", &out);
+        let n = self.offset(text, table::STRING.len);
+        let n = self.load("i64", &n);
+        let p = self.offset(text, table::STRING.ptr);
+        let p = self.load("ptr", &p);
+        let [sign, head, digit, next, end, some, done] = ["b"; 7].map(|s| self.name(s));
+        let empty = self.op(format!("icmp eq i64 {n}, 0"));
+        self.line(format!("br i1 {empty}, label %{done}, label %{sign}"));
+        self.start(&sign);
+        let first = self.op(format!("load i8, ptr {p}, align 1"));
+        let minus = self.op(format!("icmp eq i8 {first}, 45"));
+        let from = self.op(format!("zext i1 {minus} to i64"));
+        let bare = self.op(format!("icmp eq i64 {from}, {n}"));
+        self.line(format!("br i1 {bare}, label %{done}, label %{head}"));
+        self.start(&head);
+        let [i, acc, step, sum] = ["%i", "%v", "%i", "%v"].map(|s| self.name(s));
+        self.line(format!(
+            "{i} = phi i64 [ {from}, %{sign} ], [ {step}, %{next} ]"
+        ));
+        self.line(format!(
+            "{acc} = phi i64 [ 0, %{sign} ], [ {sum}, %{next} ]"
+        ));
+        let at = self.op(format!("getelementptr i8, ptr {p}, i64 {i}"));
+        let b = self.op(format!("load i8, ptr {at}, align 1"));
+        let d = self.op(format!("sub i8 {b}, 48"));
+        let is_digit = self.op(format!("icmp ult i8 {d}, 10"));
+        self.line(format!("br i1 {is_digit}, label %{digit}, label %{done}"));
+        self.start(&digit);
+        let d = self.op(format!("zext i8 {d} to i64"));
+        let tens = self.name("%v");
+        let over = self.wrapping("smul", &acc, "10", &tens);
+        self.line(format!("br i1 {over}, label %{done}, label %{next}"));
+        self.start(&next);
+        let over = self.wrapping("ssub", &tens, &d, &sum);
+        self.line(format!("{step} = add i64 {i}, 1"));
+        let last = self.op(format!("icmp eq i64 {step}, {n}"));
+        let stop = self.op(format!("or i1 {over}, {last}"));
+        self.line(format!("br i1 {stop}, label %{end}, label %{head}"));
+        self.start(&end);
+        let positive = self.name("%v");
+        let over_positive = self.wrapping("ssub", "0", &sum, &positive);
+        let over_positive = self.op(format!("select i1 {minus}, i1 false, i1 {over_positive}"));
+        let bad = self.op(format!("or i1 {over}, {over_positive}"));
+        self.line(format!("br i1 {bad}, label %{done}, label %{some}"));
+        self.start(&some);
+        let value = self.op(format!("select i1 {minus}, i64 {sum}, i64 {positive}"));
+        self.store("i64", "0", &out);
+        let at = self.offset(&out, 8);
+        self.store("i64", &value, &at);
+        self.line(format!("br label %{done}"));
+        self.start(&done);
+        out
+    }
+
+    /// `value = x op y` through `@llvm.<op>.with.overflow.i64`; whether it wrapped.
+    fn wrapping(&mut self, op: &str, x: &str, y: &str, value: &str) -> String {
+        let name = format!("@llvm.{op}.with.overflow.i64");
+        self.declare(&format!("declare {{ i64, i1 }} {name}(i64, i64)"));
+        let pair = self.op(format!("call {{ i64, i1 }} {name}(i64 {x}, i64 {y})"));
+        let over = self.op(format!("extractvalue {{ i64, i1 }} {pair}, 1"));
+        self.line(format!("{value} = extractvalue {{ i64, i1 }} {pair}, 0"));
+        over
     }
 
     /// Interpolation: the parts joined in order by one row, an Int in decimal and a Bool as

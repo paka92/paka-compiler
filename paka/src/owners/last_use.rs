@@ -187,10 +187,12 @@ fn leaves_loop(e: &Expr) -> bool {
     found
 }
 
-enum Node<'a> {
+/// A node `visit_expr` meets.
+pub enum Node<'a> {
     Block(&'a Block),
     Stmt(&'a Stmt),
     Place(&'a Place),
+    Expr(&'a Expr),
 }
 
 fn visit_block<'a>(b: &'a Block, f: &mut dyn FnMut(Node<'a>)) {
@@ -239,7 +241,9 @@ fn visit_place<'a>(p: &'a Place, f: &mut dyn FnMut(Node<'a>)) {
     }
 }
 
-fn visit_expr<'a>(e: &'a Expr, f: &mut dyn FnMut(Node<'a>)) {
+/// Calls `f` on `e` and every node within it, outer first.
+pub fn visit_expr<'a>(e: &'a Expr, f: &mut dyn FnMut(Node<'a>)) {
+    f(Node::Expr(e));
     match &e.kind {
         ExprKind::Interp(es, _)
         | ExprKind::Record(_, es)

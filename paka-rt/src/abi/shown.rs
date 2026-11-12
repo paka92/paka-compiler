@@ -61,8 +61,13 @@ impl<'a> Shapes<'a> {
                         return "[:]".into();
                     }
                     let (key, entry) = (n[2] as u64, (n[2] + n[3]) as u64);
-                    let shown = (0..len).map(|i| {
-                        let at = block + 16 + i * entry;
+                    // Entries are in the order they came; Ints order by number, Strings by bytes.
+                    let mut at: Vec<u64> = (0..len).map(|i| block + 16 + i * entry).collect();
+                    match key {
+                        8 => at.sort_unstable_by_key(|&a| word(a) as i64),
+                        _ => at.sort_unstable_by(|&a, &b| as_str(a).cmp(as_str(b))),
+                    }
+                    let shown = (at.into_iter()).map(|at| {
                         format!("{}: {}", self.value(n[0], at), self.value(n[1], at + key))
                     });
                     format!("[{}]", shown.collect::<Vec<_>>().join(", "))

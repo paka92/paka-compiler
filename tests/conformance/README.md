@@ -487,6 +487,8 @@ M2-41 reuses `order_call_arguments` and `order_assignment_right_first`.
 | `m[key].field = v` with the key missing | `field_assign_missing_key` |
 | `&m[key]` with the key missing | `mark_missing_key` |
 | `for k in keys(m)` walks in key order | `keys_walk_in_order` |
+| order and lookups after removes, regrowth and keys of every width | `map_order_after_churn` |
+| a lookup then a write of the same key, with and without a use of the Map between; the key missing | `map_lookup_then_write`, `map_lookup_then_add_missing` |
 | a Map key type other than Int or String | `map_key_type_in_annotation`, `map_key_type_in_literal` |
 | literal with mixed value types; `[:]` without a type | `map_literal_value_type`, `map_empty_literal_untyped` |
 | `for` over a String or a Map | `for_over_string`, `for_over_map` |

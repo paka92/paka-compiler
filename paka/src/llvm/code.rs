@@ -451,6 +451,7 @@ impl<'a> Module<'a> {
             temps: vec![],
             literals: BTreeSet::new(),
             read_only: vec![],
+            lookup: None,
         }
     }
 
@@ -689,6 +690,8 @@ struct Body<'m, 'a> {
     literals: BTreeSet<usize>,
     /// The parameters a `let` may borrow from: those not `inout`, outside `update`.
     read_only: Vec<Local>,
+    /// The Map lookup the statement being lowered makes, or the last one made, for the next.
+    lookup: Option<map::Lookup>,
 }
 
 /// An expression's operand; an expression with no value gives an empty one.
@@ -969,10 +972,15 @@ impl Body<'_, '_> {
     }
 
     fn stmt(&mut self, s: &Stmt) -> Option<()> {
+        let before = self.lookup.take();
         match s {
             Stmt::Let(l, e) => {
+                let lookup = self.lookup(*l, e);
+                self.lookup.clone_from(&lookup);
                 let v = self.expr(e)??;
                 self.bind_owned(*l, &v)?;
+                self.lookup = lookup;
+                return Some(());
             }
             Stmt::Assign(place, op, e) => {
                 let (root, t, mut ops) = self.operands(place)?;
@@ -980,7 +988,10 @@ impl Body<'_, '_> {
                     *add = true;
                 }
                 let mut v = self.expr(e)??;
-                let (at, t) = self.walk(root, t, ops)?;
+                let (at, t) = match before.filter(|b| b.reused_by(place, e)) {
+                    Some(found) => self.found_entry(&found, root, t, ops.pop()?)?,
+                    None => self.walk(root, t, ops)?,
+                };
                 if let Some(op) = op {
                     let old = self.get(t, &at);
                     v = match op {
@@ -1055,6 +1066,8 @@ impl Body<'_, '_> {
             Stmt::Expr(e) => drop(self.expr(e)?),
             Stmt::Return(_) => return None,
         }
+        // A lookup in a nested block is not for the next statement here.
+        self.lookup = None;
         Some(())
     }
 

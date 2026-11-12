@@ -72,11 +72,20 @@ impl Shown<'_> {
                 }
                 let key = self.l.get(k).size as u64;
                 let entry = key + self.l.get(v).size as u64;
-                let shown: Vec<_> = (0..len)
+                // Entries are in the order they came; Ints order by number, Strings by bytes.
+                let mut entries: Vec<_> = (0..len)
                     .map(|i| {
                         let at = block + 16 + i * entry;
-                        format!("{}: {}", self.value(k, at), self.value(v, at + key))
+                        let order = match p.types[k] {
+                            Type::String => (0, self.text(at)),
+                            _ => (self.word(at) as i64, String::new()),
+                        };
+                        (order, at)
                     })
+                    .collect();
+                entries.sort_unstable();
+                let shown: Vec<_> = (entries.iter())
+                    .map(|&(_, at)| format!("{}: {}", self.value(k, at), self.value(v, at + key)))
                     .collect();
                 format!("[{}]", shown.join(", "))
             }

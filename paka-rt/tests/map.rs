@@ -1,5 +1,6 @@
-//! A Map keeps its entries in rising key order and finds each one through many puts, removes and
-//! grows, and a copy of it works on its own.
+//! A Map shows its entries in rising key order and finds each one through many puts, removes,
+//! grows and reorders, and a copy of it works on its own. Keys span both short ones, told apart by
+//! their check alone, and long ones, compared in full.
 
 use paka_rt::abi::dev::map::{AT, FIND, KEYS, PUT, REMOVE, STRING_KEY, VALUES, rt_map};
 use paka_rt::abi::dev::records::{Part, Records, Spec, rt_copy, rt_drop};
@@ -49,7 +50,7 @@ impl Key for i64 {
     const MAP: usize = 4;
     const LIST: usize = 2;
     fn new(n: i64) -> i64 {
-        n * 7 - 1000
+        (n * 7 - 1000) << (n.rem_euclid(3) * 20)
     }
     fn with<R>(&self, f: impl FnOnce(u64) -> R) -> R {
         f(*self as u64)

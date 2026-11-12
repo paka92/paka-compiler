@@ -10,6 +10,8 @@ use crate::core_form::{Block, Expr, ExprKind, Local, Root, Ty};
 
 mod last_use;
 
+pub use last_use::{Node, visit_expr};
+
 /// An owner: a local, or a temporary by its value `V` in the back end's terms.
 #[derive(Clone, Copy, Debug, PartialEq)]
 pub enum Owner<V> {
