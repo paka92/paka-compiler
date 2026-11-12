@@ -175,7 +175,7 @@ impl Body<'_, '_> {
         let bare = self.op(format!("icmp eq i64 {from}, {n}"));
         self.line(format!("br i1 {bare}, label %{done}, label %{head}"));
         self.start(&head);
-        let [i, acc, step, sum] = ["%i", "%v", "%i", "%v"].map(|s| self.name(s));
+        let [i, acc, step, sum] = ["%i", "%g", "%i", "%g"].map(|s| self.name(s));
         self.line(format!(
             "{i} = phi i64 [ {from}, %{sign} ], [ {step}, %{next} ]"
         ));
@@ -189,7 +189,7 @@ impl Body<'_, '_> {
         self.line(format!("br i1 {is_digit}, label %{digit}, label %{done}"));
         self.start(&digit);
         let d = self.op(format!("zext i8 {d} to i64"));
-        let tens = self.name("%v");
+        let tens = self.name("%g");
         let over = self.wrapping("smul", &acc, "10", &tens);
         self.line(format!("br i1 {over}, label %{done}, label %{next}"));
         self.start(&next);
@@ -199,7 +199,7 @@ impl Body<'_, '_> {
         let stop = self.op(format!("or i1 {over}, {last}"));
         self.line(format!("br i1 {stop}, label %{end}, label %{head}"));
         self.start(&end);
-        let positive = self.name("%v");
+        let positive = self.name("%g");
         let over_positive = self.wrapping("ssub", "0", &sum, &positive);
         let over_positive = self.op(format!("select i1 {minus}, i1 false, i1 {over_positive}"));
         let bad = self.op(format!("or i1 {over}, {over_positive}"));
