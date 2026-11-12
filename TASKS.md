@@ -2137,6 +2137,7 @@ or merged during review. Ids with a letter were added during review.
 - note: Per M6-01: planted 'wrongly removed check' bugs are emitter bugs that leave a check out.
 - status: done
 - note: Done: `PAKA_PLANT` 10 to 18 each plant a fault in every release build, as 9 does, by a `sed` script run on the IR `paka build` hands clang: Float arithmetic marked `fast`, a List index's bounds check, checked arithmetic's overflow check, the stack check of each function small enough to inline, `sort`'s Float instance built as its Int one, each drop made twice, a String-keyed Map row laid out as an Int-keyed one, a shift's count check, and `to_int`'s range check. Plants 15 and 16 stand in for the reference-count and stale-handle kinds, which do not exist (M2-10). The generator gained recursive functions that bottom out or run out of stack on every back end, overflow-edge Ints, List reads near the end, more negative Floats and printed sorted copies. `paka-diff --fuzz-release 0 1200` finds each plant by seed 279 and within 206 s, all eleven runs side by side; without a plant all 1,200 seeds agree. docs/results/M6-21.md lists plant, kind, seed and time. A unit test in paka/src/llvm.rs builds and lints the IR of the 9,707 of seeds 0 to 9,999 without a hole, none refused, covering every core-form node kind but a view's and a hole's; paka/tests/generated.rs checks `paka build` refuses each of the other 293 with `hole-in-build`. installer/tests/diff.rs finds plants 11, 13, 15 and 16 from their seeds, and plant 9 now from seed 0. A crashing program's core dump no longer runs past the fuzz limit: the harness sets its core limit to 1 byte, which stops a piped dump too.
+- note: The owner accepted plants 15 and 16 as the stand-ins for the reference-count and handle kinds on 2026-11-12.
 
 ### M6-22 · L4 · Build the hard test suite for the inout overlap check
 
@@ -2223,10 +2224,12 @@ or merged during review. Ids with a letter were added during review.
 ### M6-26 · L1 · Delete the release skip file and require three-mode conformance in CI
 
 - needs: M6-25b
+- status: done
 - flags: native-only, owner
 - done when: The skip file, already empty, is gone; a planted pull request with one differing conformance case shows the three-mode job red; the owner sees it and marks the job as required.
 - why this level: Deletes a file and adds given commands to CI; no decisions.
 - note: Built: tests/conformance/release-skip is gone, and with it the feature tags in installer/src/release.rs that only it read; `paka-diff --release` runs every case in release, and scripts/m6-25-fuzz no longer checks the file. The `ci` job of .github/workflows/ci.yml runs `target/release/paka-diff --release` after its release build, comparing every conformance case in interpreter, dev and release; it fails on any difference. Locally: 471 agree, 0 differ; the two `unfinished` cases stay interpreter and dev only. Owner steps left: (1) approve the changed ci.yml with `paka approve` once the gate's store exists (M7-10), since workflow files are owned; (2) open a pull request with one case planted to differ in release and see `ci` go red; (3) mark `ci` as a required check on `development`, as for `gate` in M7-10. Mark done after (3).
+- note: Done. Pull request #17 planted `bit_not` as `xor i64 x, -2` in the release back end; `ci` went red at the three-mode step (`differ builtins/bit_rows` in release). Approved ci.yml is in the store (502130d6), and `ci` is a required check on `development` and `main`.
 
 ### M6-27 · L2 · Build the benchmark runner: pinned compilers, fixed flags, repeated runs, checksum agreement
 
@@ -2291,6 +2294,14 @@ or merged during review. Ids with a letter were added during review.
 - note: Run from tools built at bb87c60f, `paka-bench run bench/programs` (normal tools), then `paka-bench costs bench/programs RESULTS NORMAL-TOOLS` and `paka-bench ui bench/ui RESULTS NORMAL-TOOLS` (measure tools), each started at a one-minute load of at most 1. Raw results are docs/results/M6-32/run, costs and ui; the table is docs/results/M6-32.md, made by `paka-bench table docs/results/M6-32 bench/programs`. bench/programs/loops holds M6-19's yes or no per kernel, and a test in paka/src/llvm.rs holds each answer. Worse than expected: nbody against Rust (1.61), sieve_wrap against both (7.69, 7.62) and every pointer-heavy row (bfs 1.74 and 1.61, word_count 9.18 and 5.92, binary_trees 11.05 and 11.96, expr_parse 39.38 and 38.07); the rest of the float and wrapping rows are parity. Noisy: binary_trees and bfs. expr_parse spends 34% of its run in the owned-tree copy routine. Not tuned here.
 - note: The run left bfs's copy figure (0.022 s, 11.8% spread) without its rerun: `paka-bench costs` reran a copies attempt only on the normal or measure build's spread. After that rule was fixed, bfs's copies alone were rerun from tools built at c9e5d437, which the costs file records beside the new lines: copy 0.023 s, spread 3.0%, 1.0% of the run; its normal and measure figures in the same attempt are 2.318 s and 2.387 s. Nothing else was rerun.
 - note: Approved by the owner on 2026-11-05, with the slower rows published as measured and the M6-19 column's method accepted.
+
+### M6-33 · L4 · Move a local at its last use instead of copying it
+
+- needs: M4-33, M6-32
+- flags: native-only
+- done when: The shared owners pass (paka/src/owners.rs) moves, instead of copying and later dropping, a local read once on the right of `x = V(x, ...)` and a `let` local read once at its last use in the block that declares it; fixtures with hand-written drop lists for both forms, with early exit, `?`, `break` and loops, pass in both native back ends with a clean ledger; a three-mode fuzz run of 100,000 seeds agrees; expr_parse's rows of docs/results/M6-32.md are rerun and the table regenerated.
+- why this level: A wrong move is a use after free or double drop on some control-flow path.
+- note: Owner ruling of 2026-11-12: the narrow form only, not liveness analysis. A read inside a loop of a local declared outside it is never a last use. M4-33's cost side (DECISIONS.md, "skip the copy at a last use") was left out when M4-33 closed; expr_parse ran 39 times behind Rust in M6-32, mostly copying `e` and `right` in `e = Add(e, right)`.
 
 ## M7 — Evidence and gates
 
@@ -2405,21 +2416,25 @@ or merged during review. Ids with a letter were added during review.
 ### M7-10 · L4 · Add the gate to CI as a required check on pull requests
 
 - needs: M7-07
+- status: done
 - flags: owner
 - done when: A test pull request changing a grant list without approval shows a failed check; the owner sees it go red and marks the check as required. A second test pull request that changes a grant list and its stored approval together also shows a failed check. A third adds a second workflow with a passing job named `gate` beside an unapproved grant change and is still blocked.
 - why this level: A mistake in this job is silent: a gate that runs the pull request's own workflow or code passes anything (M7-01).
 - note: Per M7-01: regraded from level 1 to level 4. `pull_request_target`, two checkouts, paka built from the target branch, read-only token, time limit, no pull-request code run.
 - note: Workflow written: .github/workflows/gate.yml, job `gate`. Runs on `pull_request_target` for `development` and `main` with `contents: read`; checks out the target branch and `refs/pull/<n>/merge` without keeping the token, builds paka from the target branch only, runs `paka gate merged --base base`, 30-minute limit. Until `approvals.pub` and a signed store recording both workflow files are on the target branch the gate refuses every pull request (`approvals.pub: missing on the base`); the check is not yet required, so this blocks nothing (M7-01 section 2: the first key goes in before the check is required). The workflow first runs on pull requests opened after it is on the target branch.
 - note: Owner steps left: (1) commit `approvals.pub` and a store signed with `paka approve` that records `.github/workflows/ci.yml` and `gate.yml`, and see `gate` go green on a pull request; (2) open the three test pull requests of the done-when and see each go red; (3) in Settings, Rules (or Branches), for `development`: require status checks to pass, add the check `gate` (source GitHub Actions), include administrators, allow no bypass; leave 'require branches to be up to date' off; on `main` after the M7 merge. Mark done after (3).
+- note: Done. The three test pull requests each failed `gate`: #18 changed a grant list without approval (`approved [], found [Console]`); #19 changed it with a forged approval (`approvals: the signature does not verify`); #20 added a second workflow whose `gate` job passed, and the real `gate` still failed and blocked it (it also names the new workflow as never approved). `ci` and `gate` are required checks on both branches. The owner chose: on `main` no bypass; on `development` the repository admin may bypass, so local merges can be pushed there.
 
 ### M7-11 · L2 · Run human-owned examples against the release binary itself
 
 - needs: M7-12, M7-06, M6-18a, M6-26
+- status: done
 - flags: native-only, owner
 - done when: The owner has approved, through M7-06, at least one function example for each sample (wc, counter, to-do) and one UI example for each visual sample (counter, to-do); the counter is the hole-free copy from M6-18a. `paka release` releases each sample, and its `RELEASE` shows every human-owned example, function and UI, passing against the binary whose hash it records; `paka-diff --ui`, with release added (M7-11c), reports no difference on every UI example whose program has no hole; a planted failure in one sample is reported and refused.
 - why this level: Runs commands built in M7-11b, M7-11c and M7-12 on three samples and plants one failure; a difference found is split off by cause.
 - note: Per M7-01: the owner first approves each sample's grant list, the empty ones too.
 - note: Per M7-03: re-graded from level 3; the lowering, the replay and the release command are M7-11b, M7-11c and M7-12. The store is keyed by path, so the hole-free counter gets its own approval records.
+- note: Done. The owner approved (approvals serial 4) each sample's grant list and every example of tests/cases/examples/sample_todo (1 function, 5 UI), sample_counter_built (the M6-18a counter: 2 function, 4 UI) and sample_wc (2 function). `paka release` released all three; each RELEASE lists every human-owned example passing against the binary it hashes (UI examples on 1 to 13 actions). `paka-diff --ui tests`: 35 agree, 0 differ. Planted failure: `count_words` returning one more refused the wc release before any build (both examples reported failing, no directory written); a fault planted only in release is reported by installer/tests/diff.rs.
 
 ### M7-11a · L2 · Reserve `--paka-examples` and `--paka-replay` in all three modes
 
