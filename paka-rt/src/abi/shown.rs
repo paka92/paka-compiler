@@ -44,7 +44,7 @@ impl<'a> Shapes<'a> {
             match kind {
                 "I" => Int::new(word(at) as i64).to_string(),
                 "F" => Float::from_bits(word(at)).show(),
-                "B" => (word(at) != 0).to_string(),
+                "B" => (ptr::with_exposed_provenance::<u8>(at as usize).read() != 0).to_string(),
                 "S" => quoted(as_str(at)),
                 "N" => self.names[word(at) as usize].into(),
                 "L" => {

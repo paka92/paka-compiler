@@ -47,6 +47,11 @@ impl Gen<'_> {
         self.l.get(t).size
     }
 
+    /// The bytes from one List item of type `t` to the next.
+    pub(super) fn stride(&self, t: Ty) -> usize {
+        self.l.get(t).item
+    }
+
     /// Copies `bytes` from `from` to `to` a word at a time, so a source at or after its target
     /// in the same value, as a field is, copies right.
     fn copy(&mut self, to: Value, from: Value, bytes: usize) {
@@ -62,10 +67,7 @@ impl Gen<'_> {
         let flags = MemFlagsData::trusted();
         match self.p.types[t] {
             Type::Float => self.b.ins().load(types::F64, flags, at, offset as i32),
-            Type::Bool => {
-                let word = self.b.ins().load(types::I64, flags, at, offset as i32);
-                self.b.ins().ireduce(types::I8, word)
-            }
+            Type::Bool => self.b.ins().load(types::I8, flags, at, offset as i32),
             ref t if held(t) && offset == 0 => at,
             ref t if held(t) => self.b.ins().iadd_imm_s(at, offset as i64),
             _ => self.b.ins().load(types::I64, flags, at, offset as i32),
@@ -88,7 +90,6 @@ impl Gen<'_> {
             let to = self.b.ins().iadd_imm_s(at, offset as i64);
             return self.copy(to, v, self.size(t));
         }
-        let v = self.widen(v);
         self.b
             .ins()
             .store(MemFlagsData::trusted(), v, at, offset as i32);

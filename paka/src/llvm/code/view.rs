@@ -150,7 +150,7 @@ impl Module<'_> {
             Type::Bool => "B".into(),
             Type::String => "S".into(),
             Type::Fn(..) => "N".into(),
-            Type::List(item) => format!("L {item} {}", size(*item)),
+            Type::List(item) => format!("L {item} {}", self.layouts.get(*item).item),
             Type::Map(k, v) => format!("M {k} {v} {} {}", size(*k), size(*v)),
             Type::Record(r) => {
                 let r = &core.records[*r];

@@ -707,6 +707,11 @@ impl Body<'_, '_> {
         self.module.layouts.get(t).size
     }
 
+    /// The bytes from one List item of type `t` to the next.
+    fn stride(&self, t: Ty) -> usize {
+        self.module.layouts.get(t).item
+    }
+
     /// A slot named `name` for a value of type `t`.
     fn hold(&mut self, name: &str, t: Ty) {
         match self.ty(t) {

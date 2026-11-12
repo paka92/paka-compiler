@@ -164,6 +164,8 @@ impl Gen<'_> {
         let dropped = self.owners.to_fn(kept);
         self.drop_all(dropped);
         if let (Some(out), Some((t, v))) = (self.out, result) {
+            // The result crosses to the runtime, where a Bool is the whole word 0 or 1.
+            let v = self.widen(v);
             self.put(t, out, 0, v);
         }
         self.ret(0);

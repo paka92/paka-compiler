@@ -240,7 +240,7 @@ fn speed(
     let _ = writeln!(
         w,
         "\nFloat rows expect parity with C++ only where M6-19's check finds no trap branch left \
-         in the kernel's loops (below, item 2); elsewhere 'none stated'.\n\n{SIEVE_NOTE}\n"
+         in the kernel's loops (below, item 2); elsewhere 'none stated'.\n"
     );
     Ok(())
 }
@@ -404,10 +404,6 @@ Rust `Vec`, `HashMap<&str, i64>` with its default hasher and `Option<Box<_>>` or
 C++ `std::vector` (`std::vector<char>` for sieve flags), `std::unordered_map<std::string_view, \
 int64_t>` and `std::unique_ptr` tree nodes. 64-bit signed integers and 64-bit floats only; \
 standard library only, one thread.";
-
-const SIEVE_NOTE: &str = "sieve and sieve_wrap are bounded by layout, not by generated code: a \
-`Bool` in memory is one 8-byte word (docs/abi/m1.md), so the flag list is eight times the size of \
-Rust's and C++'s byte flags. The same C loop over `int64_t` flags runs in about Paka's time.";
 
 const STENCIL_NOTE: &str = "stencil's `sweep` vectorizes with no check in its vector loop \
 (M6-24); the check the table counts is in the scalar loop for the last items of a row.";

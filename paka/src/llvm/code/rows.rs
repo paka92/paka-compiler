@@ -62,7 +62,7 @@ impl Body<'_, '_> {
         let len = self.room(t, xs, &n, site);
         let (ptr, _) = self.words(xs);
         let at = self.nth(&ptr, item, &len);
-        let bytes = self.op(format!("mul i64 {n}, {}", self.size(item)));
+        let bytes = self.op(format!("mul i64 {n}, {}", self.stride(item)));
         self.memmove(&at, &from, &bytes);
         self.resize(xs, &len, "add", &n);
         let cap = self.offset(&more, LIST.cap);
@@ -156,7 +156,7 @@ impl Body<'_, '_> {
         let [go, done] = ["b"; 2].map(|s| self.name(s));
         self.line(format!("br i1 {small}, label %{done}, label %{go}"));
         self.start(&go);
-        let bytes = self.op(format!("mul i64 {len}, {}", self.size(item)));
+        let bytes = self.op(format!("mul i64 {len}, {}", self.stride(item)));
         let scratch = self.alloc(&bytes);
         let (name, id) = match by {
             Some((f, id)) => {
@@ -188,7 +188,7 @@ impl Body<'_, '_> {
         let from = self.current();
         self.line(format!("br i1 {zero}, label %{join}, label %{make}"));
         self.start(&make);
-        let bytes = self.op(format!("mul i64 {count}, {}", self.size(item_t)));
+        let bytes = self.op(format!("mul i64 {count}, {}", self.stride(item_t)));
         let block = self.alloc(&bytes);
         let i = self.name("%i");
         self.slot(&i, "i64");
@@ -253,7 +253,7 @@ impl Body<'_, '_> {
     /// Makes room for `more` items past the length of the List at `xs` of type `t`, and gives that
     /// length; a `memory` trap at `site` past `CAP`. A new block is as the dev runtime's.
     fn room(&mut self, t: Ty, xs: &str, more: &str, site: Site) -> String {
-        let size = self.size(self.item_ty(t));
+        let size = self.stride(self.item_ty(t));
         let (ptr, len) = self.words(xs);
         let cap_at = self.offset(xs, LIST.cap);
         let cap = self.load("i64", &cap_at);
@@ -303,7 +303,7 @@ impl Body<'_, '_> {
     /// Moves the items from the one at `from`, item `first`, up to item `len` to `to`.
     fn shift_items(&mut self, item: Ty, to: &str, from: &str, len: &str, first: &str) {
         let rest = self.op(format!("sub i64 {len}, {first}"));
-        let bytes = self.op(format!("mul i64 {rest}, {}", self.size(item)));
+        let bytes = self.op(format!("mul i64 {rest}, {}", self.stride(item)));
         self.memmove(to, from, &bytes);
     }
 

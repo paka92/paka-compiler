@@ -16,6 +16,7 @@ type A { b: B, n: Int }
 type B { a: Option<A>, s: String }
 type Wrap { inner: Named, r: Result<String, Int> }
 enum Msg { Start(path: String), Done }
+type Flags { on: List<Bool>, grid: List<List<Bool>> }
 fn effects(e: List<Effect<Msg>>) {}
 ";
 
@@ -181,4 +182,28 @@ fn runtime_headers_and_alignment_match_the_hand_layout() {
             name(&p, t)
         );
     }
+}
+
+#[test]
+fn a_bool_list_item_is_one_byte() {
+    let source = Source::file("main.paka", FIXTURE.into());
+    let (mut p, ..) = crate::check("main.paka", &source).unwrap();
+    let layouts = Layouts::new(&mut p);
+    let specs = layouts.specs();
+    assert_eq!(specs.len(), p.types.len());
+    for (t, spec) in specs.iter().enumerate() {
+        let l = layouts.get(t);
+        let want = if p.types[t] == Type::Bool { 1 } else { l.size };
+        assert_eq!(l.item, want, "{}", name(&p, t));
+        if let Type::List(item) = p.types[t] {
+            let part = &spec.as_ref().unwrap().alternatives[0][0].1;
+            let size = layouts.get(item).item as u64;
+            let ok = matches!(part, Part::List { size: s, .. } if *s == size);
+            assert!(ok, "{}", name(&p, t));
+        }
+    }
+    shown(&[(
+        "Flags",
+        "48 [List<Bool>@0 List<List<Bool>>@24] owns [List(Bool)@0 List(List<Bool>)@24]",
+    )]);
 }

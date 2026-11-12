@@ -5,7 +5,7 @@
 use super::{Body, Value};
 use crate::core_form::{Expr, Site, Ty, Type};
 use paka_rt::abi::dev::map::*;
-use paka_rt::abi::table::MAP;
+use paka_rt::abi::table::{LIST, MAP};
 
 impl Body<'_, '_> {
     pub(super) fn map_types(&self, t: Ty) -> (Ty, Ty) {
@@ -63,10 +63,41 @@ impl Body<'_, '_> {
                 let out = self.fresh(result?);
                 let row = if name == "keys" { KEYS } else { VALUES };
                 self.map_call(row, t, x[0], "0", &out, Some(site));
+                let item = self.item_ty(result?);
+                if self.stride(item) < self.size(item) {
+                    self.pack(&out);
+                }
                 Some(self.temp(result?, out))
             }
             _ => return None,
         })
+    }
+
+    /// Packs the List at `xs`, whose Bools the runtime gave a word each, to a byte each. The cap
+    /// counts the block's bytes, so a free or a growth still sees the whole block.
+    fn pack(&mut self, xs: &str) {
+        let (ptr, len) = self.words(xs);
+        let cap = self.op(format!("mul i64 {len}, 8"));
+        let cap_at = self.offset(xs, LIST.cap);
+        self.store("i64", &cap, &cap_at);
+        let i = self.name("%i");
+        self.slot(&i, "i64");
+        self.store("i64", "0", &i);
+        let [head, inner, done] = ["b"; 3].map(|s| self.name(s));
+        self.line(format!("br label %{head}"));
+        self.start(&head);
+        let n = self.load("i64", &i);
+        let more = self.op(format!("icmp ult i64 {n}, {len}"));
+        self.line(format!("br i1 {more}, label %{inner}, label %{done}"));
+        self.start(&inner);
+        let word = self.op(format!("getelementptr i64, ptr {ptr}, i64 {n}"));
+        let byte = self.load("i1", &word);
+        let to = self.op(format!("getelementptr i8, ptr {ptr}, i64 {n}"));
+        self.store("i1", &byte, &to);
+        let step = self.op(format!("add i64 {n}, 1"));
+        self.store("i64", &step, &i);
+        self.line(format!("br label %{head}"));
+        self.start(&done);
     }
 
     /// `Some` of a copy of the value under `key`, else `None`, as an Option of type `opt`.

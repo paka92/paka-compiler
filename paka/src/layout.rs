@@ -1,6 +1,7 @@
 //! Native value layouts (M4-22, docs/decisions/M4-05.md sections 8 and 10): every value is whole
 //! 8-byte words, fields in declared order after a tag word for a tagged type. One table serves the
-//! dev and the release back end.
+//! dev and the release back end. A `Bool` is one byte holding 0 or 1: a List item takes just that
+//! byte, any other place a word whose other bytes mean nothing.
 //!
 //! A field of a program type whose type reaches that type by value, through records, enums,
 //! `Option` or `Result`, is a box. Every field on such a cycle reaches its own type, so each cycle
@@ -17,6 +18,8 @@ use std::collections::{BTreeMap, BTreeSet};
 pub struct Layout {
     /// In bytes.
     pub size: usize,
+    /// In bytes, as a List item.
+    pub item: usize,
     /// Whether the first word is a tag: the variant's declared position.
     pub tagged: bool,
     /// The fields of each alternative: a record's one list, or one per variant in tag order.
@@ -130,7 +133,7 @@ impl Layouts {
         let part = |e: &Entry| match e.kind {
             Owned::String => Some((e.offset as u64, Part::String)),
             Owned::List(item) => {
-                let size = self.get(item).size as u64;
+                let size = self.get(item).item as u64;
                 Some((e.offset as u64, Part::List { item, size }))
             }
             Owned::Value(t) => Some((e.offset as u64, Part::Value(t))),
@@ -194,8 +197,14 @@ impl Layouts {
                 (tagged, words, places, owned)
             }
         };
+        let item = if p.types[ty] == Type::Bool {
+            1
+        } else {
+            words * 8
+        };
         let layout = Layout {
             size: words * 8,
+            item,
             tagged,
             alternatives,
             owned,

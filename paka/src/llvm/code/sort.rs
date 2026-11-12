@@ -56,7 +56,7 @@ impl Body<'_, '_> {
         let k = self.load("i64", "%k");
         let (to, from) = (self.nth("%tmp", item, &k), self.nth("%xs", item, &i));
         let left = self.op(format!("sub i64 {mid}, {i}"));
-        let size = self.size(item);
+        let size = self.stride(item);
         let bytes = self.op(format!("mul i64 {left}, {size}"));
         self.memmove(&to, &from, &bytes);
         let taken = self.op(format!("add i64 {k}, {left}"));

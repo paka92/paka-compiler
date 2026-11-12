@@ -228,7 +228,7 @@ impl Gen<'_> {
             .b
             .ins()
             .load(types::I64, MemFlagsData::trusted(), xs, 0);
-        let size = self.size(item) as i64;
+        let size = self.stride(item) as i64;
         let offset = self.b.ins().imul_imm_s(i, size);
         self.b.ins().iadd(items, offset)
     }
