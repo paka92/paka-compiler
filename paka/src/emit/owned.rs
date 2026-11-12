@@ -6,8 +6,8 @@
 
 use super::values::slot;
 use super::{Gen, Refusal};
-use crate::core_form::{Block, Expr, ExprKind, Local, Root, Stmt, Ty};
-use crate::owners::Owner;
+use crate::core_form::{Block, Expr, Local, Stmt, Ty};
+use crate::owners::{Owner, whole_local};
 use cranelift_codegen::ir::{InstBuilder, MemFlagsData, Value, types};
 use paka_rt::abi::dev::{Context, Rt};
 use std::mem::offset_of;
@@ -47,6 +47,16 @@ impl Gen<'_> {
         let site = self.int_const(site as i64);
         self.rt_try(offset_of!(Rt, copy), &[self.ctx, site, record, v, to]);
         to
+    }
+
+    /// Local `l`'s value at a last use, a temporary from now on, so a new owner takes it whole.
+    pub(super) fn moved_out(&mut self, l: Local) -> Value {
+        let t = self.locals[l];
+        let size = self.size(t);
+        let to = slot(&mut self.b, size);
+        let at = self.b.use_var(self.vars[l]);
+        self.put(t, to, 0, at);
+        self.temp(t, to)
     }
 
     /// Binds local `l`, which then owns `v`.
@@ -169,14 +179,3 @@ impl Gen<'_> {
 }
 
 type Emitted = Result<Option<Value>, Refusal>;
-
-/// The local `e` reads whole, if it does.
-fn whole_local(e: &Expr) -> Option<Local> {
-    match &e.kind {
-        ExprKind::Place(p) if p.steps.is_empty() => match p.root {
-            Root::Local(l) => Some(l),
-            Root::Value(_) => None,
-        },
-        _ => None,
-    }
-}

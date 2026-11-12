@@ -1,0 +1,102 @@
+// A local read at its last use moves (M6-33); every path through each function still drops each
+// value once.
+
+enum Msg { Start }
+
+enum Expr {
+  Num(value: Int),
+  Add(left: Expr, right: Expr)
+}
+
+fn sum(e: Expr) -> Int {
+  match e {
+    Num(v) => v
+    Add(l, r) => sum(l) + sum(r)
+  }
+}
+
+fn num(s: String) -> Result<Expr, String> {
+  let n = ok_or(parse_int(s), "bad " + s)?
+  Ok(Num(n))
+}
+
+// `e` moves into `Add` before `?` may return; `continue` and `break` leave the loop around it.
+fn chain(ws: List<String>) -> Result<Expr, String> {
+  var e = Num(0)
+  for w in ws {
+    if w == "skip" {
+      continue
+    }
+    if w == "stop" {
+      break
+    }
+    let right = num(w)?
+    e = Add(e, right)
+  }
+  Ok(e)
+}
+
+// `piece` is dropped by the early return before its last use and moved at it.
+fn joined(ws: List<String>, stop: String) -> String {
+  var out = ""
+  for w in ws {
+    let piece = w + "."
+    if w == stop {
+      return out + "|"
+    }
+    out = out + piece
+  }
+  out
+}
+
+// A read in a loop of a local declared outside it, a read in a branch and a local read twice
+// are copied.
+fn kept(s: String, n: Int, flag: Bool) -> String {
+  let base = s + "-"
+  var out = ""
+  for i in 0..<n {
+    out = out + base
+  }
+  let t = s + "!"
+  let u = if flag { t } else { "" }
+  var e = Num(1)
+  e = Add(e, e)
+  "{out} {base} {u} {sum(e)}"
+}
+
+fn shout(s: String) -> String { s + "!" }
+
+// The match subject, a borrowed argument and the returned value move.
+fn last_reads(e: Expr, s: String) -> String {
+  var name = s + "?"
+  name = shout(name)
+  let k = e
+  let first = match k {
+    Num(v) => v
+    Add(l, _) => sum(l)
+  }
+  let line = "{name} {first}"
+  line
+}
+
+fn update(msg: Msg) -> List<Effect<Msg>> {
+  let a = match chain(["1", "2", "skip", "3", "stop", "9"]) {
+    Ok(e) => "{sum(e)}"
+    Err(why) => why
+  }
+  let b = match chain(["4", "x", "5"]) {
+    Ok(e) => "{sum(e)}"
+    Err(why) => why
+  }
+  let c = joined(["p", "q", "r"], "r")
+  let d = joined(["p", "q"], "r")
+  let e = kept("k", 2, true)
+  let f = last_reads(Add(Num(7), Num(8)), "n")
+  [Print("{a} {b} {c} {d} {e} {f}"), Exit]
+}
+
+app moves {
+  start: Start
+  update: update
+  grants: [Console]
+}

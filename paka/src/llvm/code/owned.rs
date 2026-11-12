@@ -6,7 +6,7 @@ use super::{Body, Module, Value};
 use crate::core_form::{
     Arg, Block, Callee, Expr, ExprKind, Local, Place, Root, Step, Stmt, Ty, Walk,
 };
-use paka::owners::Owner;
+use paka::owners::{Owner, whole_local};
 use paka_rt::abi::dev::records::{BOX, LIST, MAP, Part, STRING, TAGGED, VALUE};
 use paka_rt::abi::table::{COPY, DROP};
 
@@ -121,6 +121,15 @@ impl Body<'_, '_> {
         let to = self.name("%c");
         self.hold(&to, t);
         to
+    }
+
+    /// Local `l`'s value at a last use, a temporary from now on, so a new owner takes it whole.
+    pub(super) fn moved_out(&mut self, l: Local) -> String {
+        let t = self.locals[l].expect("a local that owns");
+        let to = self.fresh(t);
+        let at = self.at[l].clone();
+        self.put(t, &at, &to);
+        self.temp(t, to)
     }
 
     /// Binds local `l`, which then owns `v`.
@@ -240,17 +249,6 @@ impl Body<'_, '_> {
             self.put(t, &v, "%out");
         }
         self.ended("ret i32 0".into());
-    }
-}
-
-/// The local `e` reads whole, if it does.
-fn whole_local(e: &Expr) -> Option<Local> {
-    match &e.kind {
-        ExprKind::Place(p) if p.steps.is_empty() => match p.root {
-            Root::Local(l) => Some(l),
-            Root::Value(_) => None,
-        },
-        _ => None,
     }
 }
 

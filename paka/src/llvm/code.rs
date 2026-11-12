@@ -452,7 +452,7 @@ impl<'a> Module<'a> {
         };
         let locals = (f.locals.iter()).map(|&t| self.ir(t).map(|_| t)).collect();
         let mut b = self.body(f.site, update);
-        (b.locals, b.result) = (locals, result);
+        (b.locals, b.result, b.owners) = (locals, result, Owners::new(&f.body));
         for n in 0..f.locals.len() {
             if update.is_some() && n < f.params.len() {
                 b.at.push("%msg".into());
@@ -959,7 +959,13 @@ impl Body<'_, '_> {
                     };
                 }
                 let v = self.owned(t, &v);
-                self.drop_at(t, &at);
+                let refilled = match (&place.root, place.steps.is_empty()) {
+                    (Root::Local(l), true) => self.owners.refill(*l),
+                    _ => false,
+                };
+                if !refilled {
+                    self.drop_at(t, &at);
+                }
                 self.put(t, &v, &at);
             }
             Stmt::Return(e) if self.update.is_none() => {
@@ -1039,10 +1045,13 @@ impl Body<'_, '_> {
             ExprKind::List(items) => self.list(e.ty?, items)?,
             ExprKind::Map(entries) => self.map(e.ty?, entries)?,
             ExprKind::Interp(parts, site) => self.interpolate(parts, *site)?,
-            ExprKind::Place(place) => {
-                let (at, t) = self.address(place)?;
-                self.get(t, &at)
-            }
+            ExprKind::Place(place) => match self.owners.moves(e) {
+                Some(l) => self.moved_out(l),
+                None => {
+                    let (at, t) = self.address(place)?;
+                    self.get(t, &at)
+                }
+            },
             ExprKind::Record(_, fields) => self.construct(e.ty?, None, fields)?,
             ExprKind::Variant(Tag::Effect(Effect::Foreign), fields) if !self.module.m1 => {
                 let (alt, fields) = foreign_effect(fields);

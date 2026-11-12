@@ -451,7 +451,7 @@ impl<'a> Gen<'a> {
             result_slot: None,
             rt_sigs: BTreeMap::new(),
             sigs: BTreeMap::new(),
-            owners: Owners::default(),
+            owners: Owners::new(&f.body),
             plant,
         };
         g.poll();
@@ -828,7 +828,10 @@ impl<'a> Gen<'a> {
             ExprKind::Interp(parts, site) => self.interpolate(parts, *site)?,
             ExprKind::List(items) => self.list(ty(e), items)?,
             ExprKind::Map(entries) => self.map(ty(e), entries)?,
-            ExprKind::Place(place) => self.read(place)?,
+            ExprKind::Place(place) => match self.owners.moves(e) {
+                Some(l) => self.moved_out(l),
+                None => self.read(place)?,
+            },
             ExprKind::Record(_, fields) => return self.construct(ty(e), 0, fields),
             ExprKind::Variant(Tag::Effect(Effect::Foreign), fields) => {
                 let (alternative, fields) = foreign_effect(fields);

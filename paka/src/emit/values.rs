@@ -215,7 +215,8 @@ impl Gen<'_> {
     }
 
     /// `place = e` or `place op= e`: the steps' operands, then `e`, then the walk with its
-    /// checks, then the write. The new value is owned before the old one is dropped.
+    /// checks, then the write. The new value is owned before the old one is dropped, unless the
+    /// local it replaces moved out.
     pub(super) fn assign(
         &mut self,
         place: &Place,
@@ -239,10 +240,17 @@ impl Gen<'_> {
             None => v,
         };
         let v = self.owned(ty, v);
-        self.drop_at(ty, old);
         match (whole, &place.root) {
-            (true, &Root::Local(l)) => self.bind(l, v),
-            _ => self.put(ty, at, offset, v),
+            (true, &Root::Local(l)) => {
+                if !self.owners.refill(l) {
+                    self.drop_at(ty, old);
+                }
+                self.bind(l, v);
+            }
+            _ => {
+                self.drop_at(ty, old);
+                self.put(ty, at, offset, v);
+            }
         }
         Ok(())
     }
