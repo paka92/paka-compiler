@@ -2137,6 +2137,7 @@ or merged during review. Ids with a letter were added during review.
 - note: Per M6-01: planted 'wrongly removed check' bugs are emitter bugs that leave a check out.
 - status: done
 - note: Done: `PAKA_PLANT` 10 to 18 each plant a fault in every release build, as 9 does, by a `sed` script run on the IR `paka build` hands clang: Float arithmetic marked `fast`, a List index's bounds check, checked arithmetic's overflow check, the stack check of each function small enough to inline, `sort`'s Float instance built as its Int one, each drop made twice, a String-keyed Map row laid out as an Int-keyed one, a shift's count check, and `to_int`'s range check. Plants 15 and 16 stand in for the reference-count and stale-handle kinds, which do not exist (M2-10). The generator gained recursive functions that bottom out or run out of stack on every back end, overflow-edge Ints, List reads near the end, more negative Floats and printed sorted copies. `paka-diff --fuzz-release 0 1200` finds each plant by seed 279 and within 206 s, all eleven runs side by side; without a plant all 1,200 seeds agree. docs/results/M6-21.md lists plant, kind, seed and time. A unit test in paka/src/llvm.rs builds and lints the IR of the 9,707 of seeds 0 to 9,999 without a hole, none refused, covering every core-form node kind but a view's and a hole's; paka/tests/generated.rs checks `paka build` refuses each of the other 293 with `hole-in-build`. installer/tests/diff.rs finds plants 11, 13, 15 and 16 from their seeds, and plant 9 now from seed 0. A crashing program's core dump no longer runs past the fuzz limit: the harness sets its core limit to 1 byte, which stops a piped dump too.
+- note: The owner accepted plants 15 and 16 as the stand-ins for the reference-count and handle kinds on 2026-11-12.
 
 ### M6-22 · L4 · Build the hard test suite for the inout overlap check
 
@@ -2293,6 +2294,14 @@ or merged during review. Ids with a letter were added during review.
 - note: Run from tools built at bb87c60f, `paka-bench run bench/programs` (normal tools), then `paka-bench costs bench/programs RESULTS NORMAL-TOOLS` and `paka-bench ui bench/ui RESULTS NORMAL-TOOLS` (measure tools), each started at a one-minute load of at most 1. Raw results are docs/results/M6-32/run, costs and ui; the table is docs/results/M6-32.md, made by `paka-bench table docs/results/M6-32 bench/programs`. bench/programs/loops holds M6-19's yes or no per kernel, and a test in paka/src/llvm.rs holds each answer. Worse than expected: nbody against Rust (1.61), sieve_wrap against both (7.69, 7.62) and every pointer-heavy row (bfs 1.74 and 1.61, word_count 9.18 and 5.92, binary_trees 11.05 and 11.96, expr_parse 39.38 and 38.07); the rest of the float and wrapping rows are parity. Noisy: binary_trees and bfs. expr_parse spends 34% of its run in the owned-tree copy routine. Not tuned here.
 - note: The run left bfs's copy figure (0.022 s, 11.8% spread) without its rerun: `paka-bench costs` reran a copies attempt only on the normal or measure build's spread. After that rule was fixed, bfs's copies alone were rerun from tools built at c9e5d437, which the costs file records beside the new lines: copy 0.023 s, spread 3.0%, 1.0% of the run; its normal and measure figures in the same attempt are 2.318 s and 2.387 s. Nothing else was rerun.
 - note: Approved by the owner on 2026-11-05, with the slower rows published as measured and the M6-19 column's method accepted.
+
+### M6-33 · L4 · Move a local at its last use instead of copying it
+
+- needs: M4-33, M6-32
+- flags: native-only
+- done when: The shared owners pass (paka/src/owners.rs) moves, instead of copying and later dropping, a local read once on the right of `x = V(x, ...)` and a `let` local read once at its last use in the block that declares it; fixtures with hand-written drop lists for both forms, with early exit, `?`, `break` and loops, pass in both native back ends with a clean ledger; a three-mode fuzz run of 100,000 seeds agrees; expr_parse's rows of docs/results/M6-32.md are rerun and the table regenerated.
+- why this level: A wrong move is a use after free or double drop on some control-flow path.
+- note: Owner ruling of 2026-11-12: the narrow form only, not liveness analysis. A read inside a loop of a local declared outside it is never a last use. M4-33's cost side (DECISIONS.md, "skip the copy at a last use") was left out when M4-33 closed; expr_parse ran 39 times behind Rust in M6-32, mostly copying `e` and `right` in `e = Add(e, right)`.
 
 ## M7 — Evidence and gates
 
