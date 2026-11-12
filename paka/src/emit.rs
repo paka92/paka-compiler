@@ -975,13 +975,17 @@ impl<'a> Gen<'a> {
     ) -> Emitted {
         let t = e.ty.map(|t| ir_type(self.p, t));
         let merge = self.b.create_block();
-        for (label, body, binds) in branches {
+        for (i, (label, body, binds)) in branches.into_iter().enumerate() {
             self.b.switch_to_block(label);
+            let unread = self.owners.arm(e, i);
+            self.drop_all(unread);
             let v = match body {
                 Some(body) => self.scoped(&binds, body)?,
                 None => None,
             };
             let v = t.map(|t| v.unwrap_or_else(|| self.zero(t)));
+            let held = self.owners.arm_end(e);
+            self.drop_all(held);
             self.b.ins().jump(merge, &args(v.as_slice()));
         }
         self.b.switch_to_block(merge);

@@ -4,7 +4,7 @@
 
 use super::{Body, Module, Value};
 use crate::core_form::{
-    Arg, Block, Callee, Expr, ExprKind, Local, Place, Root, Step, Stmt, Ty, Walk,
+    Arg, Block, Callee, Expr, ExprKind, Local, Place, Root, Step, Stmt, Ty, Type, Walk,
 };
 use paka::owners::{Owner, whole_local};
 use paka_rt::abi::dev::records::{BOX, LIST, MAP, Part, STRING, TAGGED, VALUE};
@@ -166,23 +166,51 @@ impl Body<'_, '_> {
         }
     }
 
-    fn drop_all(&mut self, dropped: Dropped) {
+    pub(super) fn drop_all(&mut self, dropped: Dropped) {
         for (t, owner) in dropped {
             let at = match owner {
                 Owner::Local(l) => self.at[l].clone(),
+                Owner::Temp(i) if self.literals.contains(&i) => continue,
                 Owner::Temp(i) => self.temps[i].clone(),
             };
             self.drop_at(t, &at);
         }
     }
 
-    pub(super) fn statements(&mut self, stmts: &[Stmt]) -> Option<()> {
-        stmts.iter().try_for_each(|s| {
+    /// Runs `block`'s statements, each dropping the temporaries it made.
+    pub(super) fn statements(&mut self, block: &Block) -> Option<()> {
+        block.stmts.iter().try_for_each(|s| {
             let mark = self.owners.mark();
-            self.stmt(s)?;
+            match s {
+                Stmt::Let(l, e) if self.borrows(block, *l, e) => {
+                    let v = self.expr(e)??;
+                    self.bind_shared(*l, &v)?;
+                }
+                _ => self.stmt(s)?,
+            }
             self.drop_temps(mark);
             Some(())
         })
+    }
+
+    /// Whether `let l = e` in `block` may borrow, owning nothing: nothing writes `l`, and `e` is a
+    /// field or list item of a read-only parameter, which stays as it is through the call.
+    fn borrows(&self, block: &Block, l: Local, e: &Expr) -> bool {
+        let ExprKind::Place(p) = &e.kind else {
+            return false;
+        };
+        let Root::Local(r) = p.root else { return false };
+        let Some(mut t) = self.locals[r].filter(|_| self.read_only.contains(&r)) else {
+            return false;
+        };
+        for step in &p.steps {
+            t = match (step, &self.module.core.types[t]) {
+                (Step::Field(i), _) => self.module.layouts.get(t).alternatives[0][*i].ty,
+                (Step::Item(..), Type::List(item)) => *item,
+                _ => return false,
+            };
+        }
+        !writes(block, l)
     }
 
     pub(super) fn drop_temps(&mut self, mark: usize) {
@@ -196,7 +224,7 @@ impl Body<'_, '_> {
         for (l, v) in binds {
             self.bind_owned(*l, v)?;
         }
-        self.statements(&block.stmts)?;
+        self.statements(block)?;
         let v = match &block.value {
             Some(e) => self.expr(e)?.map(|v| self.yielded(e, &v)),
             None => None,
@@ -209,7 +237,7 @@ impl Body<'_, '_> {
     /// A loop body in its own scope, which `break` and `continue` leave.
     pub(super) fn loop_body(&mut self, block: &Block) -> Option<()> {
         self.owners.enter(true);
-        self.statements(&block.stmts)?;
+        self.statements(block)?;
         let dropped = self.owners.leave();
         self.drop_all(dropped);
         Some(())

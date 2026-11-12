@@ -2,10 +2,11 @@
 //! and temporaries by scope, so every exit knows what to drop. It knows nothing of the machine, so
 //! the dev and the release back end share it. A local read at a last use `last_use` finds moves
 //! out there (M6-33): the back end makes its value a temporary and the local owns nothing until it
-//! is written whole again.
+//! is written whole again. A local that moves in the arms of an `if` or `match` is held again at
+//! the start of each arm, dropped there by an arm that never reads it, and at its end by one whose
+//! read only borrowed it.
 
 use crate::core_form::{Block, Expr, ExprKind, Local, Root, Ty};
-use std::collections::BTreeSet;
 
 mod last_use;
 
@@ -24,8 +25,8 @@ struct Scope<V> {
 /// The scopes open at a point of a function, innermost last.
 pub struct Owners<V> {
     scopes: Vec<Scope<V>>,
-    /// The reads that move their local, by address in the function's body.
-    last_uses: BTreeSet<*const Expr>,
+    /// The reads that move their local, and the branchings that move one in their arms.
+    last_uses: last_use::Moves,
     /// Locals moved out and not written whole since: held, but owning nothing.
     moved: Vec<Local>,
 }
@@ -34,7 +35,7 @@ impl<V> Default for Owners<V> {
     fn default() -> Owners<V> {
         Owners {
             scopes: vec![],
-            last_uses: BTreeSet::new(),
+            last_uses: last_use::Moves::default(),
             moved: vec![],
         }
     }
@@ -48,6 +49,37 @@ impl<V: Copy + PartialEq> Owners<V> {
             last_uses,
             ..Owners::default()
         }
+    }
+
+    /// Starts arm `arm` of the `if` or `match` `e`: each local `e` moves in its arms owns again,
+    /// as before the first arm, and those this arm never reads are taken, to drop.
+    pub fn arm(&mut self, e: &Expr, arm: usize) -> Vec<(Ty, Owner<V>)> {
+        let locals = self.branch_locals(e);
+        self.moved.retain(|l| locals.iter().all(|(m, _)| m != l));
+        let unread = locals.iter().filter(|(_, read)| !read[arm]);
+        self.taken(unread.map(|&(l, _)| l).collect())
+    }
+
+    /// Ends an arm of `e`: each local `e` moves that the arm still holds, as when its read only
+    /// borrowed, is taken, to drop, so after the arms it owns nothing on any path.
+    pub fn arm_end(&mut self, e: &Expr) -> Vec<(Ty, Owner<V>)> {
+        let locals = self.branch_locals(e);
+        self.taken(locals.iter().map(|&(l, _)| l).collect())
+    }
+
+    fn branch_locals(&self, e: &Expr) -> Vec<(Local, Vec<bool>)> {
+        let locals = self.last_uses.branches.get(&(e as *const Expr));
+        locals.cloned().unwrap_or_default()
+    }
+
+    /// Those of `locals` still held, marked moved, to drop.
+    fn taken(&mut self, mut locals: Vec<Local>) -> Vec<(Ty, Owner<V>)> {
+        locals.retain(|&l| self.holds(l));
+        let dropped = self.dropped(&self.scopes, None).into_iter();
+        let dropped = dropped.filter(|&(_, o)| locals.iter().any(|&l| o == Owner::Local(l)));
+        let dropped = dropped.collect();
+        self.moved.extend(locals);
+        dropped
     }
 
     pub fn enter(&mut self, is_loop: bool) {
@@ -87,7 +119,7 @@ impl<V: Copy + PartialEq> Owners<V> {
     /// back end then makes that value a temporary.
     pub fn moves(&mut self, e: &Expr) -> Option<Local> {
         let l = whole_local(e).filter(|&l| self.holds(l))?;
-        self.last_uses.contains(&(e as *const Expr)).then(|| {
+        self.last_uses.reads.contains(&(e as *const Expr)).then(|| {
             self.moved.push(l);
             l
         })

@@ -49,8 +49,8 @@ fn joined(ws: List<String>, stop: String) -> String {
   out
 }
 
-// A read in a loop of a local declared outside it, a read in a branch and a local read twice
-// are copied.
+// A read in a loop of a local declared outside it and a local read twice are copied; a read in a
+// branch moves in the arm taken and is dropped by the other.
 fn kept(s: String, n: Int, flag: Bool) -> String {
   let base = s + "-"
   var out = ""

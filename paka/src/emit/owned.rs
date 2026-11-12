@@ -77,7 +77,7 @@ impl Gen<'_> {
         }
     }
 
-    fn drop_all(&mut self, dropped: Dropped) {
+    pub(super) fn drop_all(&mut self, dropped: Dropped) {
         for (t, owner) in dropped {
             let at = match owner {
                 Owner::Local(l) => self.b.use_var(self.vars[l]),

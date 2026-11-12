@@ -74,6 +74,7 @@ impl Body<'_, '_> {
             let at = self.offset(&out, offset);
             self.store(ty, &v, &at);
         }
+        self.literals.insert(self.temps.len());
         self.temp(self.string(), out)
     }
 
@@ -223,10 +224,7 @@ impl Body<'_, '_> {
     pub(super) fn equal(&mut self, t: Ty, x: &str, y: &str) -> String {
         match (&self.module.core.types[t], self.ty(t)) {
             (Type::Float, _) => self.op(format!("fcmp oeq double {x}, {y}")),
-            (Type::String, _) => {
-                let o = self.text(COMPARE, None, &[("ptr", x), ("ptr", y)]);
-                self.op(format!("icmp eq i64 {o}, 0"))
-            }
+            (Type::String, _) => self.equal_text(x, y),
             (_, "ptr") => {
                 if self.module.compared.insert(t) {
                     self.module.equalities.push(t);
@@ -235,6 +233,40 @@ impl Body<'_, '_> {
             }
             (_, ty) => self.op(format!("icmp eq {ty} {x}, {y}")),
         }
+    }
+
+    /// Two Strings' equality in place: the same length, then byte by byte.
+    fn equal_text(&mut self, x: &str, y: &str) -> String {
+        let [nx, ny] = [x, y].map(|s| {
+            let at = self.offset(s, table::STRING.len);
+            self.load("i64", &at)
+        });
+        let same = self.op(format!("icmp eq i64 {nx}, {ny}"));
+        let from = self.current();
+        let [pre, head, check, done] = ["b"; 4].map(|s| self.name(s));
+        self.line(format!("br i1 {same}, label %{pre}, label %{done}"));
+        self.start(&pre);
+        let [px, py] = [x, y].map(|s| {
+            let at = self.offset(s, table::STRING.ptr);
+            self.load("ptr", &at)
+        });
+        self.line(format!("br label %{head}"));
+        self.start(&head);
+        let (i, next) = (self.name("%i"), self.name("%i"));
+        self.line(format!("{i} = phi i64 [ 0, %{pre} ], [ {next}, %{check} ]"));
+        let more = self.op(format!("icmp ult i64 {i}, {nx}"));
+        self.line(format!("br i1 {more}, label %{check}, label %{done}"));
+        self.start(&check);
+        let [a, b] = [px, py].map(|p| {
+            let at = self.op(format!("getelementptr i8, ptr {p}, i64 {i}"));
+            self.op(format!("load i8, ptr {at}, align 1"))
+        });
+        let eq = self.op(format!("icmp eq i8 {a}, {b}"));
+        self.line(format!("{next} = add i64 {i}, 1"));
+        self.line(format!("br i1 {eq}, label %{head}, label %{done}"));
+        self.start(&done);
+        let arms = format!("[ false, %{from} ], [ true, %{head} ], [ false, %{check} ]");
+        self.op(format!("phi i1 {arms}"))
     }
 
     /// `i1 @q<t>(ptr %x, ptr %y)`: a List item by item, a Map entry by entry in key order, a

@@ -157,7 +157,7 @@ fn expr_reads<'a>(e: &'a Expr, found: &mut Vec<&'a Expr>) {
 /// The locals `f` in `text` moves out, one per moving read, in source order.
 fn moved(text: &str) -> Vec<Local> {
     let body = body(text);
-    let moving = last_use::reads(&body);
+    let moving = last_use::reads(&body).reads;
     let mut reads = vec![];
     reads_in(&body, &mut reads);
     let moves = reads
@@ -177,11 +177,44 @@ fn a_let_moves_at_its_last_read() {
 }
 
 #[test]
-fn a_let_read_twice_or_in_a_branch_is_copied() {
+fn a_let_read_twice_is_copied() {
     let twice = "fn f(s: String) -> String {\n  let t = s + \"!\"\n  t + t\n}\n";
     assert_eq!(moved(twice), []);
-    let branch = "fn f(s: String, b: Bool) -> String {\n  let t = s + \"!\"\n  if b { t } else { \"\" }\n}\n";
-    assert_eq!(moved(branch), []);
+}
+
+/// `f(s: String, b: Bool, c: Bool, o: Option<Int>)`, local 4 `t = s + "!"`, then `rest`.
+fn branching(rest: &str) -> String {
+    let head =
+        "fn f(s: String, b: Bool, c: Bool, o: Option<Int>) -> String {\n  let t = s + \"!\"\n";
+    format!("{head}{rest}\n}}\n")
+}
+
+#[test]
+fn a_let_read_in_branches_moves_in_each_arm_that_reads_it() {
+    let both = branching("if b { t } else { t + \"?\" }");
+    assert_eq!(moved(&both), [4, 4]);
+    assert_eq!(moved(&branching("if b { t } else { \"\" }")), [4]);
+    assert_eq!(moved(&branching("if b {\n  return t\n}\n\"\"")), [4]);
+    let no_else = branching("var u = \"\"\nif b { u = t }\nu");
+    assert_eq!(moved(&no_else), [4, 5]);
+    let nested = branching("if b {\n  if c { t } else { \"\" }\n} else {\n  let u = t\n  u\n}");
+    assert_eq!(moved(&nested), [4, 4, 5]);
+    let arms = branching("match o {\n  Some(n) => t\n  None => \"\"\n}");
+    assert_eq!(moved(&arms), [4]);
+    let kept = branching("let u = if b { t } else { \"\" }\nu");
+    assert_eq!(moved(&kept), [4, 5]);
+}
+
+#[test]
+fn a_let_read_in_a_condition_or_twice_in_an_arm_or_in_a_loop_of_it_is_copied() {
+    let cond = branching("if t == \"\" { t } else { \"\" }");
+    assert_eq!(moved(&cond), []);
+    let twice = branching("if b { t + t } else { t }");
+    assert_eq!(moved(&twice), []);
+    let looped = branching("if b {\n  while c {\n    let u = t\n  }\n  \"\"\n} else { t }");
+    assert_eq!(moved(&looped), []);
+    let nested = branching("if b {\n  if t == \"\" { t } else { \"\" }\n} else { t }");
+    assert_eq!(moved(&nested), []);
 }
 
 #[test]
@@ -278,4 +311,45 @@ fn a_read_that_is_not_a_last_use_does_not_move() {
     o.own(0, L(1));
     assert!(reads.iter().all(|&e| o.moves(e).is_none()));
     assert_eq!(names(o.leave()), [L(1)]);
+}
+
+#[test]
+fn an_arm_that_never_reads_a_moving_local_drops_it_on_entry() {
+    let b = body(&branching("if b { t } else { \"\" }"));
+    let e = b.value.as_deref().unwrap();
+    let ExprKind::If(_, then, _) = &e.kind else {
+        panic!("an if")
+    };
+    let mut o = Owners::new(&b);
+    o.enter(false);
+    o.own(0, L(4));
+    assert_eq!(names(o.arm(e, 0)), []);
+    // Before its read the arm's exits drop it; after, none does.
+    assert_eq!(names(o.to_fn(None)), [L(4)]);
+    assert_eq!(o.moves(then.value.as_deref().unwrap()), Some(4));
+    assert_eq!(names(o.to_fn(None)), []);
+    assert_eq!(names(o.arm_end(e)), []);
+    // The next arm owns it again, and drops it first thing.
+    assert_eq!(names(o.arm(e, 1)), [L(4)]);
+    assert_eq!(names(o.to_fn(None)), []);
+    assert_eq!(names(o.arm_end(e)), []);
+    assert!(!o.holds(4));
+    assert_eq!(names(o.leave()), []);
+}
+
+#[test]
+fn an_arm_whose_read_only_borrows_drops_the_local_at_its_end() {
+    let b = body(&branching("if b { t } else { t + \"?\" }"));
+    let e = b.value.as_deref().unwrap();
+    let mut o = Owners::new(&b);
+    o.enter(false);
+    o.own(0, L(4));
+    for arm in 0..2 {
+        assert_eq!(names(o.arm(e, arm)), []);
+        assert!(o.holds(4));
+        assert_eq!(names(o.arm_end(e)), [L(4)]);
+    }
+    assert!(!o.holds(4));
+    assert!(o.refill(4));
+    assert_eq!(names(o.leave()), [L(4)]);
 }

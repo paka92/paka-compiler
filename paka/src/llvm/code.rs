@@ -441,6 +441,8 @@ impl<'a> Module<'a> {
             site,
             owners: Owners::default(),
             temps: vec![],
+            literals: BTreeSet::new(),
+            read_only: vec![],
         }
     }
 
@@ -472,7 +474,7 @@ impl<'a> Module<'a> {
         }
         b.owners.enter(false);
         if let Some(computed) = update {
-            b.statements(&f.body.stmts)?;
+            b.statements(&f.body)?;
             match computed {
                 true => b.effects(f.body.value.as_deref()?)?,
                 false => b.leave_fn(None),
@@ -505,7 +507,10 @@ impl<'a> Module<'a> {
         if f.result.is_some() {
             params.push("ptr %out".into());
         }
-        b.statements(&f.body.stmts)?;
+        b.read_only = (0..f.params.len())
+            .filter(|&n| !f.params[n].inout)
+            .collect();
+        b.statements(&f.body)?;
         let e = f.body.value.as_deref();
         let v = match e {
             Some(e) => b.expr(e)?,
@@ -671,6 +676,10 @@ struct Body<'m, 'a> {
     /// The owners in scope, a temporary by its number in `temps`.
     owners: Owners<usize>,
     temps: Vec<String>,
+    /// The temporaries that are String literals, which own nothing to free.
+    literals: BTreeSet<usize>,
+    /// The parameters a `let` may borrow from: those not `inout`, outside `update`.
+    read_only: Vec<Local>,
 }
 
 /// An expression's operand; an expression with no value gives an empty one.
@@ -1218,8 +1227,10 @@ impl Body<'_, '_> {
         };
         let merge = self.name("b");
         let mut incoming = vec![];
-        for (label, block, binds, shared) in branches {
+        for (i, (label, block, binds, shared)) in branches.into_iter().enumerate() {
             self.start(&label);
+            let unread = self.owners.arm(e, i);
+            self.drop_all(unread);
             let mut owned = vec![];
             for (place, base, l) in binds {
                 let v = self.field(&place, &base);
@@ -1233,6 +1244,8 @@ impl Body<'_, '_> {
                 None => None,
             };
             let v = v.unwrap_or_else(|| stand_in(ty.unwrap_or("i64")));
+            let held = self.owners.arm_end(e);
+            self.drop_all(held);
             incoming.push(format!("[ {v}, %{} ]", self.current()));
             self.line(format!("br label %{merge}"));
         }
