@@ -113,7 +113,7 @@ pub unsafe extern "sysv64" fn rt_text(
     }
     let word = |b: bool| Ok(Made::Word(b.into()));
     let made = match row {
-        COMPARE => Ok(Made::Word(text(a).cmp(&text(b)) as i64 as u64)),
+        COMPARE => Ok(Made::Word(str(a).cmp(str(b)) as i64 as u64)),
         INDEX => text(a).index(int(b)).map(Made::Text),
         SLICE => text(a).slice(int(b), int(c)).map(Made::Text),
         CODE_AT => (text(a).code_at(int(b))).map(|n| Made::Word(raw(n) as u64)),
@@ -124,8 +124,8 @@ pub unsafe extern "sysv64" fn rt_text(
         } else {
             "true"
         }))),
-        MIN => Ok(Made::Text(text(a).min(text(b)))),
-        MAX => Ok(Made::Text(text(a).max(text(b)))),
+        MIN => Ok(Made::Text(str(a).min(str(b)).into())),
+        MAX => Ok(Made::Text(str(a).max(str(b)).into())),
         CONTAINS => word(str(a).contains(str(b))),
         STARTS_WITH => word(str(a).starts_with(str(b))),
         ENDS_WITH => word(str(a).ends_with(str(b))),

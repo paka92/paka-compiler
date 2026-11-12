@@ -1,6 +1,7 @@
 //! The Map rows (M4-38b, docs/decisions/M2-14.md sections 1.9 and 1.11). A Map is one word: null,
 //! or a block holding its length and capacity, then its entries in rising key order. An entry is
-//! the key, an Int or a String, then the value. A key is found by binary search.
+//! the key, an Int or a String, then the value. After room for `cap` entries comes an index that
+//! finds a key by its hash; nothing compiled code reads depends on it.
 
 use super::records::{rt_copy, rt_drop, text};
 use super::words::{ListWords, TextWords, as_str};
@@ -49,14 +50,17 @@ pub unsafe extern "sysv64" fn rt_map(
     // SAFETY: the caller vouches for every operand the row reads.
     let done = unsafe {
         let keyed = matches!(row, AT | FIND | PUT | REMOVE);
-        let found = if keyed { s.search(*map, key) } else { Err(0) };
+        let found = if keyed { s.find(*map, key) } else { None };
         let place = match (row, found) {
-            (AT | FIND | PUT, Ok(i)) => Ok(Some(i)),
-            (AT, Err(_)) => Err((OUT_OF_BOUNDS, [if s.string { 0 } else { key }, 0])),
-            (FIND, Err(_)) => Ok(None),
-            (PUT, Err(i)) => s.add(ctx, &mut *map, i, key).map(|()| Some(i)),
+            (AT | FIND | PUT, Some(i)) => Ok(Some(i)),
+            (AT, None) => Err((OUT_OF_BOUNDS, [if s.string { 0 } else { key }, 0])),
+            (FIND, None) => Ok(None),
+            (PUT, None) => {
+                let i = s.place(*map, key);
+                s.add(ctx, &mut *map, i, key).map(|()| Some(i))
+            }
             (REMOVE, found) => {
-                if let Ok(i) = found {
+                if let Some(i) = found {
                     s.remove(ctx, *map, i);
                 }
                 Ok(None)
@@ -115,7 +119,17 @@ impl Shape {
 
     /// The bytes of a block with room for `cap` entries.
     pub(super) fn bytes(&self, cap: u64) -> u64 {
-        HEAD + cap * self.entry()
+        HEAD + cap * self.entry() + 4 * slots(cap)
+    }
+
+    /// The index of `block`, whose capacity is `cap`.
+    fn index(&self, block: *mut u8, cap: u64) -> Index {
+        Index {
+            slots: block
+                .wrapping_add((HEAD + cap * self.entry()) as usize)
+                .cast(),
+            mask: slots(cap) - 1,
+        }
     }
 
     /// The length and capacity of the Map whose block is `block`.
@@ -151,34 +165,142 @@ impl Shape {
         self.record
     }
 
-    /// The position of `key`, or where it would go.
+    /// Entry `i`'s key as a key operand: an Int, or the address of a String's words.
+    fn operand(&self, block: *mut u8, i: u64) -> u64 {
+        let at = self.key(block, i);
+        match self.string {
+            true => at.expose_provenance() as u64,
+            // SAFETY: entry `i` is there, its key an Int.
+            false => unsafe { *at.cast::<u64>() },
+        }
+    }
+
+    /// How entry `i`'s key orders against `key`.
+    ///
+    /// # Safety
+    ///
+    /// `block` is a Map block of this shape with entry `i`, and `key` a key of its type.
+    unsafe fn order(&self, block: *mut u8, i: u64, key: u64) -> Ordering {
+        let own = self.operand(block, i);
+        // SAFETY: as the caller vouches.
+        unsafe {
+            match self.string {
+                true => as_str(own).cmp(as_str(key)),
+                false => (own as i64).cmp(&(key as i64)),
+            }
+        }
+    }
+
+    /// The hash of `key`: of an Int's bits, or of a String's bytes.
+    ///
+    /// # Safety
+    ///
+    /// `key` is a key of this shape's type.
+    unsafe fn hash(&self, key: u64) -> u64 {
+        let mix = |h: u64, w: u64| (h.rotate_left(5) ^ w).wrapping_mul(0x9E37_79B9_7F4A_7C15);
+        if !self.string {
+            return mix(key >> 32, key);
+        }
+        // SAFETY: as the caller vouches.
+        let bytes = unsafe { as_str(key) }.as_bytes();
+        let chunks = bytes.chunks_exact(8);
+        let tail = chunks
+            .remainder()
+            .iter()
+            .rev()
+            .fold(0, |t, &b| t << 8 | u64::from(b));
+        let words = chunks.map(|c| u64::from_le_bytes(c.try_into().expect("8 bytes")));
+        mix(words.fold(bytes.len() as u64, mix), tail)
+    }
+
+    /// The position of `key`, if the Map holds it.
     ///
     /// # Safety
     ///
     /// `block` is null or a Map block of this shape, and `key` a key of its type.
-    unsafe fn search(&self, block: *mut u8, key: u64) -> Result<u64, u64> {
+    unsafe fn find(&self, block: *mut u8, key: u64) -> Option<u64> {
         // SAFETY: as the caller vouches.
-        let (len, _) = unsafe { Shape::head(block) };
-        let at = |i: u64| self.key(block, i).expose_provenance() as u64;
-        let order = |i: u64| -> Ordering {
-            // SAFETY: `i` is below the length, so its key is there.
-            unsafe {
-                match self.string {
-                    true => as_str(at(i)).cmp(as_str(key)),
-                    false => (*self.key(block, i).cast::<i64>()).cmp(&(key as i64)),
-                }
-            }
-        };
-        let (mut low, mut high) = (0, len);
+        let (len, cap) = unsafe { Shape::head(block) };
+        if len == 0 {
+            return None;
+        }
+        let index = self.index(block, cap);
+        // SAFETY: `key` is of this shape's type; the index holds each entry's position, and has an
+        // empty slot.
+        unsafe {
+            let h = self.hash(key);
+            (home(h)..)
+                .map(|at| index.get(at))
+                .take_while(|&s| s != 0)
+                .filter(|&s| s >> POS_BITS == tag(h))
+                .map(|s| u64::from(s & POS) - 1)
+                .find(|&i| self.order(block, i, key).is_eq())
+        }
+    }
+
+    /// Where `key`, which the Map lacks, goes.
+    ///
+    /// # Safety
+    ///
+    /// `block` is null or a Map block of this shape, and `key` a key of its type.
+    unsafe fn place(&self, block: *mut u8, key: u64) -> u64 {
+        // SAFETY: as the caller vouches.
+        let (mut low, mut high) = (0, unsafe { Shape::head(block) }.0);
         while low < high {
             let mid = low + (high - low) / 2;
-            match order(mid) {
+            // SAFETY: `mid` is below the length, so its entry is there.
+            match unsafe { self.order(block, mid, key) } {
                 Ordering::Less => low = mid + 1,
-                Ordering::Greater => high = mid,
-                Ordering::Equal => return Ok(mid),
+                _ => high = mid,
             }
         }
-        Err(low)
+        low
+    }
+
+    /// Builds the index of `block`'s entries afresh.
+    ///
+    /// # Safety
+    ///
+    /// `block` is a Map block of this shape whose entries are set.
+    pub(super) unsafe fn reindex(&self, block: *mut u8) {
+        // SAFETY: as the caller vouches; the index lies inside the block.
+        unsafe {
+            let (len, cap) = Shape::head(block);
+            let index = self.index(block, cap);
+            ptr::write_bytes(index.slots, 0, slots(cap) as usize);
+            for i in 0..len {
+                index.enter(self.hash(self.operand(block, i)), i);
+            }
+        }
+    }
+
+    /// Takes entry `i` out of the index, moving later slots of its run back so no gap breaks it.
+    ///
+    /// # Safety
+    ///
+    /// `block` is a Map block of this shape with entry `i` in its index.
+    unsafe fn unindex(&self, block: *mut u8, i: u64) {
+        // SAFETY: as the caller vouches; every slot met holds an entry that is there.
+        unsafe {
+            let index = self.index(block, Shape::head(block).1);
+            let start = |s: u32| home(self.hash(self.operand(block, u64::from(s & POS) - 1)));
+            let mut hole = start(i as u32 + 1);
+            while index.get(hole) & POS != i as u32 + 1 {
+                hole += 1;
+            }
+            for next in hole + 1.. {
+                let s = index.get(next);
+                if s == 0 {
+                    break;
+                }
+                let gap = next.wrapping_sub(hole) & index.mask;
+                if next.wrapping_sub(start(s)) & index.mask >= gap {
+                    index.set(hole, s);
+                    hole = next;
+                }
+            }
+            index.set(hole, 0);
+        }
     }
 
     /// A new entry at `i`: a copy of `key` and a zeroed value, the entries from `i` on one place
@@ -209,20 +331,33 @@ impl Shape {
             };
             if !map.is_null() {
                 // SAFETY: the old block holds `len` entries; the new one is apart and larger.
-                unsafe { ptr::copy_nonoverlapping(*map, block, self.bytes(len) as usize) };
+                unsafe {
+                    ptr::copy_nonoverlapping(
+                        *map,
+                        block,
+                        self.key(*map, len).offset_from_unsigned(*map),
+                    )
+                };
                 ctx.heap.release(*map, self.bytes(len));
             }
-            // SAFETY: the new block has room for its head.
-            unsafe { block.cast::<[u64; 2]>().write([len, cap]) };
+            // SAFETY: the new block has room for its head, and its `len` entries are set.
+            unsafe {
+                block.cast::<[u64; 2]>().write([len, cap]);
+                self.reindex(block);
+            }
             *map = block;
         }
         let (to, entry) = (self.key(*map, i), self.entry() as usize);
-        // SAFETY: the block has room for one more entry; the entries from `i` move up by one.
+        // SAFETY: the block has room for one more entry; the entries from `i` move up by one, and
+        // so do their positions in the index.
         unsafe {
             ptr::copy(to, to.add(entry), ((len - i) * self.entry()) as usize);
             ptr::copy_nonoverlapping(words.as_ptr().cast(), to, self.key_size() as usize);
             ptr::write_bytes(self.value(*map, i), 0, self.size as usize);
             *map.cast::<u64>() = len + 1;
+            let index = self.index(*map, Shape::head(*map).1);
+            index.renumber(i, 1);
+            index.enter(self.hash(key), i);
         }
         Ok(())
     }
@@ -245,7 +380,8 @@ impl Shape {
     unsafe fn remove(&self, ctx: &mut Context, block: *mut u8, i: u64) {
         // SAFETY: as the caller vouches.
         unsafe {
-            let (len, _) = Shape::head(block);
+            let (len, cap) = Shape::head(block);
+            self.unindex(block, i);
             let key = self.key(block, i);
             if self.string {
                 let words = &*key.cast::<TextWords>();
@@ -260,6 +396,7 @@ impl Shape {
             let entry = self.entry() as usize;
             ptr::copy(key.add(entry), key, ((len - i - 1) * self.entry()) as usize);
             *block.cast::<u64>() = len - 1;
+            self.index(block, cap).renumber(i + 1, -1);
         }
     }
 
@@ -312,5 +449,79 @@ impl Shape {
         // SAFETY: the caller vouches `out` has room for a List.
         unsafe { out.write(xs) };
         Ok(())
+    }
+}
+
+/// The bits of an index slot that hold its entry's position + 1; the bits above hold a tag of its
+/// key's hash. A slot of 0 is empty.
+const POS_BITS: u32 = 25;
+const POS: u32 = (1 << POS_BITS) - 1;
+const _: () = assert!(CAP < POS as usize);
+
+/// The slots of the index of a block with room for `cap` entries: a power of two, at least twice
+/// `cap`, so a run of full slots stays short.
+fn slots(cap: u64) -> u64 {
+    (2 * cap).next_power_of_two()
+}
+
+/// The first slot a hash `h` tries, before the mask.
+fn home(h: u64) -> u64 {
+    h >> 32
+}
+
+fn tag(h: u64) -> u32 {
+    (h >> 57) as u32
+}
+
+/// A Map block's index: its slots, and their count less one.
+struct Index {
+    slots: *mut u32,
+    mask: u64,
+}
+
+impl Index {
+    /// # Safety
+    ///
+    /// The index is a Map block's.
+    unsafe fn get(&self, at: u64) -> u32 {
+        // SAFETY: the mask keeps `at` among the slots.
+        unsafe { *self.slots.add((at & self.mask) as usize) }
+    }
+
+    /// # Safety
+    ///
+    /// The index is a Map block's.
+    unsafe fn set(&self, at: u64, slot: u32) {
+        // SAFETY: the mask keeps `at` among the slots.
+        unsafe { *self.slots.add((at & self.mask) as usize) = slot }
+    }
+
+    /// Records entry `i`, whose key hashes to `h`, in the first empty slot from its home.
+    ///
+    /// # Safety
+    ///
+    /// The index is a Map block's, with an empty slot.
+    unsafe fn enter(&self, h: u64, i: u64) {
+        let mut at = home(h);
+        // SAFETY: as the caller vouches.
+        unsafe {
+            while self.get(at) != 0 {
+                at += 1;
+            }
+            self.set(at, tag(h) << POS_BITS | (i as u32 + 1));
+        }
+    }
+
+    /// Moves by `by` the position of every entry from `from` on.
+    ///
+    /// # Safety
+    ///
+    /// The index is a Map block's.
+    unsafe fn renumber(&self, from: u64, by: i32) {
+        // SAFETY: as the caller vouches, the slots are the block's.
+        let slots = unsafe { std::slice::from_raw_parts_mut(self.slots, self.mask as usize + 1) };
+        for s in slots {
+            *s = s.wrapping_add_signed(by * i32::from(*s & POS > from as u32));
+        }
     }
 }

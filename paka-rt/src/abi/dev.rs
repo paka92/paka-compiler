@@ -1,8 +1,7 @@
 //! The dev runtime's context and allocator (M4-25, docs/decisions/M4-05.md sections 4 and 9).
-//! Every block of a run is in a ledger, so a leak, a double free or a free of the wrong size is reported instead of
-//! corrupting memory, and the run's cap is checked before the host is asked.
 
 pub mod app;
+mod blocks;
 pub mod items;
 pub mod map;
 pub mod records;
@@ -10,8 +9,7 @@ pub mod view;
 pub mod windowless;
 pub mod words;
 
-use std::alloc::{self, Layout};
-use std::collections::BTreeMap;
+pub use blocks::{Fault, Heap};
 use std::sync::atomic::{AtomicU64, Ordering};
 use std::time::Duration;
 
@@ -24,138 +22,6 @@ pub const ASSERT: u64 = 5;
 pub const HOLE: u64 = 6;
 pub const STACK: u64 = 7;
 pub const MEMORY: u64 = 8;
-
-/// A free the ledger refused; the memory stays as it was.
-#[derive(Debug, PartialEq)]
-pub enum Fault {
-    /// The address is not a live block: freed already, or never allocated.
-    NotLive { address: usize },
-    /// The block was freed with another size; it is freed with its own.
-    WrongSize {
-        address: usize,
-        given: u64,
-        allocated: u64,
-    },
-}
-
-/// A run's blocks and the faults met freeing them. Live blocks are freed when it drops.
-pub struct Heap {
-    /// The most bytes live at once.
-    cap: u64,
-    used: u64,
-    /// Blocks made so far.
-    made: u64,
-    /// Address to size and the block's number in the order made.
-    blocks: BTreeMap<usize, (u64, u64)>,
-    faults: Vec<Fault>,
-}
-
-impl Heap {
-    pub fn new(cap: u64) -> Heap {
-        Heap {
-            cap,
-            used: 0,
-            made: 0,
-            blocks: BTreeMap::new(),
-            faults: vec![],
-        }
-    }
-
-    /// A new block of `bytes`, aligned 8; `None` past the cap or when the host refuses.
-    pub fn alloc(&mut self, bytes: u64) -> Option<*mut u8> {
-        let used = self.used.checked_add(bytes).filter(|&u| u <= self.cap)?;
-        let layout = layout(bytes)?;
-        // SAFETY: the layout's size is at least 1.
-        let ptr = unsafe { alloc::alloc(layout) };
-        if ptr.is_null() {
-            return None;
-        }
-        self.used = used;
-        self.made += 1;
-        self.blocks
-            .insert(ptr.expose_provenance(), (bytes, self.made));
-        Some(ptr)
-    }
-
-    /// Frees the block at `ptr`, or records why it cannot. Only the ledger's own record of the
-    /// block is freed, so a bad pointer is never touched.
-    pub fn release(&mut self, ptr: *mut u8, bytes: u64) {
-        let address = ptr.addr();
-        let Some((allocated, _)) = self.blocks.remove(&address) else {
-            self.faults.push(Fault::NotLive { address });
-            return;
-        };
-        if bytes != allocated {
-            self.faults.push(Fault::WrongSize {
-                address,
-                given: bytes,
-                allocated,
-            });
-        }
-        self.used -= allocated;
-        // SAFETY: the ledger held `address` as a live block of `allocated` bytes.
-        unsafe { free(address, allocated) };
-    }
-
-    /// Frees the block at `address` with its own size when it is live; anything else is left.
-    pub fn release_live(&mut self, address: usize) {
-        if let Some(&(bytes, _)) = self.blocks.get(&address) {
-            self.release(std::ptr::without_provenance_mut(address), bytes);
-        }
-    }
-
-    /// The blocks still live, as (address, bytes) in address order.
-    pub fn leaks(&self) -> Vec<(usize, u64)> {
-        self.blocks.iter().map(|(&a, &(b, _))| (a, b)).collect()
-    }
-
-    /// Frees every block made after the first `made` and still live: what a trap left.
-    pub fn sweep(&mut self, made: u64) {
-        let used = &mut self.used;
-        self.blocks.retain(|&address, &mut (bytes, n)| {
-            if n <= made {
-                return true;
-            }
-            *used -= bytes;
-            // SAFETY: the ledger held `address` as a live block of `bytes`, and drops it here.
-            unsafe { free(address, bytes) };
-            false
-        });
-    }
-
-    /// How many blocks the run has made, freed or not.
-    pub fn made(&self) -> u64 {
-        self.made
-    }
-
-    pub fn faults(&self) -> &[Fault] {
-        &self.faults
-    }
-}
-
-impl Drop for Heap {
-    fn drop(&mut self) {
-        for (address, (bytes, _)) in std::mem::take(&mut self.blocks) {
-            // SAFETY: the ledger held `address` as a live block of `bytes`.
-            unsafe { free(address, bytes) };
-        }
-    }
-}
-
-/// The layout of a block of `bytes`; one byte at least, so that every block is its own address.
-fn layout(bytes: u64) -> Option<Layout> {
-    Layout::from_size_align(usize::try_from(bytes.max(1)).ok()?, super::table::ALIGN).ok()
-}
-
-/// # Safety
-///
-/// `address` is a live block of `bytes` from `Heap::alloc`, which exposed its provenance.
-unsafe fn free(address: usize, bytes: u64) {
-    let layout = layout(bytes).expect("the layout it was allocated with");
-    let ptr = std::ptr::with_exposed_provenance_mut(address);
-    // SAFETY: `alloc::alloc` made the block with this layout, and the caller vouches it is live.
-    unsafe { alloc::dealloc(ptr, layout) };
-}
 
 /// A run's context (M4-05 section 4): four words generated code reads, then the runtime's own.
 #[repr(C)]

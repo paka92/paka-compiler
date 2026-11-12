@@ -4,12 +4,13 @@
 
 use super::dev::{BAD_CONVERSION, Context, Heap, MEMORY, OUT_OF_BOUNDS, map, records, view, words};
 use super::{List, Str, Update, record_kind};
-use std::cell::{Cell, RefCell};
+use std::cell::Cell;
 use std::panic::{AssertUnwindSafe, catch_unwind};
-use std::{mem, ptr};
+use std::ptr;
 
 thread_local! {
-    static CONTEXT: RefCell<Option<Context>> = const { RefCell::new(None) };
+    /// The context lent to the call running on this thread; null when none is.
+    static CONTEXT: Cell<*mut Context> = const { Cell::new(ptr::null_mut()) };
     /// An entry panicked, or was called outside `call`.
     static BROKEN: Cell<bool> = const { Cell::new(false) };
 }
@@ -42,23 +43,30 @@ pub fn fresh<R>(f: impl FnOnce() -> R) -> (R, Heap, bool) {
 /// Runs `f` with `ctx` as the call's context, as a headless app's loop does for each compiled
 /// call; whether an entry broke.
 pub fn lend<R>(ctx: &mut Context, f: impl FnOnce() -> R) -> (R, bool) {
-    CONTEXT.set(Some(mem::replace(ctx, Context::new(0))));
+    /// Takes the lent context back however `f` ends.
+    struct Lent(*mut Context);
+    impl Drop for Lent {
+        fn drop(&mut self) {
+            CONTEXT.set(self.0);
+        }
+    }
+    let _lent = Lent(CONTEXT.replace(ctx));
     BROKEN.set(false);
-    let r = f();
-    *ctx = CONTEXT.take().expect("the lent context");
-    (r, BROKEN.take())
+    (f(), BROKEN.take())
 }
 
 /// `f` on the call's context; `failed` when there is none or `f` panics.
 fn with<R>(failed: R, f: impl FnOnce(&mut Context) -> R) -> R {
-    let run = || CONTEXT.with_borrow_mut(|c| c.as_mut().map(f));
-    match catch_unwind(AssertUnwindSafe(run)) {
-        Ok(Some(r)) => r,
-        _ => {
-            BROKEN.set(true);
-            failed
+    let ctx = CONTEXT.get();
+    if !ctx.is_null() {
+        // SAFETY: `lend` set `ctx` from a context borrowed for the whole call and resets it when
+        // the call ends; no entry calls back into compiled code, so this is its one use now.
+        if let Ok(r) = catch_unwind(AssertUnwindSafe(|| f(unsafe { &mut *ctx }))) {
+            return r;
         }
     }
+    BROKEN.set(true);
+    failed
 }
 
 /// A new block of `bytes`, aligned 8; null when the heap refuses.
