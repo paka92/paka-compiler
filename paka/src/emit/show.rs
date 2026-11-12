@@ -4,7 +4,7 @@
 
 use super::constructors;
 use crate::core_form::{Program, Ty, Type};
-use crate::layout::{Layouts, Place};
+use crate::layout::{BLOCK, Layouts, Place};
 use paka_rt::ops::{Float, Int, quoted};
 
 /// The `Effect` variants in declared order, each with the position of its first labelled field.
@@ -119,7 +119,10 @@ impl Shown<'_> {
     }
 
     fn field(&self, place: &Place, at: u64) -> String {
-        let at = at + place.offset as u64;
+        let at = match place.in_block {
+            true => self.word(at + BLOCK as u64),
+            false => at,
+        } + place.offset as u64;
         let at = if place.boxed { self.word(at) } else { at };
         self.value(place.ty, at)
     }

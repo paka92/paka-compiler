@@ -4,13 +4,14 @@
 //! byte, any other place a word whose other bytes mean nothing.
 //!
 //! A field of a program type whose type reaches that type by value, through records, enums,
-//! `Option` or `Result`, is a box. Every field on such a cycle reaches its own type, so each cycle
-//! holds a box and every size is finite.
+//! `Option` or `Result`, is a box: a record's field alone, an enum variant's fields all together
+//! in one block, the variant's value then the tag and the block's address. Every field on such a
+//! cycle reaches its own type, so each cycle holds a box or a block and every size is finite.
 
 use crate::core_form::{Program, Ty, Type, plain};
 use paka_rt::abi::dev::map::STRING_KEY;
 use paka_rt::abi::dev::records::{Part, Spec};
-pub use paka_rt::abi::table::{ALIGN, CHARS, CONSTANT, Header, LIST, STRING};
+pub use paka_rt::abi::table::{ALIGN, BLOCK, CHARS, CONSTANT, Header, LIST, STRING};
 use std::collections::{BTreeMap, BTreeSet};
 
 /// How a value of one type lies in memory.
@@ -24,17 +25,21 @@ pub struct Layout {
     pub tagged: bool,
     /// The fields of each alternative: a record's one list, or one per variant in tag order.
     pub alternatives: Vec<Vec<Place>>,
+    /// Per alternative, the bytes of the block its fields lie in; 0 when they lie in the value.
+    pub blocks: Vec<usize>,
     /// What copy and release walk: one list, or one per variant when tagged.
     pub owned: Vec<Vec<Entry>>,
 }
 
 #[derive(Clone, Copy, Debug, PartialEq)]
 pub struct Place {
-    /// In bytes from the value's start.
+    /// In bytes from the value's start, or from its block's.
     pub offset: usize,
     pub ty: Ty,
     /// The word points to a heap block holding the value.
     pub boxed: bool,
+    /// The field lies in the variant's block, whose address is the word at `BLOCK`.
+    pub in_block: bool,
 }
 
 #[derive(Clone, Copy, Debug, PartialEq)]
@@ -52,6 +57,8 @@ pub enum Owned {
     Map(Ty, Ty),
     /// The boxed type.
     Box(Ty),
+    /// The block of a variant: the enum type and the variant.
+    Block(Ty, usize),
     /// A tagged value inline: its own record says what the variant at hand owns.
     Value(Ty),
 }
@@ -115,6 +122,9 @@ impl Layouts {
         for ty in 0..p.types.len() {
             layouts.lay(p, ty);
         }
+        for ty in 0..p.types.len() {
+            layouts.lay_blocks(p, ty);
+        }
         layouts
     }
 
@@ -127,24 +137,36 @@ impl Layouts {
         self.get(ty).owned.iter().any(|alt| !alt.is_empty())
     }
 
-    /// The type records' contents for the runtime, by type number. A type that owns nothing has
-    /// none.
+    /// The type records' contents for the runtime, by type number, then one per variant block in
+    /// type and variant order. A type that owns nothing has none.
     pub fn specs(&self) -> Vec<Option<Spec>> {
+        let blocks: Vec<(Ty, usize)> = (self.layouts.iter())
+            .flat_map(|(&t, l)| {
+                (0..l.blocks.len())
+                    .filter(|&a| l.blocks[a] != 0)
+                    .map(move |a| (t, a))
+            })
+            .collect();
         let part = |e: &Entry| match e.kind {
-            Owned::String => Some((e.offset as u64, Part::String)),
+            Owned::String => (e.offset as u64, Part::String),
             Owned::List(item) => {
                 let size = self.get(item).item as u64;
-                Some((e.offset as u64, Part::List { item, size }))
+                (e.offset as u64, Part::List { item, size })
             }
-            Owned::Value(t) => Some((e.offset as u64, Part::Value(t))),
+            Owned::Value(t) => (e.offset as u64, Part::Value(t)),
             Owned::Box(item) => {
                 let size = self.get(item).size as u64;
-                Some((e.offset as u64, Part::Box { item, size }))
+                (e.offset as u64, Part::Box { item, size })
+            }
+            Owned::Block(t, alt) => {
+                let item = self.layouts.len() + blocks.binary_search(&(t, alt)).unwrap_or(0);
+                let size = self.get(t).blocks[alt] as u64;
+                (e.offset as u64, Part::Box { item, size })
             }
             Owned::Map(k, v) => {
                 let string = if self.owns(k) { STRING_KEY } else { 0 };
                 let shape = string | self.get(v).size as u64;
-                Some((e.offset as u64, Part::Map { value: v, shape }))
+                (e.offset as u64, Part::Map { value: v, shape })
             }
         };
         let spec = |(&ty, l): (&Ty, &Layout)| {
@@ -152,11 +174,24 @@ impl Layouts {
             let spec = Spec {
                 size: l.size as u64,
                 tagged: l.tagged,
-                alternatives: alternatives.collect::<Option<_>>()?,
+                alternatives: alternatives.collect(),
             };
             self.owns(ty).then_some(spec)
         };
-        self.layouts.iter().map(spec).collect()
+        let block = |&(t, alt): &(Ty, usize)| {
+            let l = self.get(t);
+            let owned: Vec<_> = (l.alternatives[alt].iter())
+                .flat_map(|p| self.entries(p))
+                .collect();
+            let spec = Spec {
+                size: l.blocks[alt] as u64,
+                tagged: false,
+                alternatives: vec![owned.iter().map(part).collect()],
+            };
+            (!owned.is_empty()).then_some(spec)
+        };
+        let types = self.layouts.iter().map(spec);
+        types.chain(blocks.iter().map(block)).collect()
     }
 
     /// Lays out `ty` and what it holds by value; its size in words.
@@ -177,23 +212,43 @@ impl Layouts {
                 let (tagged, alts) = alternatives(p, ty);
                 let start = if tagged { 8 } else { 0 };
                 let mut places = vec![];
+                let mut owned = vec![];
+                let blocked: Vec<bool> = (0..alts.len()).map(|a| self.in_block(p, ty, a)).collect();
                 for (a, fields) in alts.iter().enumerate() {
+                    if blocked[a] {
+                        // The fields are laid out once every value size is known.
+                        places.push(vec![]);
+                        owned.push(vec![Entry {
+                            offset: BLOCK,
+                            kind: Owned::Block(ty, a),
+                        }]);
+                        continue;
+                    }
                     let mut offset = start;
                     let mut alt = vec![];
                     for (f, &(field, boxed)) in fields.iter().enumerate() {
                         let boxed = boxed || self.boxed[&ty].contains(&(a, f));
-                        alt.push(Place {
+                        let place = Place {
                             offset,
                             ty: field,
                             boxed,
-                        });
+                            in_block: false,
+                        };
                         offset += if boxed { 8 } else { self.lay(p, field) * 8 };
+                        alt.push(place);
                     }
+                    owned.push(alt.iter().flat_map(|p| self.entries(p)).collect());
                     places.push(alt);
                 }
-                let end = |alt: &Vec<Place>| alt.last().map_or(start, |p| p.offset + self.width(p));
-                let words = places.iter().map(end).max().unwrap_or(start) / 8;
-                let owned = self.owned(tagged, &places);
+                let end = |(alt, &blocked): (&Vec<Place>, &bool)| match blocked {
+                    true => BLOCK + 8,
+                    false => alt.last().map_or(start, |p| p.offset + self.width(p)),
+                };
+                let words = places.iter().zip(&blocked).map(end).max().unwrap_or(start) / 8;
+                let owned = match tagged {
+                    true => owned,
+                    false => vec![owned.into_iter().flatten().collect()],
+                };
                 (tagged, words, places, owned)
             }
         };
@@ -206,6 +261,7 @@ impl Layouts {
             size: words * 8,
             item,
             tagged,
+            blocks: vec![0; alternatives.len()],
             alternatives,
             owned,
         };
@@ -222,12 +278,33 @@ impl Layouts {
         }
     }
 
-    fn owned(&self, tagged: bool, places: &[Vec<Place>]) -> Vec<Vec<Entry>> {
-        let entries = |alt: &Vec<Place>| alt.iter().flat_map(|p| self.entries(p)).collect();
-        let owned: Vec<Vec<Entry>> = places.iter().map(entries).collect();
-        match tagged {
-            true => owned,
-            false => vec![owned.into_iter().flatten().collect()],
+    /// Whether variant `a` of `ty` lies in a block: a variant of an enum with a field reaching it.
+    fn in_block(&self, p: &Program, ty: Ty, a: usize) -> bool {
+        matches!(p.types[ty], Type::Enum(_)) && self.boxed[&ty].iter().any(|&(x, _)| x == a)
+    }
+
+    /// Lays out the fields of each variant of `ty` that lies in a block, from the block's start.
+    fn lay_blocks(&mut self, p: &Program, ty: Ty) {
+        let Type::Enum(e) = p.types[ty] else { return };
+        for (a, v) in p.enums[e].variants.iter().enumerate() {
+            if !self.in_block(p, ty, a) {
+                continue;
+            }
+            let mut offset = 0;
+            let places: Vec<Place> = (v.fields.iter())
+                .map(|f| {
+                    let place = Place {
+                        offset,
+                        ty: f.ty,
+                        boxed: false,
+                        in_block: true,
+                    };
+                    offset += self.layouts[&f.ty].size;
+                    place
+                })
+                .collect();
+            let l = self.layouts.get_mut(&ty).expect("a laid out type");
+            (l.alternatives[a], l.blocks[a]) = (places, offset);
         }
     }
 

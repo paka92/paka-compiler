@@ -66,6 +66,7 @@ const SPAN_BITS: u32 = CHUNK.trailing_zeros() + SPAN.trailing_zeros();
 
 impl Chunks {
     /// The class of the chunk holding `address`, or 0.
+    #[inline]
     fn class(&self, address: usize) -> usize {
         let (span, at) = (address >> SPAN_BITS, address / CHUNK % SPAN);
         let found = self.0.iter().find(|(s, _)| *s == span);
@@ -139,6 +140,7 @@ impl Heap {
     }
 
     /// A new block of `bytes`, aligned 8; `None` past the cap or when the host refuses.
+    #[inline]
     pub fn alloc(&mut self, bytes: u64) -> Option<*mut u8> {
         let used = self.used.checked_add(bytes).filter(|&u| u <= self.cap)?;
         let n = self.made + 1;
@@ -162,6 +164,7 @@ impl Heap {
 
     /// Frees the block at `ptr`, or records why it cannot. Only memory the ledger holds as a
     /// block is read, so a bad pointer is never touched.
+    #[inline]
     pub fn release(&mut self, ptr: *mut u8, bytes: u64) {
         let address = ptr.addr();
         let Some((kept, allocated)) = self.find(address) else {
@@ -221,6 +224,7 @@ impl Heap {
 
     /// A free slot of `class`: the first on its free list, else carved from its newest chunk, or
     /// from a new one; `None` when the host refuses a chunk.
+    #[inline]
     fn carve(&mut self, class: usize) -> Option<usize> {
         let size = slot_size(class);
         let pool = &mut self.pools[class];
@@ -245,6 +249,7 @@ impl Heap {
     }
 
     /// The block at `address` and its size, if it is live.
+    #[inline]
     fn find(&self, address: usize) -> Option<(Kept, u64)> {
         let (base, class) = (address & !(CHUNK - 1), self.chunks.class(address));
         if class == 0 {
@@ -264,6 +269,7 @@ impl Heap {
     }
 
     /// Frees the live block at `address`, kept as `kept`, of `bytes`.
+    #[inline]
     fn forget(&mut self, kept: Kept, address: usize, bytes: u64) {
         (self.used, self.live) = (self.used - bytes, self.live - 1);
         match kept {
@@ -282,6 +288,7 @@ impl Heap {
     }
 
     /// The end of the slots carved from the chunk at `base` of `class`.
+    #[inline]
     fn carved(&self, base: usize, class: usize) -> usize {
         let pool = &self.pools[class];
         match pool.end == base + CHUNK {

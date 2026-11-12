@@ -5,7 +5,7 @@
 
 use super::{Emitted, Gen, Label, Refusal, args, words::Op};
 use crate::core_form::{Arm, Compound, Effect, Expr, Local, Place, Root, Step, Tag, Ty, Type};
-use crate::layout;
+use crate::layout::{self, BLOCK};
 use cranelift_codegen::ir::{
     InstBuilder, MemFlagsData, StackSlotData, StackSlotKind, Value, types,
 };
@@ -76,12 +76,21 @@ impl Gen<'_> {
 
     /// The field at `place` of the value at `at`, followed through its box.
     pub(super) fn field(&mut self, place: &layout::Place, at: Value) -> Value {
+        let at = self.base(place, at);
         if !place.boxed {
             return self.get(place.ty, at, place.offset);
         }
         let block =
             (self.b.ins()).load(types::I64, MemFlagsData::trusted(), at, place.offset as i32);
         self.get(place.ty, block, 0)
+    }
+
+    /// What the offset of `place` counts from: the value at `at`, or its variant's block.
+    fn base(&mut self, place: &layout::Place, at: Value) -> Value {
+        match place.in_block {
+            true => (self.b.ins()).load(types::I64, MemFlagsData::trusted(), at, BLOCK as i32),
+            false => at,
+        }
     }
 
     /// Writes `v` of type `t` at `at + offset`: a held value's words are copied.
@@ -270,27 +279,44 @@ impl Gen<'_> {
             let tag = self.int_const(alternative as i64);
             self.b.ins().store(MemFlagsData::trusted(), tag, at, 0);
         }
+        let bytes = self.l.get(t).blocks[alternative];
+        if bytes != 0 {
+            let block = self.alloc(bytes);
+            self.clear(block, bytes);
+            self.b
+                .ins()
+                .store(MemFlagsData::trusted(), block, at, BLOCK as i32);
+        }
         let places = self.l.get(t).alternatives[alternative].clone();
         for (field, place) in fields.iter().zip(places) {
             let v = self.value(field)?;
             let v = self.owned(place.ty, v);
+            let base = self.base(&place, at);
             match place.boxed {
-                true => self.boxed(place.ty, at, place.offset, v),
-                false => self.put(place.ty, at, place.offset, v),
+                true => self.boxed(place.ty, base, place.offset, v),
+                false => self.put(place.ty, base, place.offset, v),
             }
         }
         Ok(Some(at))
     }
 
+    /// A new block of `bytes`; a `memory` trap when the heap refuses.
+    fn alloc(&mut self, bytes: usize) -> Value {
+        let out = slot(&mut self.b, 8);
+        let bytes = self.int_const(bytes as i64);
+        self.rt_try(offset_of!(Rt, alloc), &[self.ctx, bytes, out]);
+        self.b
+            .ins()
+            .load(types::I64, MemFlagsData::trusted(), out, 0)
+    }
+
     /// Moves `v` of type `t` into a new block, whose address is written at `at + offset`.
     fn boxed(&mut self, t: Ty, at: Value, offset: usize, v: Value) {
-        let out = slot(&mut self.b, 8);
-        let bytes = self.int_const(self.size(t) as i64);
-        self.rt_try(offset_of!(Rt, alloc), &[self.ctx, bytes, out]);
-        let flags = MemFlagsData::trusted();
-        let block = self.b.ins().load(types::I64, flags, out, 0);
+        let block = self.alloc(self.size(t));
         self.put(t, block, 0, v);
-        self.b.ins().store(flags, block, at, offset as i32);
+        self.b
+            .ins()
+            .store(MemFlagsData::trusted(), block, at, offset as i32);
     }
 
     /// A `match`: one branch per arm, chosen by the subject's tag; an arm binds its one

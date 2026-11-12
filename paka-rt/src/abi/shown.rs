@@ -2,9 +2,11 @@
 //! as dev code shows it, read by the shapes compiled code gives. Line 0 names the function values
 //! by id; line `1 + t` is type `t`: `I`, `F`, `B`, `S`, `N` for a function value, `L item size`,
 //! `M key value key_size value_size`, `R Name field...` or `V alternative|...`, an alternative
-//! being `Name field...`. A field is `[label=]type@offset`, `*` after it when it is boxed.
+//! being `Name field...`. A field is `[label=]type@offset`, `*` after it when it is boxed and `+`
+//! when it lies in its variant's block.
 
 use super::dev::words::as_str;
+use super::table::BLOCK;
 use crate::ops::{Float, Int, quoted};
 use std::ptr;
 
@@ -94,16 +96,18 @@ impl<'a> Shapes<'a> {
                 Some((label, place)) => (format!("{label}: "), place),
                 None => (String::new(), place),
             };
-            let (place, boxed) = match place.strip_suffix('*') {
-                Some(place) => (place, true),
-                None => (place, false),
-            };
+            let mark = place.chars().last().filter(|c| "*+".contains(*c));
+            let place = place.trim_end_matches(['*', '+']);
             let (t, offset) = place.split_once('@').expect("a field's place");
             let [t, offset] = [t, offset].map(|n| n.parse::<usize>().expect("a number"));
-            let at = at + offset as u64;
-            // SAFETY: the field lies at its offset, or in the block its word points to.
+            // SAFETY: the field lies at its offset, in the block its word points to, or at its
+            // offset in the block the variant's word points to.
             unsafe {
-                let at = if boxed { word(at) } else { at };
+                let at = match mark {
+                    Some('*') => word(at + offset as u64),
+                    Some(_) => word(at + BLOCK as u64) + offset as u64,
+                    None => at + offset as u64,
+                };
                 format!("{label}{}", self.value(t, at))
             }
         });

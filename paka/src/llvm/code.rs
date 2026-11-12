@@ -21,7 +21,7 @@ use paka::owners::Owners;
 use paka::source::in_file;
 use paka_rt::abi::dev::records::Spec;
 use paka_rt::abi::dev::words::{INDEX, JOIN, SLICE};
-use paka_rt::abi::table::{ALLOC, STACK_LIMIT, TRAP};
+use paka_rt::abi::table::{ALLOC, BLOCK, STACK_LIMIT, TRAP};
 use paka_rt::ops::Int;
 use std::collections::{BTreeMap, BTreeSet};
 use std::fmt::Write;
@@ -277,6 +277,9 @@ struct Module<'a> {
     /// The types compared whole, and those whose equality is not yet lowered.
     equalities: Vec<Ty>,
     compared: BTreeSet<Ty>,
+    /// The records whose drop `@d<t>` is used, and those not yet lowered.
+    drops: Vec<Ty>,
+    dropped: BTreeSet<Ty>,
     /// Each function value made, its id its position, and its type.
     fn_values: Vec<(FnRef, Ty)>,
     /// The function types called through a value.
@@ -341,6 +344,8 @@ impl<'a> Module<'a> {
             seen: BTreeSet::new(),
             equalities: vec![],
             compared: BTreeSet::new(),
+            drops: vec![],
+            dropped: BTreeSet::new(),
             fn_values: vec![],
             dispatched: BTreeSet::new(),
             sorts: BTreeSet::new(),
@@ -375,7 +380,7 @@ impl<'a> Module<'a> {
         ))
     }
 
-    /// Every function, equality, sort and dispatcher still wanted, then the constants and
+    /// Every function, equality, sort, dispatcher and drop still wanted, then the constants and
     /// declarations; `site` is where their own traps are reported.
     fn rest(&mut self, site: Site) -> Option<String> {
         let mut defines = String::new();
@@ -393,6 +398,9 @@ impl<'a> Module<'a> {
         }
         for t in std::mem::take(&mut self.dispatched) {
             defines += &self.dispatcher(t, site)?;
+        }
+        while let Some(t) = self.drops.pop() {
+            defines += &self.body(site, None).dropper(t);
         }
         let mut code = String::new();
         for (text, n) in &self.texts {
@@ -631,6 +639,7 @@ impl<'a> Module<'a> {
                 }
                 FnRef::Variant(_, alt) => {
                     b.store("i64", &alt.to_string(), "%out");
+                    b.block("%out", (*result)?, *alt);
                     let places = b.module.layouts.get((*result)?).alternatives[*alt].clone();
                     for (n, place) in places.iter().enumerate() {
                         b.fill("%out", place, &format!("%a{n}"));
@@ -838,11 +847,21 @@ impl Body<'_, '_> {
 
     /// The address of the field at `place` of the value at `at`, followed through its box.
     fn field_at(&mut self, place: &layout::Place, at: &str) -> String {
-        let at = self.offset(at, place.offset);
+        let at = self.place_at(place, at);
         match place.boxed {
             true => self.load("ptr", &at),
             false => at,
         }
+    }
+
+    /// The address of the words at `place` of the value at `at`, in its variant's block if there.
+    fn place_at(&mut self, place: &layout::Place, at: &str) -> String {
+        if !place.in_block {
+            return self.offset(at, place.offset);
+        }
+        let word = self.offset(at, BLOCK);
+        let block = self.load("ptr", &word);
+        self.offset(&block, place.offset)
     }
 
     fn field(&mut self, place: &layout::Place, at: &str) -> String {
@@ -1263,16 +1282,13 @@ impl Body<'_, '_> {
         let value = self.name("%h");
         self.hold(&value, t);
         if self.module.layouts.owns(t) {
-            let name = "@llvm.memset.p0.i64";
-            self.declare(&format!("declare void {name}(ptr, i8, i64, i1)"));
             let size = self.size(t);
-            self.line(format!(
-                "call void {name}(ptr {value}, i8 0, i64 {size}, i1 false)"
-            ));
+            self.zero(&value, size);
             self.temp(t, value.clone());
         }
         if let Some(alt) = alt {
             self.store("i64", &alt.to_string(), &value);
+            self.block(&value, t, alt);
         }
         let places = self.module.layouts.get(t).alternatives[alt.unwrap_or(0)].clone();
         for (field, place) in fields.iter().zip(places) {
@@ -1282,15 +1298,36 @@ impl Body<'_, '_> {
         Some(value)
     }
 
+    fn zero(&mut self, at: &str, bytes: usize) {
+        let name = "@llvm.memset.p0.i64";
+        self.declare(&format!("declare void {name}(ptr, i8, i64, i1)"));
+        self.line(format!(
+            "call void {name}(ptr {at}, i8 0, i64 {bytes}, i1 false)"
+        ));
+    }
+
     /// Stores `v`, owned, as the field at `place` of the value at `value`.
     fn fill(&mut self, value: &str, place: &layout::Place, v: &str) {
         let v = self.owned(place.ty, v);
         self.place_into(value, place, &v);
     }
 
+    /// A new zeroed block for the fields of variant `alt` of type `t` in the value at `value`,
+    /// when they lie in one.
+    fn block(&mut self, value: &str, t: Ty, alt: usize) {
+        let bytes = self.module.layouts.get(t).blocks[alt];
+        if bytes == 0 {
+            return;
+        }
+        let block = self.alloc(bytes);
+        self.zero(&block, bytes);
+        let word = self.offset(value, BLOCK);
+        self.store("ptr", &block, &word);
+    }
+
     /// Stores `v`, already owned, as the field at `place` of the value at `value`.
     fn place_into(&mut self, value: &str, place: &layout::Place, v: &str) {
-        let at = self.offset(value, place.offset);
+        let at = self.place_at(place, value);
         if place.boxed {
             let block = self.alloc(self.size(place.ty));
             self.put(place.ty, v, &block);

@@ -78,6 +78,14 @@ pub extern "C" fn paka_rt1_alloc(bytes: u64) -> *mut u8 {
     })
 }
 
+/// Frees the block at `block` of `bytes`; a fault on the ledger when it is not one live block of
+/// that size.
+// SAFETY: as for `paka_rt1_run`.
+#[unsafe(no_mangle)]
+pub extern "C" fn paka_rt1_free(block: *mut u8, bytes: u64) {
+    with((), |ctx| ctx.heap.release(block, bytes));
+}
+
 /// The dev runtime's String row `row` on words `a`, `b` and `c`, its result into `out`. On a
 /// trap, records its kind with the text `at`, its position, and returns 1.
 ///

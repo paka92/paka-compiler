@@ -173,8 +173,13 @@ impl Gen<'_> {
 
     /// Fills the slot at `at` of type `t` with zeros, so it can be dropped before it is built.
     pub(super) fn zeroed(&mut self, t: Ty, at: Value) {
+        self.clear(at, self.size(t));
+    }
+
+    /// Zeroes the `bytes` at `at`, whole words.
+    pub(super) fn clear(&mut self, at: Value, bytes: usize) {
         let zero = self.int_const(0);
-        for word in (0..self.size(t) as i32).step_by(8) {
+        for word in (0..bytes as i32).step_by(8) {
             self.b.ins().store(MemFlagsData::trusted(), zero, at, word);
         }
     }

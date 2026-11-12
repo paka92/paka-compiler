@@ -137,8 +137,12 @@ impl Module<'_> {
                     let label = labels
                         .as_ref()
                         .map_or(String::new(), |l| format!("{}=", l[i]));
-                    let boxed = if p.boxed { "*" } else { "" };
-                    format!(" {label}{}@{}{boxed}", p.ty, p.offset)
+                    let mark = match (p.boxed, p.in_block) {
+                        (true, _) => "*",
+                        (_, true) => "+",
+                        _ => "",
+                    };
+                    format!(" {label}{}@{}{mark}", p.ty, p.offset)
                 });
                 format!("{name}{}", places.collect::<String>())
             });
