@@ -1,0 +1,14 @@
+enum Msg { Start }
+
+fn update(msg: Msg) -> List<Effect<Msg>> {
+  let t = "a}"
+  let u = "}"
+  let n = 3
+  [Print(t), Print(u), Print("{n}} \{{n}}"), Print("{len(u)}"), Exit]
+}
+
+app core {
+  start: Start
+  update: update
+  grants: [Console]
+}

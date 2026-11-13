@@ -122,13 +122,8 @@ impl Runner {
         let Some(live) = &mut self.live else {
             return false;
         };
-        let tree = Value::object([
-            ("v", 1usize.into()),
-            ("id", 0usize.into()),
-            ("call", "look_tree".into()),
-        ]);
-        match live.ask(&tree, LOOK) {
-            Ok(reply) => reply.get("error").is_none(),
+        match live.ask(&Value::object([("shows", true.into())]), LOOK) {
+            Ok(reply) => reply.get("shows") == Some(&true.into()),
             Err(_) => {
                 self.end("");
                 false

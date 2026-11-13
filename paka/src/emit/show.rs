@@ -4,7 +4,7 @@
 
 use super::constructors;
 use crate::core_form::{Program, Ty, Type};
-use crate::layout::{Layouts, Place};
+use crate::layout::{BLOCK, Layouts, Place};
 use paka_rt::ops::{Float, Int, quoted};
 
 /// The `Effect` variants in declared order, each with the position of its first labelled field.
@@ -40,7 +40,11 @@ impl Shown<'_> {
         match p.types[t] {
             Type::Int => Int::new(self.word(at) as i64).to_string(),
             Type::Float => Float::from_bits(self.word(at)).show(),
-            Type::Bool => (self.word(at) != 0).to_string(),
+            Type::Bool => {
+                let mut byte = [0];
+                (self.read)(at, &mut byte);
+                (byte[0] != 0).to_string()
+            }
             Type::String => quoted(&self.text(at)),
             Type::Fn(..) => {
                 let id = self.word(at) as usize;
@@ -54,7 +58,7 @@ impl Shown<'_> {
             }
             Type::List(item) => {
                 let (items, len) = (self.word(at), self.word(at + 8));
-                let size = self.l.get(item).size as u64;
+                let size = self.l.get(item).item as u64;
                 let shown: Vec<_> = (0..len)
                     .map(|i| self.value(item, items + i * size))
                     .collect();
@@ -68,11 +72,20 @@ impl Shown<'_> {
                 }
                 let key = self.l.get(k).size as u64;
                 let entry = key + self.l.get(v).size as u64;
-                let shown: Vec<_> = (0..len)
+                // Entries are in the order they came; Ints order by number, Strings by bytes.
+                let mut entries: Vec<_> = (0..len)
                     .map(|i| {
                         let at = block + 16 + i * entry;
-                        format!("{}: {}", self.value(k, at), self.value(v, at + key))
+                        let order = match p.types[k] {
+                            Type::String => (0, self.text(at)),
+                            _ => (self.word(at) as i64, String::new()),
+                        };
+                        (order, at)
                     })
+                    .collect();
+                entries.sort_unstable();
+                let shown: Vec<_> = (entries.iter())
+                    .map(|&(_, at)| format!("{}: {}", self.value(k, at), self.value(v, at + key)))
                     .collect();
                 format!("[{}]", shown.join(", "))
             }
@@ -115,7 +128,10 @@ impl Shown<'_> {
     }
 
     fn field(&self, place: &Place, at: u64) -> String {
-        let at = at + place.offset as u64;
+        let at = match place.in_block {
+            true => self.word(at + BLOCK as u64),
+            false => at,
+        } + place.offset as u64;
         let at = if place.boxed { self.word(at) } else { at };
         self.value(place.ty, at)
     }

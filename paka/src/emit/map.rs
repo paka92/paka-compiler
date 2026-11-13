@@ -2,8 +2,9 @@
 //! word, like any held value; the runtime's `rt.map` finds, adds and removes entries.
 
 use super::values::slot;
-use super::{Gen, Refusal};
+use super::{Gen, Refusal, args};
 use crate::core_form::{Expr, Site, Ty, Type};
+use crate::layout::LIST;
 use cranelift_codegen::ir::condcodes::IntCC;
 use cranelift_codegen::ir::{InstBuilder, MemFlagsData, Value, types};
 use paka_rt::abi::dev::Rt;
@@ -58,6 +59,12 @@ impl Gen<'_> {
         self.b.ins().jump(done, &super::args(&[len]));
         self.b.switch_to_block(done);
         n
+    }
+
+    /// Puts the entries of the Map at `m` of type `t` in rising key order.
+    pub(super) fn order_entries(&mut self, t: Ty, m: Value) {
+        let zero = self.int_const(0);
+        self.rt_map_into(ORDER, 0, t, m, zero, zero);
     }
 
     /// The address of entry `i`'s key in the Map block `block` of type `t`; its value follows.
@@ -125,7 +132,39 @@ impl Gen<'_> {
         let site = self.site(site);
         let zero = self.int_const(0);
         self.rt_map_into(if keys { KEYS } else { VALUES }, site, t, m, zero, out);
+        let Type::List(item) = self.p.types[list] else {
+            unreachable!("keys and values make a List");
+        };
+        if self.stride(item) < self.size(item) {
+            self.pack(out);
+        }
         self.temp(list, out)
+    }
+
+    /// Packs the List at `xs`, whose Bools the runtime gave a word each, to a byte each. The cap
+    /// counts the block's bytes, so a free or a growth still sees the whole block.
+    fn pack(&mut self, xs: Value) {
+        let flags = MemFlagsData::trusted();
+        let [ptr, len] =
+            [LIST.ptr, LIST.len].map(|at| self.b.ins().load(types::I64, flags, xs, at as i32));
+        let cap = self.b.ins().imul_imm_s(len, 8);
+        self.b.ins().store(flags, cap, xs, LIST.cap as i32);
+        let [head, body, done] = [(); 3].map(|()| self.b.create_block());
+        let i = self.b.append_block_param(head, types::I64);
+        let zero = self.int_const(0);
+        self.b.ins().jump(head, &args(&[zero]));
+        self.b.switch_to_block(head);
+        let more = self.b.ins().icmp(IntCC::UnsignedLessThan, i, len);
+        self.b.ins().brif(more, body, &[], done, &[]);
+        self.b.switch_to_block(body);
+        let word = self.b.ins().imul_imm_s(i, 8);
+        let from = self.b.ins().iadd(ptr, word);
+        let byte = self.b.ins().load(types::I8, flags, from, 0);
+        let to = self.b.ins().iadd(ptr, i);
+        self.b.ins().store(flags, byte, to, 0);
+        let next = self.b.ins().iadd_imm_s(i, 1);
+        self.b.ins().jump(head, &args(&[next]));
+        self.b.switch_to_block(done);
     }
 
     /// `remove(&m, key)` on the Map at `m` of type `t`.

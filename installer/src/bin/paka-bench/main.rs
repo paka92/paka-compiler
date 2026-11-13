@@ -1,5 +1,6 @@
 //! `paka-bench [--gated] [DEFS [SAMPLES]]`: edit-to-running time (M4-44, docs/decisions/M4-01.md
-//! section 6).
+//! section 6). `paka-bench --visual|--window [ITEMS [SAMPLES]]` times edits to a running visual
+//! app instead; see `visual`.
 //! Writes a program of DEFS definitions, 5,000 by default, one file each, serves it with the `paka`
 //! beside this binary, and times edit requests that ask for a run, from request written to reply
 //! read. Prints the median and 95th percentile of each edit class over SAMPLES edits, 200 by
@@ -10,10 +11,14 @@ use paka_json::{Value, array, object, parse, quote};
 use std::io::{BufRead, BufReader, Write};
 use std::path::Path;
 use std::process::{Child, ChildStdin, ChildStdout, Command, ExitCode, Stdio};
+use std::sync::mpsc::{self, Receiver};
+use std::thread;
 use std::time::{Duration, Instant};
 use std::{env, fs, io, process};
 
-const DEFS: &str = include_str!("../../../bench/generators/defs.paka");
+mod visual;
+
+const DEFS: &str = include_str!("../../../../bench/generators/defs.paka");
 const RUNS: usize = 3;
 const GATE: Duration = Duration::from_millis(100);
 /// Definitions besides the fillers: two enums, three benchmark functions, `t`, `total`, `Msg`,
@@ -25,6 +30,9 @@ const SMALLEST: usize = FIXED + USERS + 1;
 
 fn main() -> ExitCode {
     let mut args: Vec<String> = env::args().skip(1).collect();
+    if let Some(window) = args.first().and_then(|a| visual::mode(a)) {
+        return visual::main(&args[1..], window);
+    }
     let gated = args.first().is_some_and(|a| a == "--gated");
     args.drain(..usize::from(gated));
     let arg = |at: usize, default: usize| args.get(at).map_or(Ok(default), |a| a.parse());
@@ -32,9 +40,18 @@ fn main() -> ExitCode {
         eprintln!("usage: paka-bench [--gated] [DEFS [SAMPLES]], DEFS at least {SMALLEST}");
         return ExitCode::from(2);
     };
-    let dir = env::temp_dir().join(format!("paka-bench-{}", process::id()));
+    let dir = scratch();
     let result = bench(&dir, size, samples, gated);
     let _ = fs::remove_dir_all(&dir);
+    exit(result)
+}
+
+/// The directory a run writes its program to.
+fn scratch() -> std::path::PathBuf {
+    env::temp_dir().join(format!("paka-bench-{}", process::id()))
+}
+
+fn exit(result: io::Result<bool>) -> ExitCode {
     match result {
         Ok(true) => ExitCode::SUCCESS,
         Ok(false) => ExitCode::FAILURE,
@@ -49,7 +66,7 @@ fn main() -> ExitCode {
 fn bench(dir: &Path, size: usize, samples: usize, gated: bool) -> io::Result<bool> {
     write_program(dir, size)?;
     let paka = env::current_exe()?.with_file_name("paka");
-    let mut server = Server::start(&paka, dir)?;
+    let mut server = Server::start(&paka, dir, false)?;
     server.call([
         ("call", quote("run")),
         ("app", quote("bench")),
@@ -110,6 +127,12 @@ const CLASSES: [(&str, bool); 6] = [
     ("delete", false),
 ];
 
+/// The median and 95th percentile of `sorted`.
+fn percentiles(sorted: &[Duration]) -> (Duration, Duration) {
+    let p95 = sorted[(sorted.len() * 95).div_ceil(100) - 1];
+    (sorted[sorted.len() / 2], p95)
+}
+
 /// Prints each timed class; whether every gated one passes.
 fn report(size: usize, samples: usize, times: &[Vec<Vec<Duration>>]) -> bool {
     let mut passed = true;
@@ -129,7 +152,7 @@ fn report(size: usize, samples: usize, times: &[Vec<Vec<Duration>>]) -> bool {
         }
         let worst =
             |at: fn(&[Duration]) -> Duration| runs.iter().map(|r| at(r)).max().unwrap_or_default();
-        let p95 = worst(|r| r[(r.len() * 95).div_ceil(100) - 1]);
+        let p95 = worst(|r| percentiles(r).1);
         let gate = match gated {
             false => "reported",
             true if p95 < GATE => "pass",
@@ -138,7 +161,7 @@ fn report(size: usize, samples: usize, times: &[Vec<Vec<Duration>>]) -> bool {
         passed &= gate != "FAIL";
         println!(
             "{label:<12} {:>10} {:>10}  {gate}",
-            ms(worst(|r| r[r.len() / 2])),
+            ms(worst(|r| percentiles(r).0)),
             ms(p95)
         );
     }
@@ -257,23 +280,45 @@ struct Server {
     input: ChildStdin,
     output: BufReader<ChildStdout>,
     id: u64,
+    /// With a window: each line the server and its runner write to standard error, and when it
+    /// was read.
+    log: Option<Receiver<(Instant, String)>>,
 }
 
 impl Server {
-    fn start(paka: &Path, dir: &Path) -> io::Result<Server> {
-        let mut child = Command::new(paka)
+    /// Serves `dir`; a visual app opens a window only when `window` is set, which also logs
+    /// each presented frame.
+    fn start(paka: &Path, dir: &Path, window: bool) -> io::Result<Server> {
+        let mut command = Command::new(paka);
+        command
             .arg("serve")
             .arg(dir)
             .current_dir(dir)
             .stdin(Stdio::piped())
-            .stdout(Stdio::piped())
-            .spawn()?;
+            .stdout(Stdio::piped());
+        match window {
+            true => command.env("PAKA_FRAME_LOG", "1").stderr(Stdio::piped()),
+            false => command.env_remove("WAYLAND_DISPLAY"),
+        };
+        let mut child = command.spawn()?;
         let (input, output) = (child.stdin.take().unwrap(), child.stdout.take().unwrap());
+        let log = child.stderr.take().map(|stderr| {
+            let (send, log) = mpsc::channel();
+            thread::spawn(move || {
+                for line in BufReader::new(stderr).lines().map_while(Result::ok) {
+                    if send.send((Instant::now(), line)).is_err() {
+                        break;
+                    }
+                }
+            });
+            log
+        });
         Ok(Server {
             child,
             input,
             output: BufReader::new(output),
             id: 0,
+            log,
         })
     }
 

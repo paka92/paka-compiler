@@ -94,3 +94,10 @@ example rows_keep_their_ids {
   ui_click(&ui, "2/#0")
   ui_text(ui, "1/#0") == "[ ]" && ui_text(ui, "2/#0") == "[x]" && ui_text(ui, "2/#1") == "eggs"
 }
+
+example add_then_toggle {
+  var s = Todos { draft: "milk" }
+  update(&s, Add)
+  update(&s, Toggle(1))
+  s.draft == "" && s.items[0].title == "milk" && s.items[0].done
+}

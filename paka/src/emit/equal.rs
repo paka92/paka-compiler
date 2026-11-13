@@ -101,7 +101,7 @@ impl Gen<'_> {
         })
     }
 
-    /// Two Maps: the same length, then each pair of entries, in key order, until one differs.
+    /// Two Maps: the same length, then each pair of entries, put in key order, until one differs.
     fn equal_entries(
         &mut self,
         t: Ty,
@@ -112,6 +112,8 @@ impl Gen<'_> {
         let Type::Map(k, v) = self.p.types[t] else {
             unreachable!("Map equality is of Maps");
         };
+        self.order_entries(t, x);
+        self.order_entries(t, y);
         let (n, m) = (self.map_len(x), self.map_len(y));
         let flags = MemFlagsData::trusted();
         let (x, y) = (
@@ -228,7 +230,7 @@ impl Gen<'_> {
             .b
             .ins()
             .load(types::I64, MemFlagsData::trusted(), xs, 0);
-        let size = self.size(item) as i64;
+        let size = self.stride(item) as i64;
         let offset = self.b.ins().imul_imm_s(i, size);
         self.b.ins().iadd(items, offset)
     }

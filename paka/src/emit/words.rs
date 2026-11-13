@@ -83,7 +83,7 @@ impl Gen<'_> {
         ];
         let outside = (self.b.ins()).icmp(past[usize::from(self.plant == 4)], i, len);
         self.check(outside, rt::OUT_OF_BOUNDS, site, &[i, len]);
-        let size = self.size(item);
+        let size = self.stride(item);
         let ptr = self.b.ins().load(types::I64, flags, at, PTR);
         let skip = self.b.ins().imul_imm_s(i, size as i64);
         self.b.ins().iadd(ptr, skip)
@@ -98,7 +98,7 @@ impl Gen<'_> {
         let past = self.b.ins().icmp(IntCC::UnsignedGreaterThan, b, len);
         let outside = self.b.ins().bor(reversed, past);
         self.check(outside, rt::OUT_OF_BOUNDS, site, &[a, b, len]);
-        let size = self.size(item);
+        let size = self.stride(item);
         let ptr = self.b.ins().load(types::I64, flags, at, PTR);
         let skip = self.b.ins().imul_imm_s(a, size as i64);
         let from = self.b.ins().iadd(ptr, skip);
@@ -116,7 +116,7 @@ impl Gen<'_> {
         let Type::List(item) = self.p.types[t] else {
             unreachable!("a List literal is a List");
         };
-        let size = self.size(item);
+        let size = self.stride(item);
         let out = slot(&mut self.b, LIST.size);
         let given = [0, 0, items.len(), size].map(|n| self.int_const(n as i64));
         // A literal has no site of its own; only a full heap can trap here.
@@ -139,7 +139,7 @@ impl Gen<'_> {
         let Type::List(item) = self.p.types[ty(xs)] else {
             unreachable!("a List walk is over a List");
         };
-        let size = self.size(item);
+        let size = self.stride(item);
         let at = self.borrowed(xs)?;
         let flags = MemFlagsData::trusted();
         let ptr = self.b.ins().load(types::I64, flags, at, PTR);

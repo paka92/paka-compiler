@@ -35,7 +35,8 @@ app wc {
 
 A program is one `.paka` file, or every `.paka` file directly in one directory. It holds
 definitions in any order: `type`, `enum`, `fn`, `example` and at most one `app`. Definition names,
-variant names and built-in names share one pool; each name exists once (`duplicate-name`).
+variant names and built-in names share one pool; each name exists once (`duplicate-name`). An app
+may be named as a built-in is: `app split`.
 
 Paka has no user generics, interfaces, methods, lambdas, closures, tuples, null, exceptions,
 globals, references or shared data. Functions cannot see anything but their parameters.
@@ -51,8 +52,7 @@ globals, references or shared data. Functions cannot see anything but their para
 - A line break ends a statement. A line continues only inside an open `(` or `[`, after a line
   ending in `,` `=` `->` `=>` `|` `{` or a two-sided operator, or before a line starting with
   `}` `)` `]`. So: no `;` after a statement, `else` stands on the line of the `}` before it, and
-  `{ x }` may stand on one line. Fields and variants are separated by `,`, on one line or on
-  many; a line break alone does not separate them.
+  `{ x }` may stand on one line. Fields and variants are separated by `,` or by a line break.
 - No trailing comma anywhere.
 - Nesting is at most 64 levels: each open `(` `[` `{`, type `<` and string `{`, and an `if` or
   `match` in the condition or subject of another, and a `fn` type as the result of another. A
@@ -195,8 +195,7 @@ Both sides of an operator have the same type; nothing converts by itself (`to_fl
   `divide_by_zero`. Wrapping and bit operations are functions (section 9).
 - Float arithmetic never traps. NaN equals nothing, itself included.
 - String escapes, exactly these seven, no `\u{hex}`: `\n` `\r` `\t` `\\` `\"` `\{` `\}`. A
-  literal `{` or `}` is always written `\{` or `\}`; a bare `}` is the error
-  `unexpected-character`.
+  literal `{` is written `\{`. A lone `}` and a `{` right before the closing quote are text: `"}"`, `"{"`.
 - `"{expr}"` puts an Int, Bool or String into the text. The expression holds no `"`, `{` or `}`;
   bind anything larger to a `let` first. A Float is written `"{fixed(x, digits: 2)}"`. No other
   type becomes text by itself: build the text from its parts.

@@ -1,0 +1,22 @@
+enum Msg { Start }
+
+fn ms(m: Map<String, Int>) -> String {
+  var parts: List<String> = []
+  for k in keys(m) { append(&parts, "{k}={unwrap_or(get(m, k), -1)}") }
+  "[" + join(parts, ",") + "]"
+}
+
+fn update(msg: Msg) -> List<Effect<Msg>> {
+  var m: Map<String, Int> = ["here": 1]
+  for w in ["here", "gone"] {
+    let c = unwrap_or(get(m, w), 0)
+    m[w] += c
+  }
+  [Print(ms(m)), Exit]
+}
+
+app builtins {
+  start: Start
+  update: update
+  grants: [Console]
+}

@@ -97,7 +97,10 @@ pub unsafe extern "sysv64" fn rt_text(
     let int = |w: u64| Int::new(w as i64);
     if (WORDS..=LINES).contains(&row) {
         let sep = (row == SPLIT).then(|| text(b));
-        return pieces(ctx, row, &text(a), sep.as_ref(), site, out.cast());
+        // SAFETY: the caller vouches `a` is a String's words.
+        let w = unsafe { words(a) };
+        let ascii = w.chars == w.bytes;
+        return pieces(ctx, row, str(a), ascii, sep.as_ref(), site, out.cast());
     }
     if row == JOIN || row == JOIN_ALL {
         let pair = [a, b];
@@ -113,7 +116,7 @@ pub unsafe extern "sysv64" fn rt_text(
     }
     let word = |b: bool| Ok(Made::Word(b.into()));
     let made = match row {
-        COMPARE => Ok(Made::Word(text(a).cmp(&text(b)) as i64 as u64)),
+        COMPARE => Ok(Made::Word(str(a).cmp(str(b)) as i64 as u64)),
         INDEX => text(a).index(int(b)).map(Made::Text),
         SLICE => text(a).slice(int(b), int(c)).map(Made::Text),
         CODE_AT => (text(a).code_at(int(b))).map(|n| Made::Word(raw(n) as u64)),
@@ -124,8 +127,8 @@ pub unsafe extern "sysv64" fn rt_text(
         } else {
             "true"
         }))),
-        MIN => Ok(Made::Text(text(a).min(text(b)))),
-        MAX => Ok(Made::Text(text(a).max(text(b)))),
+        MIN => Ok(Made::Text(str(a).min(str(b)).into())),
+        MAX => Ok(Made::Text(str(a).max(str(b)).into())),
         CONTAINS => word(str(a).contains(str(b))),
         STARTS_WITH => word(str(a).starts_with(str(b))),
         ENDS_WITH => word(str(a).ends_with(str(b))),
@@ -202,25 +205,33 @@ fn operands(row: u64, a: u64, b: u64, c: u64) -> [u64; 3] {
     }
 }
 
-/// The List of Strings row `row` makes of `t`, by `sep` for `split`, into `out`.
+/// The List of Strings row `row` makes of `t`, by `sep` for `split`, into `out`; `ascii` when
+/// each of `t`'s bytes is a code point.
 fn pieces(
     ctx: &mut Context,
     row: u64,
-    t: &Text,
+    t: &str,
+    ascii: bool,
     sep: Option<&Text>,
     site: u64,
     out: *mut ListWords,
 ) -> i32 {
-    let parts = match row {
-        WORDS => Ok(t.words().collect()),
-        SPLIT => t.split(sep.expect("a separator")),
-        CHARS => Ok(t.chars().collect()),
-        _ => Ok(t.lines()),
+    let list = match row {
+        WORDS => list_of(ctx, t.split(white).filter(|w| !w.is_empty()), ascii),
+        _ => {
+            let t = Text::from(t);
+            let parts = match row {
+                SPLIT => t.split(sep.expect("a separator")),
+                CHARS => Ok(t.chars().collect()),
+                _ => Ok(t.lines()),
+            };
+            let Ok(parts) = parts else {
+                return fail(ctx, MEMORY, site, [0; 3]);
+            };
+            list_of(ctx, parts.iter().copied(), ascii)
+        }
     };
-    let Ok(parts) = parts else {
-        return fail(ctx, MEMORY, site, [0; 3]);
-    };
-    let Some(list) = list_of(ctx, &parts) else {
+    let Some(list) = list else {
         return fail(ctx, MEMORY, site, [0; 3]);
     };
     // SAFETY: `out` has room for a List's words.
@@ -282,16 +293,26 @@ pub unsafe extern "sysv64" fn rt_list(
     0
 }
 
-/// A new List of Strings holding `parts`; `None`, with nothing left made, when the heap refuses.
-fn list_of(ctx: &mut Context, parts: &[&str]) -> Option<ListWords> {
+/// A new List of Strings holding `parts`, each a code point per byte when `ascii`; `None`, with
+/// nothing left made, when the heap refuses.
+fn list_of<'a>(
+    ctx: &mut Context,
+    parts: impl Iterator<Item = &'a str> + Clone,
+    ascii: bool,
+) -> Option<ListWords> {
     const SIZE: usize = size_of::<TextWords>();
-    let count = parts.len();
+    let count = parts.clone().count();
     let block = match count {
         0 => ptr::null_mut(),
         _ => ctx.heap.alloc((count * SIZE) as u64)?,
     };
-    for (i, part) in parts.iter().enumerate() {
-        let Some(made) = new_text(ctx, part) else {
+    for (i, part) in parts.enumerate() {
+        let chars = if ascii {
+            part.len()
+        } else {
+            part.chars().count()
+        };
+        let Some(made) = new_text_of(ctx, [part].into_iter(), chars as u64) else {
             // SAFETY: items `..i` were written below; each owns its block.
             let made = unsafe { slice::from_raw_parts(block.cast::<TextWords>(), i) };
             for m in made.iter().filter(|m| m.cap != 0) {

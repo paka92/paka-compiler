@@ -4737,3 +4737,9 @@ example    count_words_two_lines  pass
 - M7-16: The notices file is written by `paka release` into the artefact directory and listed in the release record.
 - M7-15: Release output includes the host executables beside the binary, and the runtime looks for them there.
 - M7-07: The gate must be callable for one program from inside `paka release`, without a base tree, as well as from CI.
+
+## Owner rulings of 2026-11-12
+
+- M6-21: Plants 15 (each drop made twice) and 16 (a String-keyed Map row laid out as an Int-keyed one) stand in for the reference-count and handle kinds, which do not exist (M2-10). Not chosen: more plants for other ownership or layout faults · dropping the stand-in claim.
+- M6-33: A new task moves a local at its last use in two narrow forms, `x = V(x, ...)` and a `let` read once at its last use in its own block, in the owners pass both native back ends share. It carries the cost side M4-33 left out, after expr_parse ran 39 times behind Rust in M6-32. Not chosen: liveness analysis for every local (more gain, more paths where a wrong drop could hide) · leaving the published figure as it is.
+- M7-10, M7-12, M6-23: The owner ended the sign-off steps. The repository's approvals store and the `gate` workflow are removed; `paka release` without a store ships unsigned with every example run against the binary; the test tying the overlap rules to a signed hash is removed. `paka approve`, `paka gate` and the store stay as optional tools for a program's owner. Tasks no longer wait for the owner's approval. Not chosen: removing the approval tools · keeping the repository's own store.

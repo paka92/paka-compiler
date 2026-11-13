@@ -5,9 +5,8 @@ A programming language for code written by AI agents.
 People describe what they want and decide what a program may do; an agent writes and reads the
 code. The design and its reasons are in the [genesis paper](GENESIS.md).
 
-**Status:** the language, its interpreter, dev mode and the live GUI are built; milestones 1 to 5
-have passed their exit checks. Release mode (milestone 6) and the evidence gates (milestone 7) are
-built and wait for the owner's sign-off.
+**Status:** the language, its interpreter, dev mode, the live GUI, release mode and the evidence
+gates are built; milestones 1 to 7 have passed their exit checks.
 
 ## What works
 
@@ -16,7 +15,8 @@ built and wait for the owner's sign-off.
 - `paka check`: parses and type-checks the full language of the reference.
 - `paka run`: runs headless programs in an interpreter.
 - `paka build`: compiles a program to a native release binary through LLVM IR and `clang`; a
-  visual app built this way runs without a window so far.
+  visual app built this way opens its window too.
+  Measured speed beside Rust and C++: [`docs/results/M6-32.md`](docs/results/M6-32.md).
 - `paka examples`: runs a program's in-file examples.
 - `paka serve`: the agent tool interface, JSON lines on standard input and output; requests are
   checked and dispatched. `find` lists definitions by name, user, kind, state or type shape;
@@ -26,9 +26,12 @@ built and wait for the owner's sign-off.
   reads a visual app's element tree, takes a screenshot and sends clicks and keys.
 - `paka approve`: the owner reviews and approves examples and grant changes.
 - `paka gate`: refuses a merged tree whose approvals differ or whose human-owned examples fail.
-- `paka release`: gates one program, builds it once, runs its human-owned examples against the
-  binary and writes the binary, its hosts and a `RELEASE` file of hashes to a new directory.
+- `paka release`: builds one program once, runs its examples against the binary and writes the
+  binary, its hosts and a `RELEASE` file of hashes to a new directory.
   A release that was killed is not checked: remove its directory and run it again.
+  With an approvals store at or above the program it also gates it and runs only the human-owned
+  examples; without one the release is unsigned. The store, `paka approve` and `paka gate` are
+  optional: this repository does not use them.
 
 ```paka
 enum Msg { Start }

@@ -21,7 +21,7 @@ impl Body<'_, '_> {
 
     /// The address of item `i` of `ptr`'s items, each of type `item`.
     pub(super) fn nth(&mut self, ptr: &str, item: Ty, i: &str) -> String {
-        let size = self.size(item);
+        let size = self.stride(item);
         self.op(format!("getelementptr [{size} x i8], ptr {ptr}, i64 {i}"))
     }
 
@@ -29,7 +29,7 @@ impl Body<'_, '_> {
     /// evaluated. The length counts the items stored, so an item that leaves drops only those.
     pub(super) fn list(&mut self, t: Ty, items: &[Expr]) -> Option<String> {
         let item = self.item_ty(t);
-        let ptr = match items.len() * self.size(item) {
+        let ptr = match items.len() * self.stride(item) {
             0 => "null".into(),
             bytes => self.alloc(bytes),
         };

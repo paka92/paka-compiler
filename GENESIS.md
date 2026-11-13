@@ -2,7 +2,7 @@
 
 **A programming language for code written by AI agents.**
 
-Genesis paper · draft 1 · 15 October 2026 · Status: language, interpreter, dev mode and live GUI built; release mode next
+Genesis paper · draft 1 · 15 October 2026 · Status: language, interpreter, dev mode, live GUI and release mode built
 
 ---
 
@@ -21,7 +21,7 @@ Paka stands on six pillars:
 
 The first three are what Paka must deliver. The last three make them possible and safe to rely on.
 
-Built so far: the language reference, a parser, a type checker, an interpreter, dev mode and the live GUI on Linux. Release mode is being built and its speed is not yet published. Every other number about Paka is a target or an estimate until it is measured. Figures cited from other work are the sources' own.
+Built so far: the language reference, a parser, a type checker, an interpreter, dev mode, the live GUI on Linux and release mode. Its measured speed beside Rust and C++ is in [docs/results/M6-32.md](docs/results/M6-32.md). Every other number about Paka is a target or an estimate until it is measured. Figures cited from other work are the sources' own.
 
 **First result.** One model wrote the same tasks in Paka, Rust and TypeScript. With no Paka code in its training, it wrote Paka nearly as correctly as Rust, at 2.3 times the output tokens. Cutting that cost is the aim of the next stage ([section 9](#9-the-first-measurement)).
 
@@ -90,7 +90,7 @@ Three terms are used throughout:
 - Every value has one owner. A call may not pass the same data as `inout` and through another argument, and this is checked at the call site. The compiler therefore knows that `inout` data overlaps nothing else, the same fact Rust gives its optimizer, so loops need no run-time overlap checks. The check is conservative: it refuses some calls that would be safe.
 - A function can borrow a caller's value, or part of it such as an array slice, for the length of the call. The borrow cannot be stored or returned, so nothing is copied and no lifetime is written down.
 
-**Where it holds.** These are estimates for single-threaded code. None is measured.
+**Where it holds.** These were the estimates for single-threaded code; the measured figures are in [docs/results/M6-32.md](docs/results/M6-32.md).
 
 | Code | Expectation in release mode |
 |---|---|

@@ -9,4 +9,5 @@ hand.
   (M5-01.5, M5-02.5, M5-04); only the five elements, the done mark a Button.
 - `app todo`: docs/decisions/M5-01.md section 1.6.
 - `add_one_item` is the example in docs/decisions/M5-06.md; `tree_after_add` checks the tree text
-  that record gives for it. The other examples are added for this sample.
+  that record gives for it. The other examples are added for this sample; `add_then_toggle`, the
+  one function example, calls `update` directly so M7-11 has one to run in the release binary.

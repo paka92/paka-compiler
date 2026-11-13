@@ -16,6 +16,7 @@ type A { b: B, n: Int }
 type B { a: Option<A>, s: String }
 type Wrap { inner: Named, r: Result<String, Int> }
 enum Msg { Start(path: String), Done }
+type Flags { on: List<Bool>, grid: List<List<Bool>> }
 fn effects(e: List<Effect<Msg>>) {}
 ";
 
@@ -58,11 +59,16 @@ fn name(p: &Program, ty: Ty) -> String {
     }
 }
 
-/// `size [tag] [field@offset ...] ... owns [entry@offset ...] ...`, a boxed field marked `^`.
+/// `size [tag] [field@offset ...] ... owns [entry@offset ...] ...`, a boxed field marked `^`
+/// and one in its variant's block `+`.
 fn show(p: &Program, l: &Layout) -> String {
     let list = |items: Vec<String>| format!("[{}]", items.join(" "));
     let place = |at: &Place| {
-        let mark = if at.boxed { "^" } else { "" };
+        let mark = match (at.boxed, at.in_block) {
+            (true, _) => "^",
+            (_, true) => "+",
+            _ => "",
+        };
         format!("{mark}{}@{}", name(p, at.ty), at.offset)
     };
     let entry = |e: &Entry| {
@@ -71,6 +77,7 @@ fn show(p: &Program, l: &Layout) -> String {
             Owned::List(t) => format!("List({})", name(p, t)),
             Owned::Map(k, v) => format!("Map({}, {})", name(p, k), name(p, v)),
             Owned::Box(t) => format!("Box({})", name(p, t)),
+            Owned::Block(t, alt) => format!("Block({}, {alt}, {})", name(p, t), l.blocks[alt]),
             Owned::Value(t) => format!("Value({})", name(p, t)),
         };
         format!("{kind}@{}", e.offset)
@@ -151,10 +158,10 @@ fn a_field_that_reaches_its_own_type_by_value_is_boxed() {
         ("Tree", "32 [Int@0 List<Tree>@8] owns [List(Tree)@8]"),
         (
             "Expr",
-            "24 tag [Int@8] [^Expr@8 ^Expr@16] [^Option<Expr>@8] \
-             owns [] [Box(Expr)@8 Box(Expr)@16] [Box(Option<Expr>)@8]",
+            "16 tag [Int@8] [+Expr@0 +Expr@16] [+Option<Expr>@0] \
+             owns [] [Block(Expr, 1, 32)@8] [Block(Expr, 2, 24)@8]",
         ),
-        ("Option<Expr>", "32 tag [Expr@8] [] owns [Value(Expr)@8] []"),
+        ("Option<Expr>", "24 tag [Expr@8] [] owns [Value(Expr)@8] []"),
         ("A", "16 [^B@0 Int@8] owns [Box(B)@0]"),
         (
             "B",
@@ -181,4 +188,49 @@ fn runtime_headers_and_alignment_match_the_hand_layout() {
             name(&p, t)
         );
     }
+}
+
+#[test]
+fn a_bool_list_item_is_one_byte() {
+    let source = Source::file("main.paka", FIXTURE.into());
+    let (mut p, ..) = crate::check("main.paka", &source).unwrap();
+    let layouts = Layouts::new(&mut p);
+    let specs = layouts.specs();
+    let blocks =
+        (0..p.types.len()).map(|t| layouts.get(t).blocks.iter().filter(|&&b| b != 0).count());
+    assert_eq!(specs.len(), p.types.len() + blocks.sum::<usize>());
+    for (t, spec) in specs.iter().take(p.types.len()).enumerate() {
+        let l = layouts.get(t);
+        let want = if p.types[t] == Type::Bool { 1 } else { l.size };
+        assert_eq!(l.item, want, "{}", name(&p, t));
+        if let Type::List(item) = p.types[t] {
+            let part = &spec.as_ref().unwrap().alternatives[0][0].1;
+            let size = layouts.get(item).item as u64;
+            let ok = matches!(part, Part::List { size: s, .. } if *s == size);
+            assert!(ok, "{}", name(&p, t));
+        }
+    }
+    shown(&[(
+        "Flags",
+        "48 [List<Bool>@0 List<List<Bool>>@24] owns [List(Bool)@0 List(List<Bool>)@24]",
+    )]);
+}
+
+#[test]
+fn a_variant_block_has_its_record_after_the_types() {
+    let source = Source::file("main.paka", FIXTURE.into());
+    let (mut p, ..) = crate::check("main.paka", &source).unwrap();
+    let layouts = Layouts::new(&mut p);
+    let specs = layouts.specs();
+    let expr = (0..p.types.len()).find(|&t| name(&p, t) == "Expr").unwrap();
+    let alt = &specs[expr].as_ref().unwrap().alternatives[1];
+    let &[(8, Part::Box { item, size: 32 })] = &alt[..] else {
+        panic!("Add's block")
+    };
+    let block = specs[item].as_ref().unwrap();
+    assert!(item >= p.types.len() && !block.tagged && block.size == 32);
+    let fields: Vec<_> = (block.alternatives[0].iter())
+        .map(|(at, part)| (*at, matches!(part, Part::Value(t) if *t == expr)))
+        .collect();
+    assert_eq!(fields, [(0, true), (16, true)]);
 }
