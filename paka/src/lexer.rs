@@ -113,7 +113,7 @@ impl<'a> Token<'a> {
                     run.push(unescape(text[i + 1]));
                     i += 2;
                 }
-                b'{' => {
+                b'{' if i + 1 < text.len() => {
                     let end = i + text[i..].iter().position(|&b| b == b'}').unwrap();
                     if !run.is_empty() {
                         parts.push(Part::Text(std::mem::take(&mut run)));
@@ -493,6 +493,11 @@ impl<'a> Lexer<'a> {
     }
 
     /// Scans a string at the opening quote (M2-03 section 2.7): the first problem found wins.
+    /// A `"` at `i` that no name follows: `"{"a"}"` is a string inside `{ }`, not three tokens.
+    fn closes_string(&self, i: usize) -> bool {
+        self.src.get(i) == Some(&b'"') && !self.src.get(i + 1).is_some_and(|&b| name_byte(b))
+    }
+
     fn string(&mut self) -> Result<Token<'a>, Diagnostic> {
         let open = self.at;
         let mut i = open + 1;
@@ -514,12 +519,12 @@ impl<'a> Lexer<'a> {
                     }
                     i += 2;
                 }
+                // A `}` that closes nothing and a `{` at the closing quote are text.
+                (b'}', None) => i += 1,
+                (b'{', None) if self.closes_string(i + 1) => i += 1,
                 (b'{', None) => {
                     interpolation = Some(i + 1);
                     i += 1;
-                }
-                (b'}', None) => {
-                    return Err(self.fail(i, 1, "unexpected-character", r"write \}"));
                 }
                 (b'}', Some(from)) if from == i => {
                     return Err(self.fail(i, 1, "unexpected-token", "expected an expression"));
@@ -774,6 +779,10 @@ mod tests {
         assert_eq!(parts(r#""a{x}b""#), [text("a"), expr(3, b"x"), text("b")]);
         assert_eq!(parts(r#""{a}{b + 1}""#), [expr(2, b"a"), expr(5, b"b + 1")]);
         assert_eq!(parts(r#""\{x\}""#), [text("{x}")]);
+        // A `}` that closes nothing and a `{` at the closing quote are text.
+        assert_eq!(parts(r#""}""#), [text("}")]);
+        assert_eq!(parts(r#""{""#), [text("{")]);
+        assert_eq!(parts(r#""{x}} a} {""#), [expr(2, b"x"), text("} a} {")]);
         assert_eq!(parts(r#""a\n\r\t\\\"\{\}""#), [text("a\n\r\t\\\"{}")]);
         assert_eq!(
             parts("\"caf\u{e9} {n}\""),
@@ -1046,7 +1055,6 @@ mod tests {
         };
         unterminated("a \"b", "1:3");
         unterminated("a \"b\nc\"", "1:3");
-        unterminated("a \"{\"", "1:3");
         unterminated("a \"{x", "1:3");
         unterminated("a \"{x\ny}\"", "1:3");
         unterminated("a \"{ \"", "1:3");
@@ -1058,21 +1066,8 @@ mod tests {
         assert_eq!(code("a \"b\\"), "main.paka:1:5: error[bad-escape]");
         assert_eq!(code("a \"b\\\nc\""), "main.paka:1:5: error[bad-escape]");
         assert_eq!(
-            code("a \"b}\""),
-            "main.paka:1:5: error[unexpected-character]"
-        );
-        assert_eq!(
-            code("a \"{x}}\""),
-            "main.paka:1:7: error[unexpected-character]"
-        );
-        // M2-03 section 1.10: a bare `}` is an error even after an escaped `\{`.
-        assert_eq!(
-            code(r#"a "\{x}""#),
-            "main.paka:1:7: error[unexpected-character]"
-        );
-        assert_eq!(
-            code("a \"{\"x\"}\""),
-            "main.paka:1:5: error[unexpected-character]"
+            code("a \"{x\"y\"}\""),
+            "main.paka:1:6: error[unexpected-character]"
         );
         assert_eq!(
             code("a \"{{x}\""),
@@ -1085,10 +1080,6 @@ mod tests {
         );
         // The first problem in scan order wins.
         assert_eq!(code("\"\\q}\""), "main.paka:1:2: error[bad-escape]");
-        assert_eq!(
-            code("\"}\\q\""),
-            "main.paka:1:2: error[unexpected-character]"
-        );
         assert_eq!(code("\"{}\\q\""), "main.paka:1:3: error[unexpected-token]");
         assert_eq!(code("\"\t\\q\""), "main.paka:1:2: error[invalid-byte]");
     }
@@ -1096,8 +1087,7 @@ mod tests {
     #[test]
     fn error_messages() {
         assert_eq!(message("\"\\q\""), r#"escapes are \n \r \t \\ \" \{ \}"#);
-        assert_eq!(message("\"}\""), r"write \}");
-        assert_eq!(message("\"{\"x}\""), "no string literal inside { }");
+        assert_eq!(message("\"{x\"y}\""), "no string literal inside { }");
         assert_eq!(message("\"{{x}\""), "no { inside { }");
         assert_eq!(message("\"{}\""), "expected an expression");
         assert_eq!(message("\"x"), "the string has no closing quote");

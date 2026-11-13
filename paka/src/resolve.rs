@@ -304,7 +304,11 @@ impl<'a> Resolver<'a> {
             Def::Example { .. } | Def::App { .. } => Kind::Other,
             Def::Foreign { .. } => Kind::Grant,
         };
-        self.declare(name.text, name.at, kind, Binding::Def(i))?;
+        // An app is never called, so its name may be a built-in's, which keeps the name.
+        let builtin = matches!(self.pool.get(name.text), Some((_, Binding::Builtin(_))));
+        if !(builtin && matches!(def, Def::App { .. })) {
+            self.declare(name.text, name.at, kind, Binding::Def(i))?;
+        }
         let variants: Vec<_> = match def {
             Def::Enum { variants, .. } => variants.iter().map(|v| &v.name).collect(),
             Def::Foreign { lines, .. } => (lines.iter())

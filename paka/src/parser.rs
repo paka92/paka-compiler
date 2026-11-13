@@ -420,6 +420,19 @@ impl<'a> Parser<'a> {
         Ok(items)
     }
 
+    /// `items` up to `}`, where a line end splits two items as a comma does.
+    fn rows<T>(&mut self, mut item: impl FnMut(&mut Self) -> Parse<T>) -> Parse<Vec<T>> {
+        let mut rows = vec![];
+        self.items(&[Kind::RBrace], |p| {
+            rows.push(item(p)?);
+            while p.accept(Kind::Newline)? && p.cur.kind != Kind::RBrace {
+                rows.push(item(p)?);
+            }
+            Ok(())
+        })?;
+        Ok(rows)
+    }
+
     /// `items` with at least one item.
     fn items1<T>(
         &mut self,
@@ -511,7 +524,7 @@ impl<'a> Parser<'a> {
         let name = self.name(Kind::Upper, "type")?;
         self.type_params()?;
         let fields = self.between(Kind::LBrace, Kind::RBrace, |p| {
-            p.items(&[Kind::RBrace], |p| p.field_def(true))
+            p.rows(|p| p.field_def(true))
         })?;
         Ok(Def::Type { name, fields })
     }
@@ -533,7 +546,10 @@ impl<'a> Parser<'a> {
         let name = self.name(Kind::Upper, "type")?;
         self.type_params()?;
         let variants = self.between(Kind::LBrace, Kind::RBrace, |p| {
-            p.items1(Kind::RBrace, "variant name", Self::variant)
+            if p.cur.kind == Kind::RBrace {
+                return Err(p.unexpected("variant name"));
+            }
+            p.rows(Self::variant)
         })?;
         Ok(Def::Enum { name, variants })
     }
@@ -1011,7 +1027,7 @@ impl<'a> Parser<'a> {
                 match self.cur.kind {
                     Kind::LBrace => {
                         let fields = self.between(Kind::LBrace, Kind::RBrace, |p| {
-                            p.items(&[Kind::RBrace], |p| p.field_init(Self::constant))
+                            p.rows(|p| p.field_init(Self::constant))
                         })?;
                         ExprKind::Record(name, fields)
                     }
@@ -1126,7 +1142,7 @@ impl<'a> Parser<'a> {
                 self.advance()?;
                 if self.cur.kind == Kind::LBrace && !self.header {
                     let fields = self.between(Kind::LBrace, Kind::RBrace, |p| {
-                        p.items(&[Kind::RBrace], |p| p.field_init(Self::expr))
+                        p.rows(|p| p.field_init(Self::expr))
                     })?;
                     ExprKind::Record(text(t), fields)
                 } else {

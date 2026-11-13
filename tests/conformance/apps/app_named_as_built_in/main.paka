@@ -1,11 +1,11 @@
 enum Msg { Start }
 
 fn update(msg: Msg) -> List<Effect<Msg>> {
-  let t = "a}"
-  [Exit]
+  let parts = split("a,b,c", ",")
+  [Print("{len(parts)}"), Exit]
 }
 
-app core {
+app split {
   start: Start
   update: update
   grants: [Console]

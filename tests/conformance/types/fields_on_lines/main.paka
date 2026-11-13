@@ -1,0 +1,29 @@
+enum Msg {
+  Start
+  Stop(code: Int)
+}
+
+type Job {
+  target: String = "all"
+  script: String
+  tries: Int = 1,
+  tags: List<String> = []
+}
+
+fn update(msg: Msg) -> List<Effect<Msg>> {
+  let job = Job {
+    script: "build"
+    tries: 3
+  }
+  let code = match Stop(7) {
+    Start => 0
+    Stop(c) => c
+  }
+  [Print("{job.target} {job.script} {job.tries} {len(job.tags)} {code}"), Exit]
+}
+
+app types {
+  start: Start
+  update: update
+  grants: [Console]
+}

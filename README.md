@@ -15,7 +15,7 @@ gates are built; milestones 1 to 7 have passed their exit checks.
 - `paka check`: parses and type-checks the full language of the reference.
 - `paka run`: runs headless programs in an interpreter.
 - `paka build`: compiles a program to a native release binary through LLVM IR and `clang`; a
-  visual app built this way runs without a window so far.
+  visual app built this way opens its window too.
   Measured speed beside Rust and C++: [`docs/results/M6-32.md`](docs/results/M6-32.md).
 - `paka examples`: runs a program's in-file examples.
 - `paka serve`: the agent tool interface, JSON lines on standard input and output; requests are

@@ -46,7 +46,7 @@ so the fallback order of its section 1.17 was not used.
 | M2-03.6 | a Float becomes text through `fixed` only | 199, 335 |
 | M2-03 changed | NaN bits cannot be observed; no canonical NaN | not for the model: a back-end rule; a program sees one NaN; NaN in `==` is line 194 |
 | M2-03 changed | no `\u{hex}` escape | 195 |
-| M2-03 changed | a bare `}` in a string is an error; write `\}` | 195 |
+| M2-03 changed, relaxed later | a `}` that closes nothing and a `{` at the closing quote are text | 201 |
 | M2-03 changed | no leading zero in a literal; `parse_int` accepts them | 78, 340 |
 | M2-03 changed | an interpolation holds no `"`, `{` or `}` | 198 |
 | M2-03 changed | five M1 lex cases stop holding | not for the model: test cases |
