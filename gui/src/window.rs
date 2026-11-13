@@ -179,8 +179,9 @@ struct Open {
     title: String,
     adapter: Adapter,
     ids: Ids,
-    /// The scale the tree's AccessKit form was last given at; `None` since the tree changed.
-    told: Option<f64>,
+    /// The width in units and the scale the tree was last laid out and given to AccessKit at;
+    /// `None` since the tree changed.
+    laid: Option<(u64, f64)>,
     surface: Surface<Rc<window::Window>, Rc<window::Window>>,
     tree: Node<()>,
     /// The tree laid out at the window's width, for hit testing and the IME area.
@@ -218,7 +219,7 @@ impl ApplicationHandler<Order> for Shown {
             Order::Show(id, tree) => {
                 if let Some(open) = self.windows.get_mut(&id).filter(|o| o.tree != tree) {
                     open.tree = tree;
-                    (open.fresh, open.told) = (true, None);
+                    (open.fresh, open.laid) = (true, None);
                     open.lay_out(&self.text);
                     open.window.request_redraw();
                 }
@@ -314,7 +315,7 @@ fn open(
         title,
         adapter,
         ids: Ids::default(),
-        told: None,
+        laid: None,
         surface,
         tree,
         rects: vec![],
@@ -331,9 +332,9 @@ fn open(
 }
 
 impl Open {
-    /// Lays the tree out at the window's width in units, and moves the IME cursor area to the
-    /// focused Input's cursor when it moved there. The input method is on only while an Input
-    /// has focus.
+    /// Lays the tree out at the window's width in units, unless it already is at that width and
+    /// scale, and moves the IME cursor area to the focused Input's cursor when it moved there.
+    /// The input method is on only while an Input has focus.
     fn lay_out(&mut self, text: &Text) {
         let (size, scale) = (self.window.inner_size(), self.window.scale_factor());
         let units = |px: u32| (f64::from(px) / scale) as u64;
@@ -341,14 +342,17 @@ impl Open {
         if width > 0 && height > 0 {
             self.size.set((width, height));
         }
+        if self.laid == Some((width, scale)) {
+            return;
+        }
         let rects = layout(&self.tree, width, text);
-        if self.told != Some(scale) || rects != self.rects {
+        if self.laid.is_none_or(|(_, s)| s != scale) || rects != self.rects {
             self.rects = rects;
             let (ids, title, tree) = (&mut self.ids, &self.title, &self.tree);
             let update = || ids.update(title, tree, &self.rects, scale);
             self.adapter.update_if_active(update);
-            self.told = Some(scale);
         }
+        self.laid = Some((width, scale));
         let area = focused_input(&self.tree, &self.rects).map(|(r, shown, edit)| {
             let before: String = shown.chars().take(edit.cursor).collect();
             let x = r.x as f64 + 8.0 + f64::from(text.advance(&before));

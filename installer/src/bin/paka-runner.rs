@@ -5,7 +5,8 @@
 //! interpreter, in this process all the same. A visual app runs on the interpreter in a window,
 //! answered at once with its first tree; the next run ends it (docs/decisions/M5-09.md). A Look
 //! call, sent on as the server got it, is answered by that app with the server's reply line. An
-//! `install` swaps, resets or migrates a version into that app as the server decided (M5-42).
+//! `install` swaps, resets or migrates a version into that app as the server decided (M5-42), and
+//! `shows` answers whether it still runs.
 
 use paka::core_form::Program;
 use paka::interp;
@@ -53,6 +54,12 @@ fn main() -> io::Result<()> {
                 }
                 interpreted = install(&mut dev, &files);
                 Value::object([])
+            }
+            _ if ask("shows").is_some() => {
+                let runs = shown
+                    .as_ref()
+                    .is_some_and(|(v, _)| v.with(|_, _| ()).is_some());
+                Value::object([("shows", runs.into())])
             }
             _ => run(&dev, interpreted.as_ref(), &files, &request, &mut shown),
         };
