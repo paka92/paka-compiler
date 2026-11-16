@@ -27,20 +27,25 @@ use std::{env, fs, process};
 /// The foreign files read once, by path: each one's bytes, or why there are none.
 type Files = BTreeMap<PathBuf, Result<Vec<u8>, String>>;
 
-/// Releases the program at `path` into `out`, the store's key checked against the public key
-/// beside the private key `key`. Progress goes to standard output; a refusal is the text for
-/// standard error.
-pub fn release(path: &OsStr, out: &Path, key: &Path) -> Result<(), String> {
+/// Releases the program at `path` into `out`. With an approvals store at or above it, the store's
+/// key is checked against the public key beside the private key `key` and only its human-owned
+/// examples run; without one the release is unsigned and every example runs. Progress goes to
+/// standard output; a refusal is the text for standard error.
+pub fn release(path: &OsStr, out: &Path, key: Option<&Path>) -> Result<(), String> {
     if fs::symlink_metadata(out).is_ok() {
         return Err(exists(out));
     }
     let name = path.to_string_lossy();
     let compiler = compiler(&name)?;
     let notices = notices()?;
-    let shown = Path::new(path).display();
-    let (root, program) = approvals::find(Path::new(path))
-        .ok_or_else(|| format!("release: no approvals at or above {shown}\n"))?;
-    let (store, approved) = verified(&root, key)?;
+    let signed = match approvals::find(Path::new(path)) {
+        Some((root, program)) => {
+            let key = key.ok_or("release: no HOME; name the key with --key\n")?;
+            Some((verified(&root, key)?, root, program))
+        }
+        None => None,
+    };
+    let program = signed.as_ref().map_or(name.to_string(), |s| s.2.clone());
     let (source, found) = read(path);
     let checked = found.and_then(|()| load(&name, check(&name, &source), true));
     let (mut core, holes) = checked.map_err(|d| line(&source, d))?;
@@ -48,8 +53,19 @@ pub fn release(path: &OsStr, out: &Path, key: &Path) -> Result<(), String> {
     let read = |p: &Path| {
         (files.get(p).cloned()).unwrap_or_else(|| Err(format!("{}: not read", p.display())))
     };
-    gated(&store, &root, &program, &source, &read)?;
-    let owned = owned(&store, &program)?;
+    let owned = match &signed {
+        Some(((store, _), root, _)) => {
+            gated(store, root, &program, &source, &read)?;
+            owned(store, &program)?
+        }
+        None => {
+            println!("gate: no approvals store, unsigned release");
+            let functions = core.examples.iter().map(|e| e.name.clone());
+            functions
+                .chain(core.ui_examples.iter().map(|e| e.name.clone()))
+                .collect()
+        }
+    };
     no_holes(holes).map_err(|ds| ds.into_iter().map(|d| line(&source, d)).collect::<String>())?;
     let logs: Vec<_> = (core.ui_examples.iter())
         .filter(|f| owned.contains(&f.name))
@@ -88,8 +104,18 @@ pub fn release(path: &OsStr, out: &Path, key: &Path) -> Result<(), String> {
     }
     writeln!(text, "notices    {NOTICES}  sha256:{}", hashes[NOTICES]).unwrap();
     text += &compiler;
-    let (serial, approved) = (store.serial, hex(&sha256(&approved)));
-    writeln!(text, "approvals  serial {serial}  sha256:{approved}").unwrap();
+    match &signed {
+        Some(((store, approved), ..)) => {
+            let approved = hex(&sha256(approved));
+            writeln!(
+                text,
+                "approvals  serial {}  sha256:{approved}",
+                store.serial
+            )
+            .unwrap();
+        }
+        None => text += "approvals  none\n",
+    }
     for (name, result) in &results {
         writeln!(text, "example    {name}  {result}").unwrap();
     }

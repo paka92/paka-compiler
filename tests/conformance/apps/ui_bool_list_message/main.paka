@@ -1,0 +1,43 @@
+type Cells { on: List<Bool> = [] }
+
+enum Msg { Toggle(i: Int), Load(on: List<Bool>) }
+
+fn update(s: inout Cells, m: Msg) {
+  match m {
+    Toggle(i) => s.on[i] = !s.on[i]
+    Load(on) => s.on = on
+  }
+}
+
+view cells_view(s: Cells) -> View<Msg> {
+  Col(gap: 4) {
+    Button("load", on: Load([true, false, true, true]))
+    Button("keep", on: Load(s.on))
+    for i in 0..<len(s.on) {
+      Button(if s.on[i] { "x" } else { "o" }, on: Toggle(i), key: i)
+    }
+  }
+}
+
+app cells {
+  state:  Cells
+  update: update
+  view:   cells_view
+  grants: []
+}
+
+example load_then_toggle {
+  var ui = ui_start(cells)
+  ui_click(&ui, "#0")
+  ui_click(&ui, "1")
+  ui_click(&ui, "3")
+  ui_text(ui, "0") == "x" && ui_text(ui, "1") == "x" && ui_text(ui, "3") == "o"
+}
+
+example tree_shows_messages {
+  var ui = ui_start(cells)
+  ui_click(&ui, "#0")
+  ui_click(&ui, "1")
+  ui_click(&ui, "#1")
+  ui_has(ui, "3") && ui_tree(ui) == "Col gap=4\n  Button #0 \"load\" on=Load([true, false, true, true])\n  Button #1 \"keep\" on=Load([true, true, true, true])\n  Button 0 \"x\" on=Toggle(0)\n  Button 1 \"x\" on=Toggle(1)\n  Button 2 \"x\" on=Toggle(2)\n  Button 3 \"x\" on=Toggle(3)\n"
+}

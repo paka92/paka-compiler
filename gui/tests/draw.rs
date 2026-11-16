@@ -131,3 +131,29 @@ fn a_focused_button_has_a_two_unit_blue_border() {
     assert_eq!(pixel(&image, minus.x, mid), [0x80; 3]);
     assert_eq!(pixel(&image, minus.x + 1, mid), [0xE6; 3]);
 }
+
+#[test]
+fn a_node_starting_inside_the_image_draws_though_it_sticks_out() {
+    let button = |n: usize| {
+        let label = n.to_string();
+        let node = Node::Button {
+            label,
+            on: (),
+            focus: false,
+        };
+        (Step::Place(n), node)
+    };
+    let tree = Node::Col {
+        gap: 8,
+        children: (0..20).map(button).collect(),
+    };
+    let text = Text::default();
+    let rects = layout(&tree, WIDTH, &text);
+    let (last, past) = (rects[9], rects[10]);
+    let height = last.y + 10;
+    assert!(past.y >= height);
+    let pixmap = draw(&tree, &rects, &text, 1.0, WIDTH as u16, height as u16);
+    let image = png::encode(WIDTH as u32, height as u32, pixmap.data_as_u8_slice());
+    assert_eq!(pixel(&image, last.x, height - 1), [0x80; 3], "border");
+    assert_eq!(pixel(&image, last.x + 2, height - 1), [0xE6; 3], "fill");
+}

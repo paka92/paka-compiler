@@ -1,0 +1,99 @@
+// A `let` of a field or list item of a read-only parameter may borrow it in release: the value
+// is copied wherever it is taken, and is never dropped by the borrower. A `var`, or a place of an
+// `inout` parameter, owns a copy.
+
+enum Msg { Start }
+
+enum Tree {
+  Leaf(name: String),
+  Node(left: Tree, right: Tree)
+}
+
+type Pair { name: String, tags: List<String> }
+
+fn names(t: Tree) -> String {
+  match t {
+    Leaf(n) => n
+    Node(l, r) => names(l) + names(r)
+  }
+}
+
+fn num(s: String) -> Result<Int, String> {
+  ok_or(parse_int(s), "bad " + s)
+}
+
+// Items borrowed in a loop, taken by a list, a variant and a result, past `continue`, `break` and `?`.
+fn walk(ws: List<String>, p: Pair) -> Result<List<String>, String> {
+  var out: List<String> = []
+  var i = 0
+  while i < len(ws) {
+    let w = ws[i]
+    let tag = p.tags[i % len(p.tags)]
+    i += 1
+    if w == "skip" {
+      continue
+    }
+    if w == "stop" {
+      break
+    }
+    let n = num(w)?
+    append(&out, "{tag}{n}")
+    let t = Node(Leaf(w), Leaf(p.name))
+    append(&out, names(t))
+  }
+  Ok(out)
+}
+
+// A borrowed subtree matched, walked and returned.
+fn pick(t: Tree, ps: List<Pair>, k: Int) -> String {
+  let first = ps[k]
+  let tags = first.tags
+  var joined = ""
+  for g in tags {
+    joined = joined + g
+  }
+  let sub = match t {
+    Leaf(n) => n
+    Node(l, _) => names(l)
+  }
+  if k > 0 {
+    return first.name
+  }
+  let name = first.name
+  "{joined} {sub} {name}"
+}
+
+// A `var` copy written after, and a place of an `inout` parameter.
+fn change(ws: List<String>, xs: inout List<String>) -> String {
+  var w = ws[0]
+  w = w + "+"
+  let x = xs[0]
+  xs[0] = "new"
+  "{w} {x} {xs[0]}"
+}
+
+fn show(r: Result<List<String>, String>) -> String {
+  match r {
+    Ok(ws) => join(ws, ",")
+    Err(why) => why
+  }
+}
+
+fn update(msg: Msg) -> List<Effect<Msg>> {
+  let p = Pair { name: "p", tags: ["a", "b"] }
+  let a = show(walk(["1", "skip", "2", "stop", "3"], p))
+  let b = show(walk(["4", "x"], p))
+  let t = Node(Leaf("l"), Leaf("r"))
+  let ps = [p, Pair { name: "q", tags: [] }]
+  let c = pick(t, ps, 0)
+  let d = pick(t, ps, 1)
+  var xs = ["old"]
+  let e = change(["w"], &xs)
+  [Print("{a} | {b} | {c} | {d} | {e}"), Exit]
+}
+
+app borrows {
+  start: Start
+  update: update
+  grants: [Console]
+}

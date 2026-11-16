@@ -395,7 +395,7 @@ const RELEASE_PLANTS: [&str; 11] = [
     // 14: sort's Float instance built as its Int instance.
     "/^define internal i32 @s[0-9]/,/^}/{s/fcmp olt double/icmp slt i64/;s/double/i64/g}",
     // 15: each owned value dropped twice.
-    "/call void @paka_rt1_drop(/p",
+    r"/call void @\(d[0-9]*\|paka_rt1_drop\)(/p",
     // 16: a String-keyed Map row of word values laid out as an Int-keyed one.
     "/@paka_rt1_map(/s/i64 -9223372036854775800,/i64 8,/",
     // 17: the count check of a shift left out.

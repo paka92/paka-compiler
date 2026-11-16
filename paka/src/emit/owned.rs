@@ -6,8 +6,8 @@
 
 use super::values::slot;
 use super::{Gen, Refusal};
-use crate::core_form::{Block, Expr, ExprKind, Local, Root, Stmt, Ty};
-use crate::owners::Owner;
+use crate::core_form::{Block, Expr, Local, Stmt, Ty};
+use crate::owners::{Owner, whole_local};
 use cranelift_codegen::ir::{InstBuilder, MemFlagsData, Value, types};
 use paka_rt::abi::dev::{Context, Rt};
 use std::mem::offset_of;
@@ -49,6 +49,16 @@ impl Gen<'_> {
         to
     }
 
+    /// Local `l`'s value at a last use, a temporary from now on, so a new owner takes it whole.
+    pub(super) fn moved_out(&mut self, l: Local) -> Value {
+        let t = self.locals[l];
+        let size = self.size(t);
+        let to = slot(&mut self.b, size);
+        let at = self.b.use_var(self.vars[l]);
+        self.put(t, to, 0, at);
+        self.temp(t, to)
+    }
+
     /// Binds local `l`, which then owns `v`.
     pub(super) fn bind_owned(&mut self, l: Local, v: Value) {
         let t = self.locals[l];
@@ -67,7 +77,7 @@ impl Gen<'_> {
         }
     }
 
-    fn drop_all(&mut self, dropped: Dropped) {
+    pub(super) fn drop_all(&mut self, dropped: Dropped) {
         for (t, owner) in dropped {
             let at = match owner {
                 Owner::Local(l) => self.b.use_var(self.vars[l]),
@@ -154,6 +164,8 @@ impl Gen<'_> {
         let dropped = self.owners.to_fn(kept);
         self.drop_all(dropped);
         if let (Some(out), Some((t, v))) = (self.out, result) {
+            // The result crosses to the runtime, where a Bool is the whole word 0 or 1.
+            let v = self.widen(v);
             self.put(t, out, 0, v);
         }
         self.ret(0);
@@ -161,22 +173,16 @@ impl Gen<'_> {
 
     /// Fills the slot at `at` of type `t` with zeros, so it can be dropped before it is built.
     pub(super) fn zeroed(&mut self, t: Ty, at: Value) {
+        self.clear(at, self.size(t));
+    }
+
+    /// Zeroes the `bytes` at `at`, whole words.
+    pub(super) fn clear(&mut self, at: Value, bytes: usize) {
         let zero = self.int_const(0);
-        for word in (0..self.size(t) as i32).step_by(8) {
+        for word in (0..bytes as i32).step_by(8) {
             self.b.ins().store(MemFlagsData::trusted(), zero, at, word);
         }
     }
 }
 
 type Emitted = Result<Option<Value>, Refusal>;
-
-/// The local `e` reads whole, if it does.
-fn whole_local(e: &Expr) -> Option<Local> {
-    match &e.kind {
-        ExprKind::Place(p) if p.steps.is_empty() => match p.root {
-            Root::Local(l) => Some(l),
-            Root::Value(_) => None,
-        },
-        _ => None,
-    }
-}

@@ -321,6 +321,8 @@ enum Decoded<'a> {
 unsafe fn decode<'a>(at: u64, foreign: &'a [Function]) -> Decoded<'a> {
     // SAFETY: the caller vouches for the words; each field sits where M4-05 section 8 puts it.
     let word = |i: u64| unsafe { *ptr::with_exposed_provenance::<u64>((at + 8 * i) as usize) };
+    // SAFETY: as above; a Bool is the first byte of its word.
+    let byte = |i: u64| unsafe { *ptr::with_exposed_provenance::<u8>((at + 8 * i) as usize) };
     // SAFETY: as above; the word holds a String's words.
     let text = |i: u64| unsafe { as_str(at + 8 * i) };
     let effect = match word(0) {
@@ -339,7 +341,7 @@ unsafe fn decode<'a>(at: u64, foreign: &'a [Function]) -> Decoded<'a> {
                 match p {
                     Plain::Int => Value::Int(word(i) as i64),
                     Plain::Float => Value::Float(Float::from_bits(word(i))),
-                    Plain::Bool => Value::Bool(word(i) != 0),
+                    Plain::Bool => Value::Bool(byte(i) != 0),
                     Plain::String => Value::String(text(i)),
                 }
             };

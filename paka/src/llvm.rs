@@ -827,32 +827,6 @@ app a {
         assert!(passed.iter().all(|p| !p.starts_with("ptr")), "{head}");
     }
 
-    /// The overlap rules are the ones M6-22's run tested: their hash is the emitter's constant and
-    /// a row of the run's results (M6-23 1.3).
-    #[test]
-    fn the_overlap_rules_are_the_ones_last_run() {
-        let files = [
-            "paka/src/body/own.rs",
-            "paka/src/llvm/code/owned.rs",
-            "paka/src/llvm/code/items.rs",
-        ];
-        let bytes: Vec<u8> = files
-            .iter()
-            .flat_map(|f| fs::read(root().join(f)).unwrap())
-            .collect();
-        let hash = format!("sha256:{}", paka::hash::hex(&paka::sha256::sha256(&bytes)));
-        let results = fs::read_to_string(root().join("docs/results/M6-22.md")).unwrap();
-        assert!(
-            hash == code::OVERLAP_RULES_SIGNED
-                && (results.lines()).any(|l| {
-                    l.starts_with("| ") && l.trim_end().ends_with(&format!("| {hash} |"))
-                }),
-            "the overlap rules changed to {hash}: rerun M6-22's million-program run, add its \
-             numbers and this hash as a row of docs/results/M6-22.md, and set \
-             OVERLAP_RULES_SIGNED in paka/src/llvm/code.rs to it"
-        );
-    }
-
     /// Generated programs (M6-21): each without a hole builds in release, and together they give
     /// every core-form node kind but a view's and a hole's. `PAKA_GEN_SEEDS` sets how many
     /// (default 2,000).

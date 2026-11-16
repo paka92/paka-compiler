@@ -97,7 +97,7 @@ impl Gen<'_> {
     fn sort_by(&mut self, item: Ty, xs: Value, before: Value, site: Site) {
         let given = [
             self.ctx,
-            self.int_const(self.size(item) as i64),
+            self.int_const(self.stride(item) as i64),
             self.int_const(pass(&self.p.types[item]) as i64),
             xs,
             before,
@@ -113,7 +113,7 @@ impl Gen<'_> {
             self.int_const(row as i64),
             self.int_const(self.site(site) as i64),
             self.record(item),
-            self.int_const(self.size(item) as i64),
+            self.int_const(self.stride(item) as i64),
             xs,
             self.widen(a),
             self.widen(b),

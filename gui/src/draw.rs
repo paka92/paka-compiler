@@ -24,6 +24,7 @@ const DASH: u64 = 4;
 
 /// Draws `root`, whose nodes `rects` places in pre-order as `crate::layout::layout` gives
 /// them, on white into a `width` by `height` pixel image at `scale`. Every pixel is opaque.
+/// A node whose rectangle starts past the image's right or bottom edge is not drawn.
 pub fn draw<M>(
     root: &Node<M>,
     rects: &[Rect],
@@ -40,6 +41,7 @@ pub fn draw<M>(
         ctx,
         res: Resources::new(),
         text,
+        edge: (f64::from(width) / scale, f64::from(height) / scale),
     };
     painter.node(root, &mut rects.iter());
     let Painter {
@@ -55,13 +57,18 @@ struct Painter<'a> {
     ctx: RenderContext,
     res: Resources,
     text: &'a Text,
+    /// The image's right and bottom edges in units.
+    edge: (f64, f64),
 }
 
 impl Painter<'_> {
     fn node<M>(&mut self, node: &Node<M>, rects: &mut slice::Iter<Rect>) {
         let Some(&r) = rects.next() else { return };
         let (x, y) = (r.x as f64, r.y as f64);
+        // A node draws only inside its rectangle, so one starting past an edge shows nothing.
+        let shown = x < self.edge.0 && y < self.edge.1;
         match node {
+            _ if !shown => {}
             Node::Text(s) => self.wrapped(s, x, y, r.w),
             Node::Button { label, focus, .. } => {
                 let (border, edge) = edge(*focus);

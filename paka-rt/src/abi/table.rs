@@ -34,6 +34,9 @@ pub const LIST: Header = Header {
 /// Every heap block's address is a multiple of this.
 pub const ALIGN: usize = 8;
 
+/// Where a variant whose fields lie in a block keeps the block's address: the word after the tag.
+pub const BLOCK: usize = 8;
+
 /// The cap of a String or List that owns no block: its bytes sit in a constant or in another
 /// value's block. Drop frees nothing; it is copied before its first write.
 pub const CONSTANT: u64 = 0;
@@ -47,6 +50,8 @@ pub const ALLOC: &str = "declare ptr @paka_rt1_alloc(i64) nounwind";
 pub const TEXT: &str = "declare i32 @paka_rt1_text(i64, i64, i64, i64, ptr, ptr, i64) nounwind";
 pub const COPY: &str = "declare i32 @paka_rt1_copy(ptr, ptr, ptr) nounwind";
 pub const DROP: &str = "declare void @paka_rt1_drop(ptr, ptr) nounwind";
+/// Frees one block; the per-type drops call it (M4-05 section 10).
+pub const FREE: &str = "declare void @paka_rt1_free(ptr, i64) nounwind";
 pub const MAP: &str = "declare i32 @paka_rt1_map(i64, ptr, i64, ptr, i64, ptr, ptr, i64) nounwind";
 /// A headless app's entry (M6-17).
 pub const APP: &str = "declare i32 @paka_rt1_app(ptr)";
@@ -64,6 +69,7 @@ pub const ENTRIES: &[&str] = &[
     TEXT,
     COPY,
     DROP,
+    FREE,
     MAP,
     APP,
     VISUAL,
@@ -77,7 +83,8 @@ mod tests {
     use super::super::dev::records::{Part, Records, Spec, rt_copy, rt_drop};
     use super::super::dev::{Context, Heap};
     use super::super::heap::{
-        paka_rt1_alloc, paka_rt1_copy, paka_rt1_drop, paka_rt1_map, paka_rt1_text, paka_rt1_view,
+        paka_rt1_alloc, paka_rt1_copy, paka_rt1_drop, paka_rt1_free, paka_rt1_map, paka_rt1_text,
+        paka_rt1_view,
     };
     use super::super::{
         App, Example, Update, paka_rt1_app, paka_rt1_examples, paka_rt1_run, paka_rt1_stack_limit,
@@ -146,6 +153,7 @@ mod tests {
         let text = paka_rt1_text as unsafe extern "C" fn(_, _, _, _, _, _, _) -> _;
         let copy = paka_rt1_copy as unsafe extern "C" fn(_, _, _) -> _;
         let drop = paka_rt1_drop as unsafe extern "C" fn(_, _);
+        let free = paka_rt1_free as unsafe extern "C" fn(_, _);
         let map = paka_rt1_map as unsafe extern "C" fn(_, _, _, _, _, _, _, _) -> _;
         let view = paka_rt1_view as unsafe extern "C" fn(_, _, _, _, _, _) -> _;
         let made = [
@@ -153,10 +161,11 @@ mod tests {
             text.declared("paka_rt1_text"),
             copy.declared("paka_rt1_copy"),
             drop.declared("paka_rt1_drop"),
+            free.declared("paka_rt1_free"),
             map.declared("paka_rt1_map"),
             view.declared("paka_rt1_view"),
         ];
-        let lines = [ALLOC, TEXT, COPY, DROP, MAP, VIEW];
+        let lines = [ALLOC, TEXT, COPY, DROP, FREE, MAP, VIEW];
         let app = paka_rt1_app as unsafe extern "C" fn(&'static App) -> _;
         assert_eq!(APP, app.declared("paka_rt1_app"));
         let visual = paka_rt1_visual as unsafe extern "C" fn(&'static App) -> _;

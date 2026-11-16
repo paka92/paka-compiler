@@ -1,7 +1,7 @@
 enum Msg { Start }
 
 fn update(msg: Msg) -> List<Effect<Msg>> {
-  let s = "a}b"
+  let s = "{{x}"
   [Print("done"), Exit]
 }
 

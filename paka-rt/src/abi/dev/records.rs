@@ -17,6 +17,7 @@ use super::map::Shape;
 use super::words::{ListWords, TextWords};
 use super::{Context, MEMORY, Trap};
 use crate::abi::measure::Timed;
+use std::cell::Cell;
 use std::ptr;
 
 pub const STRING: u64 = 1;
@@ -117,7 +118,8 @@ pub unsafe extern "sysv64" fn rt_copy(
     let (from, to) = (at(from), at(to));
     // SAFETY: the caller vouches for the record and both places; a record starts with the size.
     unsafe { ptr::copy_nonoverlapping(from, to, *at::<u64>(record) as usize) };
-    let mut work = vec![(record, from, to)];
+    let mut work = COPIES.take();
+    work.push((record, from, to));
     while let Some((record, from, to)) = work.pop() {
         // SAFETY: the record is the type's, and `to` already holds a word copy of `from`.
         for &[offset, kind, a, b] in unsafe { entries(record, from) } {
@@ -148,6 +150,7 @@ pub unsafe extern "sysv64" fn rt_copy(
             }
         }
     }
+    COPIES.set(work);
     0
 }
 
@@ -157,11 +160,8 @@ pub unsafe extern "sysv64" fn rt_copy(
 ///
 /// `record` is the record of the value at `at`, which no one uses after.
 pub unsafe extern "sysv64" fn rt_drop(ctx: &mut Context, record: u64, value: u64) {
-    enum Task {
-        Walk(u64, *mut u8),
-        Free(*mut u8, u64),
-    }
-    let mut work = vec![Task::Walk(record, at(value))];
+    let mut work = DROPS.take();
+    work.push(Task::Walk(record, at(value)));
     while let Some(task) = work.pop() {
         let (record, value) = match task {
             Task::Walk(r, v) => (r, v),
@@ -228,6 +228,19 @@ pub unsafe extern "sysv64" fn rt_drop(ctx: &mut Context, record: u64, value: u64
             }
         }
     }
+    DROPS.set(work);
+}
+
+/// A step of `rt_drop`.
+enum Task {
+    Walk(u64, *mut u8),
+    Free(*mut u8, u64),
+}
+
+thread_local! {
+    /// The walkers' worklists, kept between walks so a walk need not allocate its own.
+    static COPIES: Cell<Vec<(u64, *mut u8, *mut u8)>> = const { Cell::new(vec![]) };
+    static DROPS: Cell<Vec<Task>> = const { Cell::new(vec![]) };
 }
 
 /// A new block for the String at `to`, a copy of the one at `from`.
@@ -290,8 +303,10 @@ unsafe fn map(
     *to = ctx.heap.alloc(shape.bytes(len))?;
     // SAFETY: both blocks hold `len` entries, and `*to` is new; its capacity is its length.
     unsafe {
-        ptr::copy_nonoverlapping(from, *to, shape.bytes(len) as usize);
+        let entries = shape.key(from, len).offset_from_unsigned(from);
+        ptr::copy_nonoverlapping(from, *to, entries);
         to.cast::<u64>().add(1).write(len);
+        shape.reindex(*to);
     }
     for i in 0..len {
         if shape.string() {

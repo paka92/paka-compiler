@@ -1,8 +1,16 @@
 enum Msg { Start }
 
+fn open(s: String) -> Bool {
+  match s {
+    "{" => true
+    _ => false
+  }
+}
+
 fn update(msg: Msg) -> List<Effect<Msg>> {
   let t = "{"
-  [Exit]
+  let n = 3
+  [Print(t), Print("{" + "{n}" + "}"), Print("a {"), Print("{open(t)}"), Exit]
 }
 
 app core {

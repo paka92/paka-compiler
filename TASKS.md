@@ -1918,6 +1918,14 @@ or merged during review. Ids with a letter were added during review.
 - note: Per M5-07: part 3 is met by the Counter edits in docs/decisions/M5-07.md; since the accepted reset installs the change, the script restores the old type or adds a second field before the migrate part.
 - note: Done: scripts/m5-exit-check passes all eight parts in the build machine's Wayland session; with no display, parts 1, 6 and 8 fail as they must (docs/results/M5-42.md). An edit installed while the app runs in a window now takes the same rules as with none: the server decides each install once (paka/src/session.rs), and `Visual::install` applies it, in the server or, for a window, in the dev runner through an `install` request. paka/tests/look.rs and installer/tests/window.rs drive the same refusal, keep, reset, migrate and migrate traps on both. Left for the owner's hand: watch parts 1 to 3 on screen (`--watch`), type one composed word through the input method into the to-do Input (`--ime`), and listen to both samples with Orca once; then sign docs/results/M5-42.md.
 
+### M5-43 · L3 · Measure and cut the visual edit loop's time to a frame
+
+- status: done
+- needs: M5-42
+- done when: An edit of a 1,000-item to-do app reaches a presented frame with a 95th percentile under 100 ms, measured by one repeatable command.
+- why this level: Times edits across the server, the runner and the window, and changes layout, drawing and the install reply.
+- note: Done: `paka-bench --visual|--window`; at 1,000 items the 95th percentile to a frame is 11.9 ms, at 10,000 it is 41 ms (docs/results/M5-43.md).
+
 ## M6 — Release mode
 
 **Exit check.** `paka build` compiles a whole program ahead of time through the pinned clang at full optimization, with direct calls instead of slots, and refuses any program with a hole by naming it. The release skip file is deleted and the CI job fails if any conformance test differs in output, exit status or trap between interpreter, dev and release, with two fixed exceptions: a program with a hole must be refused by `paka build`, and example-status cases are compared in interpreter and dev only until M7-11b; `unfinished` cases stay interpreter and dev only. The owner-agreed benchmark set (float and array loops, integer loops checked and wrapping, pointer-heavy programs) is built in Paka, Rust and C++ with matching checksums, and a committed results table shows each measured number beside its section 3.2 expectation. The same table holds a measured figure for each section 8 cost: overflow and bounds checks, state copy per handler, dev-mode slowdown on a visual app. Reference counting and handle checks are listed as 'not built' with the reason (M2-10: no shared type, no pools), which counts as shown; the measured copy cost of owned trees stands in their place.
@@ -2297,11 +2305,13 @@ or merged during review. Ids with a letter were added during review.
 
 ### M6-33 · L4 · Move a local at its last use instead of copying it
 
+- status: done
 - needs: M4-33, M6-32
 - flags: native-only
 - done when: The shared owners pass (paka/src/owners.rs) moves, instead of copying and later dropping, a local read once on the right of `x = V(x, ...)` and a `let` local read once at its last use in the block that declares it; fixtures with hand-written drop lists for both forms, with early exit, `?`, `break` and loops, pass in both native back ends with a clean ledger; a three-mode fuzz run of 100,000 seeds agrees; expr_parse's rows of docs/results/M6-32.md are rerun and the table regenerated.
 - why this level: A wrong move is a use after free or double drop on some control-flow path.
 - note: Owner ruling of 2026-11-12: the narrow form only, not liveness analysis. A read inside a loop of a local declared outside it is never a last use. M4-33's cost side (DECISIONS.md, "skip the copy at a last use") was left out when M4-33 closed; expr_parse ran 39 times behind Rust in M6-32, mostly copying `e` and `right` in `e = Add(e, right)`.
+- note: Done, and taken further: a `let` local also moves or drops in `if` and `match` arms, a `let` borrows from a read-only parameter, a Bool list item takes one byte, a recursive enum variant is one heap block, the run-time heap hands out size-classed slots, a Map keeps a hash index and a lookup followed by a write reuses the found entry, and `words` and `parse_int` no longer copy. The whole set was rerun from tools built at 4f983e21 and docs/results/M6-32.md regenerated: against Rust, expr_parse 1.19, binary_trees 0.87, bfs 0.88, word_count 1.09, sieve 1.23 checked and 1.03 wrapping. Still worse than expected: nbody against Rust (1.62; 1.06 against C++ built by the same clang).
 
 ## M7 — Evidence and gates
 

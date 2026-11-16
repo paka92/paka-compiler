@@ -1,8 +1,8 @@
 //! The counter in a window (M5-35): the dev runner opens it in the Wayland session and logs its
 //! first presented frame, and a frame after a Look click (M5-38); a second run closes it and opens
-//! another on the kept event loop, and the runner exits cleanly when its input ends. The M5-34
-//! Look script passes on an app in a window, and so do the M5-07 edits of paka/tests/look.rs
-//! (M5-42). Skipped with no Wayland display.
+//! another on the kept event loop, `shows` tells whether one runs (M5-43), and the runner exits
+//! cleanly when its input ends. The M5-34 Look script passes on an app in a window, and so do the
+//! M5-07 edits of paka/tests/look.rs (M5-42). Skipped with no Wayland display.
 
 #[path = "../../paka/tests/common/look.rs"]
 mod look;
@@ -96,6 +96,9 @@ fn the_counter_opens_a_window_and_presents_a_frame() {
     };
     let file = Value::object([("path", "main.paka".into()), ("text", text.as_str().into())]);
     ask(Value::object([("files", Value::Array(vec![file]))]));
+    let shows = Value::object([("shows", true.into())]);
+    let showing = |reply: Value| reply.get("shows").and_then(Value::as_bool);
+    assert_eq!(showing(ask(shows.clone())), Some(false));
     let order = Value::object([
         ("app", "counter".into()),
         ("args", Value::Array(vec![])),
@@ -117,6 +120,7 @@ fn the_counter_opens_a_window_and_presents_a_frame() {
         assert_eq!(run.get("window"), Some(&Value::Bool(true)), "{run}");
         let tree = run.get("tree").and_then(Value::as_str).unwrap();
         assert!(tree.contains("Button #1 \"+\" on=Inc"), "{tree}");
+        assert_eq!(showing(ask(shows.clone())), Some(true));
         let line = frame();
         assert!(line.starts_with("first frame presented, "), "{line}");
         let clicked = ask(click.clone());

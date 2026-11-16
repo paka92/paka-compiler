@@ -1,0 +1,145 @@
+// A local the arms of an `if` or `match` read last moves in each arm that reads it, and is
+// dropped on entry to each that does not, a missing `else` too (M6-33); every path through each
+// function still drops each value once.
+
+enum Msg { Start }
+
+enum Expr {
+  Num(value: Int),
+  Add(left: Expr, right: Expr),
+  Sub(left: Expr, right: Expr)
+}
+
+fn sum(e: Expr) -> Int {
+  match e {
+    Num(v) => v
+    Add(l, r) => sum(l) + sum(r)
+    Sub(l, r) => sum(l) - sum(r)
+  }
+}
+
+fn num(s: String) -> Result<Expr, String> {
+  let n = ok_or(parse_int(s), "bad " + s)?
+  Ok(Num(n))
+}
+
+// `right` moves in two arms; `continue`, `break` and `?` leave the others before or instead.
+fn parse(ws: List<String>) -> Result<Expr, String> {
+  var e = Num(0)
+  for w in ws {
+    let right = Add(Num(len(w)), Num(1))
+    if w == "skip" {
+      continue
+    } else if w == "stop" {
+      break
+    } else if w == "+" {
+      e = Add(e, right)
+    } else {
+      let n = num(w)?
+      e = Sub(Add(e, right), n)
+    }
+  }
+  Ok(e)
+}
+
+// `piece` is dropped on entry to the arm that returns early and moves in the other.
+fn joined(ws: List<String>, stop: String) -> String {
+  var out = ""
+  for w in ws {
+    let piece = w + "."
+    if w == stop {
+      return out + "|"
+    } else {
+      out = out + piece
+    }
+  }
+  out
+}
+
+// Nested arms in a loop, each leaving by `break` or `continue` before the move or moving.
+fn walk(n: Int) -> String {
+  var out = ""
+  var i = 0
+  while i < n {
+    i += 1
+    let piece = "<{i}>"
+    if i % 2 == 0 {
+      if i == 6 {
+        break
+      }
+      out = out + piece
+    } else {
+      if i == 3 {
+        continue
+      }
+      out = piece + out
+    }
+  }
+  out
+}
+
+// Match arms with `&&` and `||` in nested conditions; a condition that reads `t` copies it.
+fn label(o: Option<Int>, s: String, loud: Bool) -> String {
+  let t = s + "!"
+  let u = s + "?"
+  let first = match o {
+    Some(n) => if n > 0 && loud { t + "{n}" } else if n < 0 || loud { "" } else { t }
+    None => ""
+  }
+  let second = if loud || u == "" { u } else { "" }
+  "{first}{second}"
+}
+
+// A missing `else` drops it; a yielded read moves into the new binding.
+fn maybe(s: String, flag: Bool) -> String {
+  let t = s + "-"
+  let v = s + "="
+  var u = "_"
+  if flag {
+    u = t
+  }
+  let w = if flag { "" } else { v }
+  "{u}{w}"
+}
+
+// The pattern names borrow `k`, which outlives the match; `t` moves in either arm.
+fn pair(o: Option<String>, s: String) -> String {
+  let t = s + "."
+  let k = o
+  let r = match k {
+    Some(x) => x + t
+    None => t
+  }
+  match k {
+    Some(x) => r + x
+    None => r
+  }
+}
+
+fn show(r: Result<Expr, String>) -> String {
+  match r {
+    Ok(e) => "{sum(e)}"
+    Err(why) => why
+  }
+}
+
+fn update(msg: Msg) -> List<Effect<Msg>> {
+  let a = show(parse(["+", "12", "skip", "+", "stop", "9"]))
+  let b = show(parse(["+", "x", "5"]))
+  let c = joined(["p", "q", "r"], "q")
+  let d = joined(["p", "q"], "r")
+  let e = walk(9)
+  let f = walk(4)
+  let g = [label(Some(2), "a", true), label(Some(2), "b", false), label(Some(-1), "c", false)]
+  let h = [label(None, "d", true), label(Some(0), "e", false)]
+  let i = [maybe("m", true), maybe("n", false)]
+  let j = [pair(Some("x"), "y"), pair(None, "z")]
+  let more = join(g, " ") + " " + join(h, " ") + " " + join(i, " ") + " " + join(j, " ")
+  [Print("{a} {b} {c} {d} {e} {f}"), Print(more), Exit]
+}
+
+app moves {
+  start: Start
+  update: update
+  grants: [Console]
+}

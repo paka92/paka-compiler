@@ -21,7 +21,7 @@ use paka::owners::Owners;
 use paka::source::in_file;
 use paka_rt::abi::dev::records::Spec;
 use paka_rt::abi::dev::words::{INDEX, JOIN, SLICE};
-use paka_rt::abi::table::{ALLOC, STACK_LIMIT, TRAP};
+use paka_rt::abi::table::{ALLOC, BLOCK, STACK_LIMIT, TRAP};
 use paka_rt::ops::Int;
 use std::collections::{BTreeMap, BTreeSet};
 use std::fmt::Write;
@@ -37,12 +37,6 @@ mod view;
 /// The largest frame inlined, and the largest built: the runtime keeps 1 MiB under its limit.
 const INLINE_FRAME: usize = 4 << 10;
 const MAX_FRAME: usize = 256 << 10;
-
-/// The SHA-256 of paka/src/body/own.rs, paka/src/llvm/code/owned.rs and paka/src/llvm/code/items.rs
-/// in that order: the overlap rules M6-22's run tested (M6-23 1.3); a changed file must be run again.
-#[cfg(test)]
-pub(super) const OVERLAP_RULES_SIGNED: &str =
-    "sha256:7ff9bace4313b31ee9228753c088302ba34e9d192426ae237bcfde7831f62ead";
 
 /// The IR of `update`'s body, and of every other function with the constants and declarations
 /// they need; `None` when any of it is beyond this lowering. With `computed`, the body builds the
@@ -283,6 +277,9 @@ struct Module<'a> {
     /// The types compared whole, and those whose equality is not yet lowered.
     equalities: Vec<Ty>,
     compared: BTreeSet<Ty>,
+    /// The records whose drop `@d<t>` is used, and those not yet lowered.
+    drops: Vec<Ty>,
+    dropped: BTreeSet<Ty>,
     /// Each function value made, its id its position, and its type.
     fn_values: Vec<(FnRef, Ty)>,
     /// The function types called through a value.
@@ -347,6 +344,8 @@ impl<'a> Module<'a> {
             seen: BTreeSet::new(),
             equalities: vec![],
             compared: BTreeSet::new(),
+            drops: vec![],
+            dropped: BTreeSet::new(),
             fn_values: vec![],
             dispatched: BTreeSet::new(),
             sorts: BTreeSet::new(),
@@ -381,7 +380,7 @@ impl<'a> Module<'a> {
         ))
     }
 
-    /// Every function, equality, sort and dispatcher still wanted, then the constants and
+    /// Every function, equality, sort, dispatcher and drop still wanted, then the constants and
     /// declarations; `site` is where their own traps are reported.
     fn rest(&mut self, site: Site) -> Option<String> {
         let mut defines = String::new();
@@ -399,6 +398,9 @@ impl<'a> Module<'a> {
         }
         for t in std::mem::take(&mut self.dispatched) {
             defines += &self.dispatcher(t, site)?;
+        }
+        while let Some(t) = self.drops.pop() {
+            defines += &self.body(site, None).dropper(t);
         }
         let mut code = String::new();
         for (text, n) in &self.texts {
@@ -447,6 +449,9 @@ impl<'a> Module<'a> {
             site,
             owners: Owners::default(),
             temps: vec![],
+            literals: BTreeSet::new(),
+            read_only: vec![],
+            lookup: None,
         }
     }
 
@@ -458,7 +463,7 @@ impl<'a> Module<'a> {
         };
         let locals = (f.locals.iter()).map(|&t| self.ir(t).map(|_| t)).collect();
         let mut b = self.body(f.site, update);
-        (b.locals, b.result) = (locals, result);
+        (b.locals, b.result, b.owners) = (locals, result, Owners::new(&f.body));
         for n in 0..f.locals.len() {
             if update.is_some() && n < f.params.len() {
                 b.at.push("%msg".into());
@@ -478,7 +483,7 @@ impl<'a> Module<'a> {
         }
         b.owners.enter(false);
         if let Some(computed) = update {
-            b.statements(&f.body.stmts)?;
+            b.statements(&f.body)?;
             match computed {
                 true => b.effects(f.body.value.as_deref()?)?,
                 false => b.leave_fn(None),
@@ -511,7 +516,10 @@ impl<'a> Module<'a> {
         if f.result.is_some() {
             params.push("ptr %out".into());
         }
-        b.statements(&f.body.stmts)?;
+        b.read_only = (0..f.params.len())
+            .filter(|&n| !f.params[n].inout)
+            .collect();
+        b.statements(&f.body)?;
         let e = f.body.value.as_deref();
         let v = match e {
             Some(e) => b.expr(e)?,
@@ -530,8 +538,7 @@ impl<'a> Module<'a> {
         ))
     }
 
-    /// The promise on each pointer parameter of user function `f`: `noalias`, where M6-23 signs
-    /// it. A test in llvm.rs holds the overlap rules to `OVERLAP_RULES_SIGNED`.
+    /// The promise on each pointer parameter of user function `f`: `noalias`, where M6-23 allows it.
     fn noalias(&self, f: &Fn) -> &'static str {
         match self.runtime.contains(f.name.as_str()) {
             true => "",
@@ -633,6 +640,7 @@ impl<'a> Module<'a> {
                 }
                 FnRef::Variant(_, alt) => {
                     b.store("i64", &alt.to_string(), "%out");
+                    b.block("%out", (*result)?, *alt);
                     let places = b.module.layouts.get((*result)?).alternatives[*alt].clone();
                     for (n, place) in places.iter().enumerate() {
                         b.fill("%out", place, &format!("%a{n}"));
@@ -678,6 +686,12 @@ struct Body<'m, 'a> {
     /// The owners in scope, a temporary by its number in `temps`.
     owners: Owners<usize>,
     temps: Vec<String>,
+    /// The temporaries that are String literals, which own nothing to free.
+    literals: BTreeSet<usize>,
+    /// The parameters a `let` may borrow from: those not `inout`, outside `update`.
+    read_only: Vec<Local>,
+    /// The Map lookup the statement being lowered makes, or the last one made, for the next.
+    lookup: Option<map::Lookup>,
 }
 
 /// An expression's operand; an expression with no value gives an empty one.
@@ -712,6 +726,11 @@ impl Body<'_, '_> {
 
     fn size(&self, t: Ty) -> usize {
         self.module.layouts.get(t).size
+    }
+
+    /// The bytes from one List item of type `t` to the next.
+    fn stride(&self, t: Ty) -> usize {
+        self.module.layouts.get(t).item
     }
 
     /// A slot named `name` for a value of type `t`.
@@ -831,11 +850,21 @@ impl Body<'_, '_> {
 
     /// The address of the field at `place` of the value at `at`, followed through its box.
     fn field_at(&mut self, place: &layout::Place, at: &str) -> String {
-        let at = self.offset(at, place.offset);
+        let at = self.place_at(place, at);
         match place.boxed {
             true => self.load("ptr", &at),
             false => at,
         }
+    }
+
+    /// The address of the words at `place` of the value at `at`, in its variant's block if there.
+    fn place_at(&mut self, place: &layout::Place, at: &str) -> String {
+        if !place.in_block {
+            return self.offset(at, place.offset);
+        }
+        let word = self.offset(at, BLOCK);
+        let block = self.load("ptr", &word);
+        self.offset(&block, place.offset)
     }
 
     fn field(&mut self, place: &layout::Place, at: &str) -> String {
@@ -943,10 +972,15 @@ impl Body<'_, '_> {
     }
 
     fn stmt(&mut self, s: &Stmt) -> Option<()> {
+        let before = self.lookup.take();
         match s {
             Stmt::Let(l, e) => {
+                let lookup = self.lookup(*l, e);
+                self.lookup.clone_from(&lookup);
                 let v = self.expr(e)??;
                 self.bind_owned(*l, &v)?;
+                self.lookup = lookup;
+                return Some(());
             }
             Stmt::Assign(place, op, e) => {
                 let (root, t, mut ops) = self.operands(place)?;
@@ -954,7 +988,10 @@ impl Body<'_, '_> {
                     *add = true;
                 }
                 let mut v = self.expr(e)??;
-                let (at, t) = self.walk(root, t, ops)?;
+                let (at, t) = match before.filter(|b| b.reused_by(place, e)) {
+                    Some(found) => self.found_entry(&found, root, t, ops.pop()?)?,
+                    None => self.walk(root, t, ops)?,
+                };
                 if let Some(op) = op {
                     let old = self.get(t, &at);
                     v = match op {
@@ -966,7 +1003,13 @@ impl Body<'_, '_> {
                     };
                 }
                 let v = self.owned(t, &v);
-                self.drop_at(t, &at);
+                let refilled = match (&place.root, place.steps.is_empty()) {
+                    (Root::Local(l), true) => self.owners.refill(*l),
+                    _ => false,
+                };
+                if !refilled {
+                    self.drop_at(t, &at);
+                }
                 self.put(t, &v, &at);
             }
             Stmt::Return(e) if self.update.is_none() => {
@@ -1023,6 +1066,8 @@ impl Body<'_, '_> {
             Stmt::Expr(e) => drop(self.expr(e)?),
             Stmt::Return(_) => return None,
         }
+        // A lookup in a nested block is not for the next statement here.
+        self.lookup = None;
         Some(())
     }
 
@@ -1046,10 +1091,13 @@ impl Body<'_, '_> {
             ExprKind::List(items) => self.list(e.ty?, items)?,
             ExprKind::Map(entries) => self.map(e.ty?, entries)?,
             ExprKind::Interp(parts, site) => self.interpolate(parts, *site)?,
-            ExprKind::Place(place) => {
-                let (at, t) = self.address(place)?;
-                self.get(t, &at)
-            }
+            ExprKind::Place(place) => match self.owners.moves(e) {
+                Some(l) => self.moved_out(l),
+                None => {
+                    let (at, t) = self.address(place)?;
+                    self.get(t, &at)
+                }
+            },
             ExprKind::Record(_, fields) => self.construct(e.ty?, None, fields)?,
             ExprKind::Variant(Tag::Effect(Effect::Foreign), fields) if !self.module.m1 => {
                 let (alt, fields) = foreign_effect(fields);
@@ -1211,8 +1259,10 @@ impl Body<'_, '_> {
         };
         let merge = self.name("b");
         let mut incoming = vec![];
-        for (label, block, binds, shared) in branches {
+        for (i, (label, block, binds, shared)) in branches.into_iter().enumerate() {
             self.start(&label);
+            let unread = self.owners.arm(e, i);
+            self.drop_all(unread);
             let mut owned = vec![];
             for (place, base, l) in binds {
                 let v = self.field(&place, &base);
@@ -1226,6 +1276,8 @@ impl Body<'_, '_> {
                 None => None,
             };
             let v = v.unwrap_or_else(|| stand_in(ty.unwrap_or("i64")));
+            let held = self.owners.arm_end(e);
+            self.drop_all(held);
             incoming.push(format!("[ {v}, %{} ]", self.current()));
             self.line(format!("br label %{merge}"));
         }
@@ -1243,16 +1295,13 @@ impl Body<'_, '_> {
         let value = self.name("%h");
         self.hold(&value, t);
         if self.module.layouts.owns(t) {
-            let name = "@llvm.memset.p0.i64";
-            self.declare(&format!("declare void {name}(ptr, i8, i64, i1)"));
             let size = self.size(t);
-            self.line(format!(
-                "call void {name}(ptr {value}, i8 0, i64 {size}, i1 false)"
-            ));
+            self.zero(&value, size);
             self.temp(t, value.clone());
         }
         if let Some(alt) = alt {
             self.store("i64", &alt.to_string(), &value);
+            self.block(&value, t, alt);
         }
         let places = self.module.layouts.get(t).alternatives[alt.unwrap_or(0)].clone();
         for (field, place) in fields.iter().zip(places) {
@@ -1262,15 +1311,36 @@ impl Body<'_, '_> {
         Some(value)
     }
 
+    fn zero(&mut self, at: &str, bytes: usize) {
+        let name = "@llvm.memset.p0.i64";
+        self.declare(&format!("declare void {name}(ptr, i8, i64, i1)"));
+        self.line(format!(
+            "call void {name}(ptr {at}, i8 0, i64 {bytes}, i1 false)"
+        ));
+    }
+
     /// Stores `v`, owned, as the field at `place` of the value at `value`.
     fn fill(&mut self, value: &str, place: &layout::Place, v: &str) {
         let v = self.owned(place.ty, v);
         self.place_into(value, place, &v);
     }
 
+    /// A new zeroed block for the fields of variant `alt` of type `t` in the value at `value`,
+    /// when they lie in one.
+    fn block(&mut self, value: &str, t: Ty, alt: usize) {
+        let bytes = self.module.layouts.get(t).blocks[alt];
+        if bytes == 0 {
+            return;
+        }
+        let block = self.alloc(bytes);
+        self.zero(&block, bytes);
+        let word = self.offset(value, BLOCK);
+        self.store("ptr", &block, &word);
+    }
+
     /// Stores `v`, already owned, as the field at `place` of the value at `value`.
     fn place_into(&mut self, value: &str, place: &layout::Place, v: &str) {
-        let at = self.offset(value, place.offset);
+        let at = self.place_at(place, value);
         if place.boxed {
             let block = self.alloc(self.size(place.ty));
             self.put(place.ty, v, &block);

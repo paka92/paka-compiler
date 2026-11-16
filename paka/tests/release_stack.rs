@@ -1,5 +1,5 @@
 //! Deep recursion and large frames, built by `paka build` at full optimization, end in a stack
-//! trap and never in a signal (M6-16).
+//! trap and never in a signal, and a drop of any depth ends without either (M6-16).
 
 #[allow(dead_code)]
 mod common;
@@ -57,5 +57,19 @@ fn deep_recursion_and_large_frames_trap_stack() {
             stderr.starts_with("deep: trap stack at main.paka:"),
             "{call}: {stderr}"
         );
+    }
+}
+
+#[test]
+fn a_drop_deeper_than_the_stack_finishes_without_a_trap_or_a_leak() {
+    let defs = "enum Chain { End, Link(name: String, next: Chain) }\n\n\
+                fn chain(n: Int) -> Chain {\n  var c = End\n  \
+                for i in 0..<n { c = Link(\"link {i}\", c) }\n  c\n}\n\n\
+                fn dive(n: Int) -> Int {\n  if n == 0 {\n    let c = chain(2000000)\n    \
+                var d = c\n    d = Link(\"top\", d)\n    1\n  } else {\n    dive(n - 1) + 1\n  }\n}";
+    let scratch = Scratch::new("release-deep-drop");
+    for call in ["dive(0)", "dive(200000)"] {
+        let (status, stderr) = run(&scratch, &program(call, defs));
+        assert_eq!((status, stderr.as_str()), (Some(0), ""), "{call}");
     }
 }

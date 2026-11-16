@@ -1,7 +1,9 @@
 //! Text shaping and measuring through Parley (M5-05): the one shipped font, 14 units on 20-unit
 //! lines, at scale factor 1. Layout and drawing both measure through here, so they agree.
+//! Measures are kept, so a tree laid out again shapes only text it has not measured (M5-43).
 
 use std::cell::RefCell;
+use std::collections::BTreeMap;
 use std::sync::Arc;
 
 use crate::layout::Measure;
@@ -13,10 +15,16 @@ use parley::{
 const FAMILY: &str = "Noto Sans";
 const SIZE: f32 = 14.0;
 const LINE: f32 = 20.0;
+/// How many measures are kept before all are dropped, which bounds the memory they take.
+const KEPT: usize = 1 << 16;
+
+/// The width and line count of each text measured, by its wrap width.
+type Measures = BTreeMap<(String, Option<u64>), (f32, usize)>;
 
 /// The font and Parley's reusable state, loaded once.
 pub struct Text {
     contexts: RefCell<(FontContext, LayoutContext<()>)>,
+    measures: RefCell<Measures>,
 }
 
 impl Default for Text {
@@ -33,6 +41,7 @@ impl Default for Text {
         };
         Text {
             contexts: RefCell::new((fonts, LayoutContext::new())),
+            measures: RefCell::default(),
         }
     }
 }
@@ -57,7 +66,23 @@ impl Text {
         if text.is_empty() {
             return 0.0;
         }
-        self.layout(text, None).full_width()
+        self.measure(text, None).0
+    }
+
+    /// The width and line count of `text` wrapped to `wrap`, shaped only the first time.
+    fn measure(&self, text: &str, wrap: Option<u64>) -> (f32, usize) {
+        let key = (text.to_owned(), wrap);
+        if let Some(&kept) = self.measures.borrow().get(&key) {
+            return kept;
+        }
+        let layout = self.layout(text, wrap.map(|w| w as f32));
+        let measured = (layout.full_width(), layout.len());
+        let mut measures = self.measures.borrow_mut();
+        if measures.len() >= KEPT {
+            measures.clear();
+        }
+        measures.insert(key, measured);
+        measured
     }
 }
 
@@ -67,6 +92,22 @@ impl Measure for Text {
     }
 
     fn lines(&self, text: &str, width: u64) -> u64 {
-        (self.layout(text, Some(width as f32)).len() as u64).max(1)
+        (self.measure(text, Some(width)).1 as u64).max(1)
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn the_measures_kept_stay_bounded_and_right() {
+        let text = Text::default();
+        let wide = text.width("wide");
+        for n in 0..=KEPT {
+            text.width(&n.to_string());
+        }
+        assert!(text.measures.borrow().len() <= KEPT);
+        assert_eq!(text.width("wide"), wide);
     }
 }

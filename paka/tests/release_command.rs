@@ -525,6 +525,23 @@ fn a_link_that_fails_is_refused() {
 }
 
 #[test]
+fn a_program_without_a_store_releases_unsigned_with_every_example() {
+    let tree = Tree::new("release_unsigned");
+    for file in ["approvals", "approvals.sig", "approvals.pub"] {
+        fs::remove_file(tree.path(&format!("tree/{file}"))).unwrap();
+    }
+    let (out, err, status) = tree.release("counter", "none");
+    assert_eq!((err.as_str(), status), ("", Some(0)));
+    assert!(out.starts_with(
+        "gate: no approvals store, unsigned release\n\
+         build: paka build tree/counter -o counter --examples agent_guess bumps\n\
+         examples in binary: 2 of 2 pass\n"
+    ));
+    let release = fs::read_to_string(tree.path("dist/RELEASE")).unwrap();
+    assert!(release.contains("approvals  none\nexample    agent_guess  pass\n"));
+}
+
+#[test]
 fn a_missing_approvals_pub_is_refused() {
     let tree = Tree::new("release_no_pub");
     fs::remove_file(tree.path("tree/approvals.pub")).unwrap();

@@ -33,8 +33,8 @@ pub struct Visual {
     pub window: Option<Size>,
 }
 
-/// What the app shows after a job: its tree text, its end once it has ended, and the report of
-/// the first trap the job recorded.
+/// What the app shows after a job: its tree text, empty after an install, its end once it has
+/// ended, and the report of the first trap the job recorded.
 pub struct Shown {
     pub tree: String,
     pub end: Option<End>,
@@ -163,10 +163,15 @@ impl Visual {
     /// the app shows after.
     pub fn swap(&self, core: Program, reset: bool) -> Shown {
         let core = Arc::new(core);
-        self.turn(move |ui, args| match reset {
-            false => ui.swap(core),
-            true => ui.reset(core, args),
-        })
+        let swapped = self.with(move |ui, args| {
+            let before = ui.traps.len();
+            match reset {
+                false => ui.swap(core),
+                true => ui.reset(core, args),
+            }
+            left_since(ui, before)
+        });
+        swapped.unwrap_or_else(Shown::gone)
     }
 
     /// Installs `core` between turns, its function `f` migrating the state, stopped past `limit`;
@@ -177,7 +182,7 @@ impl Visual {
         let migrated = self.with(move |ui, _| {
             let before = ui.traps.len();
             let migrated = ui.migrate(core, f, limit);
-            let mut shown = shown_since(ui, before);
+            let mut shown = left_since(ui, before);
             if migrated {
                 shown.trap = None;
             }
@@ -276,6 +281,15 @@ impl Shown {
 pub(super) fn shown_since(ui: &Ui, before: usize) -> Shown {
     Shown {
         tree: ui.tree.to_string(),
+        ..left_since(ui, before)
+    }
+}
+
+/// `shown_since` without the tree text, which no install reads and a long tree is slow to write
+/// (M5-43).
+fn left_since(ui: &Ui, before: usize) -> Shown {
+    Shown {
+        tree: String::new(),
         end: ui.end.clone(),
         trap: ui.traps.get(before).cloned(),
     }

@@ -82,3 +82,43 @@ fn blocks_are_aligned_and_distinct_even_when_empty() {
     addresses.dedup();
     assert_eq!(addresses.len(), 4);
 }
+
+#[test]
+fn a_double_free_of_a_large_block_is_reported() {
+    let mut heap = Heap::new(1 << 20);
+    let block = heap.alloc(4096).unwrap();
+    heap.release(block, 4096);
+    heap.release(block, 4096);
+    let address = block.addr();
+    assert_eq!(heap.faults(), [Fault::NotLive { address }]);
+    assert_eq!(heap.leaks(), []);
+}
+
+#[test]
+fn a_free_inside_a_block_is_reported_and_the_block_kept() {
+    let mut heap = Heap::new(1 << 20);
+    let block = heap.alloc(64).unwrap();
+    let inside = block.wrapping_add(8);
+    heap.release(inside, 56);
+    let address = inside.addr();
+    assert_eq!(heap.faults(), [Fault::NotLive { address }]);
+    assert_eq!(heap.leaks(), [(block.addr(), 64)]);
+}
+
+#[test]
+fn a_sweep_frees_only_the_blocks_made_after_its_mark() {
+    let mut heap = Heap::new(1 << 20);
+    let kept = [heap.alloc(24).unwrap(), heap.alloc(2048).unwrap()];
+    let mark = heap.made();
+    let freed = heap.alloc(8).unwrap();
+    heap.release(freed, 8);
+    for bytes in [24, 2048, 40] {
+        heap.alloc(bytes).unwrap();
+    }
+    heap.sweep(mark);
+    let mut live = [(kept[0].addr(), 24), (kept[1].addr(), 2048)];
+    live.sort_unstable();
+    assert_eq!(heap.leaks(), live, "in address order");
+    assert_eq!(heap.faults(), []);
+    assert_eq!(heap.made(), mark + 4);
+}

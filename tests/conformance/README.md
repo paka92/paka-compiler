@@ -290,7 +290,8 @@ It is a plain test, so `cargo test --workspace --locked --offline` runs it too.
 | Bool has no order and no `+` | `bool_no_order`, `bool_plus` |
 | a condition must be Bool | `condition_not_bool` |
 | the seven escapes, `//` inside a string | `string_escapes` |
-| a bad escape, an unterminated string, `"{"` alone, a bare `}` | `string_bad_escape`, `string_unterminated`, `string_open_brace_alone`, `string_bare_close_brace` |
+| a bad escape, an unterminated string | `string_bad_escape`, `string_unterminated` |
+| `"{"` alone and a `}` that closes nothing are text | `string_open_brace_alone`, `string_close_brace_alone` |
 | code points: `len`, index, slice | `string_unicode`, `string_index_slice` |
 | compare by code point, a proper prefix first | `string_compare` |
 | no normalisation | `string_no_normalisation` |
@@ -487,6 +488,8 @@ M2-41 reuses `order_call_arguments` and `order_assignment_right_first`.
 | `m[key].field = v` with the key missing | `field_assign_missing_key` |
 | `&m[key]` with the key missing | `mark_missing_key` |
 | `for k in keys(m)` walks in key order | `keys_walk_in_order` |
+| order and lookups after removes, regrowth and keys of every width | `map_order_after_churn` |
+| a lookup then a write of the same key, with and without a use of the Map between; the key missing | `map_lookup_then_write`, `map_lookup_then_add_missing` |
 | a Map key type other than Int or String | `map_key_type_in_annotation`, `map_key_type_in_literal` |
 | literal with mixed value types; `[:]` without a type | `map_literal_value_type`, `map_empty_literal_untyped` |
 | `for` over a String or a Map | `for_over_string`, `for_over_map` |
@@ -555,6 +558,7 @@ full in the folder. `(Rn)` marks a case that follows a reading in the Settled re
 | Point | Case(s) |
 |---|---|
 | a light app runs; keys in any order; `state` optional; empty `grants` | `app_light`, `app_keys_any_order`, `app_empty_grants`, `app_grants_unused` |
+| an app named as a built-in; the built-in keeps the name | `app_named_as_built_in` |
 | `start` may be any variant of the start type; its text fields are filled from the arguments | `app_start_second_variant` |
 | `update` may have any name | `app_update_other_name` |
 | state starts from its field defaults and lives across handler calls | `app_state_defaults`, `app_state_persists` |
@@ -742,7 +746,7 @@ construct (the target `c.shape.w`, the operand or write `&xs`).
 | Kind | Case | Pins | Record |
 |---|---|---|---|
 | `invalid-byte` | `invalid_byte` | 4:1 | spec/m1.md §10 |
-| `unexpected-character` | `unexpected_character` | 4:13 | spec/m1.md §10; M2-03: a bare `}` in a string |
+| `unexpected-character` | `unexpected_character` | 4:13 | spec/m1.md §10; M2-03: a `{` inside `{ }` in a string |
 | `unterminated-string` | `unterminated_string` | 4:11 | spec/m1.md §10; `tests/errors/unterminated_string` |
 | `bad-escape` | `bad_escape` | 4:13* | spec/m1.md §10; M2-03 |
 | `unexpected-token` | `unexpected_token` | 4:12 | spec/m1.md §10; M2-02 §5: `;` |
@@ -870,6 +874,7 @@ every case, and the kind stays for a program it cannot lower, such as one whose 
 | `==` on scalars and text | `eq_scalars_and_text` |
 | `==` on Float: NaN, zero | `eq_float_nan_and_zero`, `eq_nan_inside_values` |
 | `==` on records, enums, lists, maps, `Option`, `Result`, effect lists | `eq_records_and_enums`, `eq_lists_and_maps`, `eq_option_and_result`, `eq_effect_lists` |
+| a line end splits fields and variants as a comma does | `fields_on_lines` |
 | `==` across types, Int against Float | `eq_different_types`, `eq_int_float` |
 | `<` on Bool, List, `Option`, record | `order_on_bool`, `order_on_list`, `order_on_option`, `order_on_record` |
 | comparison chain | `compare_chain` |
@@ -983,7 +988,7 @@ record named in each row holds the line.
 | The body `{` of a function is nesting level 1, so 63 `(` in a body fit and the 64th is `nesting-too-deep` | spec/m1.md §5, M2-02 §1.7 |
 | An `if` or `match` standing in the header counts as a level; the one holding it adds none | spec/m1.md §10, M2-02 §1.7 |
 | A slice whose start is after its end traps `out_of_bounds` with detail `slice 2..<1, length 3` | M2-06 §1.1, §1.2 |
-| After `{` in a string the lexer looks for the first `}` on the line; with none, the string is `unterminated-string` at the opening quote (`"{"`); with one, a `"`, `{` or `}` before it is `unexpected-character` at that byte (`"{"a"}"`) | M2-03 §1.11 |
+| After `{` in a string the lexer looks for the first `}` on the line; with none, the string is `unterminated-string` at the opening quote (`"{x`); with one, a `"` or `{` before it is `unexpected-character` at that byte (`"{x"a"}"`); a `{` right before the closing quote is text | M2-03 §1.11 |
 | `to_int` and `to_float` appear as the Int/Float bridge; the rest of their rows belong to the built-in function cases | M2-03 §1.5 |
 | A shift count outside 0 to 63 traps at the function name, like every other row | M2-06 §1.1, M2-14 §1.15 |
 | A slice trap sits at the `[`; its detail is `slice A..<B, length N` for an end past the length, a start past the end and a negative start | M2-06 §1.1, §1.2 |

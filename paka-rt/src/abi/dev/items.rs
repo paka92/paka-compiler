@@ -124,10 +124,11 @@ pub unsafe extern "sysv64" fn rt_sort_by(
     let ask = |r: usize, l: usize| {
         let (r, l) = (item.at(xs, r as u64), item.at(xs, l as u64));
         let mut out = 0u64;
-        // SAFETY: the code takes items as `pass` says, and an Int or Float item is one word.
+        // SAFETY: the code takes items as `pass` says; an Int or Float item is one word and a
+        // Bool one byte.
         let status = unsafe {
             match pass {
-                INT => transmute::<usize, Ask>(code)(ctx, *r.cast(), *l.cast(), &mut out),
+                INT => transmute::<usize, Ask>(code)(ctx, item.word(r), item.word(l), &mut out),
                 FLOAT => transmute::<usize, AskFloat>(code)(ctx, *r.cast(), *l.cast(), &mut out),
                 _ => {
                     let (r, l) = (r.expose_provenance() as u64, l.expose_provenance() as u64);
@@ -171,6 +172,21 @@ struct Item {
 impl Item {
     fn at(&self, xs: &ListWords, i: u64) -> *mut u8 {
         xs.ptr.wrapping_add((i * self.size) as usize)
+    }
+
+    /// The item at `at` as a word: an Int's word, or a Bool's one byte.
+    ///
+    /// # Safety
+    ///
+    /// `at` holds such an item.
+    unsafe fn word(&self, at: *mut u8) -> u64 {
+        // SAFETY: as the caller vouches.
+        unsafe {
+            match self.size {
+                1 => u64::from(*at),
+                _ => *at.cast(),
+            }
+        }
     }
 
     /// Room for `more` items past `xs.len`, growing the block to twice its size at least.
