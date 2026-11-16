@@ -389,6 +389,16 @@ The largest risk is that agents write Paka worse than languages they already kno
 
 Every run in every language was solved. With no Paka code in its training, the model wrote Paka nearly as correctly as Rust, which it has seen in volume. The gap is in tokens: Paka took 2.3 times Rust's output tokens. This matches the OCaml result above, cost in tokens rather than correctness. Paka runs also sent the whole language reference with every call, about 9,400 input tokens.
 
+**A later Paka run.** The first submissions that failed to build pointed at rules that bought no safety: a string literal refused inside `{ }`, a program's own name refused for being a built-in's, fields that needed commas at line ends, a list refused as a field default. Those rules were relaxed, and the Paka arm was run again on the same tasks with the same model and harness. Rust and TypeScript were not run again, so this is a separate measurement, not a new row of the table above.
+
+| | Paka, first run | Paka, later run |
+|---|---|---|
+| First try | 75.0% | 91.1% |
+| Mean edits | 0.34 | 0.11 |
+| Output tokens | 445,593 | 402,575 |
+
+All 56 runs were solved again. First tries rose from 42 to 51 of 56; tokens fell by a tenth and are still 2.1 times Rust's first-run figure. About six tenths of Paka's output tokens are the model's reasoning before it writes: on one run per task, the written reply was about 1.3 times Rust's and the reasoning about 4.7 times. The cost of an unseen language is paid in thinking, not in code length. Logs are in `experiment/runs/rerun-1/`.
+
 The token cost is the target for the next stages. Dev mode's tools let an agent find, view and edit one definition at a time instead of whole files, and Paka code written now becomes material future models learn from. The tasks and harness stay as a benchmark to track it. Raw logs are in `experiment/runs/`.
 
 **Order of work:**

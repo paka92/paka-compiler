@@ -92,6 +92,10 @@ Every run was solved. With no Paka code in its training, the model writes Paka n
 as Rust, at 2.3 times the output tokens. Dev mode's one-definition tools aim at that cost; the
 benchmark stays to track it.
 
+A later run of the Paka arm alone, after four rules that only cost retries were relaxed: 91.1%
+first try, 0.11 mean edits, 402,575 output tokens. Rust and TypeScript were not run again
+([GENESIS.md](GENESIS.md) section 9).
+
 Rebuild the numbers from the raw logs:
 
 ```
