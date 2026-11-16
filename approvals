@@ -1,4 +1,4 @@
-serial 1
+serial 4
 grants tests/cases/examples/sample_counter counter []
 file .github/workflows/ci.yml 33
   name: ci
@@ -292,3 +292,101 @@ file TRUSTED 223
   libxkbcommon                    system              -                                                    programs   window, loaded at run time
   gui/fonts/NotoSans-Regular.ttf  2.015               OFL-1.1                                              programs   the font
 
+grants tests/cases/examples/sample_todo todo []
+example tests/cases/examples/sample_todo add_then_toggle 6
+  example add_then_toggle {
+    var s = Todos { draft: "milk" }
+    update(&s, Add)
+    update(&s, Toggle(1))
+    s.draft == "" && s.items[0].title == "milk" && s.items[0].done
+  }
+example tests/cases/examples/sample_todo add_one_item 7
+  example add_one_item {
+    var ui = ui_start(todo)
+    ui_click(&ui, "'new'")
+    ui_type(&ui, "milk")
+    ui_click(&ui, "#1")
+    ui_text(ui, "'new'") == "" && ui_text(ui, "1/#1") == "milk"
+  }
+example tests/cases/examples/sample_todo tree_after_add 7
+  example tree_after_add {
+    var ui = ui_start(todo)
+    ui_click(&ui, "'new'")
+    ui_type(&ui, "milk")
+    ui_click(&ui, "#1")
+    ui_tree(ui) == "Col gap=8\n  Input 'new' \"\" cursor=0 on_change=Draft focus\n  Button #1 \"Add\" on=Add\n  Row 1 gap=8\n    Button #0 \"[ ]\" on=Toggle(1)\n    Text #1 \"milk\"\n"
+  }
+example tests/cases/examples/sample_todo empty_list_says_so 4
+  example empty_list_says_so {
+    let ui = ui_start(todo)
+    ui_text(ui, "#2") == "Nothing to do" && !ui_has(ui, "1")
+  }
+example tests/cases/examples/sample_todo toggle_marks_done 8
+  example toggle_marks_done {
+    var ui = ui_start(todo)
+    ui_click(&ui, "'new'")
+    ui_type(&ui, "milk")
+    ui_click(&ui, "#1")
+    ui_click(&ui, "1/#0")
+    ui_text(ui, "1/#0") == "[x]"
+  }
+example tests/cases/examples/sample_todo rows_keep_their_ids 10
+  example rows_keep_their_ids {
+    var ui = ui_start(todo)
+    ui_click(&ui, "'new'")
+    ui_type(&ui, "milk")
+    ui_click(&ui, "#1")
+    ui_type(&ui, "eggs")
+    ui_click(&ui, "#1")
+    ui_click(&ui, "2/#0")
+    ui_text(ui, "1/#0") == "[ ]" && ui_text(ui, "2/#0") == "[x]" && ui_text(ui, "2/#1") == "eggs"
+  }
+grants tests/cases/examples/sample_counter_built counter []
+example tests/cases/examples/sample_counter_built dec_stops_at_zero 5
+  example dec_stops_at_zero {
+    var s = Counter {}
+    update(&s, Dec)
+    s.count == 0
+  }
+example tests/cases/examples/sample_counter_built reset_clears 5
+  example reset_clears {
+    var s = Counter { count: 3 }
+    update(&s, Reset)
+    s.count == 0
+  }
+example tests/cases/examples/sample_counter_built inc_once 5
+  example inc_once {
+    var ui = ui_start(counter)
+    ui_click(&ui, "#1/#1")
+    ui_text(ui, "#0") == "1"
+  }
+example tests/cases/examples/sample_counter_built inc_then_dec 7
+  example inc_then_dec {
+    var ui = ui_start(counter)
+    ui_click(&ui, "#1/#1")
+    ui_click(&ui, "#1/#1")
+    ui_click(&ui, "#1/#0")
+    ui_text(ui, "#0") == "1"
+  }
+example tests/cases/examples/sample_counter_built dec_at_zero_stays 5
+  example dec_at_zero_stays {
+    var ui = ui_start(counter)
+    ui_click(&ui, "#1/#0")
+    ui_text(ui, "#0") == "0"
+  }
+example tests/cases/examples/sample_counter_built reset_to_zero 6
+  example reset_to_zero {
+    var ui = ui_start(counter)
+    ui_click(&ui, "#1/#1")
+    ui_click(&ui, "#2")
+    ui_text(ui, "#0") == "0"
+  }
+grants tests/cases/examples/sample_wc wc [Console, ReadFiles]
+example tests/cases/examples/sample_wc count_words_empty 3
+  example count_words_empty {
+    count_words("") == 0
+  }
+example tests/cases/examples/sample_wc count_words_two_lines 3
+  example count_words_two_lines {
+    count_words("one two\n  three\t") == 3
+  }

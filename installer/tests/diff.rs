@@ -380,7 +380,11 @@ fn ui(plant: &str) -> (String, String, Option<i32>) {
 
 /// The UI examples of the cases under tests/cases/examples that release builds, each with its
 /// number of actions: those of every `Ui` value it starts or copies.
-const BUILT: [(&str, &str, usize); 12] = [
+const BUILT: [(&str, &str, usize); 16] = [
+    ("sample_counter_built", "dec_at_zero_stays", 2),
+    ("sample_counter_built", "inc_once", 2),
+    ("sample_counter_built", "inc_then_dec", 4),
+    ("sample_counter_built", "reset_to_zero", 3),
     ("ui_ends_built", "answer_dropped", 3),
     ("ui_ends_built", "error_node", 2),
     ("ui_ends_built", "quits", 2),

@@ -5,9 +5,8 @@ A programming language for code written by AI agents.
 People describe what they want and decide what a program may do; an agent writes and reads the
 code. The design and its reasons are in the [genesis paper](GENESIS.md).
 
-**Status:** the language, its interpreter, dev mode and the live GUI are built; milestones 1 to 5
-have passed their exit checks. Release mode (milestone 6) and the evidence gates (milestone 7) are
-built and wait for the owner's sign-off.
+**Status:** the language, its interpreter, dev mode, the live GUI, release mode and the evidence
+gates are built; milestones 1 to 7 have passed their exit checks.
 
 ## What works
 
