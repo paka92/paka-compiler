@@ -1,0 +1,23 @@
+enum Msg { Start }
+
+type Row { cells: List<Int> = [1, 2] }
+
+enum Mark { Text, Button(n: Int) }
+
+fn mark_n(m: Mark) -> Int {
+  match m {
+    Text => 0
+    Button(n) => n
+  }
+}
+
+fn update(msg: Msg) -> List<Effect<Msg>> {
+  let r = Row {}
+  [Print("{len(r.cells)} {mark_n(Button(3))} {mark_n(Text)}"), Exit]
+}
+
+app types {
+  start: Start
+  update: update
+  grants: [Console]
+}

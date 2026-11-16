@@ -208,7 +208,7 @@ fn a_name_is_unknown_after_its_block_and_inside_its_own_let() {
 
 #[test]
 fn duplicate_definitions_are_reported_at_the_later_name() {
-    let cases: [(&[&str], usize, &str); 12] = [
+    let cases: [(&[&str], usize, &str); 11] = [
         (&["enum Msg { Start, Start }"], 1, "Start, ^Start"),
         (
             &["enum Msg { Start }", "enum Other { Start }"],
@@ -220,7 +220,6 @@ fn duplicate_definitions_are_reported_at_the_later_name() {
         (&["type Point {}", "enum Point { A }"], 2, "enum ^Point"),
         (&["fn f() {}", "fn f() {}"], 2, "fn ^f"),
         (&["fn f() {}", "example f { true }"], 2, "example ^f"),
-        (&["fn f() {}", "app f { }"], 2, "app ^f"),
         (&["enum Msg { Some }"], 1, "{ ^Some"),
         (&["type String {}"], 1, "type ^String"),
         (&["enum Console { A }"], 1, "enum ^Console"),
@@ -235,16 +234,65 @@ fn duplicate_definitions_are_reported_at_the_later_name() {
 
 #[test]
 fn a_user_definition_of_a_built_in_name_says_so() {
-    for source in ["fn len() {}", "enum Msg { Exit }", "type String {}"] {
+    for (source, name) in [("enum Msg { Exit }", "Exit"), ("type String {}", "String")] {
         let d = rejection(&program(&[source]));
-        let name = ["len", "Exit", "String"]
-            .into_iter()
-            .find(|n| source.contains(n));
-        assert_eq!(
-            d.message,
-            format!("{} is a built-in; rename it", name.unwrap())
-        );
+        assert_eq!(d.message, format!("{name} is a built-in; rename it"));
     }
+}
+
+#[test]
+fn a_definition_replaces_a_built_in_function_or_element_everywhere() {
+    let src = program(&[
+        "fn join(a: Int) -> Int { a }",
+        "type Row { n: Int }",
+        "enum Mark { Text }",
+        "fn f() -> Int { join(Row { n: 1 }.n) }",
+        "fn g() -> Mark { Text }",
+    ]);
+    let r = resolved(&src);
+    assert_eq!(r.get(at(&src, 4, "{ ^join")), Some(Binding::Def(0)));
+    assert_eq!(r.get(at(&src, 5, "{ ^Text")), Some(Binding::Variant(2, 0)));
+}
+
+#[test]
+fn a_view_that_uses_an_element_the_program_took_is_refused_at_the_use() {
+    let view = |line| {
+        program(&[
+            "type Text { s: String }",
+            "enum Msg { Go }",
+            "view v() -> View<Msg> {",
+            line,
+            "}",
+        ])
+    };
+    let src = view("  Text(\"hi\")");
+    let d = rejection(&src);
+    assert_eq!(
+        (d.code, d.position),
+        ("duplicate-name", Some(at(&src, 4, "^Text")))
+    );
+    resolved(&view("  Button(\"hi\", on: Go)"));
+}
+
+#[test]
+fn an_app_name_stays_out_of_the_pool() {
+    let src = program(&[
+        "fn hello() {}",
+        "app hello { }",
+        "example e {",
+        "  hello()",
+        "  ui_has(ui_start(hello), \"\")",
+        "}",
+    ]);
+    let r = resolved(&src);
+    assert_eq!(r.get(at(&src, 4, "^hello")), Some(Binding::Def(0)));
+    assert_eq!(r.get(at(&src, 5, "(^hello")), Some(Binding::Def(1)));
+    let src = program(&[
+        "app hello { }",
+        "example e { ui_has(ui_start(helo), \"\") }",
+    ]);
+    let (code, _, fix) = rejected(&src);
+    assert_eq!((code, fix.as_deref()), ("unknown-name", Some("hello")));
 }
 
 /// The part of the language reference between two headings.
@@ -317,6 +365,10 @@ fn every_built_in_name_is_taken() {
     for (kind, template) in sources {
         for name in spec.iter().find(|s| s.0 == kind).map(|s| &s.1).unwrap() {
             let src = program(&[&template.replace('@', name)]);
+            if kind == Kind::Fn {
+                resolved(&src);
+                continue;
+            }
             let d = rejection(&src);
             assert_eq!(d.code, "duplicate-name", "{src}");
             assert_eq!(d.message, format!("{name} is a built-in; rename it"));
@@ -325,16 +377,19 @@ fn every_built_in_name_is_taken() {
 }
 
 #[test]
-fn ui_names_are_taken_from_headless_programs() {
-    let elements = builtins::ELEMENTS.iter().map(|e| e.name);
-    for name in elements.chain(builtins::UI.iter().map(|&(_, row)| builtins::name(row))) {
+fn ui_names_are_taken_and_element_names_are_not() {
+    for &(_, row) in builtins::UI {
+        let name = builtins::name(row);
         let template = if name.starts_with(char::is_uppercase) {
-            "enum Msg { @ }"
+            "type @ {}"
         } else {
             "fn @() {}"
         };
         let d = rejection(&program(&[&template.replace('@', name)]));
         assert_eq!(d.message, format!("{name} is a built-in; rename it"));
+    }
+    for e in builtins::ELEMENTS {
+        resolved(&program(&[&format!("enum Msg {{ {} }}", e.name)]));
     }
 }
 

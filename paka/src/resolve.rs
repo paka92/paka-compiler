@@ -80,6 +80,7 @@ pub fn resolve<'a>(path: &'a str, program: &'a Program<'a>) -> Res<Resolved> {
         entries: BTreeMap::new(),
         reads: RefCell::default(),
         example: false,
+        view: false,
     };
     for (i, def) in program.defs.iter().enumerate() {
         resolver
@@ -216,6 +217,8 @@ struct Resolver<'a> {
     reads: RefCell<BTreeSet<String>>,
     /// Whether the definition being resolved is an example, the one place for UI names.
     example: bool,
+    /// Whether the definition being resolved is a view, the one place for elements.
+    view: bool,
 }
 
 impl<'a> Resolver<'a> {
@@ -285,11 +288,14 @@ impl<'a> Resolver<'a> {
         Some(found)
     }
 
+    /// A definition or variant may take the name of a built-in function or element, which it
+    /// then replaces everywhere; any other name exists once (M2-02.2).
     fn declare(&mut self, name: &'a str, at: Pos, kind: Kind, binding: Binding) -> Res {
-        let Some((_, old)) = self.pool.insert(name, (kind, binding)) else {
+        let Some((old_kind, old)) = self.pool.insert(name, (kind, binding)) else {
             return Ok(());
         };
         let message = match old {
+            Binding::Builtin(b) if old_kind == Kind::Fn && !builtins::is_ui(b) => return Ok(()),
             Binding::Builtin(_) => format!("{name} is a built-in; rename it"),
             _ => format!("{name} is already declared"),
         };
@@ -304,9 +310,8 @@ impl<'a> Resolver<'a> {
             Def::Example { .. } | Def::App { .. } => Kind::Other,
             Def::Foreign { .. } => Kind::Grant,
         };
-        // An app is never called, so its name may be a built-in's, which keeps the name.
-        let builtin = matches!(self.pool.get(name.text), Some((_, Binding::Builtin(_))));
-        if !(builtin && matches!(def, Def::App { .. })) {
+        // An app is never called: its name stays out of the pool.
+        if !matches!(def, Def::App { .. }) {
             self.declare(name.text, name.at, kind, Binding::Def(i))?;
         }
         let variants: Vec<_> = match def {
@@ -358,15 +363,20 @@ impl<'a> Resolver<'a> {
                 result,
                 body,
                 ..
-            } => self.scoped(|r| {
-                for p in params {
-                    r.view_param(p)?;
-                    r.ty(&p.ty)?;
-                    r.bind(p.name.text, p.name.at)?;
-                }
-                r.view_result(result)?;
-                r.block(body)
-            }),
+            } => {
+                self.view = true;
+                let done = self.scoped(|r| {
+                    for p in params {
+                        r.view_param(p)?;
+                        r.ty(&p.ty)?;
+                        r.bind(p.name.text, p.name.at)?;
+                    }
+                    r.view_result(result)?;
+                    r.block(body)
+                });
+                self.view = false;
+                done
+            }
         }
     }
 
@@ -462,6 +472,45 @@ impl<'a> Resolver<'a> {
             Some(found) => self.record(at, found),
             None => Err(self.suggest("unknown-name", (at, name), what, self.names(own))),
         }
+    }
+
+    /// An app, found by its name among the definitions: apps stand outside the pool.
+    fn app_name(&mut self, name: &str, at: Pos) -> Res {
+        self.reads.borrow_mut().insert(name.into());
+        let apps = (self.program.defs.iter().enumerate())
+            .filter(|(_, d)| matches!(d, Def::App { .. }))
+            .map(|(i, d)| (i, d.name().text));
+        match apps.clone().find(|&(_, app)| app == name) {
+            Some((i, _)) => self.record(at, Binding::Def(i)),
+            None => {
+                let names = apps.map(|(_, app)| app);
+                let head = format!("{name} is not an app of the program");
+                Err(suggestion(
+                    self.path,
+                    "unknown-name",
+                    (at, name),
+                    &head,
+                    names,
+                ))
+            }
+        }
+    }
+
+    /// In a view, an element name the program took for a definition or variant other than a view
+    /// is an error at its use: the view meant the element.
+    fn element_taken(&self, name: &str, at: Pos) -> Res {
+        let taken = match self.pool.get(name) {
+            Some((_, Binding::Def(i))) => !matches!(self.program.defs[*i], Def::View { .. }),
+            Some((_, Binding::Variant(..))) => true,
+            _ => false,
+        };
+        if !(self.view && taken && builtins::element(name).is_some()) {
+            return Ok(());
+        }
+        self.reads.borrow_mut().insert(name.into());
+        let message =
+            format!("{name} names the program's own definition here, not the element; rename it");
+        Err(self.fail(at, name.len(), "duplicate-name", message))
     }
 
     fn grant(&mut self, name: &str, at: Pos) -> Res {
@@ -597,8 +646,7 @@ impl<'a> Resolver<'a> {
                         Some(Binding::Builtin("ui_start"))
                     ) =>
                 {
-                    let app = |d: &Def| matches!(d, Def::App { .. });
-                    self.own_def(name, a.value.at, app, "not an app of the program")
+                    self.app_name(name, a.value.at)
                 }
                 _ => self.expr(&a.value),
             }),
@@ -656,6 +704,7 @@ impl<'a> Resolver<'a> {
     /// A lower-case or Upper-case name in an expression: the innermost local, else a function or
     /// a variant. A type, an example and an app are never values.
     fn value(&mut self, name: &'a str, at: Pos) -> Res {
+        self.element_taken(name, at)?;
         let local = self.locals.iter().rfind(|l| l.0 == name);
         let local = local.map(|&(_, declared)| Binding::Local(declared));
         match local.or_else(|| self.pool_get(name, of(VALUES))) {

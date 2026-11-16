@@ -1,4 +1,4 @@
-main.paka:1:4: error[duplicate-name]: len is a built-in; rename it
-  definition: len
-  bytes: 3..6
-  text: "len"
+main.paka:1:6: error[duplicate-name]: Option is a built-in; rename it
+  definition: Option
+  bytes: 5..11
+  text: "Option"

@@ -227,6 +227,11 @@ pub fn is_ui(name: &str) -> bool {
     UI.iter().any(|&(_, row)| self::name(row) == name)
 }
 
+/// Whether `name` is a built-in's: a row, an element or a UI name.
+pub fn named(name: &str) -> bool {
+    ROWS.iter().any(|&(_, row)| self::name(row) == name) || element(name).is_some() || is_ui(name)
+}
+
 /// The element named `name`, if one is.
 pub fn element(name: &str) -> Option<&'static Element> {
     ELEMENTS.iter().find(|e| e.name == name)

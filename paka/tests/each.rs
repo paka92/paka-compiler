@@ -61,7 +61,7 @@ fn alone_equals_whole() {
         let text = fs::read(&path).unwrap();
         let Some(whole) = each(&text) else { continue };
         let parts = split("main.paka", &text).unwrap();
-        for def in &whole {
+        for (i, def) in whole.iter().enumerate() {
             let kept = closure(&whole, &def.name);
             let mut cut = text.clone();
             for &(_, part) in parts.iter().filter(|p| !kept.contains(p.0)) {
@@ -70,7 +70,10 @@ fn alone_equals_whole() {
                 cut[at..at + part.len()].iter_mut().for_each(blank);
             }
             let alone = each(&cut).unwrap_or_else(|| panic!("{path:?} {}", def.name));
-            let found = alone.iter().find(|d| d.name == def.name).unwrap();
+            // An app may share a function's name: same names match in order.
+            let nth = whole[..i].iter().filter(|d| d.name == def.name).count();
+            let mut named = alone.iter().filter(|d| d.name == def.name);
+            let found = named.nth(nth).unwrap();
             let show = |d: &DefCheck| format!("{:?} {:?}", d.error, d.reads);
             assert_eq!(show(found), show(def), "{path:?} {}", def.name);
             checked += 1;

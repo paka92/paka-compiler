@@ -127,9 +127,7 @@ impl Session {
         let defined = self.workspace.defs().any(|(names, _)| names[0] == name);
         let variant =
             (self.workspace.defs()).any(|(names, _)| names[1..].iter().any(|n| n == name));
-        let builtin = ROWS.iter().any(|(_, row)| builtins::name(row) == name)
-            || builtins::element(name).is_some()
-            || builtins::is_ui(name);
+        let builtin = builtins::named(name);
         if user.iter().any(|n| n == name) {
             false
         } else if variant || (builtin && !defined) {

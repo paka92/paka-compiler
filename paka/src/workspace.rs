@@ -10,6 +10,7 @@
 //! the edits between are released together (M4-13).
 
 use crate::alone::Names;
+use crate::builtins;
 use crate::diagnostic::Diagnostic;
 use crate::index::Index;
 use crate::parser::{parse_def, split};
@@ -212,6 +213,10 @@ impl Workspace {
         let gone: Vec<_> = old_names.difference(new_names).copied().collect();
         let appeared: Vec<_> = new_names.difference(old_names).copied().collect();
         let mut wake = self.index.waiting(&appeared);
+        // Reads leave built-ins out, so a name that replaces one wakes every definition.
+        if appeared.iter().any(|n| builtins::named(n)) {
+            wake.extend(fresh.iter().map(|d| d.name.clone()));
+        }
         wake.extend(
             gone.iter()
                 .flat_map(|n| self.index.users(n))
@@ -283,9 +288,26 @@ impl Workspace {
     }
 }
 
+/// Definitions are edited by name, so a workspace refuses an app named as another definition.
 fn check(texts: &[impl AsRef<str>]) -> Result<Vec<DefCheck>, Diagnostic> {
     let text = program(texts.iter().map(AsRef::as_ref));
-    check_each(PATH, &Source::file(PATH, text.into_bytes()))
+    let checks = check_each(PATH, &Source::file(PATH, text.into_bytes()))?;
+    let lines = first_lines(texts);
+    for (i, c) in checks.iter().enumerate() {
+        if checks[..i].iter().any(|d| d.name == c.name) {
+            let col = texts[i].as_ref().find(&c.name).map_or(1, |at| at + 1);
+            let message = format!("{} names two definitions; rename one", c.name);
+            let d = Diagnostic::new(
+                PATH,
+                (lines[i], col),
+                c.name.len(),
+                "duplicate-name",
+                message,
+            );
+            return Err(d.in_definition(&c.name));
+        }
+    }
+    Ok(checks)
 }
 
 fn clean(checks: &[DefCheck]) -> bool {

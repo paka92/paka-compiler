@@ -1,0 +1,20 @@
+type Text { s: String }
+
+enum Msg { Go }
+
+type State { n: Int = 0 }
+
+fn update(s: inout State, m: Msg) {
+  s.n += 1
+}
+
+view main_view(s: State) -> View<Msg> {
+  Text("{s.n}")
+}
+
+app types {
+  state:  State
+  update: update
+  view:   main_view
+  grants: []
+}

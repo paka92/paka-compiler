@@ -1,1 +1,1 @@
-main.paka:4:13: error[unexpected-character]
+main.paka:4:14: error[unexpected-token]

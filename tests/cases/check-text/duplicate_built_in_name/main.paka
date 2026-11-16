@@ -1,4 +1,4 @@
-fn len(s: String) -> Int { 0 }
+type Option { n: Int }
 
 enum Msg { Start }
 

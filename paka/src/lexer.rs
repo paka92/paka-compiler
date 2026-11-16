@@ -114,7 +114,7 @@ impl<'a> Token<'a> {
                     i += 2;
                 }
                 b'{' if i + 1 < text.len() => {
-                    let end = i + text[i..].iter().position(|&b| b == b'}').unwrap();
+                    let end = interpolation_end(text, i + 1);
                     if !run.is_empty() {
                         parts.push(Part::Text(std::mem::take(&mut run)));
                     }
@@ -132,6 +132,20 @@ impl<'a> Token<'a> {
             parts.push(Part::Text(run));
         }
         parts
+    }
+}
+
+/// The `}` that closes the interpolation from `i`, past any string inside it.
+fn interpolation_end(text: &[u8], mut i: usize) -> usize {
+    let mut quoted = false;
+    loop {
+        match (text[i], quoted) {
+            (b'\\', true) => i += 1,
+            (b'"', _) => quoted = !quoted,
+            (b'}', false) => return i,
+            _ => {}
+        }
+        i += 1;
     }
 }
 
@@ -492,14 +506,20 @@ impl<'a> Lexer<'a> {
         )
     }
 
-    /// Scans a string at the opening quote (M2-03 section 2.7): the first problem found wins.
-    /// A `"` at `i` that no name follows: `"{"a"}"` is a string inside `{ }`, not three tokens.
-    fn closes_string(&self, i: usize) -> bool {
-        self.src.get(i) == Some(&b'"') && !self.src.get(i + 1).is_some_and(|&b| name_byte(b))
-    }
-
     fn string(&mut self) -> Result<Token<'a>, Diagnostic> {
         let open = self.at;
+        let close = self.scan(open, false)?;
+        self.at = close + 1;
+        let src: &'a [u8] = self.src;
+        Ok(Token {
+            text: &src[open + 1..close],
+            ..self.make(Kind::Str, open, close + 1)
+        })
+    }
+
+    /// The closing quote of the string opened at `open` (M2-03 section 2.7): the first problem
+    /// found wins. An `inner` string stands inside `{ }` and has no `{ }` of its own.
+    fn scan(&self, open: usize, inner: bool) -> Result<usize, Diagnostic> {
         let mut i = open + 1;
         let mut interpolation = None;
         loop {
@@ -508,7 +528,7 @@ impl<'a> Lexer<'a> {
             };
             match (b, interpolation) {
                 (b'\n', _) => return Err(self.unterminated(open)),
-                (b'"', None) => break,
+                (b'"', None) => return Ok(i),
                 (b'\\', None) => {
                     if !matches!(
                         self.src.get(i + 1),
@@ -521,7 +541,11 @@ impl<'a> Lexer<'a> {
                 }
                 // A `}` that closes nothing and a `{` at the closing quote are text.
                 (b'}', None) => i += 1,
-                (b'{', None) if self.closes_string(i + 1) => i += 1,
+                (b'{', None) if self.src.get(i + 1) == Some(&b'"') => i += 1,
+                (b'{', None) if inner => {
+                    let message = r"no { in a string inside { }; write \{";
+                    return Err(self.fail(i, 1, "unexpected-character", message));
+                }
                 (b'{', None) => {
                     interpolation = Some(i + 1);
                     i += 1;
@@ -539,24 +563,17 @@ impl<'a> Lexer<'a> {
                     if !closed {
                         return Err(self.unterminated(open));
                     }
-                    let message = if b == b'"' {
-                        "no string literal inside { }"
-                    } else {
-                        "no { inside { }"
-                    };
-                    return Err(self.fail(i, 1, "unexpected-character", message));
+                    if b == b'{' {
+                        let message = "no { inside { }";
+                        return Err(self.fail(i, 1, "unexpected-character", message));
+                    }
+                    i = self.scan(i, true)? + 1;
                 }
                 (0x20..=0x7E, _) => i += 1,
                 (_, None) => i = self.text_char(i)?,
                 (_, Some(_)) => return Err(self.bad_byte(i)),
             }
         }
-        self.at = i + 1;
-        let src: &'a [u8] = self.src;
-        Ok(Token {
-            text: &src[open + 1..i],
-            ..self.make(Kind::Str, open, i + 1)
-        })
     }
 }
 
@@ -768,6 +785,11 @@ mod tests {
             describe(r#""x y" z"#.as_bytes())[..2],
             ["STRING@1:1", "z@1:7"]
         );
+        // A `{` right before a quote is text, so the quote closes the string.
+        use Kind::{End, Lower, Newline, Plus, Str};
+        let three = [Str, Plus, Lower, Plus, Str, Newline, End];
+        assert_eq!(kinds(r#""{" + x + "}""#), three);
+        assert_eq!(kinds(r#""{"a"}""#), [Str, Lower, Str, Newline, End]);
     }
 
     #[test]
@@ -783,6 +805,13 @@ mod tests {
         assert_eq!(parts(r#""}""#), [text("}")]);
         assert_eq!(parts(r#""{""#), [text("{")]);
         assert_eq!(parts(r#""{x}} a} {""#), [expr(2, b"x"), text("} a} {")]);
+        // A string inside `{ }` may hold `}` and escapes.
+        let join = br#"join(xs, " ")"#;
+        assert_eq!(
+            parts(r#""r {join(xs, " ")}!""#),
+            [text("r "), expr(4, join), text("!")]
+        );
+        assert_eq!(parts(r#""{f("}\"{")}""#), [expr(2, br#"f("}\"{")"#)]);
         assert_eq!(parts(r#""a\n\r\t\\\"\{\}""#), [text("a\n\r\t\\\"{}")]);
         assert_eq!(
             parts("\"caf\u{e9} {n}\""),
@@ -1066,9 +1095,10 @@ mod tests {
         assert_eq!(code("a \"b\\"), "main.paka:1:5: error[bad-escape]");
         assert_eq!(code("a \"b\\\nc\""), "main.paka:1:5: error[bad-escape]");
         assert_eq!(
-            code("a \"{x\"y\"}\""),
-            "main.paka:1:6: error[unexpected-character]"
+            code("a \"{f(\"a{b\")}\""),
+            "main.paka:1:9: error[unexpected-character]"
         );
+        unterminated("a \"{f(\"a}", "1:7");
         assert_eq!(
             code("a \"{{x}\""),
             "main.paka:1:5: error[unexpected-character]"
@@ -1087,7 +1117,10 @@ mod tests {
     #[test]
     fn error_messages() {
         assert_eq!(message("\"\\q\""), r#"escapes are \n \r \t \\ \" \{ \}"#);
-        assert_eq!(message("\"{x\"y}\""), "no string literal inside { }");
+        assert_eq!(
+            message("\"{f(\"{x\")}\""),
+            r"no { in a string inside { }; write \{"
+        );
         assert_eq!(message("\"{{x}\""), "no { inside { }");
         assert_eq!(message("\"{}\""), "expected an expression");
         assert_eq!(message("\"x"), "the string has no closing quote");

@@ -33,6 +33,8 @@ so the fallback order of its section 1.17 was not used.
 | M2-02.8 | comments anywhere, all kept | 50; which construct owns a kept comment is not for the model: a rule for the tools that print code |
 | M2-02 changed | `;`, a trailing comma, a comma after an arm and `else` on a new line are errors | 53, 56, 161 |
 | M2-02 changed | nesting limit 64 counts bracketless forms; chains at most 1,000 links; `nesting-too-deep` | 57 |
+| M2-02 changed | a definition or variant may replace a built-in function or element; a view using a taken element is `duplicate-name`; an app takes any name | 38, 40 |
+| M2-02 changed | a field default may be a list of defaults | 91 |
 
 ## M2-03 primitive types and operations
 
@@ -48,7 +50,7 @@ so the fallback order of its section 1.17 was not used.
 | M2-03 changed | no `\u{hex}` escape | 195 |
 | M2-03 changed, relaxed later | a `}` that closes nothing and a `{` at the closing quote are text | 201 |
 | M2-03 changed | no leading zero in a literal; `parse_int` accepts them | 78, 340 |
-| M2-03 changed | an interpolation holds no `"`, `{` or `}` | 198 |
+| M2-03 changed, relaxed later | an interpolation holds no `{`; a string literal inside it is allowed | 200 |
 | M2-03 changed | five M1 lex cases stop holding | not for the model: test cases |
 
 ## M2-05 ownership

@@ -111,7 +111,10 @@ fn check_all(path: &str, source: &Source) -> Result<(Vec<DefCheck>, Option<Lower
     let reads: Vec<_> = (program.defs.iter().zip(reads).zip(resolved.reads))
         .map(|((def, mut reads), more)| {
             reads.extend(more);
-            reads.remove(def.name().text);
+            // Drops a self-read; an app never reads itself, so its name read is another's.
+            if !matches!(def, Def::App { .. }) {
+                reads.remove(def.name().text);
+            }
             reads
         })
         .collect();

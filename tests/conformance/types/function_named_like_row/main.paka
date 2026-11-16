@@ -1,9 +1,10 @@
 enum Msg { Start }
 
-fn len(x: Int) -> Int { x }
+fn len(x: Int) -> Int { x + 1 }
 
 fn update(msg: Msg) -> List<Effect<Msg>> {
-  [Print("done"), Exit]
+  let n = len(4)
+  [Print("{n}"), Exit]
 }
 
 app types {

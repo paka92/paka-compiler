@@ -298,7 +298,7 @@ It is a plain test, so `cargo test --workspace --locked --offline` runs it too.
 | `+`, `+=` join | `string_concat` |
 | `+` with an Int (mixed operands are `type-mismatch` at the operator) | `string_plus_int` |
 | interpolation: Int, Bool, String, expressions, `\{` | `string_interpolation` |
-| interpolation: a quote inside, an empty one | `string_interpolation_quote`, `string_interpolation_empty` |
+| interpolation: a string literal inside; a quote right after `{`, a raw `{` in an inner string, an empty one | `string_interpolation_literal`; `string_interpolation_quote`, `string_interpolation_inner_brace`, `string_interpolation_empty` |
 | index out of range, a negative index, slice end beyond the length, slice start after the end | `string_index_trap`, `string_index_negative_trap`, `string_slice_end_trap`, `string_slice_order_trap` |
 | a String position is not assignable | `string_assign_index` |
 
@@ -395,7 +395,7 @@ M2-41 reuses `order_call_arguments` and `order_assignment_right_first`.
 | `len([])` and `len([:])` written bare | `len_of_empty_list`, `len_of_empty_map_literal` |
 | `min(1, 2.0)` | `min_of_int_and_float` |
 | a built-in is not a value | `builtin_as_value`, `builtin_as_sort_by_function` |
-| a user definition of a row's name; a type named like a built-in type | `user_function_named_like_row`, `user_type_named_option` |
+| a user definition of a row's name replaces the row; a type named like a built-in type | `user_function_named_like_row`, `user_type_named_option` |
 | a local may hide a built-in; calling it is `not-a-function` | `local_hides_builtin`, `local_hides_builtin_call` |
 | an unlisted habit name | `unknown_habit_name` |
 | the labels of `fixed`, `insert` and `list_of` are required | `fixed_digits_unlabelled`, `insert_at_unlabelled`, `list_of_count_unlabelled` |
@@ -558,7 +558,7 @@ full in the folder. `(Rn)` marks a case that follows a reading in the Settled re
 | Point | Case(s) |
 |---|---|
 | a light app runs; keys in any order; `state` optional; empty `grants` | `app_light`, `app_keys_any_order`, `app_empty_grants`, `app_grants_unused` |
-| an app named as a built-in; the built-in keeps the name | `app_named_as_built_in` |
+| an app named as a built-in, the built-in keeps the name; an app named as a function | `app_named_as_built_in`, `app_named_as_function` |
 | `start` may be any variant of the start type; its text fields are filled from the arguments | `app_start_second_variant` |
 | `update` may have any name | `app_update_other_name` |
 | state starts from its field defaults and lives across handler calls | `app_state_defaults`, `app_state_persists` |
@@ -835,14 +835,15 @@ every case, and the kind stays for a program it cannot lower, such as one whose 
 | label not a field / out of order | `record_label_not_a_field`, `record_label_out_of_order` |
 | duplicate field name | `record_duplicate_field` |
 | unknown field read; field read on a non-record, on a variant | `record_field_read_unknown`, `field_on_non_record`, `field_read_on_variant` |
-| field default is a constant: call, sum, non-empty list | `field_default_call`, `field_default_sum`, `field_default_list_of_values` |
+| field default is a constant: call, sum | `field_default_call`, `field_default_sum` |
+| field default: a list of defaults, a variant holding one | `field_default_list_of_values` |
 | field default: bare variant that has fields | `field_default_bare_variant_with_fields` |
 | record literal in an `if` header | `record_literal_in_header_unparenthesized`, `record_literal_in_header_parenthesized` |
 | variant arguments: too few, too many, wrong type, labelled | `variant_too_few_fields`, `variant_too_many_fields`, `variant_wrong_field_type`, `variant_labelled_argument` |
 | fieldless variant called | `fieldless_variant_called_empty`, `fieldless_variant_called_with_value` |
 | bare variant with fields as a value | `bare_variant_with_fields_as_value` |
 | duplicate variant, variant field names | `duplicate_variant_name`, `variant_duplicate_field` |
-| names are one pool with types, variants, built-ins | `type_named_like_builtin`, `variant_named_like_builtin`, `variant_named_like_type`, `function_named_like_row` |
+| names are one pool with types, variants, built-ins; a function or type replaces a row or element; a view using a taken element | `type_named_like_builtin`, `variant_named_like_builtin`, `variant_named_like_type`, `function_named_like_row`, `type_named_like_element`, `element_name_taken_in_view` |
 | a local hides a built-in name; calling it is `not-a-function` | `local_hides_builtin_not_a_function` |
 
 ### types/ M2-02: `match`
@@ -1007,7 +1008,7 @@ record named in each row holds the line.
 | `max(1, 2.0)` is at the second argument (`max_mixed`) | M2-09 §1.3 |
 | A pattern with the wrong number of fields is `wrong-argument-count` at the variant name in the pattern (`pattern_too_few_fields` and others) | M2-02 §5 |
 | An Upper name followed by `{` ends a header, so `if Counter { count: 1 } == c` fails at the `:` (`record_literal_in_header_unparenthesized`) | M2-02 §1.9 |
-| A field default is reported at the first token not part of a constant: the name of a call, the operator of a sum, the first item of a non-empty list (`field_default_*`) | M2-02 §1.9 |
+| A field default is reported at the first token not part of a constant: the name of a call, the operator of a sum, the first bad item of a list (`field_default_*`) | M2-02 §1.9 |
 | An empty `match` is `unexpected-token` at the `}` (`match_empty`) | M2-02 §1.9 |
 | A comparison chain is `unexpected-token` at the second comparison operator (`compare_chain`) | spec/paka.md, M2-02 §2 |
 | A single-line arm with no value is `missing-value` at its pattern (`types/match_single_line_arm_no_value`) | M2-02 §5 |

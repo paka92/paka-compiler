@@ -51,6 +51,11 @@ impl Cache {
     /// The cache in `dir` for the compiler `stamp` names, over a checked program. Results of any
     /// other version in `dir` are removed.
     pub fn open(dir: PathBuf, stamp: &str, defs: &[DefCheck], source: &Source) -> Cache {
+        // Keys go by name: an app named as another definition would mix the two.
+        let names: BTreeSet<_> = defs.iter().map(|d| &d.name).collect();
+        if names.len() < defs.len() {
+            return Cache::default();
+        }
         let version = hex(&sha256(stamp.as_bytes()));
         prune(&dir, &version);
         let store = Store {

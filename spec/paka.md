@@ -34,9 +34,10 @@ app wc {
 ```
 
 A program is one `.paka` file, or every `.paka` file directly in one directory. It holds
-definitions in any order: `type`, `enum`, `fn`, `example` and at most one `app`. Definition names,
-variant names and built-in names share one pool; each name exists once (`duplicate-name`). An app
-may be named as a built-in is: `app split`.
+definitions in any order: `type`, `enum`, `fn`, `example` and at most one `app`. Definition,
+variant and built-in names share one pool; each exists once (`duplicate-name`), but a definition
+or variant may take a built-in function's or element's name and replace it everywhere (`fn join`,
+`type Row`); a view then using that element is `duplicate-name`. An app may take any name.
 
 Paka has no user generics, interfaces, methods, lambdas, closures, tuples, null, exceptions,
 globals, references or shared data. Functions cannot see anything but their parameters.
@@ -78,7 +79,7 @@ No Set (write `Map<K, Bool>`), no character type (a one-character `String`).
 Number literals have no leading zero, hex, exponent or `_`.
 
 ```
-type Counter { count: Int = 0, name: String }        // record; a default is a constant
+type Counter { count: Int = 0, name: String }   // record
 enum Shape { Dot, Circle(r: Float), Rect(w: Float, h: Float) }
 Counter { name: "a" }      // fields by name in declared order; one with a default may be left out
 c.count                    // field read
@@ -87,7 +88,7 @@ Circle(1.5)                // variant fields by position; a variant without fiel
 
 - Variants are written bare, never `Shape.Dot`, and a variant name is unique in the whole program.
   An enum has at least one variant; variant fields have no defaults.
-- A default is a literal, `[]`, `[:]`, or a variant with constant arguments; anything else is
+- A default is a literal, `[]`, `[:]`, or a list or variant of defaults; anything else is
   `unexpected-token`.
 - In the header of `if`, `while`, `for` and `match`, write a record in brackets: `(Counter {})`.
 - A type may hold itself only where a finite value exists: through `Option<T>`, a `List`, or an
@@ -195,14 +196,14 @@ Both sides of an operator have the same type; nothing converts by itself (`to_fl
   `divide_by_zero`. Wrapping and bit operations are functions (section 9).
 - Float arithmetic never traps. NaN equals nothing, itself included.
 - String escapes, exactly these seven, no `\u{hex}`: `\n` `\r` `\t` `\\` `\"` `\{` `\}`. A
-  literal `{` is written `\{`. A lone `}` and a `{` right before the closing quote are text: `"}"`, `"{"`.
-- `"{expr}"` puts an Int, Bool or String into the text. The expression holds no `"`, `{` or `}`;
-  bind anything larger to a `let` first. A Float is written `"{fixed(x, digits: 2)}"`. No other
-  type becomes text by itself: build the text from its parts.
+  literal `{` is written `\{`. A lone `}` and a `{` before the closing quote are text: `"}"`, `"{"`.
+- `"{expr}"` puts an Int, Bool or String into the text. Strings inside it hold no `{`:
+  `"{join(xs, " ")}"`. A Float is written `"{fixed(x, digits: 2)}"`. No other type becomes text
+  by itself: build the text from its parts.
 - `s[i]` is a one-character String, `s[a..<b]` and `xs[a..<b]` are slices, each a new value.
   Positions start at 0 and count code points; `len` counts the same. A position outside traps
   `out_of_bounds`.
-- A String changes only as a whole: `s = s + "x"`, `s += "x"`. `s[i] = "x"` is refused.
+- A String changes only as a whole: `s += "x"`. `s[i] = "x"` is refused.
 - A digit test: `c >= "0" && c <= "9"`.
 
 ## 6. Values and `inout`
@@ -219,7 +220,7 @@ Both sides of an operator have the same type; nothing converts by itself (`to_fl
   field names. Two index steps into one List or Map always overlap: `xs[i]` and `xs[j]`.
 - `inout-overlap`: a place passed with `&` overlaps another argument of the same call.
   Fix: bind it first, `let old = xs` then `grow(&xs, old)`. For two items of one list, bind one
-  first or pass the list and both positions. Arguments of type Int, Float or Bool are exempt; a String is not.
+  first or pass the list and both positions. Int, Float and Bool arguments are exempt; a String is not.
 - `changed-while-read`: one operand reads a place that a sibling operand changes. This holds for
   operators, list, map and record literals and interpolation too. Fix: bind it first.
 - `changed-while-walked`: the body of `for x in xs` changes `xs` or anything overlapping it.
@@ -317,10 +318,9 @@ sort_by(&players, by_score)
 
 ## 9. Built-in functions
 
-These 63 names cannot be user function names. `T`, `K`, `V`, `E` stand for any type. All
-arguments are positional except the three labels shown (`digits:`, `at:`, `count:`); a `;` in a
-row only marks where the labels start, a call writes `,`. A row
-without `->` gives no value. A row that changes its first argument takes it with `&`.
+`T`, `K`, `V`, `E` stand for any type. All arguments are positional except the three labels
+shown (`digits:`, `at:`, `count:`); a `;` in a row only marks where the labels start, a call
+writes `,`. A row without `->` gives no value. A row that changes its first argument takes it with `&`.
 
 ```
 len(x) -> Int                         String: code points; List: items; Map: entries
@@ -416,7 +416,7 @@ fn update(m: Msg) -> List<Effect<Msg>>                 // without state:
 | `Exit` | none | ends with status 0 |
 | `ExitWith(status)` | none | ends with that status: 0 or 5 to 255 |
 
-`then:` of `WriteFile` is a message value that may carry context:
+`WriteFile`'s `then:` is a message value that may carry context:
 `WriteFile(path, text, then: Saved(path), or: Failed)`.
 
 Effects are plain values; only the list `update` returns is performed. `then:` and `or:`

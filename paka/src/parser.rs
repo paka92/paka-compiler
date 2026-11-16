@@ -1018,7 +1018,7 @@ impl<'a> Parser<'a> {
             Kind::LBracket => self.between(Kind::LBracket, Kind::RBracket, |p| {
                 Ok(match p.accept(Kind::Colon)? {
                     true => ExprKind::Map(vec![]),
-                    false => ExprKind::List(vec![]),
+                    false => ExprKind::List(p.items(&[Kind::RBracket], Self::constant)?),
                 })
             })?,
             Kind::Upper => {
@@ -1633,7 +1633,8 @@ mod tests {
             "type A {",
             "  a: Int = -1, b: Float = -1.5, c: String = \"hi\", d: Bool = true,",
             "  e: List<Int> = [], f: Map<String, Int> = [:], g: Color = Red, h: Color = Blue(2),",
-            "  i: Option<Int> = Some(-1), j: P = P { x: 1 }, k: Option<Option<Int>> = Some(Some(1))",
+            "  i: Option<Int> = Some(-1), j: P = P { x: 1 }, k: Option<Option<Int>> = Some(Some(1)),",
+            "  l: List<Int> = [0, -1, 2], m: List<Color> = [Red, Blue(1)]",
             "}",
             "",
         ];
@@ -1673,15 +1674,15 @@ mod tests {
         bad_default("n: Int = ^!true");
         bad_default("n: Int = ^(1)");
         bad_default("n: Int = 1 ^== 1");
-        bad_default("xs: List<Int> = [^1, 2]");
+        bad_default("xs: List<Int> = [1, ^x]");
         bad_default("xs: List<Int> = [^f(1)]");
-        bad_default("m: Map<String, Int> = [^\"a\": 1]");
+        bad_default("m: Map<String, Int> = [\"a\"^: 1]");
         bad_default("s: String = ^\"a{1}\"");
         bad_default("g: fn(Int) = ^f");
         bad_default("e: E = ^f(1)");
         bad_default("e: E = Blue(^x)");
         bad_default("e: E = Blue(1, ^f(2))");
-        bad_default("e: E = Blue([^1])");
+        bad_default("e: E = Blue([1, ^x])");
         bad_default("p: P = P { x: ^len(a) }");
         bad_default("n: Int = ^if a { 1 } else { 2 }");
         let src = "type A { n: Int = }\n";
@@ -3223,6 +3224,16 @@ view w(s: S) -> View<Msg> {
         expr(r#""{get(m, k)?}""#, ExprKind::Str(vec![part]));
         unexpected(r#""{f<Int>(x)}""#, 10, CHAINED);
         unexpected(r#""{a ?? 0}""#, 7, HOLE);
+    }
+
+    #[test]
+    fn a_string_literal_stands_in_an_interpolation() {
+        let space = e(14, 3, ExprKind::Str(vec![StrPart::Text(" ".into())]));
+        let join = call(5, 13, "join", vec![arg(var(10, "xs")), arg(space)]);
+        expr(
+            r#""{join(xs, " ")}""#,
+            ExprKind::Str(vec![StrPart::Expr(join)]),
+        );
     }
 
     #[test]

@@ -13,8 +13,8 @@ versions are per definition, so edits to two definitions from one base both land
 < {"v":1,"id":5,"ok":true,"name":"counts_two","version":"d2c0a37abd1f","text":"example counts_two {\n  len(words(count_words(\"a b\"))) == 2\n}","errors":[],"broke":[],"installed":true}
 > {"v":1,"id":6,"call":"edit","name":"counts_two","base":null,"text":"example counts_two {\n  true\n}"}
 < {"v":1,"id":6,"ok":false,"error":{"kind":"name_taken","message":"counts_two already exists; send its version as base to replace it"}}
-> {"v":1,"id":7,"call":"edit","name":"len","base":null,"text":"fn len(x: Int) -> Int {\n  x\n}"}
-< {"v":1,"id":7,"ok":false,"error":{"kind":"conflict","message":"len is a built-in; rename it; nothing was stored"}}
+> {"v":1,"id":7,"call":"edit","name":"Option","base":null,"text":"type Option { x: Int }"}
+< {"v":1,"id":7,"ok":false,"error":{"kind":"conflict","message":"Option is a built-in; rename it; nothing was stored"}}
 > {"v":1,"id":8,"call":"edit","name":"Msg","base":"fb4881575e98","text":"enum Msg { Start(path: String), Loaded(text: String), Failed(why: String), Tally }"}
 < {"v":1,"id":8,"ok":false,"error":{"kind":"conflict","message":"Tally is already declared; nothing was stored"}}
 > {"v":1,"id":9,"call":"edit","name":"wc","base":"a0fc527c3499","text":"fn wc() -> Int {\n  0\n}"}

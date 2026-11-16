@@ -1,9 +1,21 @@
 enum Msg { Start }
 
-type Box { xs: List<Int> = [1, 2] }
+enum Color { Red, Blue(shade: Int) }
+
+type Box { xs: List<Int> = [1, -2, 3], cs: List<Color> = [Red, Blue(7)] }
+
+fn shade(c: Color) -> Int {
+  match c {
+    Red => 0
+    Blue(s) => s
+  }
+}
 
 fn update(msg: Msg) -> List<Effect<Msg>> {
-  [Print("done"), Exit]
+  var b = Box {}
+  append(&b.xs, 4)
+  let first = Box {}
+  [Print("{len(b.xs)} {len(first.xs)} {b.xs[1]} {shade(b.cs[1])}"), Exit]
 }
 
 app types {

@@ -120,8 +120,12 @@ const fn case(dir: &'static str, update: Update, grants: u64) -> Case {
 
 // Transcribed by hand from each case's main.paka: the app name, the position of `start:` in its
 // enum, the `grants:` list (Console is bit 0) and the list `update` returns.
-const CASES: [Case; 17] = [
+const CASES: [Case; 18] = [
     case("app_first", light, 1),
+    Case {
+        app: b"update",
+        ..case("app_named_like_fn", light, 1)
+    },
     case("empty_list", nothing, 0),
     case("empty_string", empty_print, 1),
     case("exit_first", exit_first, 0),
